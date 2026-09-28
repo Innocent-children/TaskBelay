@@ -1,6 +1,6 @@
 {
   "name": "taskbelay-zcode",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Persistent TaskBelay development tasks for ZCode.",
   "author": {
     "name": "TaskBelay"
