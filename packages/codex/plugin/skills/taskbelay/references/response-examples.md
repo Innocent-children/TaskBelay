@@ -7,9 +7,15 @@ Read the [core response handling instructions](tool-results.md) first. Use curre
 Implementation: `internal/mcp/skill_examples_test.go`; `internal/mcp/skill_error_examples_test.go`;
 `internal/mcp/skill_success_examples_test.go`.
 
-
+Envelope types in every example: `ok` is a boolean; `request_id`/`tool` are strings;
+`error`/`recovery` are objects. `error.code`/`message` and `recovery.action`/`message` are strings;
+`recovery.retry_safe` is a boolean. See the
+[shared field-type rules](tool-results.md#json-field-types) for reading object and text responses.
 
 ## taskbelay_submit_test-budget-exceeded
+
+Field types: `error.budget` is an object with integer `used`, `requested` and `limit`;
+`error.details` is an array of objects with string `path`, `rule` and `message`.
 
 <!-- example:mcp-output taskbelay_submit_test budget-exceeded -->
 ```json
@@ -43,6 +49,9 @@ Implementation: `internal/mcp/skill_examples_test.go`; `internal/mcp/skill_error
 
 ## taskbelay_submit_test-budget-checks-correction
 
+Field types: `error.details` is an array of objects with string `path`, `rule` and `message`;
+`recovery.allowed_paths` is an array of strings.
+
 <!-- example:mcp-output taskbelay_submit_test budget-checks-correction -->
 ```json
 {
@@ -72,6 +81,9 @@ Implementation: `internal/mcp/skill_examples_test.go`; `internal/mcp/skill_error
 ```
 
 ## taskbelay_submit_test-guard-rejection
+
+Field types: `error.guard` is an object; `guard_id` is a string and `failures` is an array of
+objects. Each failure's `path`, `rule` and `message` is a string.
 
 <!-- example:mcp-output taskbelay_submit_test guard-rejection -->
 ```json

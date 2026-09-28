@@ -6,6 +6,13 @@ Read [response handling](tool-results.md) and the [Host transport](transport.md)
 
 Use the actual returned recovery advice or blocker; a missing display is not a missing retained response.
 
+Field types: `host`, `task_id`, `action_id`, `choice` and `reason` are strings;
+`history_resolution` is an object with string `choice` and `reason`. Success `result` is an object.
+In read responses, `result.task` is an object and `result.recovery_assessment` is an object or
+`null`; assessment `operation` is an object, IDs/`next_advice` are strings, and
+`task_revision`/`expected_revision` are integers. Follow the
+[shared field-type rules](tool-results.md#json-field-types).
+
 ## Uncertain Action recovery
 
 Implementation: `internal/application/recover_action.go` — `RecoverAction`.

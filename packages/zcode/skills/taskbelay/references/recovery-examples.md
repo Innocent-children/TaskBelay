@@ -7,7 +7,14 @@ Read the [recover an action or resolve a blocker instructions](recovery.md) firs
 Implementation: `internal/mcp/skill_examples_test.go`; `internal/mcp/skill_error_examples_test.go`;
 `internal/mcp/skill_success_examples_test.go`.
 
+Every request and response envelope is an object. The linked successes return the Task object
+in `result`, with `result.current_action` as an object or `null`. In errors, `error`/`recovery` are objects,
+`ok`/`recovery.retry_safe` are booleans, and `recovery.allowed_paths`, when present, is an array
+of strings. Follow the [shared field-type rules](tool-results.md#json-field-types).
+
 ## taskbelay_recover_action-saved-operation
+
+Request types: `host`, `task_id` and `action_id` are strings.
 
 <!-- example:mcp taskbelay_recover_action saved-operation -->
 ```json
@@ -47,6 +54,8 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 ```
 
 ## taskbelay_resolve_blocker-allow_once
+
+Request types: `host`, `task_id`, `action_id`, `choice` and `reason` are strings.
 
 <!-- example:mcp taskbelay_resolve_blocker allow_once -->
 ```json
@@ -97,6 +106,8 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 
 ## taskbelay_resolve_blocker-expand_scope
 
+Request types: `host`, `task_id`, `action_id`, `choice` and `reason` are strings.
+
 <!-- example:mcp taskbelay_resolve_blocker expand_scope -->
 ```json
 {
@@ -145,6 +156,8 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 ```
 
 ## taskbelay_resolve_blocker-reject
+
+Request types: `host`, `task_id`, `action_id`, `choice` and `reason` are strings.
 
 <!-- example:mcp taskbelay_resolve_blocker reject -->
 ```json
@@ -195,6 +208,8 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 
 ## taskbelay_resolve_blocker-verification-or-recovery
 
+Request types: `host`, `task_id` and `action_id` are strings.
+
 <!-- example:mcp taskbelay_resolve_blocker verification-or-recovery -->
 ```json
 {
@@ -233,6 +248,9 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 ```
 
 ## taskbelay_resolve_blocker-history
+
+Request types: `host`, `task_id` and `action_id` are strings; `history_resolution` is an object
+whose `choice` and `reason` are strings. Do not encode `history_resolution` as a string.
 
 <!-- example:mcp taskbelay_resolve_blocker history -->
 ```json

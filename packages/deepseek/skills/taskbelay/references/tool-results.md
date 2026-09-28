@@ -25,6 +25,44 @@ Inputs are closed JSON objects. Success envelopes have ok/request_id/tool/result
 have ok/request_id/tool/error/recovery and no successful result. The output tool field remains the
 Core raw name even when the Host calls a qualified name.
 
+### JSON field types
+
+Pass the tool arguments as an object. Keep every nested field in its declared JSON type:
+`object` means `{...}`, `array` means `[...]`, `boolean` means `true` or `false`, and `null`
+is unquoted. `array<string>` and `array<object>` below describe the element type; they are not
+literal input values. Omitted, `null`, `{}` and `[]` are different values; use only the form
+allowed by the current tool and operation.
+
+| Request field | JSON type |
+| --- | --- |
+| `host`, `task_id`, `action_id`, `repository_path`, `request_id`, `summary`, `reason` | `string`, when declared by the tool |
+| `new_task` | `object` for creation; omitted or `null` for resume |
+| `workspace_origin`, `artifacts`, `method_results`, `node_result`, `history_resolution` | `object`, when declared by the tool |
+| `additional_repositories`, `relocation_destinations` | `array<object>` |
+| `operation_probe` | `object` or `null`; may be omitted |
+| `revision` | `integer` |
+
+Do not turn an object or array field into JSON text. In particular, never use
+`JSON.stringify(new_task)` as the value of `new_task`. MCP handles encoding the complete message;
+a CLI helper's stdin receives the complete request encoded as JSON text once, with nested types
+preserved.
+
+For responses, `structuredContent` is already an object. If the envelope is supplied in a
+`content` text block, its `text` is a string: parse that complete JSON envelope once. Do not parse
+ordinary string fields or stringify nested response objects.
+
+| Response field | JSON type |
+| --- | --- |
+| Complete envelope, success `result`, failure `error` and `recovery` | `object` |
+| `ok`, `recovery.retry_safe` | `boolean` |
+| `request_id`, `tool`, `error.code`, `error.message`, `recovery.action`, `recovery.message` | `string` |
+| `error.details`, `error.guard.failures`, when present | `array<object>`; each entry's `path`, `rule`, `message` is a `string` |
+| `error.guard`, `error.budget`, when present | `object`; budget `used`, `requested`, `limit` are `integer` |
+| `recovery.allowed_paths`, when present | `array<string>` |
+
+Success `result` members depend on the tool. A Task or Action is an object, not JSON text;
+nullable members such as `current_action` and `recovery_assessment` use actual `null`.
+
 `request_id` in an envelope is Core's response identity; the cancellation input supplies its own
 request_id. `result.recovery_assessment` concerns retained Action operations and is distinct from
 error-envelope `recovery`. Output examples labeled projection show only the fields being discussed;

@@ -5,7 +5,17 @@ Read the [connect, open and read a task instructions](connection.md) first. Use 
 Implementation: `internal/mcp/skill_examples_test.go`; `internal/mcp/skill_error_examples_test.go`;
 `internal/mcp/skill_success_examples_test.go`.
 
+All requests and response envelopes below are objects. In every error example, `ok` and
+`recovery.retry_safe` are booleans; `request_id`/`tool` are strings; `error`/`recovery` are objects;
+`error.details` is an array of objects when present. Follow the
+[shared field-type rules](tool-results.md#json-field-types); do not stringify nested values.
+
 ## taskbelay_server_info-handshake
+
+Request type: an empty object, not the string `"{}"`. In the linked success response, `result`
+is an object; `product`, `version`, `transport` and `health` are strings; `supported_hosts`,
+`method_profiles` and `tools` are arrays of strings; `supported_processes` is an array of objects;
+`host_preferences` is an object whose Host entries contain boolean `codebase_memory`.
 
 <!-- example:mcp taskbelay_server_info handshake -->
 ```json
@@ -49,6 +59,13 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 ```
 
 ## taskbelay_open_task-create
+
+Request types: `host`/`repository_path` are strings; `workspace_origin` and `new_task` are objects.
+`workspace_origin.carry_changes` is a boolean; the other origin fields are strings.
+`new_task.request`/`method_profile` are strings, and its three scope/acceptance fields are arrays
+of strings. Pass `new_task` directly as shown, never as a JSON-encoded string.
+Success types: `result`/`result.task` are objects, `result.created` is a boolean, and
+`result.recovery_assessment` is an object or `null`.
 
 <!-- example:mcp taskbelay_open_task create -->
 ```json
@@ -115,6 +132,12 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 ```
 
 ## taskbelay_open_task-multiple
+
+Request types: `host`, `repository_path` and `primary_repository_key` are strings;
+`workspace_origin`/`new_task` are objects, with the same field types as the create example above.
+`additional_repositories` is an array of objects; each entry has string `key`/`repository_path`
+and object `workspace_origin`. Success types: `result`/`result.task` are objects,
+`result.created` is a boolean, and `result.recovery_assessment` is an object or `null`.
 
 <!-- example:mcp taskbelay_open_task multiple -->
 ```json
@@ -200,6 +223,10 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 
 ## taskbelay_open_task-resume
 
+Request types: `host` and `repository_path` are strings. Omit `new_task` as shown, or use actual
+`null`, not `"null"` or an empty object. Success types: `result`/`result.task` are objects,
+`result.created` is a boolean, and `result.recovery_assessment` is an object or `null`.
+
 <!-- example:mcp taskbelay_open_task resume -->
 ```json
 {
@@ -246,6 +273,10 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 
 ## taskbelay_get_task-read
 
+Request types: `host`/`task_id` are strings. Success types: `result`/`result.task` are objects;
+`result.recovery_assessment` is an object or `null`; Task `revision` is an integer and
+`current_action` is an object or `null`.
+
 <!-- example:mcp taskbelay_get_task read -->
 ```json
 {
@@ -283,6 +314,10 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 ```
 
 ## taskbelay_get_next_action-guarded-read
+
+Request types: `host`/`task_id` are strings. Success types: `result` is an object;
+`result.action`, `result.blocker`, `result.outcome` and `result.recovery_assessment` are objects
+or `null`.
 
 <!-- example:mcp taskbelay_get_next_action guarded-read -->
 ```json

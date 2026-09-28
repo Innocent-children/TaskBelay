@@ -4,6 +4,12 @@ Read [response handling](tool-results.md) and the [Host transport](transport.md)
 
 Read the [Host lifecycle](host-lifecycle.md) for available workspace operations and their authorization.
 
+Field types: request IDs, `host`, `reason` and repository paths are strings; `revision` is an
+integer. `relocation_destinations` is an array of objects with string `key` and `repository_path`.
+Success `ok` is a boolean and `result` is an object. Relocation preparation returns string
+`result.relocation_id` and object `result.task`; the other operations return the Task object
+directly in `result`. Follow the [shared field-type rules](tool-results.md#json-field-types).
+
 ## Prepare relocation
 
 Implementation: `internal/application/control_center_lifecycle.go` — `PrepareTaskRelocation`.

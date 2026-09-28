@@ -7,7 +7,15 @@ Read the [core relocation and terminal operations instructions](core-lifecycle.m
 Implementation: `internal/mcp/skill_examples_test.go`; `internal/mcp/skill_error_examples_test.go`;
 `internal/mcp/skill_success_examples_test.go`.
 
+Every request and response envelope is an object. Success `result` is an object. Error
+`error`/`recovery` are objects, `error.details` is an array of objects when present, and
+`ok`/`recovery.retry_safe` are booleans. See the
+[shared field-type rules](tool-results.md#json-field-types).
+
 ## taskbelay_prepare_task_relocation-prepare
+
+Request types: `host`/`task_id` are strings; `revision` is an integer.
+Success `result.relocation_id` is a string and `result.task` is an object.
 
 <!-- example:mcp taskbelay_prepare_task_relocation prepare -->
 ```json
@@ -47,6 +55,10 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 ```
 
 ## taskbelay_resolve_blocker-relocation
+
+Request types: `host`, `task_id`, `action_id` and `relocation_id` are strings;
+`relocation_destinations` is an array of objects with string `key` and `repository_path`.
+Success `result` is the Task object.
 
 <!-- example:mcp taskbelay_resolve_blocker relocation -->
 ```json
@@ -102,6 +114,10 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 
 ## taskbelay_cancel_task-cancel
 
+Request types: `request_id`, `host`, `task_id` and `reason` are strings; `revision` is an integer.
+Success `result` is the Task object, `result.current_action` is `null`, and `result.outcome`
+is an object.
+
 <!-- example:mcp taskbelay_cancel_task cancel -->
 ```json
 {
@@ -142,6 +158,10 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
 ```
 
 ## taskbelay_abandon_task-abandon
+
+Request types: `host`, `task_id` and `reason` are strings; `revision` is an integer.
+Success `result` is the Task object, `result.current_action` is `null`, and `result.outcome`
+is an object.
 
 <!-- example:mcp taskbelay_abandon_task abandon -->
 ```json

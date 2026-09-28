@@ -13,6 +13,8 @@ Implementation: `internal/application/artifacts.go` — `collectArtifacts, Prepa
 
 Use the Task/Action identity from the same fresh Action:
 
+Request types: the input is an object; `host`, `task_id` and `action_id` are strings.
+
 <!-- example:artifact collect current -->
 ```json
 {
@@ -23,6 +25,9 @@ Use the Task/Action identity from the same fresh Action:
 ```
 
 Complete output shape example for a requirements document:
+
+Response types: `ok` is a boolean and `result` is an object. Within `result`, `revision` is an
+integer; `files` is an array of objects; all other fields and each file entry's fields are strings.
 
 <!-- example:artifact-output collect one-file -->
 ```json
@@ -64,6 +69,9 @@ name is not blanket approval. Unexplained/forbidden changes stop for the applica
 
 Keep the complete classified collection and call prepare:
 
+Request types: `host` is a string; `collection` is an object with the same field types as the
+collect response's `result`. Keep `files` as an array of objects, not a JSON-encoded string.
+
 <!-- example:artifact prepare one-file -->
 ```json
 {
@@ -87,6 +95,9 @@ Keep the complete classified collection and call prepare:
 ```
 
 Complete success shape:
+
+Response types: `ok` is a boolean; `result` is an object; `result.current` and
+`result.other_process` are arrays of objects with string `path`, `digest` and `summary`.
 
 <!-- example:artifact-output prepare one-file -->
 ```json

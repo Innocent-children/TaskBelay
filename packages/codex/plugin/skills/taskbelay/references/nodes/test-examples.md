@@ -8,6 +8,24 @@ Replace sample identities, artifacts, checks and user verdicts with current valu
 Implementation: `internal/mcp/skill_examples_test.go`; `internal/mcp/skill_error_examples_test.go`;
 `internal/mcp/skill_success_examples_test.go`.
 
+Request types for every example: `host`, `task_id`, `action_id`, `transition_id`, `summary` and
+`reason` are strings; `artifacts`, `method_results` and `node_result` are objects. Artifact slots
+are arrays of objects, and each method result is an object with string `capability`/`summary`.
+Keep nested values in their shown JSON types; do not stringify objects or arrays.
+
+| Field inside `node_result` | JSON type in these examples |
+| --- | --- |
+| `problem_class` | `string` |
+| `checks`, `failed_items`, `unverified_items`, `manual_handoff_items`, `findings` | `array` |
+| `budget_adjustment` | `object` or `null` |
+| `known_failure_acceptance`, when present in the example | `object` |
+
+Use the object or `null` shown for the selected transition; they are not interchangeable.
+Success response types: `ok` is a boolean, `request_id`/`tool` are strings, `result` is the Task
+object, and `result.current_action` is an object or `null`. Error `error`/`recovery` are objects;
+`error.details`, when present, is an array of objects, and `recovery.retry_safe` is a boolean.
+See the [shared field-type rules](../tool-results.md#json-field-types).
+
 ## taskbelay_submit_test-tests_passed
 
 <!-- example:mcp taskbelay_submit_test tests_passed -->

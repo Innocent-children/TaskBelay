@@ -50,6 +50,18 @@ summary. Method results have exactly the returned step IDs, each with capability
 capability denotes completed ordinary work. Core fills roles, method order/status, revisions,
 process/issuance identity and its normalized internal payload. These are absent from Host input.
 
+| Submission field | JSON type |
+| --- | --- |
+| `host`, `task_id`, `action_id`, `transition_id`, `summary`, `reason` | `string` |
+| `artifacts`, `method_results`, `node_result` | `object` |
+| `artifacts.other_process`, `artifacts.current` when exposed | `array<object>`; entry `path`, `digest`, `summary` are strings |
+| Each `method_results` step value | `object` with string `capability` and `summary` |
+
+Nested `node_result` fields keep the types shown for the selected transition: objects, arrays,
+strings, integers, booleans or actual `null`. Pass these values directly; do not encode an object
+or array as a string. The [shared field-type rules](tool-results.md#json-field-types) also apply
+to every request and response example.
+
 The linked examples use one illustrative endpoint task and show every current ordinary transition.
 They are alternatives selected from an actual Action, not an execution script or permission to take
 an edge. Empty artifact arrays mean preparation found no process files for that sample. Replace them
@@ -73,8 +85,9 @@ problem edges. Example identities, checks and verdicts cannot be reused as real 
 
 Every ordinary success uses `{"ok":true,"request_id":"…","tool":"…","result":<complete Task>}`.
 The next Action is `result.current_action`, not `result.task.current_action`. A terminal success has
-`result.current_action:null`. After TEST, a repetition blocker can replace the expected destination;
-read the actual result. The [result reference](tool-results.md) defines complete-error and uncertain-
+`result.current_action:null`. `ok` is a boolean; `request_id` and `tool` are strings; `result` is
+an object, and `result.current_action` is an object or `null`. After TEST, a repetition blocker
+can replace the expected destination; read the actual result. The [result reference](tool-results.md) defines complete-error and uncertain-
 operation handling. Examples in each node state their expected next node, and Core decides whether
 its current guards allow it.
 

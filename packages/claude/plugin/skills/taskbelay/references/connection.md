@@ -59,6 +59,15 @@ into the repository members. `new_task.request` is the admitted request string; 
 known acceptance are arrays derived from the actual request. Profile follows explicit plain, Spec Kit
 or OpenSpec intent, otherwise plain. No verification budget is selected at creation.
 
+| Creation field | JSON type |
+| --- | --- |
+| `host`, `repository_path`, optional `primary_repository_key` | `string` |
+| `new_task`, `workspace_origin` | `object`; pass their members directly, never JSON-encoded strings |
+| `new_task.request`, `new_task.method_profile` | `string` |
+| `new_task.initial_scope`, `new_task.initial_out_of_scope`, `new_task.known_acceptance_criteria` | `array<string>` |
+| `workspace_origin.carry_changes` | `boolean`; every other origin member is a `string` |
+| Optional `additional_repositories` | `array<object>`; each entry has string `key`/`repository_path` and object `workspace_origin` |
+
 [Complete request, successful response and error example](connection-examples.md#taskbelay_open_task-create).
 
 For a complete confirmed multi-repository Scope, the call includes both origins. These fields come
@@ -67,7 +76,8 @@ from one verified Host launch descriptor after both selected workspaces are prep
 [Complete request, successful response and error example](connection-examples.md#taskbelay_open_task-multiple).
 
 For an existing Task, return to its original worktree instance, preserve its immutable Scope/profile,
-and omit all creation members:
+and omit all creation members. `new_task` may also be actual `null`; `"null"` and `"{}"` are strings
+and are not valid resume values:
 
 [Complete request, successful response and error example](connection-examples.md#taskbelay_open_task-resume).
 
@@ -75,6 +85,10 @@ Success projection: `{"ok":true,"result":{"created":false,"task":{"task_id":"tas
 "revision":4,"current_cursor":"IMPLEMENT","current_action":{"action_id":"action-example"}},
 "recovery_assessment":null}}`. Handle recovery before `result.task.current_action`. `created:true`
 identifies creation; neither value permits another Task for the same launch.
+
+Response types: `ok` and `result.created` are booleans; `result` and `result.task` are objects;
+`result.recovery_assessment` and `result.task.current_action` are objects or `null`.
+`task_id` and `current_cursor` are strings; `revision` is an integer.
 
 Creation errors such as `ACTIVE_TASK_CONFLICT`, `WORKTREE_PROVISIONING_REQUIRED`, ownership failure or
 unavailable workspace stop. After an uncertain creation, call the resume example on the same worktree;
