@@ -1,6 +1,6 @@
 {
   "name": "taskbelay",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": false,
   "description": "Unified lifecycle manager for TaskBelay Codex, DeepSeek, Claude Code and ZCode adapters.",
   "license": "Apache-2.0",
