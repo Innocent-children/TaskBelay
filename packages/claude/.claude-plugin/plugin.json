@@ -1,6 +1,6 @@
 {
   "name": "taskbelay-claude",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Persistent TaskBelay development tasks for Claude Code.",
   "skills": "./plugin/skills",
   "hooks": "./plugin/hooks/hooks.json",
