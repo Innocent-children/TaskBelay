@@ -1,6 +1,6 @@
 {
   "name": "taskbelay-codex",
-  "version": "0.10.4",
+  "version": "0.10.5",
   "private": false,
   "description": "TaskBelay tasks in local branches or dedicated worktrees for Codex.",
   "license": "Apache-2.0",
