@@ -97,6 +97,18 @@ uncommitted work must be accounted for when starting the next Task.
 
 Before implementation, review and discuss the requirements, design, work items, expected files and verification plan. Development starts after you explicitly approve the complete plan. Revisions or expanded file scope require approval again; choosing TaskBelay or a worktree does not replace plan approval.
 
+To correct an active Task's branch name, ask the Host to prepare a TaskBelay branch rename, then rename
+one repository without changing its directory, HEAD, index or files. TaskBelay checks the result and
+continues the same Task. Cancel the rename only before the original facts change. For a Codex launch
+that has not executed, request explicit replacement of the saved launch; a failed launch needs proof
+that no target operation was called. Uncertain or partial work must be inspected first.
+
+Repeated planning revisions keep every saved baseline reference in the Task, with no configured count
+limit or archive tier. Practical limits still come from available resources and revision-number ranges.
+Responses show a bounded first page and the total count; ask the Host to page the complete history
+when reviewing older decisions. See [workspace operations](docs/WORKTREE-SOURCES_en.md) and the
+[command reference](docs/COMMANDS_en.md) for exact steps and limits.
+
 ### 3. Resume and view progress
 
 After a session restart, return to the task's original directory and ask to continue it. TaskBelay

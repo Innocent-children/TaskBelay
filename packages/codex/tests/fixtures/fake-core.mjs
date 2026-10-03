@@ -153,6 +153,7 @@ async function envelopeFor(tool, arguments_) {
     await writeState();
     return success(tool, { task: currentTask(), claim_released: true });
   }
+  if (tool === "taskbelay_prepare_task_branch_rename") { state.blocked=true; await writeState(); return success(tool,{task:currentTask(),rename_id:"rename-0001"}); }
   if (tool === "taskbelay_prepare_task_relocation") {
     state.blocked = true;
     await writeState();
@@ -374,7 +375,7 @@ function toolDefinitions() {
 	const metadata = [
     ["taskbelay_server_info", [], [] , true, false, true],
     ["taskbelay_open_task", ["host", "repository_path"], ["host", "repository_path", "primary_repository_key", "additional_repositories", "new_task"], false, false, false],
-    ["taskbelay_get_task", ["host", "task_id"], ["host", "task_id", "operation_probe"], true, false, true],
+    ["taskbelay_get_task", ["host", "task_id"], ["host", "task_id", "operation_probe", "baseline_history"], true, false, true],
     ["taskbelay_get_next_action", ["host", "task_id"], ["host", "task_id", "operation_probe"], true, false, true],
     ["taskbelay_submit_requirements", submissionRequired, submissionRequired, false, false, true],
     ["taskbelay_submit_design", submissionRequired, submissionRequired, false, false, true],
@@ -384,8 +385,9 @@ function toolDefinitions() {
     ["taskbelay_submit_comprehension", submissionRequired, submissionRequired, false, false, true],
     ["taskbelay_submit_refactor", submissionRequired, submissionRequired, false, false, true],
     ["taskbelay_submit_delivery", submissionRequired, submissionRequired, false, false, true],
+    ["taskbelay_prepare_task_branch_rename", ["host","task_id","revision","repository_key","target_branch","reason"], ["host","task_id","revision","repository_key","target_branch","reason"], false,false,true],
     ["taskbelay_prepare_task_relocation", ["host", "task_id", "revision"], ["host", "task_id", "revision"], false, false, true],
-    ["taskbelay_resolve_blocker", ["host", "task_id", "action_id"], ["host", "task_id", "action_id", "choice", "reason", "relocation_id", "relocation_destinations", "history_resolution"], false, false, true],
+    ["taskbelay_resolve_blocker", ["host", "task_id", "action_id"], ["host", "task_id", "action_id", "choice", "reason", "rename_id", "rename_choice", "relocation_id", "relocation_destinations", "history_resolution"], false, false, true],
     ["taskbelay_recover_action", ["host", "task_id", "action_id"], ["host", "task_id", "action_id"], false, false, true],
     ["taskbelay_cancel_task", ["request_id", "host", "task_id", "revision", "reason"], ["request_id", "host", "task_id", "revision", "reason"], false, true, false],
     ["taskbelay_abandon_task", ["host", "task_id", "revision", "reason"], ["host", "task_id", "revision", "reason"], false, true, false],

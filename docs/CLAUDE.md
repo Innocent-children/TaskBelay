@@ -119,3 +119,13 @@ npm uninstall --global taskbelay-claude
 `CLAUDE_CONFIG_DIR` 可以指定 Claude 设置目录。`TASKBELAY_DATA_DIR` 可以指定已有的规范绝对数据目录，启动 Claude 和管理命令时必须保持一致。默认任务数据位于 macOS 的 `~/.taskbelay/data` 或 Windows 的 `%LOCALAPPDATA%\taskbelay\data`。
 
 更多命令见[命令参考](COMMANDS.md)，已执行检查和未验证项目见[项目状态](PROJECT-STATUS.md)。
+
+## 持续修订与任务分支改名
+
+同一 Task 可以继续多轮需求、设计和计划修订，旧基线引用超过 32 条后仍可分页核对；系统保留
+真实引用，不保证恢复未保存的旧正文。活动 Task 需要改分支名称时，先由 Core 准备一个仓库的改名，
+再让获授权的 Host 执行一次非 force 的 `git branch -m`，最后由 Core 核对并确认。工作树、HEAD、
+index、内容和其他仓库必须不变；改名前可以取消准备，已经改名但未确认时先回读，不重复执行。
+
+后续搬迁和终态清理使用 Core 已确认的有效分支，创建时分支仍作为来源保留。清理命令须传完整终态 `core_task`；Claude 搬迁也须传实际 `core_preparation`。
+精确条件和恢复步骤见[工作树来源与恢复](WORKTREE-SOURCES.md)。

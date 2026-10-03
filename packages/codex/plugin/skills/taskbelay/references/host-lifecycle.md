@@ -114,6 +114,9 @@ Implementation: `packages/codex/lib/task-launch.mjs` — `cleanupCliTaskWorktree
 
 Only for a verified terminal, clean CLI worktree after explicit deletion authorization. `terminal`
 comes from a fresh Core result and `authorized` from that user decision; they are not default booleans.
+Pass that complete terminal Task as `core_task`. Its saved effective branch, original provisioning
+identity and HEAD must match this receipt and the live workspace. A missing stored workspace instance
+proof (including older Codex receipts) requires manual review; never infer it from a branch name.
 
 [Complete cleanup-worktree example](lifecycle-examples.md#host-cleanup-worktree-remove-worktree).
 
@@ -157,3 +160,24 @@ Implementation of registration: `packages/codex/plugin/.mcp.json`;
 and Hook. It must be an existing canonical absolute directory. Help does not resolve it. A changed
 launch environment takes effect in a new session. The internal Hook/host-check argv and message examples
 are in [artifacts](artifacts.md#pretooluse-hook).
+
+## Explicit launch supersession
+
+Implementation: `packages/codex/lib/task-launch.mjs` — `supersedeTaskLaunch`, `resumeTaskLaunchSupersession`.
+
+Read `host-launch status` and retain `receipt_digest`. After an explicit revised choice and a fresh
+assessment, `host-launch supersede` takes the predecessor identity, `expected_receipt_digest`, a
+concrete `reason` and a complete `replacement` prepare input with a distinct launch ID. It accepts
+unexecuted launches, or failed preparations with recorded positive proof that no target call occurred.
+A dispatch claim, partial effects or uncertainty requires reconciliation first; empty Host IDs alone
+are not proof. The old receipt permanently retains one complete successor seed and becomes unusable.
+Use the returned `prepare_input` for ordinary successor preparation. After interruption, read the
+predecessor and call `supersede-resume` with its exact `supersession.seed_digest`; this only completes
+the same successor and grants no Git or Host execution.
+
+[Supersession request and result](launch-examples.md#host-supersede-replace).
+[Resume the saved successor](launch-examples.md#host-supersede-resume-recover).
+
+For an active Core Task, use the shared [prepared branch rename](core-lifecycle.md) contract.
+Core confirms the effective branch while preserving the creation origin. Cleanup uses the effective
+branch from `core_task`, including when another branch later reuses the creation name.

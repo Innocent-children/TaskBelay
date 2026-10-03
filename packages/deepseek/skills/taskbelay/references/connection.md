@@ -35,6 +35,7 @@ The complete tool-name set is:
 - `taskbelay_submit_comprehension`
 - `taskbelay_submit_refactor`
 - `taskbelay_submit_delivery`
+- `taskbelay_prepare_task_branch_rename`
 - `taskbelay_prepare_task_relocation`
 - `taskbelay_resolve_blocker`
 - `taskbelay_recover_action`
@@ -107,7 +108,9 @@ Implementation: `internal/mcp/server.go` — `dispatch`.
 Success projection: `{"ok":true,"result":{"task":{"task_id":"task-example","revision":4},
 "recovery_assessment":null}}`. Read the full `result.task`, including baselines, verification,
 `test.evidence_ids`, evidence, blocker, outcome and last_operation. Do not fabricate `operation_probe`;
-ordinary reads automatically return the retained assessment.
+ordinary reads automatically return the retained assessment. `baselines.history` is a bounded first
+page, not the entire saved history. Use its `history_total`, `history_next_after` and `history_revision`
+with [complete history pagination](core-lifecycle.md#read-complete-baseline-references).
 
 Before new repository work following a saved-state read, obtain the guarded Action:
 

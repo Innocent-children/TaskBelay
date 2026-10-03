@@ -32,9 +32,9 @@ func testStrictCodecAndRestart(t *testing.T, host domain.Host) {
 		t.Fatal("codec changed task")
 	}
 	overLimit := task
-	overLimit.BaselineHistory = make([]domain.BaselineReference, domain.MaxRetainedBaselineReferences+1)
+	overLimit.BaselineHistory = []domain.BaselineReference{{Kind: domain.BaselineRequirements, Revision: 1}}
 	if _, err := encodeTask(overLimit); err == nil {
-		t.Fatal("over-limit aggregate accepted")
+		t.Fatal("invalid baseline reference accepted")
 	}
 	unknown := append(bytes.TrimSuffix(raw, []byte("}")), []byte(`,"unknown":true}`)...)
 	if _, err := decodeTask(unknown); err == nil {

@@ -46,3 +46,15 @@ npm uninstall --global taskbelay-zcode
 The confirmation command clears only the owned pending-removal record; it reports human confirmation, not an automatic ZCode UI check. Shared data reset and Git cleanup are separate operations. Use the same `TASKBELAY_DATA_DIR` for management and ZCode when overriding the default data directory.
 
 [中文指南](https://github.com/Innocent-children/taskbelay/blob/main/docs/ZCODE.md) · [English guide](https://github.com/Innocent-children/taskbelay/blob/main/docs/ZCODE_en.md)
+
+## Continued revision and Task branch renaming
+
+The same Task retains all saved requirements, design and plan references without archiving or a
+configured count limit; resources and revision-number ranges still apply. Responses show a bounded
+first page and total count; pagination reads every reference. Unsaved full documents cannot be reconstructed. To rename an active Task branch, have Core prepare one repository's rename, let
+the authorized Host run one non-force `git branch -m`, then have Core verify and confirm it. The
+worktree, HEAD, index, contents and other repositories must stay unchanged. Cancel preparation only
+while the original facts remain unchanged; after a rename with a missing response, read back before acting.
+
+Later relocation and terminal cleanup use the effective branch confirmed by Core; the creation branch remains in the origin. Cleanup requires the complete terminal `core_task`; missing or mismatched facts reject cleanup.
+See [workspace sources and recovery](../../docs/WORKTREE-SOURCES_en.md) for exact conditions and recovery steps.

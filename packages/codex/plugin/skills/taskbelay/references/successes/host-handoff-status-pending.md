@@ -91,13 +91,15 @@ Complete response:
       "phase": "handoff_pending",
       "relocation_id": "relocation-example",
       "surface": "cli_worktree",
-      "worktree_cleanup": "not_requested"
+      "target_effects": "may_have_effects",
+      "worktree_cleanup": "not_requested",
+      "worktree_identity": "0000000000000000000000000000000000000000000000000000000000000004"
     },
     "remote_name": "origin",
     "repository_key": "primary",
     "request_digest": "0000000000000000000000000000000000000000000000000000000000000002",
     "snapshot_commit": null,
-    "source_repository_identity": "0000000000000000000000000000000000000000000000000000000000000004",
+    "source_repository_identity": "0000000000000000000000000000000000000000000000000000000000000005",
     "source_type": "remote",
     "target_branch": "codex/endpoint-field",
     "workspace_mode": "dedicated_worktree",

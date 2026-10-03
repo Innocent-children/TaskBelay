@@ -39,7 +39,7 @@ const assessment = object({
 });
 const userChoice = object({source: {const:"user"}, mode: {const:"taskbelay"}, summary: text("Actual user choice after the assessment was displayed; reuse a still-valid answer.")});
 const hostResult = { description: "Complete original Host tool result, including its wrapper if present. Use null when the result was lost; never fabricate an ID." };
-const cleanup = object({ ...identity, source_repository_path: source, terminal: { const: true }, authorized: { const: true } });
+const cleanup = object({ core_task: {type:"object",description:"Complete actual terminal Task from Core; its effective repository binding selects the branch. Never supply receipt.target_branch as a substitute."}, ...identity, source_repository_path: source, terminal: { const: true }, authorized: { const: true } });
 
 const contracts = {
   inspect: {
@@ -156,6 +156,20 @@ const contracts = {
     next_step: "Retain the resulting record; ordinary Git safe-deletion refusals remain effective.",
   },
 };
+
+contracts.supersede = {
+  description: "Permanently supersede an unexecuted launch, or a failed launch with recorded proof of zero target calls, after a new explicit assessment and choice.",
+  input_schema: object({...identity, expected_receipt_digest:text("Exact receipt_digest from status."), reason:text("Explicit reason for the changed choice."), replacement:{...structuredClone(contracts.prepare.input_schema), required:Object.keys(contracts.prepare.input_schema.properties)}}),
+  output_fields: {...receiptOutput, receipt_digest:"Successor digest.", predecessor:"Permanently superseded record with its complete unique seed.", prepare_input:"Saved successor input for the ordinary prepare operation."},
+  next_step:"Call prepare with prepare_input. Never execute the predecessor again. After an interrupted successor write, read the predecessor and call supersede-resume with its exact seed_digest.",
+};
+contracts["supersede-resume"] = {
+  description:"Complete only the successor named by a permanent supersession seed; never choose another successor.",
+  input_schema:object({...identity, seed_digest:text("Exact predecessor.supersession.seed_digest from status.")}),
+  output_fields:structuredClone(contracts.supersede.output_fields),
+  next_step:contracts.supersede.next_step,
+};
+contracts.status.output_fields.receipt_digest = "Digest for explicit supersession CAS, or null when no receipt exists.";
 
 export const HOST_LAUNCH_OPERATIONS = Object.freeze(Object.keys(contracts));
 

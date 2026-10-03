@@ -88,11 +88,12 @@ const (
 )
 
 type TaskMutation struct {
-	ExpectedRevision uint64
-	Task             domain.ProcessTask
-	Event            TaskEvent
-	Claim            ClaimOperation
-	PreviousClaims   []domain.Digest
+	BranchRenameChoice string
+	ExpectedRevision   uint64
+	Task               domain.ProcessTask
+	Event              TaskEvent
+	Claim              ClaimOperation
+	PreviousClaims     []domain.Digest
 }
 
 func repositoryClaimIdentities(task domain.ProcessTask) []domain.Digest {

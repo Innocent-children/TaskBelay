@@ -19,7 +19,7 @@ Core 负责描述实际结果、具体失败条件和允许的下一步；Host �
 
 ## 错误字段
 
-17 个工具共用以下规则。`error.code` 是稳定的错误类别，`message` 直接说明本次失败条件。
+18 个工具共用以下规则。`error.code` 是稳定的错误类别，`message` 直接说明本次失败条件。
 参数和转换条件错误的 `message` 汇总字段路径与具体要求；详情较多时只显示有界摘要，完整原因保留在
 `details[]` 或 `guard.failures[]`。不把已知原因改写为“参数无效”或“操作失败”。
 已识别的参数问题使用 `details[]`，每项包含请求字段 `path`、固定规则 `rule` 和具体要求
@@ -70,7 +70,7 @@ Core 负责描述实际结果、具体失败条件和允许的下一步；Host �
 
 ## 验证要求
 
-MCP 测试对真实成功/失败响应执行输出 Schema 校验；`error_reasons_test.go` 遍历全部 17 个工具，检查 JSON、类型和编码失败，并实际触发嵌套字段、工作项依赖和损坏快照错误。请求 ID 失败通过内存 MCP 传输检查实际工具身份。现有测试还覆盖结果路径、非法混合结构、错误字段、
+MCP 测试对真实成功/失败响应执行输出 Schema 校验；`error_reasons_test.go` 遍历全部 18 个工具，检查 JSON、类型和编码失败，并实际触发嵌套字段、工作项依赖和损坏快照错误。请求 ID 失败通过内存 MCP 传输检查实际工具身份。现有测试还覆盖结果路径、非法混合结构、错误字段、
 数量与权限区分、零写入纠错及结果不确定的停止条件。共享 Skill 示例必须对同一接口执行校验，
 Codex、DeepSeek、Claude Code 和 ZCode 使用相同语义。新增或修改错误时同步更新实现、Schema、本规范及受影响示例。
 
@@ -88,6 +88,12 @@ HTTP 的 `correct_current_action` 同样返回非空 `recovery.allowed_paths`，
 变化时保留原 blocker 和待恢复操作，返回 `stop_for_repository_drift`。恢复到保存决定所对应的仓库状态后，
 再恢复同一个 Action；不能通过重新提交另一份决定绕过已有操作。
 
+未执行写前请求的范围决定使用保存绑定到当前观察的完整层增量；未变的继承内容不造成该次
+决定的范围冲突，也不因此获准修改。新增、删除或任一文件层的变化超出 pending 和已计划范围时，
+决定返回 `REPOSITORY_DRIFT`，不保存新的 Action operation。已暂存决定仍经同一校验恢复，
+不得把一个新的范围决定当作既存待恢复操作的替代。
+
+
 ## 请求与完整响应示例
 
 四个 Host Skill 的每个完整 MCP 请求都链接对应的完整成功响应，并紧跟错误响应，逐项说明触发条件、校验函数和响应编码函数。成功示例包含用当前 Task 值替换占位符后的完整请求；测试实际执行请求并比较完整返回。仓库观察使用固定测试数据，生成的身份、时间和操作摘要使用稳定示例值。Codex Host helper 与 DeepSeek workspace 请求同样配对完整返回，由临时 Git 仓库中的实际适配器操作校验；Host 会话和 Core 终态读取使用标注的模拟结果。
@@ -95,3 +101,28 @@ HTTP 的 `correct_current_action` 同样返回非空 `recovery.allowed_paths`，
 和 recovery。示例说明确定的失败情况，不穷举所有运行条件；已有公共错误示例也与当前编码结果一致。
 
 历史恢复分别报告 `history_resolution.choice` 的枚举错误和 `history_resolution.reason` 的文本错误；多个字段同时错误时一并返回。
+
+## 历史分页与分支改名
+
+`taskbelay_get_task` 可返回 `result.baseline_history`，含 `task_id`、Task `revision`、真实累计
+`total`、`entries`（`sequence`、`reference`）及 `next_after`（仅结束为 null）。每个 Task 响应的
+`baselines.history` 都是完整数组的有界首页，旁边必有 `history_total`、`history_next_after`、
+`history_revision`；不能把首页当作全部历史。页最多 32 条、64 KiB 实际 JSON 字节，完整响应仍限制为
+1 MiB，必要时继续缩页且不跳项。首页可缩为空，此时总数非零、下一游标为 0，Host 从 0 显式分页；
+请求的非空历史页至少返回一条。非历史部分本身超限仍返回既有编码错误，不放宽响应保护。
+分页保留真实引用，不归档、不重建正文。Task revision 变化为 `REVISION_CONFLICT`，须按新 revision
+从头读取；非法边界为 `INVALID_ARGUMENT`。快照引用缺号、重复或格式损坏为 `STORAGE_UNAVAILABLE`，
+不会成功返回空历史或删除记录。只读操作不升级数据库。
+
+`taskbelay_prepare_task_branch_rename` 返回 `result.rename_id` 与 `result.task`，准备时换发 BLOCKED
+Action，并保留 `task.branch_rename`。`taskbelay_resolve_blocker` 接收当前 `action_id`、原 `rename_id`
+和 `rename_choice:"complete"` 或 `"cancel"`，返回完整 Task；不得混入其他类型的阻塞决定。complete
+核对源 ref 消失、目标 ref 正确，以及全部绑定仓库的实例、HEAD、index、内容均未变化；cancel 核对
+原事实全部未变。ref/历史不符为 `WORKSPACE_HISTORY_CONFLICT`，index/内容变化为 `REPOSITORY_DRIFT`，
+过期 revision/Action 为 `REVISION_CONFLICT`/`ACTION_STALE`，未恢复的普通操作为 `RECOVERY_UNAVAILABLE`。
+决定提交结果不明时保留精确 operation，用 `taskbelay_recover_action` 重放，不因响应丢失重复 Git。
+准备结果通过 Task 保存的 rename ID 回读。普通 Task 取消也须核对原事实未变或完整改名事实，才释放 claims。
+
+完整响应与同工具具体失败例子维护在 `skills/taskbelay/core/core-lifecycle-examples.md`，执行检查覆盖
+MCP dispatch 与公开输出 Schema。Host launch 替代失败属于 Adapter 结果，不表示 Core 转换；回执与
+后继恢复见[工作树来源](WORKTREE-SOURCES.md)。

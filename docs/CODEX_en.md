@@ -194,3 +194,20 @@ Confirmed local content belongs to the Task scope. Codex plans preservation chec
 Core interaction instructions and complete examples for Codex and DeepSeek are maintained in `skills/taskbelay/core/` and rendered into each package by the build scripts. Each Host documents its actual authorization, workspace preparation and tool calls. Execution uses the current Action, installed interface and real user decisions. Node submissions, result handling, blocker recovery and verification use the same content, and both rendered example sets pass through the same Core validation.
 
 [Codex Skill](../packages/codex/plugin/skills/taskbelay/SKILL.md)
+
+## Continued revision and Task branch renaming
+
+The same Task can continue through requirements, design and plan revisions beyond 32 older baseline
+references. Retained references remain available through pagination; unsaved full documents cannot
+be reconstructed. To rename an active Task branch, have Core prepare one repository's rename, let
+the authorized Host run one non-force `git branch -m`, then have Core verify and confirm it. The
+worktree, HEAD, index, contents and other repositories must stay unchanged. Cancel preparation only
+while the original facts remain unchanged; after a rename with a missing response, read back before acting.
+
+Use `host-launch supersede` to explicitly replace an unexecuted Codex launch choice. A failed launch
+requires positive evidence that no target operation was invoked. Called, partial or uncertain operations
+require reconciliation. The predecessor stays invalid permanently; `supersede-resume` completes only
+the same saved successor after interruption.
+
+Later relocation and terminal cleanup use the effective branch confirmed by Core; the creation branch remains in the origin. Cleanup requires the complete terminal `core_task`; older Codex receipts without instance proof retain the workspace for manual review.
+See [workspace sources and recovery](WORKTREE-SOURCES_en.md) for exact conditions and recovery steps.

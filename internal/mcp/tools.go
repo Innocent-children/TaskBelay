@@ -45,9 +45,10 @@ type workspaceOriginWire struct {
 	ProvisioningReceiptID domain.ID            `json:"provisioning_receipt_id"`
 }
 type readWire struct {
-	Host           domain.Host         `json:"host"`
-	TaskID         domain.ID           `json:"task_id"`
-	OperationProbe *operationProbeWire `json:"operation_probe"`
+	Host            domain.Host                  `json:"host"`
+	TaskID          domain.ID                    `json:"task_id"`
+	OperationProbe  *operationProbeWire          `json:"operation_probe"`
+	BaselineHistory *domain.BaselineHistoryQuery `json:"baseline_history"`
 }
 type operationProbeWire struct {
 	OperationID             domain.ID         `json:"operation_id"`
@@ -92,6 +93,8 @@ type actionReferenceWire struct {
 	ActionID domain.ID   `json:"action_id"`
 }
 type resolveBlockerWire struct {
+	RenameID               domain.ID                               `json:"rename_id"`
+	RenameChoice           string                                  `json:"rename_choice"`
 	Host                   domain.Host                             `json:"host"`
 	TaskID                 domain.ID                               `json:"task_id"`
 	ActionID               domain.ID                               `json:"action_id"`
@@ -151,7 +154,7 @@ func ValidateToolInput(tool string, raw []byte) error {
 		return domain.InvalidArgumentViolations(domain.Violation("arguments", domain.RuleArgumentsObjectRequired))
 	}
 	if !isToolName(tool) {
-		return domain.WithExplanation(domain.ErrInvalidArgument, "The requested tool is not in the current 17-tool catalog.")
+		return domain.WithExplanation(domain.ErrInvalidArgument, "The requested tool is not in the current 18-tool catalog.")
 	}
 	if violations := toolRequestMemberViolations(tool, raw); len(violations) != 0 {
 		return domain.InvalidArgumentViolations(violations...)
@@ -263,6 +266,21 @@ func ValidateToolInput(tool string, raw []byte) error {
 		violations = append(violations, idViolations("task_id", v.TaskID)...)
 		violations = append(violations, revisionViolations(v.Revision)...)
 		violations = append(violations, textViolations("reason", v.Reason, domain.MaxReasonBytes, true)...)
+	case ToolPrepareTaskBranchRename:
+		var v prepareBranchRenameWire
+		if err := decodeClosed(raw, &v); err != nil {
+			return err
+		}
+		violations = append(violations, hostViolations(v.Host)...)
+		violations = append(violations, idViolations("task_id", v.TaskID)...)
+		violations = append(violations, revisionViolations(v.Revision)...)
+		violations = append(violations, textViolations("reason", v.Reason, domain.MaxReasonBytes, true)...)
+		if !v.RepositoryKey.IsValid() {
+			violations = append(violations, domain.Violation("repository_key", domain.RuleValueFormat))
+		}
+		if !domain.ValidTaskBranchName(v.TargetBranch) {
+			violations = append(violations, domain.Violation("target_branch", domain.RuleValueFormat))
+		}
 	case ToolPrepareTaskRelocation:
 		var v lifecycleWire
 		if err := decodeClosed(raw, &v); err != nil {
@@ -297,6 +315,9 @@ func ValidateToolInput(tool string, raw []byte) error {
 				violations = append(violations, domain.ExplainedViolation("choice", domain.RuleEnumValueInvalid, "choice must be allow_once, expand_scope or reject"))
 			}
 			violations = append(violations, textViolations("reason", v.Reason, domain.MaxReasonBytes, true)...)
+		}
+		if v.RenameID != "" {
+			violations = append(violations, idViolations("rename_id", v.RenameID)...)
 		}
 		if v.RelocationID != "" {
 			violations = append(violations, idViolations("relocation_id", v.RelocationID)...)
@@ -487,4 +508,13 @@ func toolRequestMemberViolations(tool string, raw []byte) []domain.ContractViola
 		return violations
 	}
 	return nil
+}
+
+type prepareBranchRenameWire struct {
+	Host          domain.Host          `json:"host"`
+	TaskID        domain.ID            `json:"task_id"`
+	Revision      uint64               `json:"revision"`
+	RepositoryKey domain.RepositoryKey `json:"repository_key"`
+	TargetBranch  string               `json:"target_branch"`
+	Reason        string               `json:"reason"`
 }

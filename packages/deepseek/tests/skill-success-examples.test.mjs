@@ -92,7 +92,11 @@ for (const example of examples) {
         terminalTask = {
           task_id: "task-example", revision: 9, current_cursor: "DONE", primary_repository_key: "primary",
           workspace_origin: { ...consumed.open_task.workspace_origin, canonical_worktree_root: opened.workspace_root },
-          repository: { current_head: git(opened.workspace_root, "rev-parse", "HEAD") }, additional_repositories: [],
+          repository: {
+            current_head: git(opened.workspace_root, "rev-parse", "HEAD"),
+            current_branch: git(opened.workspace_root, "symbolic-ref", "--short", "HEAD"),
+            detached: git(opened.workspace_root, "rev-parse", "--abbrev-ref", "HEAD") === "HEAD",
+          }, additional_repositories: [],
         };
         if (input.operation === "cleanup_branch") {
           await call({ operation: "cleanup_worktree", launch_id: launch, repository_key: "primary", task_id: "task-example", revision: 9 }, source);

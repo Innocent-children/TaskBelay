@@ -83,10 +83,13 @@ export async function preflightLocalBranchSelection({ repositoryPath, workspaceM
   return source;
 }
 
-export async function prepareLocalBranch({ repositoryPath, workspaceMode, baseBranch, targetBranch, baseCommit, sourceRepositoryIdentity, carryChanges, runGit = defaultRunGit }) {
+export async function prepareLocalBranch({ repositoryPath, workspaceMode, baseBranch, targetBranch, baseCommit, sourceRepositoryIdentity, carryChanges, runGit = defaultRunGit, beforeTargetEffect = async () => {} }) {
   const source = await preflightLocalBranchSelection({ repositoryPath, workspaceMode, baseBranch, targetBranch, carryChanges, runGit });
   if (source.head !== baseCommit || source.source_repository_identity !== sourceRepositoryIdentity) throw new Error("local workspace changed after preparation");
-  if (workspaceMode === "new_branch") await runGit(["-C", source.canonical_root, "switch", "-c", targetBranch, baseCommit]);
+  if (workspaceMode === "new_branch") {
+    await beforeTargetEffect();
+    await runGit(["-C", source.canonical_root, "switch", "-c", targetBranch, baseCommit]);
+  }
   const result = await inspectSourceRepository(source.canonical_root, { runGit });
   if (result.canonical_root !== source.canonical_root || result.worktree_git_dir !== source.worktree_git_dir || result.head !== baseCommit || result.branch !== targetBranch || result.status_digest !== source.status_digest) throw new Error("local branch preparation could not be verified; inspect the retained workspace");
   return result;
@@ -127,6 +130,7 @@ export async function createCliWorktree({
   targetBranch,
   sourceRepositoryIdentity,
   runGit = defaultRunGit,
+  beforeTargetEffect = async () => {},
 } = {}) {
   const source = await inspectSourceRepository(repositoryPath, { runGit });
   if (source.source_repository_identity !== sourceRepositoryIdentity) {
@@ -144,6 +148,7 @@ export async function createCliWorktree({
   if (await refExists(source.canonical_root, `refs/heads/${targetBranch}`, runGit)) {
     throw new Error(`target branch ${targetBranch} already exists locally`);
   }
+  await beforeTargetEffect();
   await runGit(["-C", source.canonical_root, "worktree", "add", "--detach", worktreeRoot, baseCommit]);
   return await initializeManagedWorktree({
     sourceRepositoryPath: source.canonical_root,
@@ -238,6 +243,7 @@ export async function removeCliWorktree({
 }
 
 export async function removeTaskBranch({
+  expectedHead,
   repositoryPath,
   targetBranch,
   sourceRepositoryIdentity,
@@ -251,6 +257,9 @@ export async function removeTaskBranch({
     throw new Error("cleanup branch does not belong to the receipt repository group");
   }
   await validateBranchName(targetBranch, runGit, source.canonical_root, "target branch");
+  assertCommit(expectedHead, "terminal Core HEAD");
+  const head=singleLine(await runGit(["-C",source.canonical_root,"rev-parse","--verify",`refs/heads/${targetBranch}^{commit}`]));
+  if (head !== expectedHead) throw new Error("branch HEAD differs from the terminal Core binding");
   await runGit(["-C", source.canonical_root, "branch", "-d", targetBranch]);
 }
 
@@ -392,4 +401,25 @@ function asBuffer(value) {
 
 function numericExitCode(error) {
   return typeof error?.code === "number" ? error.code : Number(error?.code);
+}
+
+// Core owns the effective branch. Hosts match its actual saved Task to the
+// retained provisioning origin; a missing binding never falls back to an old name.
+export function coreRepositoryBinding(task, {host, taskId, repositoryKey, receiptId, creationBranch, worktreePath}) {
+  if (!task || task.origin_host !== host || typeof task.task_id !== "string" || !task.task_id || taskId && task.task_id !== taskId || !Number.isSafeInteger(task.revision) || task.revision < 1) throw new Error("Actual Core Task identity is required");
+  const entries=[{key:task.primary_repository_key ?? "primary",workspace_origin:task.workspace_origin,repository:task.repository},...(task.additional_repositories ?? [])];
+  const matches=entries.filter(entry=>entry.key===repositoryKey);
+  if (matches.length!==1) throw new Error("Core Task repository key is missing or duplicated");
+  const {workspace_origin:origin,repository:binding}=matches[0];
+  if (!origin || origin.provisioning_receipt_id!==receiptId || origin.task_branch!==creationBranch || origin.canonical_worktree_root!==worktreePath || !binding || binding.detached!==false || typeof binding.current_branch!=="string" || !binding.current_branch || binding.current_branch.startsWith("-") || !/^[a-f0-9]{64}$/.test(binding.worktree_instance_digest ?? "") || !/^[a-f0-9]{64}$/.test(binding.binding_digest ?? "")) throw new Error("Core binding does not match the retained receipt workspace");
+  assertCommit(binding.current_head,"Core HEAD");
+  return binding;
+}
+
+// This Host fact detects replacement of the provisioned directory or Git directory.
+// It is independent of branch names and never authorizes a Core binding change.
+export async function workspaceInstanceIdentity(observed) {
+  const root=await lstat(observed.canonical_root,{bigint:true});
+  const git=await lstat(observed.worktree_git_dir,{bigint:true});
+  return createHash("sha256").update(JSON.stringify([observed.canonical_root,observed.worktree_git_dir,String(root.dev),String(root.ino),String(root.birthtimeNs),String(git.dev),String(git.ino),String(git.birthtimeNs)])).digest("hex");
 }

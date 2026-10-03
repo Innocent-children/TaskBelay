@@ -73,7 +73,7 @@ for (const example of examples) {
       return JSON.parse(output);
     };
     const identity = { launch_id: "launch-example", repository_key: "primary" };
-    let dispatch, claimed;
+    let dispatch, claimed, provisioned;
     const prepare = async (name, key = "primary", path = source) => {
       const input = substitute(find("prepare", name).input);
       input.repository_key = key;
@@ -97,7 +97,7 @@ for (const example of examples) {
     };
     const provision = async () => {
       await prepare("remote-cli");
-      await call("cli-provision", { ...identity, source_repository_path: source, additional_worktree_paths: [] });
+      provisioned = await call("cli-provision", { ...identity, source_repository_path: source, additional_worktree_paths: [] });
     };
     let input = substitute(example.input), output;
     if (example.tool === "prepare") {
@@ -106,6 +106,19 @@ for (const example of examples) {
       output = await call(example.tool, input);
     } else {
       switch (example.tool) {
+        case "supersede":
+        case "supersede-resume": {
+          const prepared = await prepare("local-managed");
+          const status = await call("status", identity);
+          const replacement = {...prepared.input, launch_id:"launch-successor", target_branch:"codex/revised-endpoint"};
+          const supersedeInput = {...identity, expected_receipt_digest:status.receipt_digest, reason:"Use the corrected branch name before execution.", replacement};
+          if (example.tool === "supersede") input = supersedeInput;
+          else {
+            const replaced = await call("supersede", supersedeInput);
+            input = {...identity, seed_digest:replaced.predecessor.supersession.seed_digest};
+          }
+          break;
+        }
         case "status":
         case "dispatch-start":
           await prepare("local-managed");
@@ -169,8 +182,10 @@ for (const example of examples) {
         case "cleanup-branch":
           await provision();
           git(worktree, "push", "-u", "origin", "codex/endpoint-field");
+          input.core_task.workspace_origin = {...provisioned.workspace_origin, canonical_worktree_root:worktree};
+          input.core_task.repository.current_head = git(worktree,"rev-parse","HEAD");
           if (example.tool === "cleanup-branch") {
-            await call("cleanup-worktree", { ...identity, source_repository_path: source, terminal: true, authorized: true });
+            await call("cleanup-worktree", { ...identity, source_repository_path: source, terminal: true, authorized: true, core_task:input.core_task });
           }
           break;
         default:

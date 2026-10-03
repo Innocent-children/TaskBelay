@@ -200,3 +200,178 @@ Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
   }
 }
 ```
+
+## taskbelay_prepare_task_branch_rename-prepare-branch-rename
+
+IDs, names, reason and choice are strings; revision, after and limit are integers. Use current Core values.
+
+<!-- example:mcp taskbelay_prepare_task_branch_rename prepare-branch-rename -->
+```json
+{
+  "host": "claude",
+  "task_id": "task-example",
+  "revision": 8,
+  "repository_key": "primary",
+  "target_branch": "task/renamed-endpoint",
+  "reason": "Correct the branch name for the existing Task."
+}
+```
+
+Complete successful request and response: [view every returned field](successes/taskbelay_prepare_task_branch_rename-prepare-branch-rename.md).
+
+Possible error for this request: task_id has no record in the connected Core store.
+
+Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
+`internal/application/service.go` — `loadOwned, mapStoreError`;
+`internal/mcp/server.go` — `dispatch`; `internal/mcp/results.go` — `EncodeError`.
+
+<!-- error-case: {"operation":"missing_task"} -->
+<!-- example:mcp-output taskbelay_prepare_task_branch_rename prepare-branch-rename-error -->
+```json
+{
+  "ok": false,
+  "request_id": "request-error-example",
+  "tool": "taskbelay_prepare_task_branch_rename",
+  "error": {
+    "code": "TASK_NOT_FOUND",
+    "message": "No saved Task matches the requested Task identity or workspace claim."
+  },
+  "recovery": {
+    "retry_safe": false,
+    "action": "read_task",
+    "message": "Confirm the retained Task identity and connected Core instance before reading; do not repeat the same missing lookup unchanged."
+  }
+}
+```
+
+## taskbelay_resolve_blocker-rename-complete
+
+IDs, names, reason and choice are strings; revision, after and limit are integers. Use current Core values.
+
+<!-- example:mcp taskbelay_resolve_blocker rename-complete -->
+```json
+{
+  "host": "claude",
+  "task_id": "task-example",
+  "action_id": "blocked-action",
+  "rename_id": "rename-example",
+  "rename_choice": "complete"
+}
+```
+
+Complete successful request and response: [view every returned field](successes/taskbelay_resolve_blocker-rename-complete.md).
+
+Possible error for this request: task_id has no record in the connected Core store.
+
+Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
+`internal/application/service.go` — `loadOwned, mapStoreError`;
+`internal/mcp/server.go` — `dispatch`; `internal/mcp/results.go` — `EncodeError`.
+
+<!-- error-case: {"operation":"missing_task"} -->
+<!-- example:mcp-output taskbelay_resolve_blocker rename-complete-error -->
+```json
+{
+  "ok": false,
+  "request_id": "request-error-example",
+  "tool": "taskbelay_resolve_blocker",
+  "error": {
+    "code": "TASK_NOT_FOUND",
+    "message": "No saved Task matches the requested Task identity or workspace claim."
+  },
+  "recovery": {
+    "retry_safe": false,
+    "action": "read_task",
+    "message": "Confirm the retained Task identity and connected Core instance before reading; do not repeat the same missing lookup unchanged."
+  }
+}
+```
+
+## taskbelay_resolve_blocker-rename-cancel
+
+IDs, names, reason and choice are strings; revision, after and limit are integers. Use current Core values.
+
+<!-- example:mcp taskbelay_resolve_blocker rename-cancel -->
+```json
+{
+  "host": "claude",
+  "task_id": "task-example",
+  "action_id": "blocked-action",
+  "rename_id": "rename-example",
+  "rename_choice": "cancel"
+}
+```
+
+Complete successful request and response: [view every returned field](successes/taskbelay_resolve_blocker-rename-cancel.md).
+
+Possible error for this request: task_id has no record in the connected Core store.
+
+Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
+`internal/application/service.go` — `loadOwned, mapStoreError`;
+`internal/mcp/server.go` — `dispatch`; `internal/mcp/results.go` — `EncodeError`.
+
+<!-- error-case: {"operation":"missing_task"} -->
+<!-- example:mcp-output taskbelay_resolve_blocker rename-cancel-error -->
+```json
+{
+  "ok": false,
+  "request_id": "request-error-example",
+  "tool": "taskbelay_resolve_blocker",
+  "error": {
+    "code": "TASK_NOT_FOUND",
+    "message": "No saved Task matches the requested Task identity or workspace claim."
+  },
+  "recovery": {
+    "retry_safe": false,
+    "action": "read_task",
+    "message": "Confirm the retained Task identity and connected Core instance before reading; do not repeat the same missing lookup unchanged."
+  }
+}
+```
+
+## taskbelay_get_task-history-page
+
+This reads the complete retained array by pages. Use returned total/revision/next_after; a page
+may contain fewer entries than limit because of response bytes. Only next_after=null means complete.
+The Task projection also exposes first-page history_total/history_next_after/history_revision.
+
+IDs, names, reason and choice are strings; revision, after and limit are integers. Use current Core values.
+
+<!-- example:mcp taskbelay_get_task history-page -->
+```json
+{
+  "host": "claude",
+  "task_id": "task-example",
+  "baseline_history": {
+    "revision": 0,
+    "after": 0,
+    "limit": 16
+  }
+}
+```
+
+Complete successful request and response: [view every returned field](successes/taskbelay_get_task-history-page.md).
+
+Possible error for this request: task_id has no record in the connected Core store.
+
+Implementation: `internal/mcp/tools.go` — `ValidateToolInput`;
+`internal/application/service.go` — `loadOwned, mapStoreError`;
+`internal/mcp/server.go` — `dispatch`; `internal/mcp/results.go` — `EncodeError`.
+
+<!-- error-case: {"operation":"missing_task"} -->
+<!-- example:mcp-output taskbelay_get_task history-page-error -->
+```json
+{
+  "ok": false,
+  "request_id": "request-error-example",
+  "tool": "taskbelay_get_task",
+  "error": {
+    "code": "TASK_NOT_FOUND",
+    "message": "No saved Task matches the requested Task identity or workspace claim."
+  },
+  "recovery": {
+    "retry_safe": false,
+    "action": "read_task",
+    "message": "Confirm the retained Task identity and connected Core instance before reading; do not repeat the same missing lookup unchanged."
+  }
+}
+```

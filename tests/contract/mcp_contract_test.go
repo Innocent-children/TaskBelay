@@ -16,7 +16,7 @@ func TestMCPToolCatalogIsExactStableAndConservative(t *testing.T) {
 	want := []string{core.ToolServerInfo, core.ToolOpenTask, core.ToolGetTask, core.ToolGetNextAction,
 		core.ToolSubmitRequirements, core.ToolSubmitDesign, core.ToolSubmitTasks, core.ToolSubmitImplementation,
 		core.ToolSubmitTest, core.ToolSubmitComprehension, core.ToolSubmitRefactor, core.ToolSubmitDelivery,
-		core.ToolPrepareTaskRelocation, core.ToolResolveBlocker, core.ToolRecoverAction, core.ToolCancelTask, core.ToolAbandonTask}
+		core.ToolPrepareTaskBranchRename, core.ToolPrepareTaskRelocation, core.ToolResolveBlocker, core.ToolRecoverAction, core.ToolCancelTask, core.ToolAbandonTask}
 	if !slices.Equal(core.ToolNames(), want) {
 		t.Fatal(core.ToolNames())
 	}

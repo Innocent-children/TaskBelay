@@ -19,7 +19,7 @@ flowchart TB
     C -->|否| D[直接开发 · 无 Core Task]
     C -->|是| P[选择工作位置 · 默认原目录新分支]
     P --> W[Host 启动记录与工作区准备]
-    W --> M[Local STDIO MCP · 17 tools]
+    W --> M[Local STDIO MCP · 18 tools]
     M --> S[Application Service]
     S --> G[Read-only Git Observer]
     S --> F[Workflow / Recovery]
@@ -230,6 +230,17 @@ blocker 的普通提交和保存后恢复共用 `recovery.ValidateBlockerResolut
 同一规则；stage 已成功而 commit 未完成时重放原决定。再次漂移时保留已有 blocker 和待恢复操作，不创建
 以 BLOCKED 为恢复节点的新 blocker。Relocation 继续使用独立的目的地观察和迁移检查。
 
+未执行的写前请求（file-scope record 的 `observed=false`）只核对保存的当前 Repository 到新观察的
+增量，不要求该请求覆盖未变的既存 Task surface。这个判定比较路径并集以及完整 base/index/worktree
+模式和摘要，因而也包含消失路径及仅暂存层变化；计划和已保留流程文件以外的新变化必须属于该
+pending 的精确路径。仓库实例、分支、HEAD 必须保持，不能借文件范围决定接受历史变化。已观察
+请求（`observed=true`）继续核对完整未解释范围。这些规则由普通提交与恢复共同执行。
+
+未变内容没有因此获得授权。使用 `expand_scope` 后仍须在 TASKS 逐项安排保留和开发责任，并确认
+修订计划；`expected_paths` 的精确路径没有只读标志，保留承诺依靠 Host 执行约束和内容核验。
+TASKS 的现有写前检查不提供产品文件隔离，Host 在该阶段只做规划，节点提交仍检查允许的 effects。
+
+
 ## 完成记录关联
 
 `internal/domain/completion.go` 校验计划、实现、验收和当前检查的记录关系；Application 在写入前返回具体的字段或转换错误，并在构造 mutation 时再次使用同一约束。持久化快照也校验这些关系。
@@ -259,7 +270,7 @@ IMPLEMENT→TEST、REFACTOR→TEST 要求 `completed_work_item_ids` 覆盖当前
 
 `standard-development` 保留现有 11 个节点。REQUIREMENTS 和 DESIGN 由 Host 展示并讨论，既有前进与返回边保持。TASKS 的完整出边为：`tasks_plan_saved` → TASKS（完整 baseline、空 findings、null confirmation），`tasks_ready` → IMPLEMENT（baseline 为 null，当前计划已明确确认），`tasks_require_design` → DESIGN 和 `tasks_require_requirements` → REQUIREMENTS（null baseline/confirmation、非空 findings 和具体 reason）。等待确认不建立 blocker。
 
-`task_plan` 保存 `confirmation` 和 `confirmed_at`。确认包含 source=user、status=passed、summary、requirements_digest、design_digest、task_plan_digest 和 task_plan_revision，必须全部匹配当前保存内容。Core 自行记录确认时间。保存草案包含 expected_paths、工作项、验收映射和 verification_plan，并递增计划轮次；确认只引用该草案，不同时替换内容。重新保存、上游修订或 expand_scope 后旧确认不能用于开发。每次进入执行节点都要求有效确认；恢复读取同一草案无需重复保存。当前 SQLite Schema 与快照同步更新，不读取历史布局。
+`task_plan` 保存 `confirmation` 和 `confirmed_at`。确认包含 source=user、status=passed、summary、requirements_digest、design_digest、task_plan_digest 和 task_plan_revision，必须全部匹配当前保存内容。Core 自行记录确认时间。保存草案包含 expected_paths、工作项、验收映射和 verification_plan，并递增计划轮次；确认只引用该草案，不同时替换内容。重新保存、上游修订或 expand_scope 后旧确认不能用于开发。每次进入执行节点都要求有效确认；恢复读取同一草案无需重复保存。当前 SQLite Schema 与快照同步更新，仅完整合法的已部署 0.7.0 布局可按下述窄升级读取。
 
 Codex `prepare` 接收完整 `assessment`（含 anchor）与 `user_choice`，先校验评估、根集合、未知项和明确选择，再执行 receipt/Git 准备。receipt.admission 保存这两个对象，重复 prepare 须与记录匹配；status/bootstrap/scope 接续已有回执。真实会话展示和用户回答由 Host 负责，校验不能证明自然语言请求必然触发 Skill。
 
@@ -312,9 +323,36 @@ DONE/CANCELLED 只结束 Task 和释放 claims。本地目录与分支保留，c
 HEAD、worktree path、clean/dirty、当前 paths 和验证记录。keep/review/handoff/worktree cleanup/branch
 cleanup 是 Host 后续操作，其中两个 cleanup 分别授权。
 
+## 基线历史与已准备的分支改名
+
+`BaselineHistory` 按原保存顺序完整保留真实引用，无 archive 层、保留窗口或配置性条数上限。
+每条引用仍校验类型、revision、digest、摘要和时间，每种类型从 1 连续、唯一，当前基线接续最高历史
+revision。Store 在同一 CAS 事务中比较前后数组，拒绝删除、改写或重排已有引用；新增引用随 Task、
+Action commit 与 Event 原子提交，失败保留原快照及可恢复的 staged operation。历史只保存引用，不补造全文。
+历史不计入原 1 MiB 快照聚合字节预算；其余 Task 字段及所有输入/证据限制保持。编码、解码、读取、
+Stage 和 Commit 保存完整数组，不另设历史总字节上限。资源与 uint32 revision 表示范围仍构成实际边界。
+分页只约束传输：默认 Task 投影显示完整数组的有界首页、总数、下一游标及 Task revision；显式读取
+按最多 32 条、64 KiB 实际 JSON 字节缩页，整个 MCP 响应仍受 1 MiB 保护。游标始终指向最后返回项。
+
+Schema 0.8.0 仅增加 `branch_rename_operations` 审计表及其 pending 索引，不含历史归档表。仅完整合法的已部署 0.7.0 布局可读取并
+在一个事务内升级，保留 Task 和 pending operation 原字节。DDL 或校验失败保留原 0.7.0；其他布局拒绝，
+不引入迁移注册表或回退。升级后的数据库不能由旧可执行文件继续写入。
+
+`PrepareTaskBranchRename` 把一个普通节点暂停到现有 BLOCKED，保存单个 repository key、源/目标名、
+原因、全部仓库 binding、完整逻辑 index 条目及标志、resume 节点。准备时源 ref/当前分支/HEAD 一致且目标
+ref 不存在。Core 只读 Git；Host 执行一次非 force `git branch -m`。complete 要求源 ref 消失、目标为当前
+分支且 HEAD 不变，所有仓库实例、身份、历史、内容和 index 不变。cancel 要求原事实及目标不存在仍成立。
+两种决定复用 ResolveBlockerAction、StageActionOperation/CommitActionOperation 和 recover_action；pending
+普通提交阻止准备，旧 Action/revision CAS 不能在准备后提交。漂移保持 BLOCKED，Task 取消沿用 CANCELLED。
+流程摘要与普通节点完整出边不变。审计准备/结果与 Task/Event 同事务保存，后续改名不删除旧审计。
+
+WorkspaceOrigin.task_branch 保留创建来源，RepositoryBinding.current_branch 表示 Core 已批准的有效分支。
+普通 Git 观察不能批准切分支；历史复核、relocation 和 Host cleanup 使用保存的有效 binding。Host receipt
+保留原 target 名。cleanup 必须使用终态 Core 事实并核对回执工作区和 HEAD，不能猜测或退回旧名。
+
 ## MCP、Store 和 WebUI
 
-当前 MCP 工具列表固定包含十七个工具：
+当前 MCP 工具列表固定包含十八个工具：
 
 ```text
 taskbelay_server_info
@@ -332,6 +370,7 @@ taskbelay_submit_delivery
 taskbelay_resolve_blocker
 taskbelay_recover_action
 taskbelay_cancel_task
+taskbelay_prepare_task_branch_rename
 taskbelay_prepare_task_relocation
 taskbelay_abandon_task
 ```
@@ -390,7 +429,7 @@ Core、Codex、DeepSeek、Claude、ZCode 和统一 lifecycle package 独立版�
 | `internal/application/` | open/resume/read/submit/recover/relocate/cancel/abandon 编排 |
 | `internal/workflow/` | 11 个节点、普通边、payload、guard、invalidation |
 | `internal/store/` | current-only SQLite、codec、operations、events、claims |
-| `internal/mcp/` | 十七个工具、字段限制、工具属性和统一返回结构 |
+| `internal/mcp/` | 十八个工具、字段限制、工具属性和统一返回结构 |
 | `internal/webui/`, `packages/webui/` | loopback Adapter 与内嵌界面 |
 | `packages/codex/`, `packages/deepseek/`, `packages/claude/`, `packages/zcode/` | 新请求评估、工作树创建、会话接续/交接和安装包 |
 | `packages/host-workspace/` | Git 观察、准备和快照助手的维护源；构建时复制到使用它的 Host 包 |
@@ -540,6 +579,6 @@ Core 将验收与原始检查一起原子保存在当前 TestRecord，时间字�
 
 COMPREHENSION_REVIEW 和 DELIVERY 的进入条件改为当前测试已完成并满足普通通过或既有失败验收规则。它们的完整出边和各 guard/reason 保持上表之前的流程定义：理解确认可到 DELIVERY、IMPLEMENT、REFACTOR、DESIGN、TEST、REQUIREMENTS；交付可到 DONE、IMPLEMENT、TEST、COMPREHENSION_REVIEW、DESIGN、REQUIREMENTS。交付继续逐项关联真实通过的检查；失败集合和验收随 TestRecord 展示，自动/人工结果清单只列 passed 检查。内容或计划变化沿用当前失效处理，同时使附属验收失效。
 
-保存布局同步提升当前 Schema；不读取历史布局或增加迁移。MCP、CLI 和 WebUI 返回相同记录和转换，错误遵守 [Core 响应规范](CORE-RESPONSES.md)。
+保存布局使用当前 Schema；仅完整合法的已部署 0.7.0 布局按上述事务升级读取，其他历史布局拒绝。MCP、CLI 和 WebUI 返回相同记录和转换，错误遵守 [Core 响应规范](CORE-RESPONSES.md)。
 
 验收使用 Core 单元和保存边界集成测试：全通过、已有失败且明确验收、缺少比较/确认、新失败遗漏、确认过期、重启后交付、真实数量超限、已完成用户检查、权限限制及检查说明为空后的零写入纠正。共享 Skill 示例验证四个 Host。该方案增加一个明确转换和附属记录，收益是保持失败事实并正常交付；不增加节点、第二套状态、自动测试日志解析、通用豁免或发布流程。实现范围是 workflow/domain/application/store、MCP/WebUI 直接消费者及维护文档和 Skills。

@@ -113,6 +113,19 @@ func (o *skillSuccessObserver) ObserveWorkspace(ctx context.Context, path string
 	b, err := o.Observe(ctx, path)
 	return o.origins[path], b, err
 }
+func (o *skillSuccessObserver) ObserveBranchRename(ctx context.Context, path string, selection repository.WorkspaceOriginSelection, previous domain.RepositoryBinding, source, target string) (domain.WorkspaceOrigin, domain.RepositoryBinding, repository.BranchRenameFacts, error) {
+	origin, binding, err := o.ObserveWorkspace(ctx, path, selection, &previous)
+	facts := repository.BranchRenameFacts{IndexDigest: domain.Digest(strings.Repeat("f", 64))}
+	if binding.CurrentBranch != nil {
+		if *binding.CurrentBranch == source {
+			facts.SourceHead = binding.CurrentHead
+		}
+		if *binding.CurrentBranch == target {
+			facts.TargetHead = binding.CurrentHead
+		}
+	}
+	return origin, binding, facts, err
+}
 func newSkillScenario(t *testing.T, host string, examples []skillExample) *skillScenario {
 	t.Helper()
 	database, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "examples.db"))
@@ -274,6 +287,9 @@ func (s *skillScenario) bind(e skillExample) []byte {
 		if _, ok := input["revision"]; ok {
 			input["revision"] = s.task.Revision
 		}
+		if _, ok := input["rename_id"]; ok {
+			input["rename_id"] = s.task.BranchRename.RenameID
+		}
 		if _, ok := input["relocation_id"]; ok {
 			input["relocation_id"] = s.task.Relocation.RelocationID
 		}
@@ -324,6 +340,20 @@ func (s *skillScenario) prepareBlocker(name string) {
 		_, err := s.server.application.PrepareFileChange(ctx, application.PrepareFileChangeRequest{Host: domain.Host(s.host), RepositoryPath: s.task.WorkspaceOrigin.CanonicalWorktreeRoot, ToolName: tool, Paths: []string{testPath("work", "tasks", "endpoint-field", "src", "extra.js")}, PathParseComplete: true, IntentDigest: domain.Digest(strings.Repeat("d", 64))})
 		if err != nil {
 			s.t.Fatal(err)
+		}
+	case "rename-complete", "rename-cancel":
+		prepared, err := s.server.application.PrepareTaskBranchRename(ctx, application.PrepareTaskBranchRenameRequest{RequestID: "setup-rename", Host: domain.Host(s.host), TaskID: s.task.TaskID, ExpectedRevision: s.task.Revision, RepositoryKey: s.task.EffectivePrimaryRepositoryKey(), TargetBranch: "task/renamed-endpoint", Reason: "Correct the branch name for the existing Task."})
+		if err != nil {
+			s.t.Fatal(err)
+		}
+		s.task = prepared.Task
+		if name == "rename-complete" {
+			path := s.task.WorkspaceOrigin.CanonicalWorktreeRoot
+			b := s.observer.bindings[path]
+			branch := "task/renamed-endpoint"
+			b.CurrentBranch = &branch
+			b.BindingDigest = domain.Digest(strings.Repeat("e", 64))
+			s.observer.bindings[path] = b
 		}
 	case "relocation":
 		result, err := s.server.application.PrepareTaskRelocation(ctx, application.PrepareTaskRelocationRequest{Host: domain.Host(s.host), TaskID: s.task.TaskID, ExpectedRevision: s.task.Revision, RequestID: "setup-relocation"})

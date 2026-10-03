@@ -1,6 +1,9 @@
 package recovery
 
-import "github.com/Innocent-children/taskbelay/internal/domain"
+import (
+	"github.com/Innocent-children/taskbelay/internal/domain"
+	"slices"
+)
 
 /**
  * Ordinary submission and recovery validate the same saved decision against
@@ -12,6 +15,15 @@ func ValidateBlockerResolution(task domain.ProcessTask, observed RepositoryScope
 		blocker.Cause == domain.BlockerCauseTaskRelocationPending ||
 		payload.RelocationID != "" || len(payload.RelocationDestinations) != 0 {
 		return domain.WithExplanation(domain.ErrInvalidArgument, "The Task has no resolvable ordinary blocker, or relocation input was supplied to the ordinary blocker path.")
+	}
+	if blocker.Cause == domain.BlockerCauseTaskBranchRenamePending {
+		if task.BranchRename == nil || payload.RenameID != task.BranchRename.RenameID || payload.FileScopeDecision != nil || payload.HistoryResolution != nil || payload.BlockerID != blocker.BlockerID || payload.Condition != blocker.Condition || payload.ObservedBindingDigest != comparison.ObservedDigest {
+			return domain.ErrInvalidArgument
+		}
+		return ValidateBranchRenameBindings(task, observed, payload.RenameChoice)
+	}
+	if payload.RenameID != "" || payload.RenameChoice != "" {
+		return domain.ErrInvalidArgument
 	}
 	fileScope := blocker.Cause == domain.BlockerCauseFileScopeDecision
 	history := blocker.Cause == domain.BlockerCauseWorkspaceHistoryConflict
@@ -34,6 +46,12 @@ func ValidateBlockerResolution(task domain.ProcessTask, observed RepositoryScope
 			return domain.WithExplanation(domain.ErrInvalidArgument, "No pending file-scope record matches the blocker scope_request_id.")
 		}
 		unexplained := task.UnexplainedChangedPaths(observed.Primary, observed.Additional)
+		if !pending.Observed {
+			if !pendingWriteRepositoriesUnchanged(task, observed) {
+				return domain.WithExplanation(domain.ErrRepositoryDrift, "A pending file write cannot accept a changed worktree, branch or HEAD.")
+			}
+			unexplained = pendingWriteScopeDelta(task, observed)
+		}
 		if comparison.Relation == RepositoryForbiddenChange || !containsEveryPath(pending.Paths, unexplained) ||
 			payload.FileScopeDecision.Choice == domain.FileScopeReject && len(unexplained) != 0 {
 			return domain.WithExplanation(domain.ErrRepositoryDrift, "The repository changed outside the pending file-scope paths, or rejected paths are still changed.")
@@ -64,16 +82,49 @@ func ValidateBlockerResolution(task domain.ProcessTask, observed RepositoryScope
 }
 
 func scopeAtRetainedBranch(task domain.ProcessTask, observed RepositoryScopeObservation) bool {
-	match := func(origin domain.WorkspaceOrigin, binding domain.RepositoryBinding) bool {
-		return !binding.Detached && binding.CurrentBranch != nil && *binding.CurrentBranch == origin.TaskBranch && binding.BaseCommitAncestor
+	match := func(previous domain.RepositoryBinding, binding domain.RepositoryBinding) bool {
+		return !binding.Detached && binding.CurrentBranch != nil && previous.CurrentBranch != nil && *binding.CurrentBranch == *previous.CurrentBranch && binding.BaseCommitAncestor
 	}
-	if !match(task.WorkspaceOrigin, observed.Primary) || len(task.AdditionalRepositories) != len(observed.Additional) {
+	if !match(task.Repository, observed.Primary) || len(task.AdditionalRepositories) != len(observed.Additional) {
 		return false
 	}
 	for i, entry := range task.AdditionalRepositories {
-		if !match(entry.Origin, observed.Additional[i].Binding) {
+		if !match(entry.Binding, observed.Additional[i].Binding) {
 			return false
 		}
 	}
 	return true
+}
+
+// ValidateBranchRenameBindings allows only the selected current_branch field to
+// change. Ref existence and the complete logical index are checked by the caller.
+func ValidateBranchRenameBindings(task domain.ProcessTask, observed RepositoryScopeObservation, choice string) error {
+	if task.BranchRename == nil || choice != "complete" && choice != "cancel" || len(task.AdditionalRepositories) != len(observed.Additional) {
+		return domain.ErrInvalidArgument
+	}
+	matches := func(key domain.RepositoryKey, before, after domain.RepositoryBinding) bool {
+		if before.CurrentBranch == nil || after.CurrentBranch == nil {
+			return false
+		}
+		branch := *before.CurrentBranch
+		if key == task.BranchRename.RepositoryKey && choice == "complete" {
+			branch = task.BranchRename.TargetBranch
+		}
+		return *after.CurrentBranch == branch && before.Detached == after.Detached &&
+			before.WorktreeInstanceDigest == after.WorktreeInstanceDigest && before.IdentityDigest == after.IdentityDigest &&
+			before.HistoryDigest == after.HistoryDigest && before.ContentDigest == after.ContentDigest &&
+			before.CurrentHead == after.CurrentHead && before.HeadTree == after.HeadTree && before.BaseCommitAncestor == after.BaseCommitAncestor &&
+			slices.Equal(before.ChangedEntries, after.ChangedEntries) && slices.Equal(before.TaskSurface, after.TaskSurface) &&
+			(after.HistoryRelation == domain.RepositoryHistoryExact || after.HistoryRelation == domain.RepositoryHistoryLinearAdvance)
+	}
+	if !matches(task.EffectivePrimaryRepositoryKey(), task.Repository, observed.Primary) {
+		return domain.ErrRepositoryDrift
+	}
+	for i, before := range task.AdditionalRepositories {
+		after := observed.Additional[i]
+		if before.Key != after.Key || before.Origin != after.Origin || !matches(before.Key, before.Binding, after.Binding) {
+			return domain.ErrRepositoryDrift
+		}
+	}
+	return nil
 }

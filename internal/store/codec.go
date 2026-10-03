@@ -25,9 +25,6 @@ func encodeTask(task domain.ProcessTask) ([]byte, error) {
 		return nil, domain.WithExplanation(ErrInvalidArgument, "The Task snapshot could not be encoded as JSON.")
 	}
 	raw := bytes.TrimSuffix(b.Bytes(), []byte("\n"))
-	if len(raw) > domain.MaxPersistedTaskSnapshotBytes {
-		return nil, domain.WithExplanation(ErrInvalidArgument, "The encoded Task snapshot exceeds the maximum persisted snapshot size.")
-	}
 	return append([]byte(nil), raw...), nil
 }
 
@@ -43,8 +40,8 @@ func decodeArchiveTime(value *string) (*time.Time, error) {
 	return &parsed, nil
 }
 func decodeTask(raw []byte) (domain.ProcessTask, error) {
-	if len(raw) == 0 || len(raw) > domain.MaxPersistedTaskSnapshotBytes || !utf8.Valid(raw) || rejectDuplicateJSON(raw) != nil {
-		return domain.ProcessTask{}, domain.WithExplanation(ErrStorageUnavailable, "The saved Task snapshot is empty, oversized, not UTF-8, malformed or contains duplicate JSON members.")
+	if len(raw) == 0 || !utf8.Valid(raw) || rejectDuplicateJSON(raw) != nil {
+		return domain.ProcessTask{}, domain.WithExplanation(ErrStorageUnavailable, "The saved Task snapshot is empty, not UTF-8, malformed or contains duplicate JSON members.")
 	}
 	d := json.NewDecoder(bytes.NewReader(raw))
 	d.DisallowUnknownFields()

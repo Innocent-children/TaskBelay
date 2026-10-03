@@ -106,6 +106,9 @@ Complete response:
           "summary": "Return the field and cover its response contract."
         }
       ],
+      "history_next_after": null,
+      "history_revision": 7,
+      "history_total": 1,
       "requirements": {
         "acceptance_criteria": [
           "The response contains the requested field."

@@ -450,20 +450,11 @@ func taskPlanReference(plan domain.TaskPlanBaseline) domain.BaselineReference {
 }
 
 func appendBaselineHistory(task *domain.ProcessTask, ref domain.BaselineReference) error {
-	if ref.Validate() != nil || len(task.BaselineHistory) >= domain.MaxRetainedBaselineReferences {
-		return domain.WithExplanation(domain.ErrInvalidArgument, "The prior baseline reference is invalid or the retained baseline history is full.")
-	}
-	for _, existing := range task.BaselineHistory {
-		if existing.Kind == ref.Kind && existing.Revision == ref.Revision {
-			return nil
-		}
-	}
-	task.BaselineHistory = append(task.BaselineHistory, ref)
-	return nil
+	return task.AppendBaselineHistory(ref)
 }
 
 func nextBaselineRevision(task *domain.ProcessTask, kind domain.BaselineKind) uint32 {
-	var highest uint32
+	highest := uint32(0)
 	for _, ref := range task.BaselineHistory {
 		if ref.Kind == kind && ref.Revision > highest {
 			highest = ref.Revision

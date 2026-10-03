@@ -44,17 +44,21 @@ func outputTaskSchema() map[string]any {
 		"blocker":        outputNullable(outputRecord("Current blocker and required resolution; null when absent.")),
 		"outcome":        outputNullable(outputRecord("Terminal outcome; null for active Tasks.")),
 		"last_operation": outputNullable(outputRecord("Compare operation_id and kind to the retained request identity after lifecycle uncertainty.")),
-		"baselines": obj([]string{"requirements", "design", "task_plan", "history"}, map[string]any{
-			"requirements": outputNullable(outputRecord("acceptance_criteria is the ordered array addressed by zero-based acceptance_indexes.")),
-			"design":       outputNullable(outputRecord("Current design baseline.")),
-			"task_plan":    outputNullable(outputRecord("Current work_items and verification_plan.")),
-			"history":      map[string]any{"type": []string{"array", "null"}},
+		"baselines": obj([]string{"requirements", "design", "task_plan", "history", "history_total", "history_next_after", "history_revision"}, map[string]any{
+			"requirements":       outputNullable(outputRecord("acceptance_criteria is the ordered array addressed by zero-based acceptance_indexes.")),
+			"design":             outputNullable(outputRecord("Current design baseline.")),
+			"task_plan":          outputNullable(outputRecord("Current work_items and verification_plan.")),
+			"history":            map[string]any{"type": []string{"array", "null"}, "maxItems": 32, "description": "First page of the complete saved baseline history, possibly shortened for response bytes; history_total and history_next_after explicitly describe the remaining references."},
+			"history_total":      map[string]any{"type": "integer", "minimum": 0, "description": "Exact cumulative number of saved baseline references; no configured retention limit."},
+			"history_next_after": outputNullable(map[string]any{"type": "integer", "minimum": 0, "description": "Last sequence sent, or zero for an empty first page; null only at the end."}),
+			"history_revision":   map[string]any{"type": "integer", "minimum": 1, "description": "Task revision shared by the first page and explicit history pagination."},
 		}),
-		"repository":   outputRecord("Primary repository observation, including current_branch and current_head."),
-		"verification": outputRecord("plan, current_budget, usage and adjustments."),
-		"test":         outputNullable(outputRecord("Current Test, including eligible evidence_ids.")),
-		"evidence":     map[string]any{"type": []string{"array", "null"}, "description": "Saved checks with evidence IDs, names, sources and results."},
-		"relocation":   outputNullable(outputRecord("Retained relocation identity and destination/source observations.")),
+		"repository":    outputRecord("Primary repository observation, including current_branch and current_head."),
+		"verification":  outputRecord("plan, current_budget, usage and adjustments."),
+		"test":          outputNullable(outputRecord("Current Test, including eligible evidence_ids.")),
+		"evidence":      map[string]any{"type": []string{"array", "null"}, "description": "Saved checks with evidence IDs, names, sources and results."},
+		"branch_rename": outputNullable(outputRecord("Prepared rename ID, selected repository, source and target branch, frozen repository/index facts and resume node.")),
+		"relocation":    outputNullable(outputRecord("Retained relocation identity and destination/source observations.")),
 	}
 	return schema
 }
@@ -77,10 +81,12 @@ func toolOutputSchema(name string) map[string]any {
 	case ToolOpenTask:
 		result = obj([]string{"created", "task", "recovery_assessment"}, map[string]any{"created": map[string]any{"type": "boolean"}, "task": outputTaskSchema(), "recovery_assessment": outputRecoverySchema()})
 	case ToolGetTask:
-		result = obj([]string{"task", "recovery_assessment"}, map[string]any{"task": outputTaskSchema(), "recovery_assessment": outputRecoverySchema()})
+		result = obj([]string{"task", "recovery_assessment"}, map[string]any{"task": outputTaskSchema(), "recovery_assessment": outputRecoverySchema(), "baseline_history": outputBaselineHistorySchema()})
 	case ToolGetNextAction:
 		result = outputRecord("Action lookup with action, blocker, outcome and recovery_assessment. Handle recovery before action.")
 		result["properties"] = map[string]any{"action": outputNullable(outputActionSchema()), "recovery_assessment": outputRecoverySchema(), "blocker": outputNullable(outputRecord("Current blocker.")), "outcome": outputNullable(outputRecord("Terminal outcome."))}
+	case ToolPrepareTaskBranchRename:
+		result = obj([]string{"rename_id", "task"}, map[string]any{"rename_id": id(), "task": outputTaskSchema()})
 	case ToolPrepareTaskRelocation:
 		result = obj([]string{"relocation_id", "task"}, map[string]any{"relocation_id": id(), "task": outputTaskSchema()})
 	default:
@@ -105,6 +111,8 @@ func outputDescription(name string) string {
 		return " Success: result.task and result.recovery_assessment. Process recovery_assessment.next_advice first; saved operation.action_id is available on resume. Then read result.task.current_action."
 	case ToolGetNextAction:
 		return " Success: result.action, result.blocker, result.outcome and result.recovery_assessment. Follow recovery advice before action; read_next_action consumes the guarded Action in this response without repeated queries."
+	case ToolPrepareTaskBranchRename:
+		return " Success: result.rename_id and result.task. After response loss, read the retained branch_rename on the same Task. Execute Git only for that prepared identity; recover any saved Action operation before retrying."
 	case ToolPrepareTaskRelocation:
 		return " Success: result.relocation_id and result.task. After a lost response, read the same Task and its retained relocation; do not prepare another relocation blindly."
 	default:
@@ -139,4 +147,10 @@ func outputFailureRecoverySchema(tool string) map[string]any {
 		"retry_safe": map[string]any{"const": false}, "message": str(),
 	})
 	return map[string]any{"oneOf": []any{correction, other}}
+}
+
+func outputBaselineHistorySchema() map[string]any {
+	counter := map[string]any{"type": "integer", "minimum": 0}
+	reference := obj([]string{"kind", "revision", "digest", "summary", "created_at"}, map[string]any{"kind": map[string]any{"enum": []string{"requirements", "design", "task_plan"}}, "revision": map[string]any{"type": "integer", "minimum": 1}, "digest": str(), "summary": str(), "created_at": str()})
+	return obj([]string{"task_id", "revision", "total", "next_after", "entries"}, map[string]any{"task_id": id(), "revision": map[string]any{"type": "integer", "minimum": 1}, "total": counter, "next_after": outputNullable(counter), "entries": map[string]any{"type": "array", "maxItems": 32, "items": obj([]string{"sequence", "reference"}, map[string]any{"sequence": map[string]any{"type": "integer", "minimum": 1}, "reference": reference})}})
 }

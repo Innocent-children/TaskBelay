@@ -230,3 +230,13 @@ Codex 与 DeepSeek 的 Core 交互说明和完整示例统一维护于 `skills/t
 [DeepSeek Skill](skills/taskbelay/SKILL.md)
 
 DeepSeek Skill 随包提供 `scripts/artifacts.mjs`，以 `node <实际 Skill 目录>/scripts/artifacts.mjs collect` 或 `prepare` 调用同一套 Core 只读文件准备命令。输入与返回结构与本文相同，`host` 使用 `deepseek`；脚本复用 Adapter 的运行时和数据目录解析，不创建存储。通过实际 DSH Skill 的 `resourceBase` 取得脚本路径。`--help` 不读取 stdin 或解析运行时。该脚本不是独立的 `taskbelay-deepseek` CLI，也不增加 `workspace_coordinator` 操作。
+
+## 持续修订与任务分支改名
+
+同一 Task 完整保留多轮需求、设计和计划修订的全部已保存基线引用，不归档、无配置性条数上限，
+仍受资源与修订号表示范围约束。响应给出有界首页与总数，可分页读取全部引用，不恢复未保存的旧正文。活动 Task 需要改分支名称时，先由 Core 准备一个仓库的改名，
+再让获授权的 Host 执行一次非 force 的 `git branch -m`，最后由 Core 核对并确认。工作树、HEAD、
+index、内容和其他仓库必须不变；改名前可以取消准备，已经改名但未确认时先回读，不重复执行。
+
+后续搬迁和终态清理使用 Core 已确认的有效分支，创建时分支仍作为来源保留。DeepSeek 清理直接回读 Core。
+精确条件和恢复步骤见[工作树来源与恢复](../../docs/WORKTREE-SOURCES.md)。

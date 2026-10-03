@@ -15,7 +15,7 @@ func TestMCPContractGraphCatalogAndClosedSchemas(t *testing.T) {
 	want := []string{ToolServerInfo, ToolOpenTask, ToolGetTask, ToolGetNextAction,
 		ToolSubmitRequirements, ToolSubmitDesign, ToolSubmitTasks, ToolSubmitImplementation,
 		ToolSubmitTest, ToolSubmitComprehension, ToolSubmitRefactor, ToolSubmitDelivery,
-		ToolPrepareTaskRelocation, ToolResolveBlocker, ToolRecoverAction, ToolCancelTask, ToolAbandonTask}
+		ToolPrepareTaskBranchRename, ToolPrepareTaskRelocation, ToolResolveBlocker, ToolRecoverAction, ToolCancelTask, ToolAbandonTask}
 	got := ToolNames()
 	if len(got) != len(want) {
 		t.Fatalf("tools=%d", len(got))

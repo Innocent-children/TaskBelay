@@ -398,6 +398,43 @@ func TestTaskReadModelsExposeRepositoryGroupAndWorktree(t *testing.T) {
 	}
 }
 
+func TestBaselineHistoryDetailExposesFirstPageAndTotal(t *testing.T) {
+	task := domain.ProcessTask{TaskID: "history-task", Revision: 40, CurrentNode: domain.NodeRequirements}
+	for revision := uint32(1); revision <= 40; revision++ {
+		task.BaselineHistory = append(task.BaselineHistory, domain.BaselineReference{
+			Kind: domain.BaselineRequirements, Revision: revision,
+			Digest: domain.Digest(strings.Repeat("a", 64)), Summary: "Saved requirement",
+			CreatedAt: time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC),
+		})
+	}
+	detail, err := projectTaskDetail("history-detail", application.ControlCenterTaskDetail{Task: task})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, fact := range detail.Baselines {
+		if fact.Kind != "baseline_history" {
+			continue
+		}
+		var page domain.BaselineHistoryPage
+		if err := json.Unmarshal([]byte(fact.Value), &page); err != nil {
+			t.Fatal(err)
+		}
+		if page.TaskID != task.TaskID || page.Revision != 40 || page.Total != 40 || len(page.Entries) != 32 || page.NextAfter == nil || *page.NextAfter != 32 {
+			t.Fatalf("incomplete history metadata: %+v", page)
+		}
+		for index, entry := range page.Entries {
+			if entry.Sequence != uint64(index+1) || entry.Reference != task.BaselineHistory[index] {
+				t.Fatal("first page changed a saved reference")
+			}
+		}
+		if !strings.Contains(fact.Label, "first page") || !strings.Contains(fact.Label, "taskbelay_get_task baseline_history") || len(task.BaselineHistory) != 40 {
+			t.Fatal("history must identify its partial display and complete-page entry point")
+		}
+		return
+	}
+	t.Fatal("history fact is missing")
+}
+
 func TestVerificationProjectionShowsPlanUsageAndAdjustmentReason(t *testing.T) {
 	now := time.Date(2026, 9, 3, 4, 0, 0, 0, time.UTC)
 	initial := domain.VerificationBudget{Level: domain.VerificationTargeted, MaxAutomaticCommands: 2}

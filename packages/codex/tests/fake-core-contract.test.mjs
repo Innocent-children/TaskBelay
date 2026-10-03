@@ -26,6 +26,7 @@ const exactTools = [
   "taskbelay_submit_comprehension",
   "taskbelay_submit_refactor",
   "taskbelay_submit_delivery",
+  "taskbelay_prepare_task_branch_rename",
   "taskbelay_prepare_task_relocation",
   "taskbelay_resolve_blocker",
   "taskbelay_recover_action",
@@ -41,7 +42,7 @@ const exactActionMembers = [
   "issuance_content_digest", "issued_at",
 ].sort();
 
-test("fake Core serves the current seventeen-tool catalog and complete structured results", async (t) => {
+test("fake Core serves the current eighteen-tool catalog and complete structured results", async (t) => {
   const fixture = await makeFixture(t, "catalog");
   const client = await fixture.client();
   const tools = await client.listTools();

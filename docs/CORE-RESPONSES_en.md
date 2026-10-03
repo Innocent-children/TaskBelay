@@ -21,7 +21,7 @@ the saved Task, which may be BLOCKED, DONE or CANCELLED. Ordinary submissions re
 
 ## Error fields
 
-All 17 tools use the same rules. `error.code` is a stable category; `message` states the specific failed
+All 18 tools use the same rules. `error.code` is a stable category; `message` states the specific failed
 condition. For parameter and transition-condition errors it summarizes field paths and requirements.
 Long summaries are bounded; `details[]` or `guard.failures[]` retains the complete conditions. Known
 causes are not replaced with generic invalid-argument or operation-failed text.
@@ -86,7 +86,7 @@ success or substitute an earlier successful operation's result.
 
 ## Verification
 
-`error_reasons_test.go` checks JSON, member-type and response-encoding failures across all 17 tools,
+`error_reasons_test.go` checks JSON, member-type and response-encoding failures across all 18 tools,
 and executes nested-field, work-item dependency and corrupt-snapshot failures. Request-ID failures
 are checked over an in-memory MCP transport to verify the actual tool identity.
 
@@ -114,6 +114,14 @@ blocker and pending operation and return `stop_for_repository_drift`. Restore th
 required by that saved decision, then recover the same Action; a new submission cannot replace the
 pending decision.
 
+A decision for an unexecuted pre-write request checks the complete layer delta from the saved
+binding to the current observation. Unchanged carried content does not conflict with this decision
+and gains no permission to change. Additions, deletions or changes to any file layer outside the
+pending and planned scope return `REPOSITORY_DRIFT` without staging a new Action operation.
+Recovery applies the same check to a retained decision; a new decision cannot replace a pending
+operation.
+
+
 ## Requests and complete response examples
 
 All four Host Skills link a complete successful response and place an error response directly after every complete MCP request. Success files include the resolved request using current Task values. Tests execute it through the application and store with fixed repository observations and compare the complete response; generated identities, timestamps and operation digests use stable example values. Codex Host helpers and DeepSeek workspace requests also have complete responses checked by actual adapter operations in temporary Git repositories, with explicitly simulated Host sessions and terminal Core reads. Each error pair states
@@ -123,3 +131,35 @@ message, details, guard and recovery. The examples illustrate supported failures
 all runtime conditions. Existing shared error examples also match the current encoder exactly.
 
 History resolution reports enum failures at `history_resolution.choice` and text failures at `history_resolution.reason` independently, returning both when both members are invalid.
+
+## History pages and branch rename
+
+`taskbelay_get_task` may return `result.baseline_history` with `task_id`, Task `revision`, actual
+cumulative `total`, `entries` (`sequence`, `reference`) and `next_after` (null only at the end). Every
+Task response exposes a bounded first page as `baselines.history`, alongside mandatory `history_total`,
+`history_next_after` and `history_revision`; the first page is not the complete history. Pages contain
+at most 32 entries and 64 KiB of actual JSON. The entire response remains capped at 1 MiB, shrinking
+pages further without skipping entries when necessary. An inline first page may be empty with a
+nonzero total and next cursor 0; the Host then requests explicit pagination from 0. An explicitly
+requested nonempty page retains at least one reference. Oversized non-history content still receives
+the existing encoding error. Pagination retains actual references without archiving or reconstructing
+full text. A changed Task revision returns `REVISION_CONFLICT`; restart at the new revision. Invalid
+bounds return `INVALID_ARGUMENT`. Missing revision numbers, duplicate or malformed snapshot references
+return `STORAGE_UNAVAILABLE`, never an empty success or deletion. Reads do not upgrade the database.
+
+`taskbelay_prepare_task_branch_rename` returns `result.rename_id` and `result.task`. Preparation
+replaces the Action with BLOCKED and retains `task.branch_rename`. `taskbelay_resolve_blocker` takes
+the current `action_id`, the exact `rename_id` and `rename_choice:"complete"` or `"cancel"`, and returns
+the complete Task. Do not combine rename with another resolution kind. Complete verifies source ref
+absence, the target ref and unchanged repository, HEAD, index and content facts for every bound
+repository; cancel verifies the unchanged original facts. Ref/history disagreement is
+`WORKSPACE_HISTORY_CONFLICT`, changed index/content is `REPOSITORY_DRIFT`, stale revision/Action is
+`REVISION_CONFLICT`/`ACTION_STALE`, and a pending ordinary operation is `RECOVERY_UNAVAILABLE`.
+An uncertain decision commit retains its exact operation for `taskbelay_recover_action`; never
+repeat Git from a missing response. Preparation readback uses the Task's saved rename ID. Ordinary
+Task cancellation also verifies either unchanged original or fully renamed facts before releasing claims.
+
+The response examples and concrete same-tool failures are maintained in
+`skills/taskbelay/core/core-lifecycle-examples.md`; executable checks use MCP dispatch and the public
+output schemas. Host launch supersession errors are separate adapter results and never imply a Core
+transition. See [workspace sources](WORKTREE-SOURCES_en.md) for receipt and successor recovery.

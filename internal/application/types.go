@@ -156,13 +156,15 @@ type RecoveryApplyInput struct {
 	SourceCursor domain.NodeID
 }
 type GetTaskRequest struct {
-	Host           domain.Host
-	TaskID         domain.ID
-	OperationProbe *OperationProbe
+	Host            domain.Host
+	TaskID          domain.ID
+	OperationProbe  *OperationProbe
+	BaselineHistory *domain.BaselineHistoryQuery
 }
 type GetTaskResult struct {
 	Task               domain.ProcessTask
 	RecoveryAssessment *recovery.RecoveryAssessment
+	BaselineHistory    *domain.BaselineHistoryPage
 }
 type GetNextActionRequest struct {
 	Host           domain.Host
@@ -231,6 +233,8 @@ type RecoverActionRequest struct {
 	RelocationID           domain.ID
 	RelocationDestinations []domain.RelocationDestination
 	HistoryResolution      *domain.WorkspaceHistoryResolutionInput
+	RenameID               domain.ID
+	RenameChoice           string
 }
 
 type PrepareFileChangeRequest struct {
@@ -284,6 +288,20 @@ type PrepareTaskRelocationRequest struct {
 type PrepareTaskRelocationResult struct {
 	Task         domain.ProcessTask
 	RelocationID domain.ID
+}
+
+type PrepareTaskBranchRenameRequest struct {
+	RequestID        domain.ID
+	Host             domain.Host
+	TaskID           domain.ID
+	ExpectedRevision uint64
+	RepositoryKey    domain.RepositoryKey
+	TargetBranch     string
+	Reason           string
+}
+type PrepareTaskBranchRenameResult struct {
+	Task     domain.ProcessTask
+	RenameID domain.ID
 }
 
 type AbandonTaskRequest struct {

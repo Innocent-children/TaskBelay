@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -137,15 +136,15 @@ func TestInvalidationBaselineHistoryFieldsAndLimits(t *testing.T) {
 		})
 	}
 
-	task := invalidationMatrixTask(t)
-	task.Requirements = nil
-	task.Design, task.TaskPlan, task.Implementation, task.Test, task.Comprehension = nil, nil, nil, nil, nil
-	task.BaselineHistory = nil
-	for i := 1; i <= MaxRetainedBaselineReferences+1; i++ {
-		task.BaselineHistory = append(task.BaselineHistory, BaselineReference{Kind: BaselineRequirements, Revision: uint32(i), Digest: matrixDigest('a'), Summary: fmt.Sprintf("revision %d", i), CreatedAt: task.CreatedAt})
+	task := validProcessTaskForDomainTest(time.Date(2026, 10, 2, 0, 0, 0, 0, time.UTC), matrixDigest('a'))
+	for i := 1; i <= 600; i++ {
+		task.BaselineHistory = append(task.BaselineHistory, BaselineReference{Kind: BaselineRequirements, Revision: uint32(i), Digest: matrixDigest('a'), Summary: strings.Repeat("r", MaxEvidenceSummaryBytes), CreatedAt: task.CreatedAt})
 	}
-	if err := task.Validate(); err == nil {
-		t.Fatal("history above aggregate limit accepted")
+	if size, err := compactJSONSize(task); err != nil || size <= MaxPersistedTaskSnapshotBytes {
+		t.Fatalf("large history fixture bytes=%d err=%v", size, err)
+	}
+	if err := task.Validate(); err != nil {
+		t.Fatalf("complete history rejected: %v", err)
 	}
 
 	oversized := invalidationMatrixTask(t)

@@ -39,6 +39,8 @@ func TestOutputSchemasAcceptCurrentTaskAndActionProjections(t *testing.T) {
 					result = projectNextAction(application.NextActionResult{TaskID: task.TaskID, Revision: task.Revision, CurrentNode: node, Action: action})
 				case ToolPrepareTaskRelocation:
 					result = map[string]any{"task": projectTask(task), "relocation_id": "relocation"}
+				case ToolPrepareTaskBranchRename:
+					result = map[string]any{"task": projectTask(task), "rename_id": "rename"}
 				}
 				var schema jsonschema.Schema
 				if err := json.Unmarshal(definition.OutputSchema, &schema); err != nil {

@@ -67,6 +67,19 @@ answer for this exact write. The three complete input alternatives are:
 save revised expected paths with tasks_plan_saved and explicitly confirm that current plan before tasks_ready (use its requirements return only for a requirement change); `reject` resumes
 only after actual restoration. None of these expands immutable Repository Scope.
 
+For an unexecuted pre-write request (`observed=false`), Core checks changes since the saved
+current repository observation, including full base/index/worktree modes and digests and deleted
+paths. Unchanged carried paths do not block that decision, but receive no automatic permission.
+The instance, branch and HEAD must stay unchanged. An observed request still requires the complete
+unexplained scope to be reviewed.
+
+When carried content needs a preservation plan, use an explicitly chosen `expand_scope` and
+assign every exact path to preservation or development before confirming the revised plan.
+ExpectedPaths has no read-only flag; state this actual scope and verify preservation separately.
+During TASKS perform planning only: the existing pre-write check is not product-file isolation.
+A saved operation must be reconciled before a new decision is submitted.
+
+
 For `repeated_verification_failure`, `unchanged_verification_result` or
 `unchanged_test_implementation_loop`, stop and ask for a different approach, one further attempt or
 cancellation. After the explicit retry/approach answer, or after a recovery blocker's required

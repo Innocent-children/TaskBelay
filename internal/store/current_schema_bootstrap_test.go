@@ -26,7 +26,7 @@ func TestFreshCurrentSchemaBootstrapIsDirectAndExact(t *testing.T) {
 	if version != DatabaseSchemaVersion {
 		t.Fatalf("database version=%q", version)
 	}
-	if version != "0.7.0" {
+	if version != "0.8.0" {
 		t.Fatalf("database schema identity=%q", version)
 	}
 	var claimIndexes int

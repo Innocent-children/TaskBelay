@@ -72,6 +72,7 @@ Complete response:
       "taskbelay_submit_comprehension",
       "taskbelay_submit_refactor",
       "taskbelay_submit_delivery",
+      "taskbelay_prepare_task_branch_rename",
       "taskbelay_prepare_task_relocation",
       "taskbelay_resolve_blocker",
       "taskbelay_recover_action",
@@ -79,7 +80,7 @@ Complete response:
       "taskbelay_abandon_task"
     ],
     "transport": "stdio",
-    "version": "0.19.0"
+    "version": "0.20.0"
   },
   "tool": "taskbelay_server_info"
 }

@@ -21,7 +21,7 @@ flowchart TB
     C -->|No| D[Direct work · no Core Task]
     C -->|Yes| P[Confirm source/base/target/carry]
     P --> W[Host launch receipt + prepared workspace]
-    W --> M[Local STDIO MCP · 17 tools]
+    W --> M[Local STDIO MCP · 18 tools]
     M --> S[Application Service]
     S --> G[Read-only Git Observer]
     S --> F[Workflow / Recovery]
@@ -265,6 +265,22 @@ the same rules, replaying the retained decision after stage succeeds but commit 
 drift retains the existing blocker and pending operation rather than creating a blocker with BLOCKED
 as its resume node. Relocation retains its separate destination observation and migration checks.
 
+An unexecuted pre-write request (a file-scope record with `observed=false`) checks the delta from
+the saved current Repository observation, rather than requiring its paths to cover unchanged
+entries in the entire Task surface. The comparison includes the union of paths and all
+base/index/worktree modes and digests, including disappeared paths and index-only changes.
+New changes outside planned paths and retained process artifacts must belong to the pending
+request's exact paths. Worktree instance, branch and HEAD must stay unchanged. An observed
+request (`observed=true`) still checks the complete unexplained scope. Ordinary submission
+and recovery apply the same rules.
+
+Unchanged content gains no authorization. After `expand_scope`, TASKS must assign preservation
+and development work to exact paths and obtain confirmation of the revised plan. `expected_paths`
+has no read-only flag; preservation relies on Host discipline and content checks. The existing
+TASKS pre-write check does not isolate product files: the Host performs planning only, while
+node submission continues to check allowed effects.
+
+
 ## Completion record relationships
 
 `internal/domain/completion.go` validates the relationships among plans, implementation, acceptance and current checks. Application reports field or transition errors before writing and uses the same constraints when constructing a mutation. Persisted snapshots validate these relationships as well.
@@ -359,9 +375,45 @@ task branch/current HEAD, worktree path, clean/dirty, current paths, and verific
 handoff, worktree cleanup, and branch cleanup are Host actions; the two cleanup operations require
 separate authorization.
 
+## Baseline history and prepared branch rename
+
+`BaselineHistory` retains every real reference in saved order, without an archive tier, retention window
+or configured count limit. Each reference keeps kind, revision, digest, summary and time validation;
+per-kind revisions are unique and continuous from 1, followed by the current baseline revision. Store
+compares preceding and proposed arrays in the same CAS transaction, rejecting removal, rewriting or
+reordering. Appended references commit with the Task, Action and Event; failure preserves the snapshot
+and recoverable staged operation. History stores references, not reconstructed full documents.
+History is excluded from the existing 1 MiB aggregate snapshot budget; other Task, input and evidence
+limits remain unchanged. Encoding, decoding, reads, Stage and Commit retain the complete array without
+a separate history byte cap. Resources and the uint32 revision range remain practical constraints.
+Paging bounds transport only: every Task projection contains a bounded first page, cumulative total,
+next cursor and Task revision. Explicit pages shrink to at most 32 entries and 64 KiB of actual JSON;
+the entire MCP response remains limited to 1 MiB. Cursors identify the last returned reference.
+
+Schema 0.8.0 adds only `branch_rename_operations` audit storage and its pending index, without a history archive table. Only the complete valid deployed
+0.7.0 layout can be read and upgraded in one transaction, preserving Task and pending-operation bytes.
+DDL or validation failure leaves 0.7.0 intact. Other layouts are rejected, without a migration registry
+or fallback. Do not run an older writer against an upgraded database.
+
+`PrepareTaskBranchRename` pauses one normal node in existing BLOCKED and retains one repository key,
+source/target names, reason, every repository binding, complete logical index entries/flags and resume
+node. Source ref/current branch/HEAD must agree and the target ref must be absent. Core remains
+read-only toward Git. The Host performs one non-force `git branch -m`. Complete checks the source ref
+is absent, the target is current at the same HEAD and all repositories retain instance, identity,
+history, content and index. Cancel requires the original source facts and absent target. Both use
+ResolveBlockerAction, StageActionOperation/CommitActionOperation and recover_action; a pending ordinary
+submission prevents preparation, and old Action/revision CAS cannot win after preparation. Drift keeps
+BLOCKED. Task cancellation uses the existing CANCELLED edge. The process digest and ordinary edge sets
+are unchanged. Audit preparation/resolution commits with its Task/Event and survives later renames.
+
+WorkspaceOrigin.task_branch is immutable provenance. RepositoryBinding.current_branch is the current
+Core-approved branch. Ordinary Git observation cannot approve a switch; history review, relocation and
+Host cleanup use the saved effective binding. Host receipts keep their original target name. Cleanup
+must consume terminal Core facts and match the receipt workspace and HEAD; it never guesses the old name.
+
 ## MCP, Store, and WebUI
 
-The fixed MCP tool list contains seventeen tools:
+The fixed MCP tool list contains eighteen tools:
 
 ```text
 taskbelay_server_info
@@ -379,6 +431,7 @@ taskbelay_submit_delivery
 taskbelay_resolve_blocker
 taskbelay_recover_action
 taskbelay_cancel_task
+taskbelay_prepare_task_branch_rename
 taskbelay_prepare_task_relocation
 taskbelay_abandon_task
 ```
@@ -441,7 +494,7 @@ work performs no release. Host packages carry exact `darwin-arm64/taskbelay` and
 | `internal/application/` | open/resume/read/submit/recover/relocate/cancel/abandon orchestration |
 | `internal/workflow/` | 11 nodes, ordinary edges, payloads, guards, invalidation |
 | `internal/store/` | current-only SQLite, codec, operations, events, claims |
-| `internal/mcp/` | seventeen tools, field restrictions, tool annotations, and the common response structure |
+| `internal/mcp/` | eighteen tools, field restrictions, tool annotations, and the common response structure |
 | `internal/webui/`, `packages/webui/` | loopback Adapter and embedded interface |
 | `packages/codex/`, `packages/deepseek/`, `packages/claude/`, `packages/zcode/` | request assessment, worktree creation, session continuation/handoff, and packaging |
 | `packages/host-workspace/` | Maintained Git observation, preparation and snapshot helpers; copied into consuming Host packages at build time |
@@ -601,6 +654,6 @@ Core atomically saves acceptance with the original checks in the current TestRec
 
 COMPREHENSION_REVIEW and DELIVERY require a current completed Test satisfying ordinary passing or known-failure acceptance. Their full outgoing transitions, guards and reasons remain those in the existing definition: comprehension goes to DELIVERY, IMPLEMENT, REFACTOR, DESIGN, TEST or REQUIREMENTS; delivery goes to DONE, IMPLEMENT, TEST, COMPREHENSION_REVIEW, DESIGN or REQUIREMENTS. Delivery links each criterion to actual passed checks. TestRecord displays failures and acceptance; automated/manual result lists contain only passed checks. Existing content/plan invalidation also invalidates the attached acceptance.
 
-The current persisted Schema changes without historical readers or migration. MCP, CLI and WebUI expose the same record and transitions. Errors follow the [Core response contract](CORE-RESPONSES_en.md).
+The current persisted Schema accepts only the complete valid deployed 0.7.0 layout through the bounded transaction described above; other historical layouts are rejected. MCP, CLI and WebUI expose the same record and transitions. Errors follow the [Core response contract](CORE-RESPONSES_en.md).
 
 Acceptance uses targeted Core and storage integration checks: ordinary passing, accepted known failures, missing comparison/decision, omitted new failures, stale acceptance, restart then delivery, actual limits, completed user checks, permission restrictions, and zero-write correction of missing check explanations. Shared Skill examples cover all four Hosts. One transition and attached record preserve truthful results and allow delivery; no additional node, second cursor, automatic log parser, generic waiver or release workflow is introduced. Scope covers workflow/domain/application/store, direct MCP/WebUI consumers, docs and Skills.

@@ -302,14 +302,20 @@ test("current-branch and remote-base modes preserve their confirmed origins", as
 test("relocation and terminal cleanup retain Core authority and separate deletion decisions", async t => {
   const { root, options } = await fixture(t), selection = dedicated(root);
   const receipt = await prepareSelections([selection], options); await provision(receipt.launch_id, options);
-  await assert.rejects(cleanup(receipt.launch_id, "cleanup-worktree", { repository_key: "primary", terminal: false, authorized: true }, options), /Terminal/);
+  await assert.rejects(cleanup(receipt.launch_id, "cleanup-worktree", { repository_key: "primary", terminal: false, authorized: true, core_task:null }, options), /Terminal/);
+  await bindTask(receipt.launch_id,{task_id:"task-test"},options);
   const destination = join(root, "..", "relocated");
-  const moved = await relocate(receipt.launch_id, { relocation_id: "relocation-confirmed-by-core", destinations: [{ repository_key: "primary", repository_path: destination }], authorized: true }, options);
+  const savedScope=await scope(receipt.launch_id,options);
+  // Fixture Core facts; real Core interoperability is exercised in workspace-core.test.mjs.
+  const core_task={task_id:"task-test",origin_host:"claude",revision:3,current_cursor:"DONE",primary_repository_key:"primary",workspace_origin:{...savedScope.workspace_origin,canonical_worktree_root:selection.worktree_path},
+    repository:{current_branch:"task",current_head:(await git(["-C",selection.worktree_path,"rev-parse","HEAD"])).trim(),detached:false,worktree_instance_digest:"a".repeat(64),binding_digest:"b".repeat(64)}};
+  const moved = await relocate(receipt.launch_id, { relocation_id: "relocation-confirmed-by-core", core_preparation:{relocation_id:"relocation-confirmed-by-core",task:{...core_task,current_cursor:"BLOCKED",relocation:{relocation_id:"relocation-confirmed-by-core"},blocker:{cause:"task_relocation_pending"}}}, destinations: [{ repository_key: "primary", repository_path: destination }], authorized: true }, options);
   assert.equal(moved.core_resolution_required, true);
   assert.equal((await scope(receipt.launch_id, options)).repository_path, destination);
-  await cleanup(receipt.launch_id, "cleanup-worktree", { repository_key: "primary", terminal: true, authorized: true }, options);
-  await cleanup(receipt.launch_id, "cleanup-worktree", { repository_key: "primary", terminal: true, authorized: true }, options);
-  await assert.rejects(cleanup(receipt.launch_id, "cleanup-branch", { repository_key: "primary", terminal: true, authorized: false }, options), /authorization/);
-  await cleanup(receipt.launch_id, "cleanup-branch", { repository_key: "primary", terminal: true, authorized: true }, options);
+  core_task.workspace_origin={...core_task.workspace_origin,canonical_worktree_root:destination};
+  await cleanup(receipt.launch_id, "cleanup-worktree", { repository_key: "primary", terminal: true, authorized: true, core_task }, options);
+  await cleanup(receipt.launch_id, "cleanup-worktree", { repository_key: "primary", terminal: true, authorized: true, core_task }, options);
+  await assert.rejects(cleanup(receipt.launch_id, "cleanup-branch", { repository_key: "primary", terminal: true, authorized: false, core_task }, options), /authorization/);
+  await cleanup(receipt.launch_id, "cleanup-branch", { repository_key: "primary", terminal: true, authorized: true, core_task }, options);
   await assert.rejects(git(["-C", root, "rev-parse", "--verify", "refs/heads/task"]));
 });

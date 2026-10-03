@@ -45,13 +45,18 @@ It returns the same `session_id` as the saved `launch`, with `executable:"claude
 
 ## Relocation
 
-For workspace relocation first obtain taskbelay_prepare_task_relocation and the actual relocation_id from Core. Then obtain user authorization and provide host-launch relocate with launch_id, relocation_id, destinations (all repository_key/repository_path pairs), authorized=true. Only all-dedicated provisioned workspaces can move. It records each move; uncertain/partial moves remain for inspection. Pass the returned relocation_id and relocation_destinations unchanged to Core's relocation blocker resolution; each returned destination uses Core's key/repository_path fields. Until Core verifies them, its original binding remains authoritative.
+For workspace relocation first obtain taskbelay_prepare_task_relocation and the actual relocation_id from Core. Then obtain user authorization and provide host-launch relocate with launch_id, relocation_id, destinations (all repository_key/repository_path pairs), authorized=true, and core_preparation (the exact successful Core result). Only all-dedicated provisioned workspaces can move. It records each move; uncertain/partial moves remain for inspection. Pass the returned relocation_id and relocation_destinations unchanged to Core's relocation blocker resolution; each returned destination uses Core's key/repository_path fields. Until Core verifies them, its original binding remains authoritative.
 
 For a confirmed single-repository relocation, the complete Host body and successful result have these shapes. Use the actual Core relocation ID and verified destination instead of the sample values:
 
-<!-- example:host-launch relocate request -->
-```json
-{"launch_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","relocation_id":"relocation-from-core","destinations":[{"repository_key":"primary","repository_path":"/work/relocated-project"}],"authorized":true}
+```js
+const relocation_input = {
+  launch_id: saved_launch_id,
+  relocation_id: core_result.relocation_id,
+  core_preparation: core_result,
+  destinations: authorized_destinations,
+  authorized: true
+};
 ```
 
 <!-- example:host-launch-output relocate success -->
@@ -61,18 +66,28 @@ For a confirmed single-repository relocation, the complete Host body and success
 
 ## Terminal operations and cleanup
 
-Cancel/abandon through current Core tools, following the shared lifecycle and recovery reference. Never infer DONE from Claude stopping. After a verified terminal Task, host-launch cleanup-worktree takes launch_id, repository_key, terminal=true, authorized=true from actual facts and explicit authorization. Only clean receipt-owned dedicated worktrees are removed without force. cleanup-branch requires a separate authorization after worktree removal and uses non-force Git deletion. Local directories and branches remain. Never delete active, dirty, unpushed or uncertain resources automatically.
+Cancel/abandon through current Core tools, following the shared lifecycle and recovery reference. Never infer DONE from Claude stopping. After a verified terminal Task, host-launch cleanup-worktree takes launch_id, repository_key, terminal=true, authorized=true, core_task=<complete actual terminal Core Task> from actual facts and explicit authorization. Only clean receipt-owned dedicated worktrees are removed without force. cleanup-branch requires a separate authorization after worktree removal and uses non-force Git deletion. Local directories and branches remain. Never delete active, dirty, unpushed or uncertain resources automatically.
 
 The two cleanup calls each take a separate actual user authorization and return the updated complete receipt, with `worktree_cleanup` or `branch_cleanup` set to `"completed"` for the named repository:
 
-<!-- example:host-launch cleanup-worktree request -->
-```json
-{"launch_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","repository_key":"primary","terminal":true,"authorized":true}
+```js
+const cleanup_input = {
+  launch_id: saved_launch_id,
+  repository_key: selected_repository_key,
+  terminal: true,
+  authorized: actual_cleanup_authorization,
+  core_task: terminal_core_task
+};
 ```
 
-<!-- example:host-launch cleanup-branch request -->
-```json
-{"launch_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","repository_key":"primary","terminal":true,"authorized":true}
+```js
+const cleanup_input = {
+  launch_id: saved_launch_id,
+  repository_key: selected_repository_key,
+  terminal: true,
+  authorized: actual_cleanup_authorization,
+  core_task: terminal_core_task
+};
 ```
 
 ## Terminal presentation
@@ -83,3 +98,12 @@ observations and user-performed checks distinct. State the retained workspace pa
 the user can review the files. Terminal state releases the Task's claims; it does not commit, push,
 publish, relocate or delete anything. Present Git or cleanup operations only when separately
 authorized, following the checks and separate worktree/branch decisions above.
+
+## Prepared branch rename
+
+Follow the shared [branch rename contract](core-lifecycle.md) before executing one authorized
+non-force `git branch -m`. Core owns the pending rename, verification and effective binding; the
+Host launch receipt preserves its creation branch. For relocation or cleanup, forward complete
+actual Core results. The helpers verify repository key, original receipt, workspace instance,
+effective branch and HEAD; missing or mismatched facts stop the operation. Never use the old
+receipt target to choose a branch for deletion. Recreating that old name must not make it a cleanup target.

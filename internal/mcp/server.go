@@ -95,11 +95,15 @@ func (s *Server) dispatch(ctx context.Context, tool string, id domain.ID, raw []
 	case ToolGetTask:
 		var w readWire
 		_ = decodeClosed(raw, &w)
-		r, err := s.application.GetTask(ctx, application.GetTaskRequest{Host: w.Host, TaskID: w.TaskID, OperationProbe: toProbe(w.OperationProbe)})
+		r, err := s.application.GetTask(ctx, application.GetTaskRequest{Host: w.Host, TaskID: w.TaskID, OperationProbe: toProbe(w.OperationProbe), BaselineHistory: w.BaselineHistory})
 		if err != nil {
 			return EncodeError(string(resultID), tool, err)
 		}
-		return EncodeSuccess(string(resultID), tool, map[string]any{"task": projectTask(r.Task), "recovery_assessment": projectRecoveryAssessment(r.RecoveryAssessment)})
+		result := map[string]any{"task": projectTask(r.Task), "recovery_assessment": projectRecoveryAssessment(r.RecoveryAssessment)}
+		if r.BaselineHistory != nil {
+			result["baseline_history"] = r.BaselineHistory
+		}
+		return EncodeSuccess(string(resultID), tool, result)
 	case ToolGetNextAction:
 		var w readWire
 		_ = decodeClosed(raw, &w)
@@ -115,7 +119,7 @@ func (s *Server) dispatch(ctx context.Context, tool string, id domain.ID, raw []
 		if wire.Choice != "" {
 			decision = &domain.FileScopeDecisionInput{Choice: wire.Choice, Reason: wire.Reason}
 		}
-		result, err := s.application.ResolveBlockerAction(ctx, application.RecoverActionRequest{Host: wire.Host, TaskID: wire.TaskID, ActionID: wire.ActionID, FileScopeDecision: decision, RelocationID: wire.RelocationID, RelocationDestinations: wire.RelocationDestinations, HistoryResolution: wire.HistoryResolution}, id)
+		result, err := s.application.ResolveBlockerAction(ctx, application.RecoverActionRequest{Host: wire.Host, TaskID: wire.TaskID, ActionID: wire.ActionID, FileScopeDecision: decision, RenameID: wire.RenameID, RenameChoice: wire.RenameChoice, RelocationID: wire.RelocationID, RelocationDestinations: wire.RelocationDestinations, HistoryResolution: wire.HistoryResolution}, id)
 		if err != nil {
 			return EncodeError(string(resultID), tool, err)
 		}
@@ -136,6 +140,14 @@ func (s *Server) dispatch(ctx context.Context, tool string, id domain.ID, raw []
 			return EncodeError(string(resultID), tool, err)
 		}
 		return EncodeSuccess(string(resultID), tool, projectTask(r.Task))
+	case ToolPrepareTaskBranchRename:
+		var w prepareBranchRenameWire
+		_ = decodeClosed(raw, &w)
+		r, err := s.application.PrepareTaskBranchRename(ctx, application.PrepareTaskBranchRenameRequest{RequestID: id, Host: w.Host, TaskID: w.TaskID, ExpectedRevision: w.Revision, RepositoryKey: w.RepositoryKey, TargetBranch: w.TargetBranch, Reason: w.Reason})
+		if err != nil {
+			return EncodeError(string(resultID), tool, err)
+		}
+		return EncodeSuccess(string(resultID), tool, map[string]any{"rename_id": r.RenameID, "task": projectTask(r.Task)})
 	case ToolPrepareTaskRelocation:
 		var w lifecycleWire
 		_ = decodeClosed(raw, &w)

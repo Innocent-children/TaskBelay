@@ -28,6 +28,16 @@ func (s *Service) CancelTask(ctx context.Context, r CancelTaskRequest) (CancelTa
 		return CancelTaskResult{}, domain.WithExplanation(domain.ErrInvalidArgument, "Cancellation reason must be non-empty, trimmed UTF-8 text of at most 4096 bytes.")
 	}
 	fresh, err := s.observeTaskRepositories(ctx, task)
+	if task.BranchRename != nil {
+		observed, renameErr := s.observeBranchRenameScope(ctx, task, *task.BranchRename, "cancel")
+		if renameErr != nil {
+			observed, renameErr = s.observeBranchRenameScope(ctx, task, *task.BranchRename, "complete")
+		}
+		if renameErr != nil {
+			return CancelTaskResult{}, renameErr
+		}
+		fresh, err = observed.scope, nil
+	}
 	if err != nil {
 		return CancelTaskResult{}, err
 	}
@@ -38,7 +48,7 @@ func (s *Service) CancelTask(ctx context.Context, r CancelTaskRequest) (CancelTa
 	if err != nil {
 		return CancelTaskResult{}, domain.WithExplanation(domain.ErrInternal, "The repository observations could not be compared with the Task repository scope.")
 	}
-	if comparison.Relation == recovery.RepositoryForbiddenChange {
+	if task.BranchRename == nil && comparison.Relation == recovery.RepositoryForbiddenChange {
 		return CancelTaskResult{}, repositoryDriftError(comparison)
 	}
 	source := task.CurrentNode
@@ -47,6 +57,7 @@ func (s *Service) CancelTask(ctx context.Context, r CancelTaskRequest) (CancelTa
 		return CancelTaskResult{}, domain.WithExplanation(domain.ErrInternal, "The saved Task could not be decoded into a working copy for this operation.")
 	}
 	now := s.now().UTC()
+	next.BranchRename = nil
 	next.CurrentNode = domain.NodeCancelled
 	next.CurrentAction = nil
 	next.Blocker = nil

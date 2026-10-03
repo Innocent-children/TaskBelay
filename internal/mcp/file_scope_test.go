@@ -6,7 +6,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/domain"
 )
 
-func TestResolveBlockerFileScopeChoiceKeepsClosedSeventeenToolCatalog(t *testing.T) {
+func TestResolveBlockerFileScopeChoiceKeepsClosedEighteenToolCatalog(t *testing.T) {
 	valid := []byte(`{"host":"codex","task_id":"task","action_id":"action","choice":"allow_once","reason":"Allow this prepared write."}`)
 	if err := ValidateToolInput(ToolResolveBlocker, valid); err != nil {
 		t.Fatalf("valid file-scope resolution rejected: %v", err)
@@ -23,7 +23,7 @@ func TestResolveBlockerFileScopeChoiceKeepsClosedSeventeenToolCatalog(t *testing
 	if err := ValidateToolInput(ToolRecoverAction, valid); err == nil {
 		t.Fatal("recover_action accepted file-scope decision members")
 	}
-	if len(ToolNames()) != 17 {
+	if len(ToolNames()) != 18 {
 		t.Fatalf("tool catalog size=%d", len(ToolNames()))
 	}
 }

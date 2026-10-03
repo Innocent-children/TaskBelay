@@ -1,6 +1,6 @@
 {
   "fixture_kind": "workspace_lifecycle",
-  "storage_schema_version": "0.7.0",
+  "storage_schema_version": "0.8.0",
   "workspace_origin": {
     "mode": "dedicated_worktree",
     "source_type": "remote", "carry_changes": false, "remote_name": "origin",

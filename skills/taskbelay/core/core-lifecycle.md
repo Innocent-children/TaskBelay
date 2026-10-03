@@ -10,6 +10,47 @@ Success `ok` is a boolean and `result` is an object. Relocation preparation retu
 `result.relocation_id` and object `result.task`; the other operations return the Task object
 directly in `result`. Follow the [shared field-type rules](tool-results.md#json-field-types).
 
+## Rename one active Task branch
+
+Implementation: `internal/application/branch_rename.go` — `PrepareTaskBranchRename`, `resolveTaskBranchRename`.
+
+After authorization for the specific rename, call `taskbelay_prepare_task_branch_rename` with the
+current host, Task ID, revision, one repository_key, target_branch and reason. The result contains
+rename_id and the complete BLOCKED Task. Retain its source/target names, frozen repository/index
+facts, new Action and resume node. A pending earlier Action must be recovered first.
+
+[Preparation and paired error](core-lifecycle-examples.md#taskbelay_prepare_task_branch_rename-prepare-branch-rename).
+
+The authorized Host executes exactly one `git -C <saved-root> branch -m <source> <target>` without
+force. Core never executes Git mutations. Verify the retained identity again before execution.
+If interrupted, read the same Task and inspect refs; never repeat Git blindly. After the actual
+rename, [resolve complete](core-lifecycle-examples.md#taskbelay_resolve_blocker-rename-complete) with
+its current Action ID and rename_id. Core requires the source ref to be absent, target/current branch
+to match, and every repository instance, HEAD, index and content to remain unchanged. No partial or
+uncertain state authorizes completion. [Cancel the rename](core-lifecycle-examples.md#taskbelay_resolve_blocker-rename-cancel)
+only while all original source facts and absent target remain unchanged. Either decision returns to
+the saved node with a fresh Action. A saved unrecorded resolution uses `taskbelay_recover_action`.
+
+WorkspaceOrigin and receipt target_branch retain the creation selection. Subsequent history review,
+relocation, display and authorized cleanup must use the Core repository.current_branch as the
+effective branch. Do not substitute an observed unapproved branch or edit a provisioning receipt.
+
+## Read complete baseline references
+
+Implementation: `internal/domain/baseline_history.go` — `ReadBaselineHistory`;
+`internal/store/baseline_history.go` — `validateBaselineHistoryMutation`.
+
+The Task retains its complete saved history without an archive tier or configured count limit;
+resources and revision-number ranges still apply. Every Task response provides a bounded first page
+at baselines.history plus history_total, history_next_after and history_revision. Do not treat the
+first page as the complete history. [Read a page](core-lifecycle-examples.md#taskbelay_get_task-history-page)
+with baseline_history {revision:0, after:0, limit:16}, then retain result.baseline_history.revision and
+next_after for each following page (limit 1..32). Pages shrink for actual JSON bytes, so never compute
+the next cursor by adding limit. next_after=null alone ends the read. If the inline page is empty
+with nonzero total and cursor 0, explicitly request from 0. A changed Task rejects the cursor; restart
+at after=0 without merging revisions. References preserve saved summaries/digests/times; no historical
+full documents are reconstructed. History growth does not relax other input/evidence/response limits.
+
 ## Prepare relocation
 
 Implementation: `internal/application/control_center_lifecycle.go` — `PrepareTaskRelocation`.

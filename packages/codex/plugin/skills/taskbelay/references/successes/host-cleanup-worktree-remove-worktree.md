@@ -13,6 +13,31 @@ Resolved request:
 ```json
 {
   "authorized": true,
+  "core_task": {
+    "current_cursor": "DONE",
+    "origin_host": "codex",
+    "primary_repository_key": "primary",
+    "repository": {
+      "binding_digest": "0000000000000000000000000000000000000000000000000000000000000001",
+      "current_branch": "codex/endpoint-field",
+      "current_head": "0000000000000000000000000000000000000001",
+      "detached": false,
+      "worktree_instance_digest": "0000000000000000000000000000000000000000000000000000000000000002"
+    },
+    "revision": 10,
+    "task_id": "task-cleanup",
+    "workspace_origin": {
+      "base_branch": "main",
+      "base_commit": "0000000000000000000000000000000000000001",
+      "canonical_worktree_root": "/work/tasks/endpoint-field",
+      "carry_changes": false,
+      "mode": "dedicated_worktree",
+      "provisioning_receipt_id": "codex-0000000000000000000000000000000000000000000000000000000000000003",
+      "remote_name": "origin",
+      "source_type": "remote",
+      "task_branch": "codex/endpoint-field"
+    }
+  },
   "launch_id": "launch-example",
   "repository_key": "primary",
   "source_repository_path": "/work/project",
@@ -37,10 +62,10 @@ Complete response:
               "dirty_paths_truncated": false,
               "head": "0000000000000000000000000000000000000001",
               "repository_key": "primary",
-              "status_digest": "0000000000000000000000000000000000000000000000000000000000000001"
+              "status_digest": "0000000000000000000000000000000000000000000000000000000000000004"
             }
           ],
-          "request_digest": "0000000000000000000000000000000000000000000000000000000000000002"
+          "request_digest": "0000000000000000000000000000000000000000000000000000000000000005"
         },
         "candidate_components": [
           "Endpoint response"
@@ -76,7 +101,7 @@ Complete response:
     "base_commit": "0000000000000000000000000000000000000001",
     "carry_changes": false,
     "created_at": "2026-09-10T00:00:00.000Z",
-    "handoff_digest": "0000000000000000000000000000000000000000000000000000000000000003",
+    "handoff_digest": "0000000000000000000000000000000000000000000000000000000000000006",
     "host": "codex",
     "launch_id": "launch-example",
     "operation_status": {
@@ -91,13 +116,15 @@ Complete response:
       "phase": "worktree_removed",
       "relocation_id": null,
       "surface": "cli_worktree",
-      "worktree_cleanup": "completed"
+      "target_effects": "may_have_effects",
+      "worktree_cleanup": "completed",
+      "worktree_identity": "0000000000000000000000000000000000000000000000000000000000000007"
     },
     "remote_name": "origin",
     "repository_key": "primary",
-    "request_digest": "0000000000000000000000000000000000000000000000000000000000000002",
+    "request_digest": "0000000000000000000000000000000000000000000000000000000000000005",
     "snapshot_commit": null,
-    "source_repository_identity": "0000000000000000000000000000000000000000000000000000000000000004",
+    "source_repository_identity": "0000000000000000000000000000000000000000000000000000000000000008",
     "source_type": "remote",
     "target_branch": "codex/endpoint-field",
     "workspace_mode": "dedicated_worktree",

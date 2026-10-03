@@ -33,6 +33,13 @@ func (s *Service) RecoverAction(ctx context.Context, request RecoverActionReques
 		return ApplyActionResult{Task: task}, nil
 	}
 	commit := stored.Commit
+	if task.BranchRename != nil && commit.Operation.SourceCursor == domain.NodeBlocked {
+		payload, canonical, err := workflow.DecodeBlockerResolutionPayload(commit.Payload)
+		if err != nil {
+			return ApplyActionResult{}, err
+		}
+		return s.resolveTaskBranchRename(ctx, RecoverActionRequest{Host: request.Host, TaskID: task.TaskID, ActionID: request.ActionID, RenameID: payload.RenameID, RenameChoice: payload.RenameChoice}, commit.Operation.OperationID, task, canonical)
+	}
 	if task.CurrentNode == domain.NodeBlocked && task.Blocker != nil &&
 		task.Blocker.Cause == domain.BlockerCauseTaskRelocationPending &&
 		commit.Operation.SourceCursor == domain.NodeBlocked {
@@ -129,6 +136,12 @@ func (s *Service) ResolveBlockerAction(ctx context.Context, request RecoverActio
 	}
 	if task.CurrentNode != domain.NodeBlocked || task.CurrentAction == nil || task.CurrentAction.ActionID != request.ActionID || task.Blocker == nil {
 		return ApplyActionResult{}, domain.WithExplanation(domain.ErrActionStale, "The requested Action is not the current blocker-resolution Action, or the Task has no active blocker.")
+	}
+	if task.BranchRename != nil {
+		return s.resolveTaskBranchRename(ctx, request, requestID, task, nil)
+	}
+	if request.RenameID != "" || request.RenameChoice != "" {
+		return ApplyActionResult{}, domain.ErrInvalidArgument
 	}
 	if task.Blocker.Cause == domain.BlockerCauseTaskRelocationPending {
 		if request.RelocationID == "" || request.FileScopeDecision != nil || request.HistoryResolution != nil {

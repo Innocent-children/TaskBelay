@@ -99,3 +99,15 @@ This returns `absent` and `registration.host=user_confirmed_removed`, recording 
 `TASKBELAY_DATA_DIR` selects an existing canonical absolute data directory and must match across ZCode, MCP and the manager. Defaults are `~/.taskbelay/data` on macOS and `%LOCALAPPDATA%\taskbelay\data` on Windows.
 
 See the [command reference](COMMANDS_en.md) for all entries and [project status](PROJECT-STATUS_en.md) for actual checks and remaining acceptance work.
+
+## Continued revision and Task branch renaming
+
+The same Task can continue through requirements, design and plan revisions beyond 32 older baseline
+references. Retained references remain available through pagination; unsaved full documents cannot
+be reconstructed. To rename an active Task branch, have Core prepare one repository's rename, let
+the authorized Host run one non-force `git branch -m`, then have Core verify and confirm it. The
+worktree, HEAD, index, contents and other repositories must stay unchanged. Cancel preparation only
+while the original facts remain unchanged; after a rename with a missing response, read back before acting.
+
+Later relocation and terminal cleanup use the effective branch confirmed by Core; the creation branch remains in the origin. Cleanup requires the complete terminal `core_task`; missing or mismatched facts reject cleanup.
+See [workspace sources and recovery](WORKTREE-SOURCES_en.md) for exact conditions and recovery steps.

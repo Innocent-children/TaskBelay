@@ -408,7 +408,7 @@ func (s *Service) validateTaskRelocationDestination(ctx context.Context, task do
 	if primary.WorktreeInstanceDigest == task.Repository.WorktreeInstanceDigest {
 		return validatedRelocationTarget{}, domain.WithExplanation(domain.ErrInvalidArgument, "A relocation destination must be a different worktree instance from its source.")
 	}
-	if !relocationDestinationHistoryAllowed(task.WorkspaceOrigin, primary) {
+	if !relocationDestinationHistoryAllowed(task.Repository, primary) {
 		return validatedRelocationTarget{}, domain.WithExplanation(domain.ErrWorkspaceHistoryConflict, "The relocation destination does not preserve the prepared source branch and permitted commit history.")
 	}
 	if observed.primaryOrigin.SourceRepositoryGroupDigest != task.WorkspaceOrigin.SourceRepositoryGroupDigest {
@@ -419,7 +419,7 @@ func (s *Service) validateTaskRelocationDestination(ctx context.Context, task do
 		if destination.Binding.WorktreeInstanceDigest == source.Binding.WorktreeInstanceDigest {
 			return validatedRelocationTarget{}, domain.WithExplanation(domain.ErrInvalidArgument, "A relocation destination must be a different worktree instance from its source.")
 		}
-		if !relocationDestinationHistoryAllowed(source.Origin, destination.Binding) {
+		if !relocationDestinationHistoryAllowed(source.Binding, destination.Binding) {
 			return validatedRelocationTarget{}, domain.WithExplanation(domain.ErrWorkspaceHistoryConflict, "The relocation destination does not preserve the prepared source branch and permitted commit history.")
 		}
 		if destination.Origin.SourceRepositoryGroupDigest != source.Origin.SourceRepositoryGroupDigest {
@@ -456,8 +456,8 @@ func validRelocationRepositoryPath(path string) bool {
 	return validRepositoryPathInput(path) && filepath.IsAbs(path) && filepath.Clean(path) == path
 }
 
-func relocationDestinationHistoryAllowed(origin domain.WorkspaceOrigin, binding domain.RepositoryBinding) bool {
-	if binding.Detached || binding.CurrentBranch == nil || *binding.CurrentBranch != origin.TaskBranch || !binding.BaseCommitAncestor {
+func relocationDestinationHistoryAllowed(previous domain.RepositoryBinding, binding domain.RepositoryBinding) bool {
+	if binding.Detached || binding.CurrentBranch == nil || previous.CurrentBranch == nil || *binding.CurrentBranch != *previous.CurrentBranch || !binding.BaseCommitAncestor {
 		return false
 	}
 	return binding.HistoryRelation == domain.RepositoryHistoryExact ||

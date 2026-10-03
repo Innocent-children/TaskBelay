@@ -6,7 +6,7 @@
 
 ## 覆盖范围
 
-- `mcp_contract_test.go`：固定的十七个 MCP 工具、Action 提交的步骤结果字段、工作树/迁移/放弃字段、
+- `mcp_contract_test.go`：固定的十八个 MCP 工具、Action 提交的步骤结果字段、工作树/迁移/放弃字段、
   Recovery、ServerInfo 和存储标识；
 - `result_envelope_test.go`：返回结构、固定公开错误、允许的返回字段和敏感信息隐藏；
 - `graph_contract_test.go`：MCP 工具数量、流程图 JSON 样例可解析、需求提交的 `method_results` 字段，以及拒绝 `get_task` 的额外输入字段；

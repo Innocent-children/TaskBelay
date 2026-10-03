@@ -127,13 +127,13 @@ test("coordinator fetches a frozen base, excludes dirty source state, and emits 
   const baseTerminalTask = {
     task_id: "task-cleanup", revision: 9, current_cursor: "DONE", primary_repository_key: "primary",
     workspace_origin: { ...consumed.open_task.workspace_origin, canonical_worktree_root: result.workspace_root },
-    repository: { current_head: baseCommit }, additional_repositories: [],
+    repository: { current_head: baseCommit, current_branch:"feature/proof", detached:false }, additional_repositories: [],
   };
   const activeCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => ({ ...baseTerminalTask, current_cursor: "IMPLEMENT" }) });
   await assert.rejects(activeCleanup.cleanupWorktree({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: baseTerminalTask.task_id, revision: baseTerminalTask.revision }), /not terminal/u);
   const foreignCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => ({ ...baseTerminalTask, workspace_origin: { ...baseTerminalTask.workspace_origin, provisioning_receipt_id: "another-receipt" } }) });
   await assert.rejects(foreignCleanup.cleanupWorktree({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: baseTerminalTask.task_id, revision: baseTerminalTask.revision }), /does not match the receipt workspace/u);
-  const staleHeadCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => ({ ...baseTerminalTask, repository: { current_head: "f".repeat(40) } }) });
+  const staleHeadCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => ({ ...baseTerminalTask, repository: { current_head: "f".repeat(40), current_branch:"feature/proof", detached:false } }) });
   await assert.rejects(staleHeadCleanup.cleanupWorktree({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: baseTerminalTask.task_id, revision: baseTerminalTask.revision }), /differs from the terminal Core observation/u);
   const guardedCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => baseTerminalTask });
   await assert.rejects(guardedCleanup.cleanupWorktree({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: baseTerminalTask.task_id, revision: baseTerminalTask.revision }), /unpushed task branch/u);
@@ -149,7 +149,7 @@ test("coordinator fetches a frozen base, excludes dirty source state, and emits 
   const terminalTask = {
     task_id: "task-cleanup", revision: 9, current_cursor: "DONE", primary_repository_key: "primary",
     workspace_origin: { ...consumed.open_task.workspace_origin, canonical_worktree_root: result.workspace_root },
-    repository: { current_head: terminalHead }, additional_repositories: [],
+    repository: { current_head: terminalHead, current_branch:"feature/proof", detached:false }, additional_repositories: [],
   };
   const cleanupFromTask = createWorkspaceCoordinator({
     dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => terminalTask,

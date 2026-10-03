@@ -452,7 +452,8 @@ async function cleanupState({ dataDirectory, launchID, repositoryKey, taskID, re
       taskRepository.binding?.current_head === undefined) {
     throw new Error("terminal Core Task does not match the receipt workspace");
   }
-  return { receipt, repository, taskRepository: { ...taskRepository.binding, origin: taskRepository.origin }, command };
+  if (taskRepository.binding.detached || typeof taskRepository.binding.current_branch!=="string" || !taskRepository.binding.current_branch || taskRepository.binding.current_branch.startsWith("-")) throw new Error("Terminal Core effective branch is required");
+  return { receipt, repository:{...repository,target_branch:taskRepository.binding.current_branch}, taskRepository: { ...taskRepository.binding, origin: taskRepository.origin }, command };
 }
 
 async function inspectTerminalWorktree(repository, taskRepository, { command, signal }) {

@@ -8,23 +8,24 @@ import (
 )
 
 const (
-	ToolServerInfo            = "taskbelay_server_info"
-	ToolOpenTask              = "taskbelay_open_task"
-	ToolGetTask               = "taskbelay_get_task"
-	ToolGetNextAction         = "taskbelay_get_next_action"
-	ToolSubmitRequirements    = "taskbelay_submit_requirements"
-	ToolSubmitDesign          = "taskbelay_submit_design"
-	ToolSubmitTasks           = "taskbelay_submit_tasks"
-	ToolSubmitImplementation  = "taskbelay_submit_implementation"
-	ToolSubmitTest            = "taskbelay_submit_test"
-	ToolSubmitComprehension   = "taskbelay_submit_comprehension"
-	ToolSubmitRefactor        = "taskbelay_submit_refactor"
-	ToolSubmitDelivery        = "taskbelay_submit_delivery"
-	ToolPrepareTaskRelocation = "taskbelay_prepare_task_relocation"
-	ToolResolveBlocker        = "taskbelay_resolve_blocker"
-	ToolRecoverAction         = "taskbelay_recover_action"
-	ToolCancelTask            = "taskbelay_cancel_task"
-	ToolAbandonTask           = "taskbelay_abandon_task"
+	ToolServerInfo              = "taskbelay_server_info"
+	ToolOpenTask                = "taskbelay_open_task"
+	ToolGetTask                 = "taskbelay_get_task"
+	ToolGetNextAction           = "taskbelay_get_next_action"
+	ToolSubmitRequirements      = "taskbelay_submit_requirements"
+	ToolSubmitDesign            = "taskbelay_submit_design"
+	ToolSubmitTasks             = "taskbelay_submit_tasks"
+	ToolSubmitImplementation    = "taskbelay_submit_implementation"
+	ToolSubmitTest              = "taskbelay_submit_test"
+	ToolSubmitComprehension     = "taskbelay_submit_comprehension"
+	ToolSubmitRefactor          = "taskbelay_submit_refactor"
+	ToolSubmitDelivery          = "taskbelay_submit_delivery"
+	ToolPrepareTaskBranchRename = "taskbelay_prepare_task_branch_rename"
+	ToolPrepareTaskRelocation   = "taskbelay_prepare_task_relocation"
+	ToolResolveBlocker          = "taskbelay_resolve_blocker"
+	ToolRecoverAction           = "taskbelay_recover_action"
+	ToolCancelTask              = "taskbelay_cancel_task"
+	ToolAbandonTask             = "taskbelay_abandon_task"
 )
 
 var actionSubmissionTools = []struct {
@@ -534,7 +535,7 @@ func buildCatalog() []ToolDefinition {
 	tools := []ToolDefinition{
 		makeTool(ToolServerInfo, "Read the current Core server identity.", empty, true, true, false),
 		makeTool(ToolOpenTask, "Open a Task after the Host verifies every confirmed workspace. Default to a new branch in the current directory; current_branch and dedicated_worktree are explicit alternatives. New Tasks require new_task and receipt-backed workspace_origin for every repository. Local modes use the starting HEAD and confirmed initial changes. Resume uses the original directory and omits creation fields. Codex discovers Host preparation with taskbelay-codex host-launch --help. After an uncertain creation, resume that exact directory without new_task.", open, false, false, false),
-		makeTool(ToolGetTask, "Read one graph task and any Core-retained recovery assessment.", read, true, true, false),
+		makeTool(ToolGetTask, "Read one graph task and any Core-retained recovery assessment. Optionally page its complete baseline-reference history; continue with the returned revision and next_after.", obj([]string{"host", "task_id"}, mergeProperties(read["properties"].(map[string]any), map[string]any{"baseline_history": obj([]string{"revision", "after", "limit"}, map[string]any{"revision": map[string]any{"type": "integer", "minimum": 0}, "after": map[string]any{"type": "integer", "minimum": 0}, "limit": map[string]any{"type": "integer", "minimum": 1, "maximum": domain.MaxBaselineHistoryPageEntries}})})), true, true, false),
 		makeTool(ToolGetNextAction, "Observe the Task worktree, persist any required guard, and return the current graph action.", read, false, true, false),
 	}
 	for _, entry := range actionSubmissionTools {
@@ -543,11 +544,12 @@ func buildCatalog() []ToolDefinition {
 	actionReference := obj([]string{"host", "task_id", "action_id"}, map[string]any{"host": map[string]any{"enum": []string{"codex", "deepseek", "claude", "zcode"}}, "task_id": id(), "action_id": id()})
 	resolveBlocker := obj([]string{"host", "task_id", "action_id"}, map[string]any{
 		"host": map[string]any{"enum": []string{"codex", "deepseek", "claude", "zcode"}}, "task_id": id(), "action_id": id(),
-		"choice": map[string]any{"enum": []string{"allow_once", "expand_scope", "reject"}}, "reason": str(), "relocation_id": id(), "relocation_destinations": map[string]any{"type": "array", "maxItems": domain.MaxRepositoryScopeEntries, "items": additionalRepositoryPathSchema(repositoryKey)}, "history_resolution": obj([]string{"choice", "reason"}, map[string]any{"choice": map[string]any{"const": "accept_current_history"}, "reason": str()}),
+		"rename_id": id(), "rename_choice": map[string]any{"enum": []string{"complete", "cancel"}}, "choice": map[string]any{"enum": []string{"allow_once", "expand_scope", "reject"}}, "reason": str(), "relocation_id": id(), "relocation_destinations": map[string]any{"type": "array", "maxItems": domain.MaxRepositoryScopeEntries, "items": additionalRepositoryPathSchema(repositoryKey)}, "history_resolution": obj([]string{"choice", "reason"}, map[string]any{"choice": map[string]any{"const": "accept_current_history"}, "reason": str()}),
 	})
 	lifecycle := obj([]string{"host", "task_id", "revision"}, map[string]any{"host": map[string]any{"enum": []string{"codex", "deepseek", "claude", "zcode"}}, "task_id": id(), "revision": map[string]any{"type": "integer", "minimum": 1}})
 	abandon := obj([]string{"host", "task_id", "revision", "reason"}, map[string]any{"host": map[string]any{"enum": []string{"codex", "deepseek", "claude", "zcode"}}, "task_id": id(), "revision": map[string]any{"type": "integer", "minimum": 1}, "reason": str()})
 	tools = append(tools,
+		makeTool(ToolPrepareTaskBranchRename, "Prepare one pure branch rename in one active Task repository. Core retains all workspace facts and returns BLOCKED; the authorized Host performs one non-force git branch -m before resolving complete, or cancels only while source facts remain unchanged.", obj([]string{"host", "task_id", "revision", "repository_key", "target_branch", "reason"}, mergeProperties(lifecycle["properties"].(map[string]any), map[string]any{"repository_key": repositoryKey, "target_branch": str(), "reason": str()})), false, true, false),
 		makeTool(ToolPrepareTaskRelocation, "Prepare one same-machine Task relocation and retain its exact source workspace state.", lifecycle, false, true, false),
 		makeTool(ToolResolveBlocker, "Resolve the current blocker after Core verifies the required repository condition. File-scope blockers also require choice and reason.", resolveBlocker, false, true, false),
 		makeTool(ToolRecoverAction, "Recover the Core-retained Action submission without resending its payload.", actionReference, false, true, false),

@@ -116,3 +116,22 @@ Codex、DSH、Claude Code 或 ZCode 新会话的端到端操作，也不扩大�
 ## Codex 规划与保留检查
 
 Codex 携带本地改动时，会在 REQUIREMENTS 中记录保留要求，在 TASKS 中将完整的 `current_changed_paths` 与 `expected_paths` 及已保留的流程文件逐项核对。新开发工作和已有内容保留分别安排工作项与检查；当前 Action 的空文件清单不能代替完整 Task 路径核对。保留检查比较启动快照，不代表已有业务功能已经验证。已发生的文件范围阻塞仍通过现有 Core 选择与转移处理。
+
+## 修正未执行的 Codex 启动或活动分支名
+
+修正尚未执行的 Codex 启动时，先读 host-launch status 并保留 receipt_digest。显式 supersede 提交该摘要、
+原因和重新确认的完整 prepare 输入；新 launch_id 必须不同，repository key/源仓库保持一致。被替代回执
+永久禁止执行，保存唯一完整后继 seed。supersede-resume 只接受前驱身份及 seed_digest，按该 seed 创建
+缺失后继，不覆盖别的回执，也不生成另一个 launch。准备、替代、dispatch claim 和目标 Git 调用使用同一
+receipt 锁。已授予 claim 或可能调用目标时禁止替代；failed/resolving 必须有正向 not_invoked 证据。
+目标目录不存在、Host ID 为空或失败状态本身都不是证据；部分执行或结果不明先 reconcile。
+
+活动 Task 先通过 Core 准备单个仓库改名，再由 Host 执行一次 `git branch -m`。Core 核对精确 refs 及未变
+的工作区、index、内容后才能 complete；原事实未变时才可 cancel。中断后读取同一 Task 和实际 refs，有
+保存的 resolution 时恢复它。相同 HEAD 的另分支切换、源 ref 重建、已存在目标、index 变化或其他仓库
+变化都不能通过。准备不授权 commit、push 或 force。
+
+receipt 与 WorkspaceOrigin 保留原分支；恢复读取同一 Core Task，以 repository.current_branch 作为后续
+历史、relocation、cleanup 的有效分支。Codex/Claude/ZCode 清理命令要求真实终态 core_task；Claude/ZCode
+迁移要求实际 core_preparation 结果；DeepSeek 直接读取终态 Task。缺失或不一致即停止，不退回旧名。
+Codex 回执缺少已保存工作树实例证明时须人工检查再清理；这些操作不会引入自动清理。

@@ -6,7 +6,11 @@ import (
 	"strings"
 )
 
-const DatabaseSchemaVersion = "0.7.0"
+const DatabaseSchemaVersion = "0.8.0"
+
+// Only the immediately deployed layout is readable before this bounded upgrade.
+const priorDatabaseSchemaVersion = "0.7.0"
+const priorSchemaStatementCount = 12
 
 var currentSchemaStatements = []string{
 	`CREATE TABLE schema_metadata (version TEXT PRIMARY KEY)`,
@@ -21,6 +25,8 @@ var currentSchemaStatements = []string{
 	`CREATE TABLE relocation_operations (relocation_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, request_id TEXT NOT NULL UNIQUE, source_binding_digest TEXT NOT NULL, prepared_at TEXT NOT NULL, resolved_revision INTEGER, FOREIGN KEY (task_id) REFERENCES tasks (task_id) ON DELETE RESTRICT)`,
 	`CREATE INDEX relocation_operations_task_idx ON relocation_operations (task_id)`,
 	`CREATE UNIQUE INDEX relocation_operations_unresolved_task_idx ON relocation_operations (task_id) WHERE resolved_revision IS NULL`,
+	`CREATE TABLE branch_rename_operations (rename_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, request_id TEXT NOT NULL UNIQUE, preparation BLOB NOT NULL, resolved_revision INTEGER, resolution TEXT, FOREIGN KEY (task_id) REFERENCES tasks (task_id) ON DELETE RESTRICT)`,
+	`CREATE UNIQUE INDEX branch_rename_operations_pending_idx ON branch_rename_operations (task_id) WHERE resolved_revision IS NULL`,
 }
 
 var currentSchemaObjects = []struct {
@@ -40,15 +46,18 @@ var currentSchemaObjects = []struct {
 	{"relocation_operations", "table", 9},
 	{"relocation_operations_task_idx", "index", 10},
 	{"relocation_operations_unresolved_task_idx", "index", 11},
+	{"branch_rename_operations", "table", 12},
+	{"branch_rename_operations_pending_idx", "index", 13},
 }
 
 var currentColumns = map[string][]string{
-	"schema_metadata":       {"version"},
-	"tasks":                 {"task_id", "origin_host", "process_id", "process_definition_digest", "current_node", "revision", "worktree_instance_digest", "snapshot", "created_at", "updated_at", "archived_at"},
-	"action_operations":     {"task_id", "operation_id", "process_id", "process_definition_digest", "source_node", "expected_revision", "action_id", "action_kind", "repository_binding_digest", "issuance_identity_digest", "issuance_history_digest", "issuance_content_digest", "payload", "payload_digest", "prepared_at", "applied_revision"},
-	"task_events":           {"event_id", "task_id", "revision", "event_type", "source_node", "destination_node", "transition_id", "transition_reason", "action_id", "observed_binding_digest", "repository_delta_paths", "request_id", "payload_digest", "created_at"},
-	"repository_claims":     {"worktree_instance_digest", "canonical_worktree_root", "task_id", "origin_host", "claimed_at"},
-	"relocation_operations": {"relocation_id", "task_id", "request_id", "source_binding_digest", "prepared_at", "resolved_revision"},
+	"branch_rename_operations": {"rename_id", "task_id", "request_id", "preparation", "resolved_revision", "resolution"},
+	"schema_metadata":          {"version"},
+	"tasks":                    {"task_id", "origin_host", "process_id", "process_definition_digest", "current_node", "revision", "worktree_instance_digest", "snapshot", "created_at", "updated_at", "archived_at"},
+	"action_operations":        {"task_id", "operation_id", "process_id", "process_definition_digest", "source_node", "expected_revision", "action_id", "action_kind", "repository_binding_digest", "issuance_identity_digest", "issuance_history_digest", "issuance_content_digest", "payload", "payload_digest", "prepared_at", "applied_revision"},
+	"task_events":              {"event_id", "task_id", "revision", "event_type", "source_node", "destination_node", "transition_id", "transition_reason", "action_id", "observed_binding_digest", "repository_delta_paths", "request_id", "payload_digest", "created_at"},
+	"repository_claims":        {"worktree_instance_digest", "canonical_worktree_root", "task_id", "origin_host", "claimed_at"},
+	"relocation_operations":    {"relocation_id", "task_id", "request_id", "source_binding_digest", "prepared_at", "resolved_revision"},
 }
 
 func bootstrapCurrentSchema(ctx context.Context, db *sql.DB) error {
@@ -62,7 +71,33 @@ func bootstrapCurrentSchema(ctx context.Context, db *sql.DB) error {
 		return ErrStorageUnavailable
 	}
 	if has {
-		return verifyCurrentSchema(ctx, tx)
+		if err := verifyReadableSchema(ctx, tx); err != nil {
+			return err
+		}
+		var version string
+		if err := tx.QueryRowContext(ctx, `SELECT version FROM schema_metadata`).Scan(&version); err != nil {
+			return ErrSchemaUnsupported
+		}
+		if version == DatabaseSchemaVersion {
+			return nil
+		}
+		// Validate all nonempty Task/operation/claim/event records before adding
+		// storage. The transaction either retains 0.7.0 intact or commits 0.8.0.
+		if err := preflightSnapshot(ctx, tx); err != nil {
+			return err
+		}
+		for _, statement := range currentSchemaStatements[priorSchemaStatementCount:] {
+			if _, err := tx.ExecContext(ctx, statement); err != nil {
+				return ErrStorageUnavailable
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE schema_metadata SET version=? WHERE version=?`, DatabaseSchemaVersion, priorDatabaseSchemaVersion); err != nil {
+			return ErrStorageUnavailable
+		}
+		if err := verifyCurrentSchema(ctx, tx); err != nil {
+			return err
+		}
+		return tx.Commit()
 	}
 	for _, statement := range currentSchemaStatements {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
@@ -93,8 +128,28 @@ func hasUserTables(ctx context.Context, q queryer) (bool, error) {
 }
 
 func verifyCurrentSchema(ctx context.Context, q queryer) error {
+	return verifySchemaLayout(ctx, q, false)
+}
+
+func verifyReadableSchema(ctx context.Context, q queryer) error {
+	return verifySchemaLayout(ctx, q, true)
+}
+
+func verifySchemaLayout(ctx context.Context, q queryer, allowPrior bool) error {
+	var version string
+	var versionRows int
+	if err := q.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(MIN(version),'') FROM schema_metadata`).Scan(&versionRows, &version); err != nil || versionRows != 1 {
+		return ErrSchemaUnsupported
+	}
+	prior := allowPrior && version == priorDatabaseSchemaVersion
+	if version != DatabaseSchemaVersion && !prior {
+		return ErrSchemaUnsupported
+	}
 	expected := make(map[string]string, len(currentSchemaObjects))
 	for _, object := range currentSchemaObjects {
+		if prior && object.statementIndex >= priorSchemaStatementCount {
+			continue
+		}
 		if object.statementIndex >= len(currentSchemaStatements) {
 			return ErrSchemaUnsupported
 		}
@@ -121,6 +176,9 @@ func verifyCurrentSchema(ctx context.Context, q queryer) error {
 		return ErrSchemaUnsupported
 	}
 	for table, expectedNames := range currentColumns {
+		if _, included := expected["table\x00"+table]; !included {
+			continue
+		}
 		columnRows, err := q.QueryContext(ctx, `SELECT name FROM pragma_table_info(?) ORDER BY cid`, table)
 		if err != nil {
 			return ErrSchemaUnsupported
@@ -137,11 +195,6 @@ func verifyCurrentSchema(ctx context.Context, q queryer) error {
 		if columnRows.Err() != nil || columnRows.Close() != nil || strings.Join(actual, "\x00") != strings.Join(expectedNames, "\x00") {
 			return ErrSchemaUnsupported
 		}
-	}
-	var version string
-	var versionRows int
-	if err := q.QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(MIN(version),'') FROM schema_metadata`).Scan(&versionRows, &version); err != nil || versionRows != 1 || version != DatabaseSchemaVersion {
-		return ErrSchemaUnsupported
 	}
 	return nil
 }

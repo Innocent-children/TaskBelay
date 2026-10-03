@@ -131,7 +131,11 @@ func projectTaskDetail(requestID string, detail application.ControlCenterTaskDet
 	for _, repository := range detail.Task.AdditionalRepositories {
 		repositories = append(repositories, projectRepository(repository.Key, "additional", repository.Origin, repository.Binding))
 	}
-	baselines, err := projectNamedFacts([]namedFact{{"requirements", "Requirements", detail.Task.Requirements}, {"design", "Design", detail.Task.Design}, {"task_plan", "Task plan", detail.Task.TaskPlan}, {"baseline_history", "Baseline history", detail.Task.BaselineHistory}})
+	history, err := detail.Task.ReadBaselineHistory(domain.BaselineHistoryQuery{Revision: detail.Task.Revision, Limit: domain.MaxBaselineHistoryPageEntries})
+	if err != nil {
+		return TaskDetailResponse{}, err
+	}
+	baselines, err := projectNamedFacts([]namedFact{{"requirements", "Requirements", detail.Task.Requirements}, {"design", "Design", detail.Task.Design}, {"task_plan", "Task plan", detail.Task.TaskPlan}, {"baseline_history", "Baseline history first page (complete history: taskbelay_get_task baseline_history)", history}, {"branch_rename", "Prepared branch rename", detail.Task.BranchRename}})
 	if err != nil {
 		return TaskDetailResponse{}, err
 	}

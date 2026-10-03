@@ -82,6 +82,9 @@ Complete successful request and response: [view every returned field](successes/
 
 Complete successful request and response: [view every returned field](successes/host-cleanup-decision-keep.md).
 
+The cleanup examples use supplied Core observations for adapter execution. In a live call, copy the entire
+actual terminal Core Task into `core_task`; never construct terminal state or identity fields.
+
 ## host-cleanup-worktree-remove-worktree
 
 <!-- example:host cleanup-worktree remove-worktree -->
@@ -91,7 +94,26 @@ Complete successful request and response: [view every returned field](successes/
   "repository_key": "primary",
   "source_repository_path": "/work/project",
   "terminal": true,
-  "authorized": true
+  "authorized": true,
+  "core_task": {
+    "task_id": "task-cleanup",
+    "origin_host": "codex",
+    "current_cursor": "DONE",
+    "revision": 10,
+    "primary_repository_key": "primary",
+    "workspace_origin": {
+      "task_branch": "codex/endpoint-field",
+      "canonical_worktree_root": "/work/tasks/endpoint-field",
+      "provisioning_receipt_id": "receipt-from-core"
+    },
+    "repository": {
+      "current_branch": "codex/endpoint-field",
+      "current_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "detached": false,
+      "worktree_instance_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "binding_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  }
 }
 ```
 
@@ -106,7 +128,26 @@ Complete successful request and response: [view every returned field](successes/
   "repository_key": "primary",
   "source_repository_path": "/work/project",
   "terminal": true,
-  "authorized": true
+  "authorized": true,
+  "core_task": {
+    "task_id": "task-cleanup",
+    "origin_host": "codex",
+    "current_cursor": "DONE",
+    "revision": 10,
+    "primary_repository_key": "primary",
+    "workspace_origin": {
+      "task_branch": "codex/endpoint-field",
+      "canonical_worktree_root": "/work/tasks/endpoint-field",
+      "provisioning_receipt_id": "receipt-from-core"
+    },
+    "repository": {
+      "current_branch": "codex/endpoint-field",
+      "current_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "detached": false,
+      "worktree_instance_digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "binding_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  }
 }
 ```
 

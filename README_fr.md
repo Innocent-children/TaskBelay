@@ -98,6 +98,20 @@ Les répertoires et branches locaux sont conservés à la fin ; les modification
 
 Avant l’implémentation, examinez et discutez les exigences, la conception, les tâches, les fichiers prévus et le plan de vérification. Le développement commence après votre accord explicite sur le plan complet. Toute révision du plan ou extension du périmètre des fichiers demande un nouvel accord. Choisir TaskBelay ou un worktree ne remplace pas cet accord.
 
+Pour corriger le nom de la branche d’une Task active, demandez au Host de préparer le renommage dans
+TaskBelay, puis renommez la branche d’un seul dépôt sans modifier le répertoire, HEAD, l’index ni les
+fichiers. TaskBelay vérifie le résultat et poursuit la même Task. L’annulation n’est possible que si
+l’état initial est inchangé. Dans Codex, un lancement non exécuté peut être remplacé explicitement ;
+un lancement échoué exige la preuve qu’aucune opération cible n’a été appelée. Inspectez d’abord les
+résultats incertains ou les opérations partiellement exécutées.
+
+Les révisions successives du plan conservent toutes les références enregistrées dans la Task, sans
+niveau d’archivage ni nombre maximal configuré. Les ressources disponibles et la plage des numéros
+de révision restent des limites. Les réponses affichent une première page limitée et le total ;
+demandez au Host de parcourir tout l’historique par pages pour revoir les anciennes décisions.
+Consultez les [opérations de l’espace de travail](docs/WORKTREE-SOURCES_en.md) et la
+[référence des commandes](docs/COMMANDS_en.md) pour les étapes et les limites.
+
 ### 3. Reprendre et consulter l’avancement
 
 Après un redémarrage de session, revenez au répertoire d’origine et demandez de poursuivre la tâche.

@@ -413,16 +413,21 @@ test("CLI launch returns parser-ready argv and retains separate worktree and bra
     branch_cleanup: "requires_unpushed_review",
   });
 
+  // Core facts are a fixture here; Git rename/ref preservation is real and isolated.
+  await execFile("git",["-C",worktree,"branch","-m","codex/cli-task","codex/renamed-task"]);
+  await execFile("git",["-C",fixture.source,"branch","codex/cli-task"]);
+  const core_task={task_id:"task-cleanup",origin_host:"codex",revision:10,current_cursor:"DONE",primary_repository_key:"primary",workspace_origin:{...provisioned.workspace_origin,canonical_worktree_root:worktree},repository:{current_branch:"codex/renamed-task",current_head:await gitOutput(worktree,"rev-parse","HEAD"),detached:false,worktree_instance_digest:"a".repeat(64),binding_digest:"b".repeat(64)}};
   await cleanupCliTaskWorktree({
-    launch_id: "launch-cli-0001", repository_key: "primary", terminal: true, authorized: true,
+    launch_id: "launch-cli-0001", repository_key: "primary", terminal: true, authorized: true, core_task,
   }, { ...fixture.options, sourceRepositoryPath: fixture.source });
   await assert.rejects(stat(worktree), { code: "ENOENT" });
   await cleanupTaskBranch({
-    launch_id: "launch-cli-0001", repository_key: "primary", terminal: true, authorized: true,
+    launch_id: "launch-cli-0001", repository_key: "primary", terminal: true, authorized: true, core_task,
   }, { ...fixture.options, sourceRepositoryPath: fixture.source });
   await assert.rejects(
-    execFile("git", ["-C", fixture.source, "show-ref", "--verify", "refs/heads/codex/cli-task"]),
+    execFile("git", ["-C", fixture.source, "show-ref", "--verify", "refs/heads/codex/renamed-task"]),
   );
+  assert.equal(await gitOutput(fixture.source,"rev-parse","refs/heads/codex/cli-task"),core_task.repository.current_head);
 });
 
 test("queued dispatch and Handoff persist one-shot state for read-before-retry", async (t) => {
@@ -826,7 +831,7 @@ for (const mode of ["new_branch", "current_branch"]) for (const carry of [false,
     assert.equal(await readFile(join(fixture.source, "later.txt"), "utf8"), "later work\n");
     assert.equal(terminalCleanupDecision({ lifecycle: "DONE", surface: "current_session", clean: false, pushed: false, stateCertain: true }).worktree_cleanup, "not_applicable");
     await assert.rejects(beginTaskHandoff({ ...identity, relocation_id: "move", thread_id: "thread" }, options), /do not support worktree handoff/);
-    await assert.rejects(cleanupTaskBranch({ ...identity, terminal: true, authorized: true }, options), /local Task directories and branches are retained/);
+    await assert.rejects(cleanupTaskBranch({ ...identity, terminal: true, authorized: true, core_task:null }, options), /terminal Core Task|local Task directories and branches are retained/);
   });
 }
 

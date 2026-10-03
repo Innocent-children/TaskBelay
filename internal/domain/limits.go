@@ -37,7 +37,8 @@ const (
 	MaxResultEnvelopeOverheadBytes        = 131_072
 	MaxResultEnvelopeBytes                = 1_048_576
 	MaxPersistedTaskSnapshotBytes         = 1_048_576
-	MaxRetainedBaselineReferences         = 32
+	MaxBaselineHistoryPageEntries         = 32 // Read-page limit, never a retention limit.
+	MaxBaselineHistoryPageBytes           = 65_536
 	MaxArtifactReferencesPerAction        = 16
 	MaxMethodEvidencePerAction            = 16
 	MaxWorkItemsPerTaskPlan               = 64

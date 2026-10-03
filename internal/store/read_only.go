@@ -26,7 +26,7 @@ func OpenReadOnly(ctx context.Context, path string) (*SQLite, error) {
 		return nil, ErrStorageUnavailable
 	}
 	db.SetMaxOpenConns(1)
-	if err := verifyCurrentSchema(ctx, db); err != nil {
+	if err := verifyReadableSchema(ctx, db); err != nil {
 		db.Close()
 		return nil, err
 	}

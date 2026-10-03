@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { inspectSourceRepository, preflightLocalBranchSelection, preflightWorktreeSelection, resolveFrozenBase, prepareLocalBranch, createCliWorktree, removeCliWorktree, removeTaskBranch, defaultRunGit } from "./worktree-lifecycle.mjs";
+import { coreRepositoryBinding, inspectSourceRepository, preflightLocalBranchSelection, preflightWorktreeSelection, resolveFrozenBase, prepareLocalBranch, createCliWorktree, removeCliWorktree, removeTaskBranch, defaultRunGit } from "./worktree-lifecycle.mjs";
 import { captureWorkspaceChanges, applyWorkspaceChanges } from "./worktree-snapshot.mjs";
 import { paths, coreJSON } from "./runtime.mjs";
 const hash = value => createHash("sha256").update(typeof value === "string" ? value : JSON.stringify(value)).digest("hex");
@@ -188,7 +188,7 @@ export async function scope(id, options = {}) {
   if (r.repositories.some(repo => repo.phase !== "provisioned")) throw new Error("Every repository must be provisioned before exposing a Core scope");
   for (const repo of r.repositories) {
     const actual = await inspectSourceRepository(repo.worktree_path, options);
-    if (actual.source_repository_identity !== repo.source_identity || actual.branch !== repo.target_branch || await workspaceIdentity(actual) !== repo.worktree_identity) throw new Error("Workspace identity or branch changed");
+    if (actual.source_repository_identity !== repo.source_identity || (!r.core_task_id && actual.branch !== repo.target_branch) || await workspaceIdentity(actual) !== repo.worktree_identity) throw new Error("Workspace identity or branch changed");
   }
   return { repository_path: primary.worktree_path, primary_repository_key: primary.key, workspace_origin: origin(r, primary),
     ...(additional.length ? { additional_repositories: additional.map(repo => ({ key: repo.key, repository_path: repo.worktree_path, workspace_origin: origin(r, repo) })) } : {}) };
@@ -218,18 +218,24 @@ export async function session(id, operation, options = {}) {
 
 export async function cleanup(id, operation, input, options = {}) {
   if (!["cleanup-worktree", "cleanup-branch"].includes(operation)) throw new Error("Unknown cleanup operation");
-  exact(input, ["repository_key", "terminal", "authorized"]);
+  exact(input, ["repository_key", "terminal", "authorized", "core_task"]);
   return locked(id, options, async (r, save) => {
     const repo = r.repositories.find(v => v.key === input.repository_key);
     if (!repo || repo.workspace_mode !== "dedicated_worktree") throw new Error("Only receipt-owned dedicated worktrees can be cleaned");
     if (input.terminal !== true || input.authorized !== true) throw new Error("Terminal Task and separate deletion authorization required");
+    if (!["DONE","CANCELLED"].includes(input.core_task?.current_cursor)) throw new Error("Actual terminal Core Task is required for cleanup");
+    const binding=coreRepositoryBinding(input.core_task,{host:"zcode",taskId:r.core_task_id,repositoryKey:repo.key,receiptId:origin(r,repo).provisioning_receipt_id,creationBranch:repo.target_branch,worktreePath:repo.worktree_path});
     const key = operation === "cleanup-worktree" ? "worktree_cleanup" : "branch_cleanup";
     if (repo[key] === "completed") return r;
     if (repo[key]) throw new Error("Cleanup has already been requested; inspect its outcome");
     if (key === "branch_cleanup" && repo.worktree_cleanup !== "completed") throw new Error("Remove worktree before branch");
     if (key === "worktree_cleanup" && await workspaceIdentity(await inspectSourceRepository(repo.worktree_path, options)) !== repo.worktree_identity) throw new Error("Cleanup workspace instance changed");
+    if (key === "worktree_cleanup") {
+      const actual=await inspectSourceRepository(repo.worktree_path,options);
+      if (actual.branch!==binding.current_branch || actual.head!==binding.current_head) throw new Error("Cleanup workspace differs from terminal Core binding");
+    }
     repo[key] = "requested"; await save();
-    const args = { repositoryPath: repo.repository_path, worktreePath: repo.worktree_path, targetBranch: repo.target_branch, sourceRepositoryIdentity: repo.source_identity, terminal: true, authorized: true, runGit: options.runGit };
+    const args = { repositoryPath: repo.repository_path, worktreePath: repo.worktree_path, targetBranch: binding.current_branch, expectedHead:binding.current_head, sourceRepositoryIdentity: repo.source_identity, terminal: true, authorized: true, runGit: options.runGit };
     await (key === "worktree_cleanup" ? removeCliWorktree : removeTaskBranch)(args);
     repo[key] = "completed"; await save(); return r;
   });
@@ -257,7 +263,7 @@ export async function relocate(id, input, options = {}) {
       if (r.relocation.preparation_digest !== hash(prepared) || hash(destinations(input.destinations)) !== hash(destinations(r.relocation.destinations))) {
         throw new Error("Repeated relocation must retain the original Core preparation and destinations");
       }
-      for (const repo of r.repositories) await verifyWorkspace(repo, runGit);
+      for (const repo of r.repositories) await verifyWorkspace(repo, runGit, task);
       return relocationResult(r);
     }
     if (r.relocation && (r.relocation.phase !== "moved" || task.revision <= r.relocation.core_revision)) {
@@ -271,6 +277,7 @@ export async function relocate(id, input, options = {}) {
       return matches.length !== 1 || matches[0].origin?.mode !== "dedicated_worktree" ||
         matches[0].origin.canonical_worktree_root !== repo.worktree_path;
     })) throw new Error("Core relocation source workspaces do not match the prepared Host workspaces");
+    const bindings=new Map(r.repositories.map(repo=>[repo.key,coreRepositoryBinding(task,{host:"zcode",taskId:r.core_task_id,repositoryKey:repo.key,receiptId:origin(r,repo).provisioning_receipt_id,creationBranch:repo.target_branch,worktreePath:repo.worktree_path})]));
     if (input.destinations.length !== r.repositories.length) throw new Error("Relocation must include every repository");
     const targets = new Set();
     for (const repo of r.repositories) {
@@ -284,7 +291,7 @@ export async function relocate(id, input, options = {}) {
       try { await lstat(destination); throw new Error("Relocation destination already exists"); }
       catch (error) { if (error.code !== "ENOENT") throw error; }
       targets.add(resolve(matches[0].repository_path));
-      await verifyWorkspace(repo, runGit);
+      await verifyWorkspace(repo, runGit, task);
     }
     r.relocation = { id: input.relocation_id, phase: "requested", destinations: input.destinations, moved: [],
       core_revision: task.revision, preparation_digest: hash(prepared) }; await save();
@@ -292,7 +299,7 @@ export async function relocate(id, input, options = {}) {
       const destination = input.destinations.find(d => d.repository_key === repo.key).repository_path;
       await runGit(["-C", repo.repository_path, "worktree", "move", repo.worktree_path, destination]);
       const actual = await inspectSourceRepository(destination, { runGit });
-      if (actual.source_repository_identity !== repo.source_identity || actual.branch !== repo.target_branch) throw new Error("Relocation target identity mismatch");
+      if (actual.source_repository_identity !== repo.source_identity || actual.branch !== bindings.get(repo.key).current_branch) throw new Error("Relocation target identity mismatch");
       repo.worktree_path = actual.canonical_root;
       repo.worktree_identity = await workspaceIdentity(actual);
       r.relocation.moved.push(repo.key); await save();
@@ -302,9 +309,10 @@ export async function relocate(id, input, options = {}) {
   });
 }
 
-async function verifyWorkspace(repo, runGit) {
+async function verifyWorkspace(repo, runGit, task) {
+  const branch=(repo.key===(task.primary_repository_key ?? "primary")?task.repository:task.additional_repositories?.find(entry=>entry.key===repo.key)?.repository)?.current_branch;
   const actual = await inspectSourceRepository(repo.worktree_path, { runGit });
-  if (actual.source_repository_identity !== repo.source_identity || actual.branch !== repo.target_branch ||
+  if (actual.source_repository_identity !== repo.source_identity || actual.branch !== branch ||
       await workspaceIdentity(actual) !== repo.worktree_identity) throw new Error("Relocation workspace identity changed");
 }
 

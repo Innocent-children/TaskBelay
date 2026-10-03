@@ -243,15 +243,15 @@ func TestImplementationRevisionAndCurrentEvidenceInvalidation(t *testing.T) {
 	}
 }
 
-func TestBaselineHistoryLimitIsEnforced(t *testing.T) {
+func TestBaselineHistoryContinuesBeyondFormerLimit(t *testing.T) {
 	now := time.Date(2026, 8, 19, 8, 0, 0, 0, time.UTC)
 	task := domain.ProcessTask{}
-	for i := 1; i <= domain.MaxRetainedBaselineReferences; i++ {
+	for i := 1; i <= 32; i++ {
 		task.BaselineHistory = append(task.BaselineHistory, domain.BaselineReference{Kind: domain.BaselineRequirements, Revision: uint32(i), Digest: digestOf("a"), Summary: fmt.Sprintf("revision %d", i), CreatedAt: now})
 	}
 	err := appendBaselineHistory(&task, domain.BaselineReference{Kind: domain.BaselineRequirements, Revision: 33, Digest: digestOf("b"), Summary: "revision 33", CreatedAt: now})
-	if !errors.Is(err, domain.ErrInvalidArgument) || len(task.BaselineHistory) != domain.MaxRetainedBaselineReferences {
-		t.Fatal("baseline history limit was not enforced")
+	if err != nil || len(task.BaselineHistory) != 33 || task.BaselineHistory[0].Revision != 1 || task.BaselineHistory[32].Revision != 33 {
+		t.Fatalf("complete history did not preserve every reference: %+v err=%v", task, err)
 	}
 }
 

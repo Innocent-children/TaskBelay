@@ -73,6 +73,9 @@ Complete response:
           "summary": "Add the field in the existing response mapper."
         }
       ],
+      "history_next_after": null,
+      "history_revision": 4,
+      "history_total": 1,
       "requirements": {
         "acceptance_criteria": [
           "The response contains the requested field."

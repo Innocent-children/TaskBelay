@@ -87,6 +87,7 @@ Complete response:
       "phase": "prepared",
       "relocation_id": null,
       "surface": "managed_worktree",
+      "target_effects": "not_invoked",
       "worktree_cleanup": "not_requested"
     },
     "remote_name": "",
@@ -99,6 +100,7 @@ Complete response:
     "workspace_mode": "dedicated_worktree",
     "worktree_path": null
   },
+  "receipt_digest": "0000000000000000000000000000000000000000000000000000000000000005",
   "receipt_path": "/example/support/provisioning/codex/launch-example/primary.json"
 }
 ```

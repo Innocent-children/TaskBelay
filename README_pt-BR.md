@@ -97,6 +97,20 @@ preservados ao concluir; alterações não commitadas precisam ser consideradas 
 
 Antes da implementação, revise e discuta os requisitos, o projeto, as tarefas, os arquivos previstos e o plano de verificação. O desenvolvimento começa após sua aprovação explícita do plano completo. Alterações no plano ou ampliação do conjunto de arquivos exigem nova aprovação. Escolher TaskBelay ou um worktree não substitui essa aprovação.
 
+Para corrigir o nome do branch de uma Task ativa, peça ao Host que prepare a renomeação no TaskBelay.
+Depois, renomeie apenas o branch de um repositório, mantendo o diretório, HEAD, índice e arquivos.
+O TaskBelay verifica o resultado e continua a mesma Task. Só é possível cancelar antes que o estado
+original mude. No Codex, você pode substituir explicitamente uma inicialização ainda não executada;
+se ela falhou, é necessária evidência de que nenhuma operação de destino foi chamada. Inspecione
+primeiro resultados incertos ou operações parcialmente executadas.
+
+Revisões sucessivas do plano mantêm todas as referências salvas dentro da Task, sem camada de
+arquivamento nem limite configurado de quantidade. Os recursos disponíveis e a faixa dos números
+de revisão continuam impondo limites. As respostas mostram uma primeira página limitada e o total;
+peça ao Host que leia o histórico completo por páginas ao revisar decisões anteriores. Consulte as
+[operações do espaço de trabalho](docs/WORKTREE-SOURCES_en.md) e a
+[referência de comandos](docs/COMMANDS_en.md) para ver etapas e limites.
+
 ### 3. Retome e acompanhe o progresso
 
 Depois de reiniciar a sessão, volte ao diretório original e peça para continuar a tarefa. O TaskBelay

@@ -13,10 +13,11 @@ const (
 	BlockerConditionResolveFileScope       BlockerConditionKind = "resolve_file_scope"
 	BlockerConditionResolveHistory         BlockerConditionKind = "resolve_workspace_history"
 	BlockerConditionResolveRelocation      BlockerConditionKind = "resolve_task_relocation"
+	BlockerConditionResolveBranchRename    BlockerConditionKind = "resolve_task_branch_rename"
 )
 
 func (k BlockerConditionKind) IsValid() bool {
-	return k == BlockerConditionRestoreIssuanceBinding || k == BlockerConditionAllowVerificationRetry || k == BlockerConditionResolveFileScope || k == BlockerConditionResolveHistory || k == BlockerConditionResolveRelocation
+	return k == BlockerConditionRestoreIssuanceBinding || k == BlockerConditionAllowVerificationRetry || k == BlockerConditionResolveFileScope || k == BlockerConditionResolveHistory || k == BlockerConditionResolveRelocation || k == BlockerConditionResolveBranchRename
 }
 
 type BlockerCause string
@@ -30,6 +31,7 @@ const (
 	BlockerCauseFileScopeDecision               BlockerCause = "file_scope_decision"
 	BlockerCauseWorkspaceHistoryConflict        BlockerCause = "workspace_history_conflict"
 	BlockerCauseTaskRelocationPending           BlockerCause = "task_relocation_pending"
+	BlockerCauseTaskBranchRenamePending         BlockerCause = "task_branch_rename_pending"
 )
 
 func (c BlockerCause) IsVerificationBrake() bool {
@@ -39,7 +41,7 @@ func (c BlockerCause) IsVerificationBrake() bool {
 }
 
 func (c BlockerCause) IsValid() bool {
-	return c == BlockerCauseRecoveryPartiallyCompleted || c == BlockerCauseRecoveryConflicting || c.IsVerificationBrake() || c == BlockerCauseFileScopeDecision || c == BlockerCauseWorkspaceHistoryConflict || c == BlockerCauseTaskRelocationPending
+	return c == BlockerCauseRecoveryPartiallyCompleted || c == BlockerCauseRecoveryConflicting || c.IsVerificationBrake() || c == BlockerCauseFileScopeDecision || c == BlockerCauseWorkspaceHistoryConflict || c == BlockerCauseTaskRelocationPending || c == BlockerCauseTaskBranchRenamePending
 }
 
 type BlockerCondition struct {
@@ -47,6 +49,7 @@ type BlockerCondition struct {
 	ExpectedBindingDigest  Digest               `json:"expected_binding_digest"`
 	ScopeRequestID         ID                   `json:"scope_request_id,omitempty"`
 	RelocationID           ID                   `json:"relocation_id,omitempty"`
+	RenameID               ID                   `json:"rename_id,omitempty"`
 	ExpectedIdentityDigest Digest               `json:"expected_identity_digest"`
 	ExpectedHistoryDigest  Digest               `json:"expected_history_digest"`
 	ExpectedContentDigest  Digest               `json:"expected_content_digest"`
@@ -149,6 +152,8 @@ type BlockerResolutionPayload struct {
 	RelocationID           ID                               `json:"relocation_id,omitempty"`
 	RelocationDestinations []RelocationDestination          `json:"relocation_destinations,omitempty"`
 	HistoryResolution      *WorkspaceHistoryResolutionInput `json:"history_resolution,omitempty"`
+	RenameID               ID                               `json:"rename_id,omitempty"`
+	RenameChoice           string                           `json:"rename_choice,omitempty"`
 }
 
 func (c BlockerCondition) Validate() error {
@@ -160,6 +165,13 @@ func (c BlockerCondition) Validate() error {
 			return ErrInvalidArgument
 		}
 	} else if c.ScopeRequestID != "" {
+		return ErrInvalidArgument
+	}
+	if c.Kind == BlockerConditionResolveBranchRename {
+		if !c.RenameID.IsValid() {
+			return ErrInvalidArgument
+		}
+	} else if c.RenameID != "" {
 		return ErrInvalidArgument
 	}
 	if c.Kind == BlockerConditionResolveRelocation {
@@ -204,6 +216,8 @@ func (b ProcessBlocker) Validate() error {
 		expectedCondition = BlockerConditionResolveHistory
 	} else if b.Cause == BlockerCauseTaskRelocationPending {
 		expectedCondition = BlockerConditionResolveRelocation
+	} else if b.Cause == BlockerCauseTaskBranchRenamePending {
+		expectedCondition = BlockerConditionResolveBranchRename
 	}
 	if b.Condition.Kind != expectedCondition {
 		return ErrInvalidArgument

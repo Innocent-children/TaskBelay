@@ -186,7 +186,7 @@ func implementationContentMustRemainCurrent(node domain.NodeID) bool {
 // GetNextAction. Ordinary content changes remain bound to the issued Action;
 // only blockers mutate Task state here.
 func (s *Service) guardTaskWorkspace(ctx context.Context, task domain.ProcessTask, requestID domain.ID) (domain.ProcessTask, error) {
-	if task.CurrentNode.Terminal() {
+	if task.CurrentNode.Terminal() || task.BranchRename != nil {
 		return task, nil
 	}
 	pendingRecovery, err := s.hasPendingActionOperation(ctx, task)

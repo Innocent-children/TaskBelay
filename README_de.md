@@ -98,6 +98,19 @@ nächsten Aufgabe berücksichtigt werden.
 
 Besprich vor der Implementierung die Anforderungen, den Entwurf, die Arbeitsschritte, die vorgesehenen Dateien und den Prüfplan. Die Entwicklung beginnt erst nach deiner ausdrücklichen Zustimmung zum gesamten Plan. Änderungen am Plan oder ein erweiterter Dateiumfang erfordern eine erneute Zustimmung. Die Wahl von TaskBelay oder eines Worktrees ersetzt diese Zustimmung nicht.
 
+Um den Branchnamen einer aktiven Task zu korrigieren, bitte den Host, die Umbenennung in TaskBelay
+vorzubereiten. Benenne danach nur den Branch eines Repositorys um; Verzeichnis, HEAD, Index und Dateien
+bleiben gleich. TaskBelay prüft das Ergebnis und setzt dieselbe Task fort. Ein Abbruch ist nur möglich,
+solange der ursprüngliche Zustand unverändert ist. In Codex lässt sich ein noch nicht ausgeführter Start
+explizit ersetzen. Nach einem Fehler ist ein Nachweis nötig, dass kein Zielvorgang aufgerufen wurde.
+Unklare Ergebnisse und teilweise ausgeführte Vorgänge müssen zuerst geprüft werden.
+
+Auch nach vielen Planänderungen bleiben alle gespeicherten Baseline-Verweise in der Task erhalten, ohne
+Archivstufe oder konfigurierte Höchstzahl. Verfügbare Ressourcen und der Wertebereich der Revisionsnummern
+setzen weiterhin Grenzen. Antworten zeigen eine begrenzte erste Seite und die Gesamtzahl; bitte den Host,
+ältere Entscheidungen über die vollständige, seitenweise Historie zu lesen. Schritte und Grenzen stehen
+unter [Arbeitsbereichsvorgänge](docs/WORKTREE-SOURCES_en.md) und in der [Befehlsreferenz](docs/COMMANDS_en.md).
+
 ### 3. Fortsetzen und Fortschritt ansehen
 
 Kehre nach einem Sitzungsneustart zum ursprünglichen Verzeichnis zurück und bitte darum, die Aufgabe

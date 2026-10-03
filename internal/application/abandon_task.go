@@ -45,6 +45,7 @@ func (s *Service) AbandonTask(ctx context.Context, request AbandonTaskRequest) (
 	}
 	now := s.now().UTC()
 	source := task.CurrentNode
+	next.BranchRename = nil
 	next.CurrentNode = domain.NodeCancelled
 	next.CurrentAction, next.Blocker, next.ResumeNode, next.Relocation = nil, nil, nil, nil
 	next.Revision++

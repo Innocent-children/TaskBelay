@@ -96,3 +96,14 @@ Action，以及补齐后成功进入 DESIGN。原生 Git/CLI 测试覆盖隐藏�
 `collectArtifacts` 在 TEST、COMPREHENSION_REVIEW 和 DELIVERY 比较当前内容与 Implementation/Test 保存的内容摘要，流程文件同样计入。Codex 因此在最终验证前完成流程文件更新，之后只读核对；若仍需更新，则使用当前合法返回路径并重新建立验证结果。把文件分类为 `other_process` 不能绕过内容检查。实现见 `internal/application/artifacts.go` 与 `internal/application/workspace.go`。
 
 DeepSeek Skill 随包提供 `scripts/artifacts.mjs`，以 `node <实际 Skill 目录>/scripts/artifacts.mjs collect` 或 `prepare` 调用同一套 Core 只读文件准备命令。输入与返回结构与本文相同，`host` 使用 `deepseek`；脚本复用 Adapter 的运行时和数据目录解析，不创建存储。通过实际 DSH Skill 的 `resourceBase` 取得脚本路径。`--help` 不读取 stdin 或解析运行时。该脚本不是独立的 `taskbelay-deepseek` CLI，也不增加 `workspace_coordinator` 操作。
+
+## 完整基线引用与操作身份
+
+需求、设计和任务计划的全部旧基线引用按保存顺序留在 Task 内，不归档、不设配置性条数上限，
+仍受资源与修订号表示范围约束。响应首页与完整历史分页保留原 revision、digest、摘要和时间，
+明确给出总数及下一游标；页大小不决定保留量。不补造未存的完整正文，也不改变当前 artifact
+集合及其内容校验。文件提交仍须覆盖当前 Core 要求的路径。
+
+分支改名准备换发 BLOCKED Action；确认后按保存的有效分支重读当前 Action，再收集或准备该 Action
+的 artifact。不得复用改名前的 Action 身份提交，也不得把创建来源的旧分支名当成当前绑定。
+改名的实例、HEAD、index、内容验证属于 Core，不由 artifact 清单代替。

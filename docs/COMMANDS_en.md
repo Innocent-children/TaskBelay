@@ -188,7 +188,7 @@ Set `TASKBELAY_DATA_DIR` to an existing canonical absolute directory before star
 | `taskbelay-codex hook pre-tool-use` | **Managed host command.** The packaged Codex hook invokes it through the package-owned launcher on `PATH`; it reads one hook event, extracts `apply_patch` targets, and performs the prewrite check. Normal users should not start it manually. |
 | `taskbelay-codex host-check pre-file-write` | **Managed host command.** The `hook pre-tool-use` implementation invokes it so the launcher resolves the package-local Core and forwards stdin/stdout with the exact `host-check pre-file-write` arguments. Normal users should not start it manually. |
 | `taskbelay-codex host-check workspace-available` | **Internal Host command.** Forwards the read-only Core directory-claim check used before local branch preparation. |
-| `taskbelay-codex host-launch <operation>` | **Managed Host command.** Reads one closed JSON object from stdin and writes one JSON object. `operation` is exactly `inspect|prepare|local-provision|status|dispatch-start|dispatch-call|dispatch-recover|dispatch-reconcile|dispatch-result|bootstrap|cli-provision|scope|handoff-start|handoff-result|handoff-status|cleanup-decision|cleanup-worktree|cleanup-branch`; it performs or records current-user-confirmed assessment, provisioning, relaunch, handoff, and cleanup steps and is not a generic Git CLI. |
+| `taskbelay-codex host-launch <operation>` | **Managed Host command.** Reads one closed JSON object from stdin and writes one JSON object. `operation` is exactly `inspect|prepare|supersede|supersede-resume|local-provision|status|dispatch-start|dispatch-call|dispatch-recover|dispatch-reconcile|dispatch-result|bootstrap|cli-provision|scope|handoff-start|handoff-result|handoff-status|cleanup-decision|cleanup-worktree|cleanup-branch`; it performs or records current-user-confirmed assessment, provisioning, relaunch, handoff, and cleanup steps and is not a generic Git CLI. |
 
 Workspace selection defaults to `workspace_mode=new_branch`; alternatives are `current_branch` and `dedicated_worktree`. Local modes require local source, empty remote, the current base branch and starting HEAD, and `worktree_path=repository_path`. `carry_changes` accepts initial contents in place. Both local modes keep the session and use no requirements handoff file. New-branch targets must be unused; current-branch targets equal the base.
 
@@ -370,7 +370,7 @@ Except for the first five entries, commands consume one UTF-8 JSON object on clo
 | `taskbelay-claude host-launch retry-launch` | launch_id, previous_caller_stopped, session_not_started, reason; both factual flags must be true. |
 | `taskbelay-claude host-launch relocate` | Input: launch_id, relocation_id, destinations[{repository_key,repository_path}], authorized. Returns relocation_id and relocation_destinations[{key,repository_path}] ready to submit directly to Core. |
 | `taskbelay-claude host-launch cleanup-worktree` | launch_id, repository_key, terminal, authorized. |
-| `taskbelay-claude host-launch cleanup-branch` | launch_id, repository_key, terminal, authorized; separate from worktree-removal authorization. |
+| `taskbelay-claude host-launch cleanup-branch` | launch_id, repository_key, terminal, authorized, core_task; separate from worktree-removal authorization. |
 
 `prepare.repositories` requires key, repository_path, workspace_mode, source_type, remote_name, base_branch, target_branch, carry_changes and worktree_path in every entry. Repository keys follow Core's `^[a-z0-9][a-z0-9._-]{0,127}$` rule, are checked before Git changes, and retain their identity through creation and relocation. Modes are `new_branch`, `current_branch` and `dedicated_worktree`. Assessment contains the original `inspect` anchor, impact, verification and resolved unknowns; user_choice records the actual user decision. Exact Host-operation prerequisites and value sources are in the [admission reference](../packages/claude/plugin/skills/taskbelay/references/admission.md) and [lifecycle reference](../packages/claude/plugin/skills/taskbelay/references/host-lifecycle.md).
 
@@ -402,7 +402,7 @@ These entries belong to the published `taskbelay-zcode` package. Install it with
 | `taskbelay-zcode host-launch bind-task` | launch_id, task_id; bind the actual successful Core result. |
 | `taskbelay-zcode host-launch open\|resume` | launch_id; return UI guidance, workspace paths and a complete continuation prompt, without launching a session. |
 | `taskbelay-zcode host-launch relocate` | launch_id, relocation_id, destinations[{repository_key,repository_path}], authorized=true, core_preparation; core_preparation must be the actual complete result from a successful `taskbelay_prepare_task_relocation` response, including relocation_id/task; return destinations for Core verification. |
-| `taskbelay-zcode host-launch cleanup-worktree\|cleanup-branch` | launch_id, repository_key, terminal, authorized; worktree and branch cleanup require separate authorization. |
+| `taskbelay-zcode host-launch cleanup-worktree\|cleanup-branch` | launch_id, repository_key, terminal, authorized, core_task; worktree and branch cleanup require separate authorization. |
 
 Host-launch accepts one closed JSON object on stdin, up to 1 MiB. Each `prepare.repositories` entry requires key, repository_path, workspace_mode, source_type, remote_name, base_branch, target_branch, carry_changes and worktree_path. Modes are `new_branch`, `current_branch` and `dedicated_worktree`; keys follow Core's `^[a-z0-9][a-z0-9._-]{0,127}$` rule. Relocation checks the bound ZCode Task, current relocation blocker and all source workspaces in the preparation result; a relocation ID alone cannot authorize directory moves. An already moved ID only verifies destination identity and reads back the result; uncertain outcomes reject repeated moves. After Core completes a relocation, a new preparation result and ID can start another. See the packaged [admission](../packages/zcode/skills/taskbelay/references/admission.md) and [lifecycle](../packages/zcode/skills/taskbelay/references/host-lifecycle.md) references for assessment, authorization and relocation prerequisites.
 
@@ -468,7 +468,7 @@ Invalid command arguments exit `2`. `taskbelay config validate --help` exits `0`
 
 ## MCP tools
 
-These seventeen tools are the complete public MCP tool list. Host adapters call them; they are not
+These eighteen tools are the complete public MCP tool list. Host adapters call them; they are not
 terminal shell commands.
 
 | Tool | Type | Purpose |
@@ -485,9 +485,10 @@ terminal shell commands.
 | `taskbelay_submit_comprehension` | Mutation | Submit the COMPREHENSION_REVIEW node result. |
 | `taskbelay_submit_refactor` | Mutation | Submit the REFACTOR node result. |
 | `taskbelay_submit_delivery` | Mutation | Submit DELIVERY judgment, explicit acceptance links, risks and findings. Each criterion supplies work_item_ids and current Test evidence_ids. Core fills aggregate evidence IDs and Test/Comprehension record IDs; caller-supplied aggregate members are rejected. |
-| `taskbelay_resolve_blocker` | Mutation | Resolve after Core verifies the condition. File scope uses `choice` and `reason`; history uses `history_resolution:{choice:"accept_current_history",reason}`; relocation uses `relocation_id` plus every `relocation_destinations[{key,repository_path}]`; verification/Recovery blockers use current identities. |
+| `taskbelay_resolve_blocker` | Mutation | Resolve after Core verifies the condition. File scope uses `choice` and `reason`; history uses `history_resolution:{choice:"accept_current_history",reason}`; relocation uses `relocation_id` plus every `relocation_destinations[{key,repository_path}]`; verification/Recovery blockers use current identities. An unexecuted pre-write request checks the full layer delta from the saved binding; unchanged carried paths gain no permission to change. After `expand_scope`, save and confirm the revised exact plan. |
 | `taskbelay_recover_action` | Mutation | Recover an uncertain Action from the normalized submission retained in an independent Action operation record; accepts no original payload. |
 | `taskbelay_cancel_task` | Destructive mutation | Move a nonterminal Task to `CANCELLED` using the current revision and a non-empty reason. |
+| `taskbelay_prepare_task_branch_rename` | Mutation | host, task_id, revision, repository_key, target_branch, reason; returns rename_id/task in BLOCKED for one pure branch rename. |
 | `taskbelay_prepare_task_relocation` | Mutation | Retain relocation ID, source workspace/content/surface and resume node while source claims remain active during Host handoff. |
 | `taskbelay_abandon_task` | Destructive mutation | When the original worktree is unavailable, use exact host/task/revision and a non-empty reason to enter `CANCELLED` and release claims after attempting repository observation to establish worktree unavailability. |
 
@@ -752,4 +753,36 @@ Every tool follows the [Core response contract](CORE-RESPONSES_en.md). Success r
 
 MCP correction uses `correct_current_action` for ordinary node submissions and `correct_request` for handshake, read, creation and lifecycle requests. Both require Core's zero-write proof and limit corrections through allowed_paths. `correct_request` preserves request identity and existing authorization without asking for an Action that may not exist. Both Host Skills link each request to a complete successful response and include a code-verified error response with implementation locations. History resolution reports enum failures at `history_resolution.choice` and text failures at `history_resolution.reason` independently.
 
-For all 17 tools, `error.message` states the specific failed condition. Field errors include the path, rule and requirement; multiple causes remain in `details` or `guard.failures`. JSON syntax, types, duplicate members, state restrictions, repository observations, storage and response encoding have distinct explanations. Encoding failures retain the actual tool and existing request ID. Unknown lower-level causes are stated explicitly; see the [Core response contract](CORE-RESPONSES_en.md).
+For all 18 tools, `error.message` states the specific failed condition. Field errors include the path, rule and requirement; multiple causes remain in `details` or `guard.failures`. JSON syntax, types, duplicate members, state restrictions, repository observations, storage and response encoding have distinct explanations. Encoding failures retain the actual tool and existing request ID. Unknown lower-level causes are stated explicitly; see the [Core response contract](CORE-RESPONSES_en.md).
+
+## Task continuity inputs
+
+`taskbelay_get_task` accepts optional baseline_history={revision,after,limit}. First page uses
+revision=0/after=0; continue with returned revision/next_after and limit 1..32. result.baseline_history
+contains task_id, revision, total, next_after (null at end), entries[{sequence,reference}]. A changed
+Task returns REVISION_CONFLICT; an out-of-range cursor is INVALID_ARGUMENT. Task baselines.history is
+a bounded first page of the complete array, always accompanied by history_total, history_next_after
+and history_revision. Storage is never truncated to page size or archived and has no configured count
+limit; resources and revision-number ranges still apply. A page has at most 64 KiB of actual JSON and
+the complete response at most 1 MiB, so fewer than limit entries may be returned. Continue only with
+returned next_after, never by adding limit. An empty first page with nonzero total uses cursor 0 for
+explicit pagination. Oversized non-history responses remain rejected.
+
+`taskbelay_resolve_blocker` accepts rename_id and rename_choice=complete|cancel only for its prepared
+branch-rename blocker. Complete verifies disappearance of the source ref and unchanged Task facts;
+cancel requires unchanged original facts. Both return the Task directly. A saved unrecorded decision
+uses recover_action with its action_id, not a replacement payload.
+
+`taskbelay-codex host-launch supersede` reads launch_id, repository_key, expected_receipt_digest,
+reason and replacement (the complete prepare input with a distinct explicit launch_id). status returns
+receipt_digest. Supersede returns receipt_path, receipt, receipt_digest, predecessor and prepare_input.
+Use the returned prepare_input for ordinary preparation. `supersede-resume` reads launch_id,
+repository_key and seed_digest from the predecessor mark and returns the same shape. Neither command
+executes target Git/Host operations. Refer to operation --help for the closed input schema.
+
+Codex/Claude/ZCode cleanup-worktree and cleanup-branch additionally require core_task: the actual
+complete terminal Core Task. The helper matches its repository key, provisioning origin, root and
+effective branch/HEAD and preserves separate authorization. Claude host-launch relocate additionally
+requires core_preparation, the actual complete result of prepare_task_relocation; ZCode already uses
+that input. Creation receipts retain their original target branch. Missing effective facts never select
+that old name. DeepSeek cleanup reads its terminal Core Task and uses its current_branch.

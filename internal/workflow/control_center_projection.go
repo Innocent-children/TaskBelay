@@ -112,7 +112,7 @@ func exceptionalTraversal(index int, traversal CommittedTraversal) bool {
 	if traversal.Kind == domain.OperationCancelTask || traversal.Kind == domain.OperationAbandonTask {
 		return traversal.Destination == domain.NodeCancelled
 	}
-	if traversal.Kind == domain.OperationPrepareFileChange || traversal.Kind == domain.OperationPrepareTaskRelocation {
+	if traversal.Kind == domain.OperationPrepareTaskBranchRename || traversal.Kind == domain.OperationPrepareFileChange || traversal.Kind == domain.OperationPrepareTaskRelocation {
 		return traversal.Source.Normal() && traversal.Destination == domain.NodeBlocked
 	}
 	if traversal.Kind == domain.OperationObserveWorkspace {

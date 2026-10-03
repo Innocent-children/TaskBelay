@@ -60,15 +60,29 @@ After a successful move, repeating the same relocation ID with its original prep
 
 ## Terminal operations and cleanup
 
-Cancel/abandon through Core using the shared references. Do not infer DONE from ZCode stopping. After an actual terminal Task, `host-launch cleanup-worktree` receives `launch_id`, `repository_key`, `terminal=true`, `authorized=true` based on real state and explicit deletion authorization. It removes only clean receipt-owned dedicated worktrees without force. `cleanup-branch` requires its own authorization after worktree removal and uses non-force deletion. Never automatically delete active, dirty, unpushed or uncertain resources. Local directories and branches remain.
+Cancel/abandon through Core using the shared references. Do not infer DONE from ZCode stopping. After an actual terminal Task, `host-launch cleanup-worktree` receives `launch_id`, `repository_key`, `terminal=true`, `authorized=true`, `core_task` (the complete actual terminal Core Task) based on real state and explicit deletion authorization. It removes only clean receipt-owned dedicated worktrees without force. `cleanup-branch` requires its own authorization after worktree removal and uses non-force deletion. Never automatically delete active, dirty, unpushed or uncertain resources. Local directories and branches remain.
 
 Each cleanup call takes this complete body with a separate actual user authorization; choose the operation name `cleanup-worktree` or `cleanup-branch` and retain the returned updated receipt:
 
-<!-- example:host-launch cleanup request -->
-```json
-{"launch_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","repository_key":"primary","terminal":true,"authorized":true}
+```js
+const cleanup_input = {
+  launch_id: saved_launch_id,
+  repository_key: selected_repository_key,
+  terminal: true,
+  authorized: actual_cleanup_authorization,
+  core_task: terminal_core_task
+};
 ```
 
 ## Terminal presentation
 
 After Core returns `DONE` or `CANCELLED`, report its actual outcome, completed work, verification results and remaining limitations. Preserve the distinction between automatic checks, Host observations and user-performed checks. Present only the Git or cleanup actions the user actually authorized; terminal state does not automatically commit, push or delete anything.
+
+## Prepared branch rename
+
+Follow the shared [branch rename contract](core-lifecycle.md) before executing one authorized
+non-force `git branch -m`. Core owns the pending rename, verification and effective binding; the
+Host launch receipt preserves its creation branch. For relocation or cleanup, forward complete
+actual Core results. The helpers verify repository key, original receipt, workspace instance,
+effective branch and HEAD; missing or mismatched facts stop the operation. Never use the old
+receipt target to choose a branch for deletion. Recreating that old name must not make it a cleanup target.

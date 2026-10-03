@@ -42,6 +42,8 @@ import {
   cleanupCliTaskWorktree,
   cleanupTaskBranch,
   prepareTaskLaunch,
+  supersedeTaskLaunch,
+  resumeLaunchSupersession,
   readOpenTaskRepositoryScope,
   provisionCliTask,
   provisionLocalTask,
@@ -49,7 +51,7 @@ import {
   recordTaskHandoff,
   recordTaskHandoffStatus,
 } from "../lib/task-launch.mjs";
-import { provisioningReceiptPath, readProvisioningReceipt } from "../lib/provisioning-receipt.mjs";
+import { provisioningReceiptPath, readProvisioningReceipt, receiptDigest } from "../lib/provisioning-receipt.mjs";
 import { terminalCleanupDecision } from "../lib/worktree-lifecycle.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -412,13 +414,17 @@ async function runHostLaunchCommand(operation, input, paths, dependencies) {
     });
   }
   if (operation === "scope") return await readOpenTaskRepositoryScope(input, common);
+  if (operation === "supersede") return await supersedeTaskLaunch(input, common);
+  if (operation === "supersede-resume") return await resumeLaunchSupersession(input, common);
   if (operation === "local-provision") return await provisionLocalTask(input, common);
   if (operation === "status") {
     assertClosedObject(input, ["launch_id", "repository_key"], "host-launch status input");
     const receiptPath = provisioningReceiptPath(paths.productSupportRoot, input.launch_id, input.repository_key);
+    const receipt = await readProvisioningReceipt(receiptPath, { productSupportRoot: paths.productSupportRoot });
     return {
       receipt_path: receiptPath,
-      receipt: await readProvisioningReceipt(receiptPath, { productSupportRoot: paths.productSupportRoot }),
+      receipt,
+      receipt_digest: receipt === null ? null : receiptDigest(receipt),
     };
   }
   if (operation === "dispatch-start") return await beginManagedTaskDispatch(input, common);

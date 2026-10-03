@@ -58,6 +58,8 @@ func CurrentSubmissionSchema(action domain.ProcessAction, blocker *domain.Proces
 		return schemaObject([]string{"choice", "reason"}, map[string]any{"choice": schemaEnum("allow_once", "expand_scope", "reject"), "reason": schemaString()}), nil
 	case domain.BlockerCauseWorkspaceHistoryConflict:
 		return schemaObject([]string{"history_resolution"}, map[string]any{"history_resolution": schemaObject([]string{"choice", "reason"}, map[string]any{"choice": schemaEnum("accept_current_history"), "reason": schemaString()})}), nil
+	case domain.BlockerCauseTaskBranchRenamePending:
+		return schemaObject([]string{"rename_id", "rename_choice"}, map[string]any{"rename_id": map[string]any{"const": string(blocker.Condition.RenameID)}, "rename_choice": schemaEnum("complete", "cancel")}), nil
 	case domain.BlockerCauseTaskRelocationPending:
 		return schemaObject([]string{"relocation_id", "relocation_destinations"}, map[string]any{
 			"relocation_id":           map[string]any{"const": string(blocker.Condition.RelocationID)},

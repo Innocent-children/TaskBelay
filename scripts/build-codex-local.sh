@@ -211,6 +211,12 @@ plugin/skills/taskbelay/references/successes/taskbelay_abandon_task-abandon.md
 plugin/skills/taskbelay/references/successes/taskbelay_cancel_task-cancel.md
 plugin/skills/taskbelay/references/successes/taskbelay_get_next_action-guarded-read.md
 plugin/skills/taskbelay/references/successes/taskbelay_get_task-read.md
+plugin/skills/taskbelay/references/successes/taskbelay_prepare_task_branch_rename-prepare-branch-rename.md
+plugin/skills/taskbelay/references/successes/taskbelay_resolve_blocker-rename-complete.md
+plugin/skills/taskbelay/references/successes/taskbelay_resolve_blocker-rename-cancel.md
+plugin/skills/taskbelay/references/successes/taskbelay_get_task-history-page.md
+plugin/skills/taskbelay/references/successes/host-supersede-replace.md
+plugin/skills/taskbelay/references/successes/host-supersede-resume-recover.md
 plugin/skills/taskbelay/references/successes/taskbelay_open_task-create.md
 plugin/skills/taskbelay/references/successes/taskbelay_open_task-multiple.md
 plugin/skills/taskbelay/references/successes/taskbelay_open_task-resume.md
@@ -398,6 +404,12 @@ const expected = [
   "plugin/skills/taskbelay/references/successes/taskbelay_cancel_task-cancel.md",
   "plugin/skills/taskbelay/references/successes/taskbelay_get_next_action-guarded-read.md",
   "plugin/skills/taskbelay/references/successes/taskbelay_get_task-read.md",
+  "plugin/skills/taskbelay/references/successes/taskbelay_prepare_task_branch_rename-prepare-branch-rename.md",
+  "plugin/skills/taskbelay/references/successes/taskbelay_resolve_blocker-rename-complete.md",
+  "plugin/skills/taskbelay/references/successes/taskbelay_resolve_blocker-rename-cancel.md",
+  "plugin/skills/taskbelay/references/successes/taskbelay_get_task-history-page.md",
+  "plugin/skills/taskbelay/references/successes/host-supersede-replace.md",
+  "plugin/skills/taskbelay/references/successes/host-supersede-resume-recover.md",
   "plugin/skills/taskbelay/references/successes/taskbelay_open_task-create.md",
   "plugin/skills/taskbelay/references/successes/taskbelay_open_task-multiple.md",
   "plugin/skills/taskbelay/references/successes/taskbelay_open_task-resume.md",

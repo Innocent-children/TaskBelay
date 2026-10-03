@@ -50,6 +50,9 @@ Complete response:
         "risks": []
       },
       "history": null,
+      "history_next_after": null,
+      "history_revision": 13,
+      "history_total": 0,
       "requirements": {
         "acceptance_criteria": [
           "The response contains the requested field."

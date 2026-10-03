@@ -187,3 +187,15 @@ Core interaction instructions and complete examples for Codex and DeepSeek are m
 [DeepSeek Skill](../packages/deepseek/skills/taskbelay/SKILL.md)
 
 The DeepSeek Skill packages `scripts/artifacts.mjs`. Invoke the same read-only Core preparation commands with `node <actual Skill directory>/scripts/artifacts.mjs collect` or `prepare`. Inputs and results use the shapes in this document with `host="deepseek"`. The script reuses the Adapter runtime/data-directory resolution and creates no store. Resolve its path from the actual DSH Skill resourceBase. `--help` reads no stdin and resolves no runtime. It is not a standalone taskbelay-deepseek CLI or an additional workspace_coordinator operation.
+
+## Continued revision and Task branch renaming
+
+The same Task can continue through requirements, design and plan revisions beyond 32 older baseline
+references. Retained references remain available through pagination; unsaved full documents cannot
+be reconstructed. To rename an active Task branch, have Core prepare one repository's rename, let
+the authorized Host run one non-force `git branch -m`, then have Core verify and confirm it. The
+worktree, HEAD, index, contents and other repositories must stay unchanged. Cancel preparation only
+while the original facts remain unchanged; after a rename with a missing response, read back before acting.
+
+Later relocation and terminal cleanup use the effective branch confirmed by Core; the creation branch remains in the origin. DeepSeek cleanup reads Core directly.
+See [workspace sources and recovery](WORKTREE-SOURCES_en.md) for exact conditions and recovery steps.

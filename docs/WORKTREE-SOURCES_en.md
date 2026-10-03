@@ -149,3 +149,27 @@ cross-machine copying, ignored-file copying or submodule-content copying.
 ## Codex planning and preservation checks
 
 When Codex carries local changes, it records their preservation in REQUIREMENTS and reconciles the complete `current_changed_paths` with `expected_paths` and retained process artifacts in TASKS. New development and preservation receive separate work and checks; an empty current-Action file collection cannot replace the complete Task path comparison. Preservation checks compare the launch snapshot and do not certify existing behavior as tested. Existing file-scope blockers continue through the current Core choices and transitions.
+
+## Correct an unexecuted Codex launch or active branch name
+
+For an unexecuted Codex launch, read host-launch status and retain its receipt_digest. Explicit
+supersede takes that digest, a reason and complete newly confirmed prepare input with a distinct launch_id
+and the same repository key/source. Superseded receipts permanently reject execution and keep one
+complete successor seed. supersede-resume takes the predecessor identity and seed_digest; it recreates
+only that successor, without overwriting another receipt or inventing a new launch. Preparation,
+supersession, dispatch claim and target Git calls share the receipt lock. A claim or possible target call
+prevents supersession; a failed/resolving record needs positive not_invoked evidence. Missing directories,
+empty Host IDs and failure alone are insufficient. Unknown or partial operations require reconciliation.
+
+For an active Task, prepare one branch rename through Core before the Host runs `git branch -m` once.
+Complete only after Core checks the exact refs and unchanged workspace/index/content; cancel only before
+the source facts change. After interruption read the same Task, inspect the actual refs, and recover its
+saved resolution if present. A same-HEAD branch switch, recreated source ref, existing target, changed
+index or another repository's changes cannot pass. Preparation does not authorize commit, push or force.
+
+The origin branch stays in the receipt and WorkspaceOrigin. Resume reads the same Core Task; its
+repository.current_branch is authoritative for later history, relocation and cleanup. Codex, Claude and
+ZCode cleanup commands require the actual terminal core_task. Claude and ZCode relocation consume the
+actual core_preparation result. DeepSeek reads its terminal Task directly. Missing or mismatched facts
+stop the helper; no old-name fallback is used. Codex receipts without a saved worktree instance proof
+require manual inspection before cleanup. These operations do not introduce automatic cleanup.

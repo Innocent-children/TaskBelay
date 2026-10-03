@@ -55,6 +55,15 @@ Discovery follows user instructions, applicable repository rules and Host permis
 When Codex starts a new session, it retains relevant requirements discussion and confirmed requirements, distinguishing unaccepted suggestions and unresolved questions. Explicit choices and authorizations that remain valid are retained; only unresolved decisions or required inputs need another question.
 
 Explicit resume returns to the original working-directory instance and saved state without creating another task or selecting another worktree. The destination of a confirmed launch verifies the retained launch record before continuing initialization. A missing or replaced original worktree pauses progress; the developer can restore that instance or explicitly abandon the Task.
+An active Task can prepare a branch-name correction for one repository and continue the same work
+after verifying unchanged directory, HEAD, index and content. The preparation pauses work; cancellation
+requires unchanged original facts. Codex can explicitly replace an unexecuted launch, or a failed launch
+with positive evidence that no target operation was called. Partial or uncertain execution is reconciled
+first, and the replaced launch cannot be resumed. Repeated planning revisions retain real saved baseline
+references in the Task, without an archive tier or configured count limit. Resources and revision-number
+ranges still constrain growth. Responses provide a bounded first page and total count; pagination
+reads the complete history without reconstructing old documents.
+
 
 ## Planning discussion before implementation
 

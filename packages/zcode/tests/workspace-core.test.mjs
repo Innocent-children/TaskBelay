@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import test from "node:test";
 import { execPortableCommand } from "../lib/command.mjs";
-import { bindTask, inspect, prepare, provision, relocate, scope } from "../lib/workspace.mjs";
+import { cleanup, bindTask, inspect, prepare, provision, relocate, scope } from "../lib/workspace.mjs";
 import { defaultRunGit as git } from "../lib/worktree-lifecycle.mjs";
 
 const testCore = process.env.TASKBELAY_ZCODE_TEST_CORE;
@@ -64,6 +64,13 @@ test("ZCode workspace keys survive real Core creation and relocation", {
       assert.equal(opened.created, true);
       assert.equal(opened.task.primary_repository_key, "backend");
       await bindTask(receipt.launch_id, { task_id: opened.task.task_id }, options);
+      const renamed=await call("taskbelay_prepare_task_branch_rename",{host:"zcode",task_id:opened.task.task_id,revision:opened.task.revision,repository_key:"backend",target_branch:"task-renamed",reason:"Correct existing Task branch name"});
+      await git(["-C",repositories[0].worktree_path,"branch","-m","task","task-renamed"]);
+      opened.task=await call("taskbelay_resolve_blocker",{host:"zcode",task_id:opened.task.task_id,action_id:renamed.task.current_action.action_id,rename_id:renamed.rename_id,rename_choice:"complete"});
+      assert.equal(opened.task.workspace_origin.task_branch,"task");
+      assert.equal(opened.task.repository.current_branch,"task-renamed");
+      await git(["-C",repositories[0].repository_path,"branch","task"]);
+      assert.equal((await scope(receipt.launch_id,options)).workspace_origin.task_branch,"task");
       const prepared = await call("taskbelay_prepare_task_relocation", { host: "zcode", task_id: opened.task.task_id, revision: opened.task.revision });
       const destinations = repositories.map(repo => ({ repository_key: repo.key, repository_path: join(home, "relocated-" + repo.key) })).reverse();
       const moved = await relocate(receipt.launch_id, { relocation_id: prepared.relocation_id, destinations, authorized: true, core_preparation: prepared }, options);
@@ -99,6 +106,13 @@ test("ZCode workspace keys survive real Core creation and relocation", {
       assert.equal(resolvedAgain.workspace_origin.canonical_worktree_root, join(home, "second-backend"));
       assert.equal(resolvedAgain.task_id, opened.task.task_id);
       assert.equal(resolvedAgain.blocker, null);
+      const current=await call("taskbelay_get_task",{host:"zcode",task_id:opened.task.task_id});
+      const terminal=await call("taskbelay_cancel_task",{request_id:"cancel-cleanup",host:"zcode",task_id:opened.task.task_id,revision:current.task.revision,reason:"End isolated cleanup verification"});
+      const cleanupInput={repository_key:"backend",terminal:true,authorized:true,core_task:terminal};
+      await cleanup(receipt.launch_id,"cleanup-worktree",cleanupInput,options);
+      await cleanup(receipt.launch_id,"cleanup-branch",cleanupInput,options);
+      assert.equal((await git(["-C",repositories[0].repository_path,"rev-parse","refs/heads/task"])).trim(),terminal.repository.current_head);
+      await assert.rejects(git(["-C",repositories[0].repository_path,"rev-parse","--verify","refs/heads/task-renamed"]));
     });
   }
 });
@@ -127,6 +141,7 @@ async function coreClient(t, runtime, environment, cwd) {
       const finish = callback => value => { clearTimeout(timer); pending.delete(id); callback(value); };
       pending.set(id, { resolve: finish(resolve), reject: finish(reject) });
       child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+
     });
   };
   const initialized = await request("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "zcode-workspace-test", version: "0.1.0" } });

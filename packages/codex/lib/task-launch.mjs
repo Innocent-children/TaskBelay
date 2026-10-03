@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { lstat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 
 import { captureWorkspaceChanges, applyWorkspaceChanges } from "./worktree-snapshot.mjs";
@@ -9,10 +10,13 @@ import {
   readTaskHandoff,
   readTaskHandoffDraft,
   taskHandoffDigest,
+  taskHandoffPaths,
   writeTaskHandoff,
 } from "./task-handoff.mjs";
 import {
   createProvisioningReceipt,
+  assertReceiptExecutable,
+  receiptDigest,
   provisioningReceiptPath,
   readProvisioningReceipt,
   updateProvisioningReceipt,
@@ -21,6 +25,8 @@ import {
   writeProvisioningReceiptAtomic,
 } from "./provisioning-receipt.mjs";
 import {
+  coreRepositoryBinding,
+  workspaceInstanceIdentity,
   createCliWorktree,
   resolveFrozenBase,
   defaultRunGit,
@@ -58,6 +64,7 @@ export async function prepareTaskLaunch(input, {
   const path = provisioningReceiptPath(productSupportRoot, launchId, input.repository_key);
   const existing = await readProvisioningReceipt(path, { productSupportRoot });
   if (existing !== null) {
+    await assertReceiptExecutable(existing, { productSupportRoot });
     assertInputMatchesReceipt(existing, receiptInput, currentRequestDigest, handoffDigest);
     if (existing.operation_status.phase !== "confirmed") {
       return Object.freeze({ receipt_path: path, receipt: existing, resumed: true, fetch_performed: false });
@@ -111,6 +118,7 @@ export async function prepareTaskLaunch(input, {
       if (error?.code !== "EEXIST") throw error;
       const concurrent = await readProvisioningReceipt(path, { productSupportRoot });
       if (concurrent === null) throw error;
+      await assertReceiptExecutable(concurrent, { productSupportRoot });
       assertInputMatchesReceipt(concurrent, receiptInput, currentRequestDigest, handoffDigest);
       return Object.freeze({ receipt_path: path, receipt: concurrent, resumed: true, fetch_performed: false });
     }
@@ -121,12 +129,13 @@ export async function prepareTaskLaunch(input, {
     return await withProvisioningReceiptLock(path, { productSupportRoot, enforcePrivateModes }, async () => {
       const current = await readProvisioningReceipt(path, { productSupportRoot });
       if (current === null) throw new Error("provisioning receipt disappeared before preparation");
+      await assertReceiptExecutable(current, { productSupportRoot });
       if (current.operation_status.phase !== "confirmed") {
         return Object.freeze({ receipt_path: path, receipt: current, resumed: true, fetch_performed: false });
       }
       assertInputMatchesReceipt(current, receiptInput, currentRequestDigest, handoffDigest);
       if (handoff !== null) await writeTaskHandoff(path, handoff, { enforcePrivateModes });
-      const resolving = updateProvisioningReceipt(current, { phase: "resolving", values: {} });
+      const resolving = updateProvisioningReceipt(current, { phase: "resolving", values: { target_effects: "not_invoked" } });
       await writeProvisioningReceiptAtomic(path, resolving, { productSupportRoot, enforcePrivateModes });
       try {
         const resolvedBase = await resolveFrozenBase({
@@ -199,6 +208,91 @@ export async function beginManagedTaskDispatch(input, options = {}) {
   });
 }
 
+// Only a permanent predecessor mark authorizes creation of a successor. No Git
+// operation is run by this entry; normal preparation consumes the saved choices.
+export async function supersedeTaskLaunch(input, options = {}) {
+  assertExactKeys(input, ["launch_id", "repository_key", "expected_receipt_digest", "reason", "replacement"], "launch supersession input");
+  assertNonEmpty(input.reason, "reason");
+  validatePrepareInput(input.replacement);
+  const next = input.replacement;
+  if (!next.launch_id || next.launch_id === input.launch_id || next.repository_key !== input.repository_key) throw new Error("replacement requires a distinct launch_id and the same repository_key");
+  const path = provisioningReceiptPath(options.productSupportRoot, input.launch_id, input.repository_key);
+  return await withProvisioningReceiptLock(path, options, async () => {
+    const prior = await readProvisioningReceipt(path, options);
+    if (prior === null) throw new Error("predecessor receipt does not exist");
+    if (prior.supersession !== undefined) throw new Error("launch already superseded; resume its exact saved successor seed");
+    await assertReceiptExecutable(prior, options);
+    if (receiptDigest(prior) !== input.expected_receipt_digest) throw new Error("receipt changed; read its current digest before superseding");
+    const status = prior.operation_status;
+    if (!["confirmed", "prepared", "dispatch_prepared", "resolving", "failed"].includes(status.phase) || status.target_effects === "may_have_effects" || status.dispatch_recovery_reason !== null || ["failed", "resolving"].includes(status.phase) && status.target_effects !== "not_invoked" || status.host_thread_id !== null || status.host_client_thread_id !== null || status.host_operation_id !== null) throw new Error("launch has no positive proof of zero target calls; reconcile its existing operation");
+    const sourcePath = prior.admission.assessment.anchor.repositories.find((entry) => entry.repository_key === prior.repository_key)?.canonical_root;
+    if (sourcePath !== next.repository_path) throw new Error("replacement must retain the confirmed source repository");
+    const source = await inspectSourceRepository(sourcePath, { runGit: options.runGit });
+    if (source.source_repository_identity !== prior.source_repository_identity) throw new Error("source repository identity changed");
+    if (prior.workspace_mode !== "dedicated_worktree") await requireAvailableWorkspace(prior.worktree_path, options.checkWorkspaceAvailable);
+    else if (prior.worktree_path !== null) {
+      try { await lstat(prior.worktree_path); throw new Error("prior target directory exists; reconcile it before superseding"); }
+      catch (error) { if (error?.code !== "ENOENT") throw error; }
+    }
+    if (prior.workspace_mode !== "current_branch") {
+      // --verify --quiet has the distinguished missing-ref exit status 1.
+      const run = options.runGit ?? defaultRunGit;
+      try { await run(["-C", sourcePath, "show-ref", "--verify", "--quiet", `refs/heads/${prior.target_branch}`]); throw new Error("prior target branch exists; reconcile it before superseding"); }
+      catch (error) { if (error?.code !== 1) throw error; }
+    }
+    const admission = validateLaunchAdmission(next.assessment, next.user_choice);
+    const anchor = admission.assessment.anchor;
+    const assessed = anchor.repositories.find((entry) => entry.repository_key === next.repository_key);
+    if (anchor.request_digest !== requestDigest(next.request) || assessed?.canonical_root !== source.canonical_root || assessed.head !== source.head || assessed.status_digest !== source.status_digest) throw new Error("replacement assessment is stale");
+    const local = next.workspace_mode !== "dedicated_worktree";
+    await (local ? preflightLocalBranchSelection : preflightWorktreeSelection)({ repositoryPath:sourcePath, workspaceMode:next.workspace_mode, sourceType:next.source_type, remoteName:next.remote_name, baseBranch:next.base_branch, targetBranch:next.target_branch, carryChanges:next.carry_changes, runGit:options.runGit });
+    if (local) await requireAvailableWorkspace(next.worktree_path, options.checkWorkspaceAvailable);
+    const handoff = local ? null : await readTaskHandoffDraft(next.handoff_file, next.request);
+    const successor = createProvisioningReceipt({launchId:next.launch_id, admission, requestDigest:requestDigest(next.request), handoffDigest:handoff === null ? null : taskHandoffDigest(handoff), sourceRepositoryIdentity:source.source_repository_identity, repositoryKey:next.repository_key, workspaceMode:next.workspace_mode, remoteName:next.remote_name, sourceType:next.source_type, carryChanges:next.carry_changes, baseBranch:next.base_branch, targetBranch:next.target_branch, worktreePath:next.worktree_path, surface:next.surface, createdAt:(options.now?.() ?? new Date()).toISOString()});
+    successor.predecessor = {launch_id:prior.launch_id, repository_key:prior.repository_key, receipt_digest:input.expected_receipt_digest};
+    const seed = {receipt:successor, prepare_input:structuredClone(next), handoff};
+    const marked = { ...prior, operation_status:{...status, phase:"superseded"}, supersession:{reason:input.reason, prior_phase:status.phase, receipt_digest:input.expected_receipt_digest, seed_digest:receiptDigest(seed), seed} };
+    const successorPath = provisioningReceiptPath(options.productSupportRoot, successor.launch_id, successor.repository_key);
+    return await withProvisioningReceiptLock(successorPath, options, async () => {
+      if (await readProvisioningReceipt(successorPath, options) !== null) throw new Error("successor launch identity already exists");
+      // Linearization point. An interrupted successor write never reactivates prior.
+      await writeProvisioningReceiptAtomic(path, marked, options);
+      await options.afterSupersession?.();
+      return await materializeLaunchSuccessor(marked, successorPath, options);
+    });
+  });
+}
+
+export async function resumeLaunchSupersession(input, options = {}) {
+  assertExactKeys(input, ["launch_id", "repository_key", "seed_digest"], "supersession resume input");
+  const path = provisioningReceiptPath(options.productSupportRoot, input.launch_id, input.repository_key);
+  return await withProvisioningReceiptLock(path, options, async () => {
+    const prior = await readProvisioningReceipt(path, options);
+    if (prior?.supersession?.seed_digest !== input.seed_digest) throw new Error("no matching retained successor seed");
+    const successor = prior.supersession.seed.receipt;
+    const successorPath = provisioningReceiptPath(options.productSupportRoot, successor.launch_id, successor.repository_key);
+    return await withProvisioningReceiptLock(successorPath, options, async () => await materializeLaunchSuccessor(prior, successorPath, options));
+  });
+}
+
+async function materializeLaunchSuccessor(prior, path, options) {
+  const seed = prior.supersession.seed;
+  validatePrepareInput(seed.prepare_input);
+  let receipt = await readProvisioningReceipt(path, options);
+  if (receipt !== null) {
+    await assertReceiptExecutable(receipt, options);
+    if (receiptDigest(receipt.predecessor) !== receiptDigest(seed.receipt.predecessor)) throw new Error("successor identity belongs to another predecessor");
+  } else {
+    if (seed.handoff !== null) {
+      if (taskHandoffDigest(seed.handoff) !== seed.receipt.handoff_digest) throw new Error("successor handoff differs from its seed");
+      await writeTaskHandoff(path, seed.handoff, options);
+    }
+    receipt = await writeProvisioningReceiptAtomic(path, seed.receipt, {...options, createOnly:true});
+  }
+  const prepareInput = {...seed.prepare_input, handoff_file:seed.handoff === null ? null : taskHandoffPaths(path).json_path};
+  return {receipt_path:path, receipt, receipt_digest:receiptDigest(receipt), predecessor:prior, prepare_input:prepareInput};
+}
+
 export async function claimManagedTaskDispatch(input, options = {}) {
   assertExactKeys(input, ["launch_id", "repository_key", "dispatch_attempt_id"], "dispatch call input");
   return await withLockedReceipt(input, options, async (state) => {
@@ -207,7 +301,7 @@ export async function claimManagedTaskDispatch(input, options = {}) {
     if (status.phase !== "dispatch_prepared") {
       return { should_dispatch: false, receipt_path: state.path, receipt: state.receipt, host_request: status.host_request };
     }
-    const next = updateProvisioningReceipt(state.receipt, { phase: "dispatching", values: {} });
+    const next = updateProvisioningReceipt(state.receipt, { phase: "dispatching", values: { target_effects: "may_have_effects" } });
     await persistReceipt(state.path, next, options);
     return { should_dispatch: true, receipt_path: state.path, receipt: next, host_request: next.operation_status.host_request };
   });
@@ -322,7 +416,7 @@ export async function bootstrapManagedTask(input, options = {}) {
       await applyWorkspaceChanges(verified.canonical_root, provisioning.snapshot_commit, snapshotRunner(options.runGit));
       const provisioned = updateProvisioningReceipt(provisioning, {
         phase: "provisioned",
-        values: { worktree_path: verified.canonical_root },
+        values: { worktree_path: verified.canonical_root, worktree_identity:await workspaceInstanceIdentity(verified) },
       });
       await persistReceipt(state.path, provisioned, options);
       return Object.freeze({
@@ -351,7 +445,7 @@ export async function provisionCliTask(input, options = {}) {
     if (receipt.operation_status.phase !== "prepared" || receipt.operation_status.surface !== "cli_worktree" || receipt.worktree_path === null) {
       throw new Error("CLI provisioning requires one prepared receipt with a worktree path");
     }
-    const provisioning = updateProvisioningReceipt(receipt, { phase: "provisioning", values: {} });
+    let provisioning = updateProvisioningReceipt(receipt, { phase: "provisioning", values: { target_effects: "not_invoked" } });
     await persistReceipt(state.path, provisioning, options);
     try {
       const verified = await createCliWorktree({
@@ -361,11 +455,15 @@ export async function provisionCliTask(input, options = {}) {
         targetBranch: provisioning.target_branch,
         sourceRepositoryIdentity: provisioning.source_repository_identity,
         runGit: options.runGit,
+        beforeTargetEffect: async () => {
+          provisioning = updateProvisioningReceipt(provisioning, { phase: "provisioning", values: { target_effects: "may_have_effects" } });
+          await persistReceipt(state.path, provisioning, options);
+        },
       });
       await applyWorkspaceChanges(verified.canonical_root, provisioning.snapshot_commit, snapshotRunner(options.runGit));
       const provisioned = updateProvisioningReceipt(provisioning, {
         phase: "provisioned",
-        values: { worktree_path: verified.canonical_root },
+        values: { worktree_path: verified.canonical_root, worktree_identity:await workspaceInstanceIdentity(verified) },
       });
       await persistReceipt(state.path, provisioned, options);
       return cliProvisionResult(state.path, provisioned, input, handoff);
@@ -385,19 +483,23 @@ export async function provisionLocalTask(input, options = {}) {
     if (receipt.operation_status.phase === "provisioned") return Object.freeze({ receipt_path: state.path, receipt, workspace_origin: workspaceOriginFromReceipt(receipt) });
     if (receipt.operation_status.phase !== "prepared") throw new Error("local provisioning is incomplete or uncertain; inspect the retained operation before continuing");
     await requireAvailableWorkspace(receipt.worktree_path, options.checkWorkspaceAvailable);
-    const provisioning = updateProvisioningReceipt(receipt, { phase: "provisioning", values: {} });
+    let provisioning = updateProvisioningReceipt(receipt, { phase: "provisioning", values: { target_effects: "not_invoked" } });
     await persistReceipt(state.path, provisioning, options);
     try {
       await prepareLocalBranch({
         repositoryPath: receipt.worktree_path, workspaceMode: receipt.workspace_mode,
         baseBranch: receipt.base_branch, targetBranch: receipt.target_branch, baseCommit: receipt.base_commit,
         sourceRepositoryIdentity: receipt.source_repository_identity, carryChanges: receipt.carry_changes, runGit: options.runGit,
+        beforeTargetEffect: async () => {
+          provisioning = updateProvisioningReceipt(provisioning, { phase: "provisioning", values: { target_effects: "may_have_effects" } });
+          await persistReceipt(state.path, provisioning, options);
+        },
       });
-      const complete = updateProvisioningReceipt(provisioning, { phase: "provisioned", values: {} });
+      const complete = updateProvisioningReceipt(provisioning, { phase: "provisioned", values: {worktree_identity:await workspaceInstanceIdentity(await inspectSourceRepository(receipt.worktree_path,{runGit:options.runGit}))} });
       await persistReceipt(state.path, complete, options);
       return Object.freeze({ receipt_path: state.path, receipt: complete, workspace_origin: workspaceOriginFromReceipt(complete) });
     } catch (error) {
-      await persistReceipt(state.path, updateProvisioningReceipt(provisioning, { phase: "uncertain", values: {} }), options).catch(() => {});
+      await persistReceipt(state.path, updateProvisioningReceipt(provisioning, { phase: provisioning.operation_status.target_effects === "not_invoked" ? "failed" : "uncertain", values: {} }), options).catch(() => {});
       throw error;
     }
   });
@@ -606,11 +708,13 @@ export async function recordTaskHandoffStatus(input, options = {}) {
 }
 
 export async function cleanupCliTaskWorktree(input, options = {}) {
-  assertExactKeys(input, ["launch_id", "repository_key", "terminal", "authorized"], "worktree cleanup input");
+  assertExactKeys(input, ["launch_id", "repository_key", "terminal", "authorized", "core_task"], "worktree cleanup input");
   if (input.terminal !== true || input.authorized !== true) {
     throw new Error("worktree cleanup requires terminal state and explicit authorization");
   }
   return await withLockedReceipt(input, options, async (state) => {
+    if (!["DONE","CANCELLED"].includes(input.core_task?.current_cursor)) throw new Error("Actual terminal Core Task is required for cleanup");
+    const binding=coreRepositoryBinding(input.core_task,{host:"codex",repositoryKey:state.receipt.repository_key,receiptId:provisioningReceiptID(state.receipt.launch_id,state.receipt.repository_key),creationBranch:state.receipt.target_branch,worktreePath:state.receipt.worktree_path});
     if (state.receipt.workspace_mode !== "dedicated_worktree") throw new Error("local Task directories and branches are retained; workspace cleanup does not apply");
     if (state.receipt.operation_status.surface !== "cli_worktree") {
       throw new Error("managed worktree cleanup belongs to the Codex Host");
@@ -621,6 +725,9 @@ export async function cleanupCliTaskWorktree(input, options = {}) {
     if (state.receipt.operation_status.worktree_cleanup === "completed") {
       return Object.freeze({ changed: false, uncertain: false, receipt_path: state.path, receipt: state.receipt });
     }
+    const actual=await inspectSourceRepository(state.receipt.worktree_path,{runGit:options.runGit});
+    if (!state.receipt.operation_status.worktree_identity || await workspaceInstanceIdentity(actual)!==state.receipt.operation_status.worktree_identity) throw new Error("Cleanup workspace instance is unverified or changed; retain it for manual inspection");
+    if (actual.branch!==binding.current_branch || actual.head!==binding.current_head) throw new Error("Cleanup workspace differs from the terminal Core binding");
     const requested = updateProvisioningReceipt(state.receipt, {
       phase: state.receipt.operation_status.phase,
       values: { worktree_cleanup: "requested" },
@@ -653,11 +760,13 @@ export async function cleanupCliTaskWorktree(input, options = {}) {
 }
 
 export async function cleanupTaskBranch(input, options = {}) {
-  assertExactKeys(input, ["launch_id", "repository_key", "terminal", "authorized"], "branch cleanup input");
+  assertExactKeys(input, ["launch_id", "repository_key", "terminal", "authorized", "core_task"], "branch cleanup input");
   if (input.terminal !== true || input.authorized !== true) {
     throw new Error("branch cleanup requires separate explicit authorization");
   }
   return await withLockedReceipt(input, options, async (state) => {
+    if (!["DONE","CANCELLED"].includes(input.core_task?.current_cursor)) throw new Error("Actual terminal Core Task is required for cleanup");
+    const binding=coreRepositoryBinding(input.core_task,{host:"codex",repositoryKey:state.receipt.repository_key,receiptId:provisioningReceiptID(state.receipt.launch_id,state.receipt.repository_key),creationBranch:state.receipt.target_branch,worktreePath:state.receipt.worktree_path});
     if (state.receipt.workspace_mode !== "dedicated_worktree") throw new Error("local Task directories and branches are retained; workspace cleanup does not apply");
     if (state.receipt.operation_status.surface !== "cli_worktree") {
       throw new Error("managed branch cleanup belongs to the Codex Host");
@@ -679,7 +788,8 @@ export async function cleanupTaskBranch(input, options = {}) {
     try {
       await removeTaskBranch({
         repositoryPath: options.sourceRepositoryPath,
-        targetBranch: requested.target_branch,
+        targetBranch: binding.current_branch,
+        expectedHead: binding.current_head,
         sourceRepositoryIdentity: requested.source_repository_identity,
         terminal: input.terminal,
         authorized: input.authorized,
@@ -710,6 +820,7 @@ async function withLockedReceipt(input, options, operation) {
   }, async () => {
     const receipt = await readProvisioningReceipt(path, { productSupportRoot: options.productSupportRoot });
     if (receipt === null) throw new Error("provisioning receipt does not exist");
+    await assertReceiptExecutable(receipt, options);
     return await operation({ path, receipt });
   });
 }

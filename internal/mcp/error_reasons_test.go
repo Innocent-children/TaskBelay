@@ -28,7 +28,7 @@ func TestEveryToolReportsJSONFailureReasonsBeforeExecution(t *testing.T) {
 		{"duplicate", `{"host":"private-value","host":"codex"}`, "host", domain.RuleDuplicateMember},
 		{"unsafe member", `{"/private/token":"private-value","/private/token":null}`, "arguments", domain.RuleDuplicateMember},
 	}
-	if len(ToolNames()) != 17 {
+	if len(ToolNames()) != 18 {
 		t.Fatal("update failure coverage for the tool catalog")
 	}
 	for _, tool := range ToolNames() {
@@ -83,7 +83,7 @@ func TestEveryToolReportsWrongMemberTypes(t *testing.T) {
 			validateSkillSchema(t, mustSchemaJSON(t, toolOutputSchema(example.Tool)), encoded.JSON)
 		})
 	}
-	if len(seen) != 17 {
+	if len(seen) != 18 {
 		t.Fatalf("tested %d tools", len(seen))
 	}
 }

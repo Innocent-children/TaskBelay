@@ -44,6 +44,8 @@ type controlCenterSubmission struct {
 	MethodResults          map[domain.MethodStepID]MethodResultSubmission `json:"method_results"`
 	NodeResult             json.RawMessage                                `json:"node_result"`
 	Choice                 domain.FileScopeDecision                       `json:"choice"`
+	RenameID               domain.ID                                      `json:"rename_id"`
+	RenameChoice           string                                         `json:"rename_choice"`
 	RelocationID           domain.ID                                      `json:"relocation_id"`
 	RelocationDestinations []domain.RelocationDestination                 `json:"relocation_destinations"`
 	HistoryResolution      *domain.WorkspaceHistoryResolutionInput        `json:"history_resolution"`
@@ -74,7 +76,7 @@ func (c *ControlCenter) SubmitCurrentAction(ctx context.Context, request SubmitC
 	}
 	var applied ApplyActionResult
 	if stored.CurrentAction.Kind == domain.ActionResolveBlocker {
-		resolve := RecoverActionRequest{Host: stored.OriginHost, TaskID: request.TaskID, ActionID: request.ActionID, ExpectedRevision: request.ExpectedRevision, RelocationID: payload.RelocationID, RelocationDestinations: payload.RelocationDestinations, HistoryResolution: payload.HistoryResolution}
+		resolve := RecoverActionRequest{Host: stored.OriginHost, TaskID: request.TaskID, ActionID: request.ActionID, ExpectedRevision: request.ExpectedRevision, RenameID: payload.RenameID, RenameChoice: payload.RenameChoice, RelocationID: payload.RelocationID, RelocationDestinations: payload.RelocationDestinations, HistoryResolution: payload.HistoryResolution}
 		if payload.Choice != "" {
 			resolve.FileScopeDecision = &domain.FileScopeDecisionInput{Choice: payload.Choice, Reason: payload.Reason}
 		}

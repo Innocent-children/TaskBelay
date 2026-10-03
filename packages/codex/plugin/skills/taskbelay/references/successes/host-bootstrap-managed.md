@@ -102,13 +102,15 @@ Complete response:
       "phase": "provisioned",
       "relocation_id": null,
       "surface": "managed_worktree",
-      "worktree_cleanup": "not_requested"
+      "target_effects": "may_have_effects",
+      "worktree_cleanup": "not_requested",
+      "worktree_identity": "0000000000000000000000000000000000000000000000000000000000000005"
     },
     "remote_name": "",
     "repository_key": "primary",
     "request_digest": "0000000000000000000000000000000000000000000000000000000000000002",
     "snapshot_commit": null,
-    "source_repository_identity": "0000000000000000000000000000000000000000000000000000000000000005",
+    "source_repository_identity": "0000000000000000000000000000000000000000000000000000000000000006",
     "source_type": "local",
     "target_branch": "codex/endpoint-field",
     "workspace_mode": "dedicated_worktree",
@@ -120,7 +122,7 @@ Complete response:
     "base_commit": "0000000000000000000000000000000000000001",
     "carry_changes": false,
     "mode": "dedicated_worktree",
-    "provisioning_receipt_id": "codex-0000000000000000000000000000000000000000000000000000000000000006",
+    "provisioning_receipt_id": "codex-0000000000000000000000000000000000000000000000000000000000000007",
     "remote_name": "",
     "source_type": "local",
     "task_branch": "codex/endpoint-field"

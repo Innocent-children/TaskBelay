@@ -18,8 +18,12 @@ Products evolve independently. Releasing one product changes only its version fi
 the copies that must match it. Host Adapters may package a different Core version; build and release checks
 read it from the actual Core executable.
 
-SQLite additionally has one Core-owned database Schema version, currently `0.7.0`. It identifies
-the one supported persisted layout and changes with that current layout.
+SQLite additionally has one Core-owned database Schema version, currently `0.8.0`. It identifies
+the current persisted layout. The complete, valid deployed `0.7.0` layout remains readable and is
+upgraded transactionally when opened for writing: add only branch-rename audit storage and its pending index,
+validate existing Task/operation/event/claim data, then change the version. Task and pending-operation
+bytes are preserved. A failure rolls the upgrade back. Other layouts are rejected; there is no general
+migration framework. Older executables cannot write the upgraded database.
 
 Internal protocols, limits, snapshots, process definitions, payload contracts,
 receipts, build reports, release manifests, and publication records do not have maintained version

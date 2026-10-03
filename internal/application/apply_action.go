@@ -473,6 +473,13 @@ func (s *Service) resolveBlocker(ctx context.Context, r ApplyActionRequest, task
 	if err != nil {
 		return ApplyActionResult{}, err
 	}
+	if task.BranchRename != nil {
+		fresh, err := s.observeBranchRenameScope(ctx, task, *task.BranchRename, payload.RenameChoice)
+		if err != nil {
+			return ApplyActionResult{}, err
+		}
+		return s.resolveBlockerMutation(ctx, r, task, fresh.scope, payload, canonical)
+	}
 	if task.Blocker.Cause == domain.BlockerCauseTaskRelocationPending {
 		return s.resolveTaskRelocationPayload(ctx, r, task, payload, canonical)
 	}
@@ -577,6 +584,10 @@ func (s *Service) planResolveBlockerMutation(r ApplyActionRequest, task domain.P
 			destination = domain.NodeImplement
 		}
 	}
+	if task.BranchRename != nil {
+		rebindProcessAuthorities(&next, fresh)
+	}
+	next.BranchRename = nil
 	next.CurrentNode, next.ResumeNode, next.Blocker, next.Relocation = destination, nil, nil, nil
 	next.Revision++
 	next.UpdatedAt = now
@@ -608,6 +619,9 @@ func (s *Service) planResolveBlockerMutation(r ApplyActionRequest, task domain.P
 		return store.TaskMutation{}, err
 	}
 	eventReason := blockerResolvedReason(resolvedCause)
+	if task.BranchRename != nil {
+		eventReason = "Branch rename " + string(task.BranchRename.RenameID) + " " + payload.RenameChoice + ": " + task.BranchRename.SourceBranch + " -> " + task.BranchRename.TargetBranch
+	}
 	if fileScopeBlocker {
 		eventReason = "File-scope blocker resolved after the developer recorded a bounded decision."
 	}
@@ -615,7 +629,7 @@ func (s *Service) planResolveBlockerMutation(r ApplyActionRequest, task domain.P
 	if workflow.ValidateProcessTask(next) != nil {
 		return store.TaskMutation{}, domain.WithExplanation(domain.ErrInvalidArgument, "The proposed Task state does not satisfy the current process definition and saved-record rules.")
 	}
-	return store.TaskMutation{ExpectedRevision: r.ExpectedRevision, Task: next, Event: event, Claim: store.ClaimRetain}, nil
+	return store.TaskMutation{ExpectedRevision: r.ExpectedRevision, Task: next, Event: event, Claim: store.ClaimRetain, BranchRenameChoice: payload.RenameChoice}, nil
 }
 
 func repositoryDriftError(comparison recovery.RepositoryScopeComparison) error {

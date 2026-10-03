@@ -65,11 +65,49 @@ func EncodeSuccess(id, tool string, result any) EncodedResult {
 	if err != nil {
 		return failureFallback(id, tool, "Core could not encode the operation result as JSON.")
 	}
+	// Only response pages may shrink. Stored history and every other result field
+	// remain unchanged; next_after always identifies the last reference sent.
+	for !WithinResultEnvelopeLimit(raw) && shrinkResultHistoryPage(result) {
+		raw, err = encodeEnvelope(Envelope{OK: true, RequestID: id, Tool: tool, Result: result})
+		if err != nil {
+			return failureFallback(id, tool, "Core could not encode the operation result as JSON.")
+		}
+	}
 	if !WithinResultEnvelopeLimit(raw) {
 		return failureFallback(id, tool, "The encoded operation result exceeds the Core response byte limit.")
 	}
 	return EncodedResult{JSON: raw}
 }
+
+// Inline Task history can be empty when the envelope needs its space: the
+// explicit zero cursor and nonzero total direct the Host to get_task pagination.
+// An explicitly requested page always retains at least one complete reference.
+func shrinkResultHistoryPage(result any) bool {
+	value, ok := result.(map[string]any)
+	if !ok {
+		return false
+	}
+	task := value
+	if nested, ok := value["task"].(map[string]any); ok {
+		task = nested
+	}
+	if baselines, ok := task["baselines"].(map[string]any); ok {
+		if history, ok := baselines["history"].([]domain.BaselineReference); ok && len(history) > 0 {
+			history = history[:len(history)-1]
+			baselines["history"] = history
+			baselines["history_next_after"] = uint64(len(history))
+			return true
+		}
+	}
+	if page, ok := value["baseline_history"].(*domain.BaselineHistoryPage); ok && len(page.Entries) > 1 {
+		page.Entries = page.Entries[:len(page.Entries)-1]
+		after := page.Entries[len(page.Entries)-1].Sequence
+		page.NextAfter = &after
+		return true
+	}
+	return false
+}
+
 func EncodeError(id, tool string, err error) EncodedResult {
 	if !domain.ID(id).IsValid() || !isToolName(tool) {
 		return failureFallback(id, tool, "Core could not identify the response request or tool.")
@@ -309,6 +347,14 @@ func projectAction(a *domain.ProcessAction) any {
 	return map[string]any{"task_id": a.TaskID, "revision": a.Revision, "action_id": a.ActionID, "action_kind": a.Kind, "submission_tool": tool, "process_id": a.Process.ID, "process_definition_digest": a.Process.DefinitionDigest, "current_node": a.NodeID, "node_purpose": a.NodeContract.Purpose, "entry_conditions": a.NodeContract.EntryConditions, "completion_conditions": a.NodeContract.CompletionConditions, "allowed_effects": a.AllowedEffects, "required_evidence": a.RequiredEvidence, "method_profile": a.MethodProfile, "method_steps": a.SemanticMethodSteps, "available_transitions": a.AvailableTransitions, "payload_contract": a.PayloadContract, "guidance": a.Guidance, "repository_binding_digest": a.RepositoryBindingDigest, "issuance_identity_digest": a.IssuanceIdentityDigest, "issuance_history_digest": a.IssuanceHistoryDigest, "issuance_content_digest": a.IssuanceContentDigest, "issued_at": a.IssuedAt}
 }
 func projectTask(t domain.ProcessTask) any {
+	// Core has already validated every reference. This fixed valid first-page
+	// query cannot fail for a saved Task; the same pager serves explicit reads.
+	page, _ := t.ReadBaselineHistory(domain.BaselineHistoryQuery{Revision: t.Revision, Limit: domain.MaxBaselineHistoryPageEntries})
+	var history []domain.BaselineReference
+	for _, entry := range page.Entries {
+		history = append(history, entry.Reference)
+	}
+
 	var plan any
 	var currentBudget any
 	if t.TaskPlan != nil {
@@ -318,7 +364,10 @@ func projectTask(t domain.ProcessTask) any {
 		}
 	}
 	verification := map[string]any{"plan": plan, "current_budget": currentBudget, "usage": t.CurrentVerificationUsage(), "adjustments": t.VerificationBudgetAdjustments}
-	result := map[string]any{"task_id": t.TaskID, "origin_host": t.OriginHost, "process_id": t.Process.ID, "process_definition_digest": t.Process.DefinitionDigest, "intent": t.Intent, "current_cursor": t.CurrentNode, "resume_cursor": t.ResumeNode, "primary_repository_key": t.EffectivePrimaryRepositoryKey(), "workspace_origin": t.WorkspaceOrigin, "repository": projectRepository(t.Repository), "baselines": map[string]any{"requirements": t.Requirements, "design": t.Design, "task_plan": t.TaskPlan, "history": t.BaselineHistory}, "implementation": t.Implementation, "test": t.Test, "comprehension": t.Comprehension, "verification": verification, "verification_attempts": t.VerificationAttempts, "file_scope_records": t.FileScopeRecords, "current_changed_paths": t.CurrentChangedPaths, "relocation": t.Relocation, "current_action": projectAction(t.CurrentAction), "blocker": t.Blocker, "last_operation": t.LastOperation, "evidence": t.Evidence, "outcome": t.Outcome, "revision": t.Revision, "created_at": t.CreatedAt, "updated_at": t.UpdatedAt, "completed_at": t.CompletedAt}
+	result := map[string]any{"task_id": t.TaskID, "origin_host": t.OriginHost, "process_id": t.Process.ID, "process_definition_digest": t.Process.DefinitionDigest, "intent": t.Intent, "current_cursor": t.CurrentNode, "resume_cursor": t.ResumeNode, "primary_repository_key": t.EffectivePrimaryRepositoryKey(), "workspace_origin": t.WorkspaceOrigin, "repository": projectRepository(t.Repository), "baselines": map[string]any{"requirements": t.Requirements, "design": t.Design, "task_plan": t.TaskPlan, "history": history, "history_total": page.Total, "history_next_after": page.NextAfter, "history_revision": page.Revision}, "implementation": t.Implementation, "test": t.Test, "comprehension": t.Comprehension, "verification": verification, "verification_attempts": t.VerificationAttempts, "file_scope_records": t.FileScopeRecords, "current_changed_paths": t.CurrentChangedPaths, "relocation": t.Relocation, "current_action": projectAction(t.CurrentAction), "blocker": t.Blocker, "last_operation": t.LastOperation, "evidence": t.Evidence, "outcome": t.Outcome, "revision": t.Revision, "created_at": t.CreatedAt, "updated_at": t.UpdatedAt, "completed_at": t.CompletedAt}
+	if t.BranchRename != nil {
+		result["branch_rename"] = t.BranchRename
+	}
 	if len(t.AdditionalRepositories) != 0 {
 		entries := append([]domain.RepositoryScopeEntry(nil), t.AdditionalRepositories...)
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Key < entries[j].Key })

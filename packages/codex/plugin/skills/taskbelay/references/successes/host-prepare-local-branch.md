@@ -141,6 +141,7 @@ Complete response:
       "phase": "prepared",
       "relocation_id": null,
       "surface": "current_session",
+      "target_effects": "not_invoked",
       "worktree_cleanup": "not_requested"
     },
     "remote_name": "",

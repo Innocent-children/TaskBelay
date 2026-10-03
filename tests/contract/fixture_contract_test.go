@@ -51,7 +51,7 @@ func TestWorkspaceLifecycleFixtureMatchesClosedMCPInputs(t *testing.T) {
 	if err := decoder.Decode(&fixture); err != nil {
 		t.Fatal(err)
 	}
-	if fixture.FixtureKind != "workspace_lifecycle" || fixture.StorageSchemaVersion != "0.7.0" {
+	if fixture.FixtureKind != "workspace_lifecycle" || fixture.StorageSchemaVersion != "0.8.0" {
 		t.Fatalf("workspace lifecycle identity=%q/%q", fixture.FixtureKind, fixture.StorageSchemaVersion)
 	}
 	for tool, input := range map[string]json.RawMessage{
@@ -220,7 +220,7 @@ func TestGraphServerInfoFixtureContainsCompletePublicDTO(t *testing.T) {
 		t.Fatalf("public process DTO=%#v", process)
 	}
 	tools, ok := value["tools"].([]any)
-	if !ok || len(tools) != 17 {
+	if !ok || len(tools) != 18 {
 		t.Fatalf("tools=%#v", tools)
 	}
 	preferences, ok := value["host_preferences"].(map[string]any)

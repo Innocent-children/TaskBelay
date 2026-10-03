@@ -14,6 +14,7 @@ export const TASKBELAY_RAW_TOOL_NAMES = Object.freeze([
   "taskbelay_submit_comprehension",
   "taskbelay_submit_refactor",
   "taskbelay_submit_delivery",
+  "taskbelay_prepare_task_branch_rename",
   "taskbelay_prepare_task_relocation",
   "taskbelay_resolve_blocker",
   "taskbelay_recover_action",

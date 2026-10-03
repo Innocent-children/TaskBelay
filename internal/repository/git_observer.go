@@ -34,6 +34,8 @@ const (
 	gitShowIndexEntries
 	gitIsAncestor
 	gitShowMergeCommits
+	gitShowWholeIndex
+	gitShowBranchRef
 )
 
 type GitObserver struct{ runner gitCommandRunner }
@@ -354,13 +356,17 @@ func (o *GitObserver) history(ctx context.Context, root string, origin domain.Wo
 	relation := domain.RepositoryHistoryExact
 	priorHead := origin.BaseCommit
 	priorDigest := domain.Digest("")
+	expectedBranch := origin.TaskBranch
 	if previous != nil {
 		priorHead, priorDigest = previous.CurrentHead, previous.HistoryDigest
+		if previous.CurrentBranch != nil && !previous.Detached {
+			expectedBranch = *previous.CurrentBranch
+		}
 		_ = instance
 	}
 	if detached {
 		relation = domain.RepositoryHistoryDetached
-	} else if branch == nil || *branch != origin.TaskBranch {
+	} else if branch == nil || *branch != expectedBranch {
 		relation = domain.RepositoryHistoryBranchChanged
 	} else if head == priorHead {
 		if previous != nil {
@@ -545,6 +551,16 @@ func (command gitReadCommand) arguments(repositoryPath, value string) ([]string,
 			return nil, false
 		}
 		return append(args, "symbolic-ref", "--quiet", "--short", "HEAD"), true
+	case gitShowWholeIndex:
+		if value != "" {
+			return nil, false
+		}
+		return append(args, "ls-files", "--stage", "-v", "-z"), true
+	case gitShowBranchRef:
+		if !validBranchRefName(value) {
+			return nil, false
+		}
+		return append(args, "rev-parse", "--verify", "--quiet", "refs/heads/"+value+"^{commit}"), true
 	case gitShowHead:
 		if value != "" {
 			return nil, false

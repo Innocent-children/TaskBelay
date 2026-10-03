@@ -1,6 +1,6 @@
 import { validateLaunchAdmission } from "./task-admission.mjs";
-import { randomBytes } from "node:crypto";
-import { chmod, lstat, mkdir, open, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import { chmod, link, lstat, mkdir, open, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const digestPattern = /^[0-9a-f]{64}$/u;
@@ -21,6 +21,7 @@ export const PROVISIONING_PHASES = Object.freeze([
   "dispatched",
   "provisioned",
   "failed",
+  "superseded",
   "uncertain",
   "handoff_dispatching",
   "handoff_pending",
@@ -43,6 +44,7 @@ const phaseTransitions = Object.freeze({
   provisioned: Object.freeze(["provisioned", "handoff_dispatching", "worktree_removed"]),
   uncertain: Object.freeze(["uncertain", "queued", "dispatched", "provisioning", "provisioned", "handoff_pending", "failed"]),
   failed: Object.freeze(["failed"]),
+  superseded: Object.freeze([]),
   handoff_dispatching: Object.freeze(["handoff_dispatching", "handoff_pending", "handoff_failed", "uncertain"]),
   handoff_pending: Object.freeze(["handoff_pending", "handoff_succeeded", "handoff_failed", "uncertain"]),
   handoff_succeeded: Object.freeze(["handoff_succeeded", "handoff_dispatching", "worktree_removed"]),
@@ -119,6 +121,7 @@ export function validateProvisioningReceipt(value) {
     "worktree_path",
     "operation_status",
     "created_at",
+    ...["predecessor", "supersession"].filter((key) => Object.hasOwn(value ?? {}, key)),
   ], "provisioning receipt");
   assertExactKeys(value.admission, ["assessment", "user_choice"], "receipt admission");
   validateLaunchAdmission(value.admission.assessment, value.admission.user_choice);
@@ -147,11 +150,29 @@ export function validateProvisioningReceipt(value) {
   if (value.workspace_mode !== "dedicated_worktree" && (value.source_type !== "local" || value.operation_status.surface !== "current_session" || value.worktree_path === null) || value.workspace_mode === "dedicated_worktree" && value.operation_status.surface === "current_session") throw new Error("workspace mode does not match the launch surface");
   if (value.workspace_mode === "current_branch" && value.base_branch !== value.target_branch || value.workspace_mode === "new_branch" && value.base_branch === value.target_branch) throw new Error("workspace mode does not match the selected branch");
   if (!Number.isFinite(Date.parse(value.created_at))) throw new Error("provisioning receipt created_at is invalid");
-  if (!["confirmed", "resolving", "failed"].includes(value.operation_status.phase) && value.base_commit === null) {
+  if (!["confirmed", "resolving", "failed", "superseded"].includes(value.operation_status.phase) && value.base_commit === null) {
     throw new Error("provisioning receipt phase requires base_commit");
   }
   if (["provisioning", "provisioned", "handoff_dispatching", "handoff_pending", "handoff_succeeded", "handoff_failed"].includes(value.operation_status.phase) && value.worktree_path === null) {
     throw new Error("provisioning receipt phase requires worktree_path");
+  }
+  if (value.predecessor !== undefined) {
+    assertExactKeys(value.predecessor, ["launch_id", "repository_key", "receipt_digest"], "receipt predecessor");
+    assertLaunchID(value.predecessor.launch_id);
+    if (value.predecessor.launch_id === value.launch_id || value.predecessor.repository_key !== value.repository_key || !digestPattern.test(value.predecessor.receipt_digest)) throw new Error("receipt predecessor is invalid");
+  }
+  if ((value.operation_status.phase === "superseded") !== (value.supersession !== undefined)) throw new Error("superseded receipt requires its permanent successor seed");
+  if (value.supersession !== undefined) {
+    const mark = value.supersession;
+    assertExactKeys(mark, ["reason", "prior_phase", "receipt_digest", "seed_digest", "seed"], "receipt supersession");
+    assertExactKeys(mark.seed, ["receipt", "prepare_input", "handoff"], "successor seed");
+    if (typeof mark.reason !== "string" || !mark.reason.trim() || mark.reason.length > 4096 || !digestPattern.test(mark.receipt_digest) || mark.seed.receipt?.supersession !== undefined || mark.seed.receipt?.operation_status?.phase !== "confirmed") throw new Error("invalid successor seed");
+    const successor = validateProvisioningReceipt(mark.seed.receipt);
+    if (successor.predecessor?.launch_id !== value.launch_id || successor.predecessor.repository_key !== value.repository_key || successor.predecessor.receipt_digest !== mark.receipt_digest || receiptDigest(mark.seed) !== mark.seed_digest) throw new Error("successor seed does not match its predecessor");
+    const prior = structuredClone(value);
+    delete prior.supersession;
+    prior.operation_status.phase = mark.prior_phase;
+    if (!["confirmed", "resolving", "prepared", "dispatch_prepared", "failed"].includes(mark.prior_phase) || receiptDigest(prior) !== mark.receipt_digest) throw new Error("supersession changed the preceding receipt");
   }
   return structuredClone(value);
 }
@@ -219,8 +240,12 @@ export async function writeProvisioningReceiptAtomic(path, receipt, {
       encoding: "utf8",
       mode: 0o600,
       flag: "wx",
+      flush: true,
     });
-    await rename(temporaryPath, path);
+    if (createOnly) {
+      await link(temporaryPath, path);
+      await unlink(temporaryPath);
+    } else await rename(temporaryPath, path);
     if (enforcePrivateModes) await chmod(path, 0o600);
   } catch (error) {
     await unlink(temporaryPath).catch(() => {});
@@ -318,11 +343,12 @@ export function updateProvisioningReceipt(receipt, patch) {
   const allowed = new Set([
     "base_commit", "snapshot_commit", "worktree_path", "dispatch_attempt_id", "host_thread_id",
     "host_client_thread_id", "host_operation_id", "host_operation_revision", "relocation_id",
-    "worktree_cleanup", "branch_cleanup", "host_request", "dispatch_recovery_reason",
+    "worktree_cleanup", "branch_cleanup", "host_request", "dispatch_recovery_reason", "target_effects", "worktree_identity",
   ]);
   for (const key of Object.keys(patch.values)) {
     if (!allowed.has(key)) throw new Error(`provisioning receipt update cannot change ${key}`);
   }
+  if (current.operation_status.target_effects === "may_have_effects" && patch.values.target_effects === "not_invoked") throw new Error("target-call evidence cannot be reset");
   const next = structuredClone(current);
   for (const field of ["base_commit", "snapshot_commit", "worktree_path"]) {
     if (Object.hasOwn(patch.values, field)) next[field] = patch.values[field];
@@ -335,10 +361,14 @@ export function updateProvisioningReceipt(receipt, patch) {
 }
 
 function validateOperationStatus(value) {
+  if (value?.worktree_identity !== undefined && !/^[a-f0-9]{64}$/.test(value.worktree_identity)) throw new Error("worktree_identity is invalid");
   assertExactKeys(value, [
     "phase", "surface", "dispatch_attempt_id", "host_thread_id", "host_client_thread_id",
     "host_operation_id", "host_operation_revision", "relocation_id", "worktree_cleanup", "branch_cleanup", "host_request", "dispatch_recovery_reason",
+    ...(Object.hasOwn(value ?? {}, "target_effects") ? ["target_effects"] : []),
+    ...(Object.hasOwn(value ?? {}, "worktree_identity") ? ["worktree_identity"] : []),
   ], "provisioning operation_status");
+  if (value.target_effects !== undefined && !["not_invoked", "may_have_effects"].includes(value.target_effects)) throw new Error("invalid target call evidence");
   if (value.host_request !== null) {
     const request = value.host_request;
     assertExactKeys(request, ["prompt", "title", "target"], "host_request");
@@ -374,6 +404,23 @@ function validateOperationStatus(value) {
   }
   if (!cleanupStates.includes(value.worktree_cleanup) || !cleanupStates.includes(value.branch_cleanup)) {
     throw new Error("provisioning cleanup state is invalid");
+  }
+}
+
+// Stable across JSON object key order; used for explicit receipt CAS and saved seeds.
+export function receiptDigest(value) {
+  const canonical = (entry) => Array.isArray(entry) ? entry.map(canonical) : entry !== null && typeof entry === "object" ? Object.fromEntries(Object.keys(entry).sort().map((key) => [key, canonical(entry[key])])) : entry;
+  return createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
+}
+
+export async function assertReceiptExecutable(receipt, options) {
+  if (receipt.operation_status.phase === "superseded") throw new Error("launch was permanently superseded; read its successor seed");
+  if (receipt.predecessor === undefined) return;
+  const prior = await readProvisioningReceipt(provisioningReceiptPath(options.productSupportRoot, receipt.predecessor.launch_id, receipt.predecessor.repository_key), options);
+  const seed = prior?.supersession?.seed?.receipt;
+  if (seed === undefined || receiptDigest(seed.predecessor) !== receiptDigest(receipt.predecessor) || seed.launch_id !== receipt.launch_id) throw new Error("successor has no matching permanent predecessor");
+  for (const field of ["admission", "host", "request_digest", "handoff_digest", "source_repository_identity", "repository_key", "workspace_mode", "remote_name", "source_type", "carry_changes", "base_branch", "target_branch", "created_at"]) {
+    if (receiptDigest(seed[field]) !== receiptDigest(receipt[field])) throw new Error("successor differs from its retained seed");
   }
 }
 

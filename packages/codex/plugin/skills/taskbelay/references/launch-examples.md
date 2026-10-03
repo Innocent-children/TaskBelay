@@ -432,3 +432,88 @@ Complete successful request and response: [view every returned field](successes/
 ```
 
 Complete successful request and response: [view every returned field](successes/host-scope-multiple.md).
+
+## host-supersede-replace
+
+<!-- example:host supersede replace -->
+```json
+{
+  "launch_id": "launch-example",
+  "repository_key": "primary",
+  "expected_receipt_digest": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "reason": "Use the corrected branch name before execution.",
+  "replacement": {
+    "request": "Return the requested field from the endpoint.",
+    "repository_key": "primary",
+    "repository_path": "/work/project",
+    "workspace_mode": "dedicated_worktree",
+    "source_type": "local",
+    "carry_changes": false,
+    "remote_name": "",
+    "base_branch": "main",
+    "target_branch": "codex/revised-endpoint",
+    "surface": "managed_worktree",
+    "worktree_path": null,
+    "handoff_file": "/private/tmp/taskbelay-handoff.json",
+    "assessment": {
+      "change_level": "standard",
+      "observed_repositories": [
+        "/work/project"
+      ],
+      "candidate_components": [
+        "Endpoint response"
+      ],
+      "candidate_paths": [
+        "src/endpoint.js"
+      ],
+      "public_contract_flags": [
+        "Response field changes"
+      ],
+      "persistence_or_state_flags": [],
+      "host_or_platform_flags": [],
+      "verification_shape": [
+        "Endpoint response check"
+      ],
+      "unknowns": [],
+      "recommendation": "taskbelay",
+      "reasons": [
+        "The response is a public contract."
+      ],
+      "anchor": {
+        "request_digest": "6e1ecf5454bf017b0a842e6d3f7f537dd21f1e4b5741ce8967a54a4d33e662e6",
+        "repositories": [
+          {
+            "repository_key": "primary",
+            "canonical_root": "/work/project",
+            "head": "1111111111111111111111111111111111111111",
+            "status_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+            "dirty_paths": [],
+            "dirty_paths_truncated": false
+          }
+        ]
+      }
+    },
+    "user_choice": {
+      "source": "user",
+      "mode": "taskbelay",
+      "summary": "The user selected TaskBelay after reading the assessment."
+    },
+    "launch_id": "launch-successor"
+  }
+}
+```
+
+Complete successful request and response: [view every returned field](successes/host-supersede-replace.md).
+
+## host-supersede-resume-recover
+
+<!-- example:host supersede-resume recover -->
+```json
+{
+  "launch_id": "launch-example",
+  "repository_key": "primary",
+  "seed_digest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+}
+```
+
+Complete successful request and response: [view every returned field](successes/host-supersede-resume-recover.md).

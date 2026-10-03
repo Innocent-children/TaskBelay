@@ -160,6 +160,7 @@ type ProcessTask struct {
 	FileScopeRecords              []FileScopeRecord              `json:"file_scope_records"`
 	CurrentChangedPaths           []string                       `json:"current_changed_paths"`
 	Relocation                    *TaskRelocation                `json:"relocation,omitempty"`
+	BranchRename                  *TaskBranchRename              `json:"branch_rename,omitempty"`
 	Outcome                       *ProcessOutcome                `json:"outcome"`
 	Revision                      uint64                         `json:"revision"`
 	CreatedAt                     time.Time                      `json:"created_at"`
@@ -181,7 +182,7 @@ func (t ProcessTask) Validate() error {
 	if !sameStrings(t.CurrentChangedPaths, derivedChangedPaths) {
 		return ErrInvalidArgument
 	}
-	if validateID(t.TaskID) != nil || !t.OriginHost.IsValid() || t.Intent.Validate() != nil || t.Process.Validate() != nil || !t.CurrentNode.IsValid() || t.Revision == 0 || validateUTC(t.CreatedAt) != nil || validateUTC(t.UpdatedAt) != nil || t.UpdatedAt.Before(t.CreatedAt) || len(t.BaselineHistory) > MaxRetainedBaselineReferences || len(t.Evidence) > MaxRetainedEvidenceItems || len(t.VerificationAttempts) > MaxRetainedVerificationAttempts || len(t.VerificationBudgetAdjustments) > MaxVerificationBudgetAdjustments || len(t.FileScopeRecords) > MaxFileScopeRecords || len(t.CurrentChangedPaths) > MaxFingerprintPaths {
+	if validateID(t.TaskID) != nil || !t.OriginHost.IsValid() || t.Intent.Validate() != nil || t.Process.Validate() != nil || !t.CurrentNode.IsValid() || t.Revision == 0 || validateUTC(t.CreatedAt) != nil || validateUTC(t.UpdatedAt) != nil || t.UpdatedAt.Before(t.CreatedAt) || len(t.Evidence) > MaxRetainedEvidenceItems || len(t.VerificationAttempts) > MaxRetainedVerificationAttempts || len(t.VerificationBudgetAdjustments) > MaxVerificationBudgetAdjustments || len(t.FileScopeRecords) > MaxFileScopeRecords || len(t.CurrentChangedPaths) > MaxFingerprintPaths {
 		return ErrInvalidArgument
 	}
 	if t.Requirements != nil && t.Requirements.Validate() != nil {
@@ -222,6 +223,9 @@ func (t ProcessTask) Validate() error {
 		return ErrInvalidArgument
 	}
 	if t.CurrentAction != nil && (t.CurrentAction.Validate() != nil || t.CurrentAction.TaskID != t.TaskID || t.CurrentAction.Revision != t.Revision || t.CurrentAction.Process != t.Process || t.CurrentAction.NodeID != t.CurrentNode || t.CurrentAction.RepositoryBindingDigest != effectiveRepositoryDigest || t.CurrentAction.IssuanceIdentityDigest != digests.Identity || t.CurrentAction.IssuanceHistoryDigest != digests.History || t.CurrentAction.IssuanceContentDigest != digests.Content || t.CurrentAction.MethodProfile != t.Intent.MethodProfile) {
+		return ErrInvalidArgument
+	}
+	if !t.BranchRenameValid() {
 		return ErrInvalidArgument
 	}
 	if t.Relocation != nil {
@@ -341,7 +345,11 @@ func (t ProcessTask) Validate() error {
 	if !baselineRevisionChainsValid(t, history) {
 		return ErrInvalidArgument
 	}
-	if size, err := compactJSONSize(t); err != nil || size > MaxPersistedTaskSnapshotBytes {
+	// The aggregate budget protects non-history state. Complete history has no
+	// configured retention or aggregate byte limit. Each reference remains validated.
+	withoutHistory := t
+	withoutHistory.BaselineHistory = nil
+	if size, err := compactJSONSize(withoutHistory); err != nil || size > MaxPersistedTaskSnapshotBytes {
 		return ErrInvalidArgument
 	}
 	for _, record := range t.FileScopeRecords {
@@ -608,12 +616,17 @@ func baselineRevisionChainsValid(t ProcessTask, history map[BaselineKind]map[uin
 	}
 	for _, kind := range []BaselineKind{BaselineRequirements, BaselineDesign, BaselineTaskPlan} {
 		revisions := history[kind]
-		for revision := uint32(1); revision <= uint32(len(revisions)); revision++ {
+		highest := uint64(len(revisions))
+		if highest >= uint64(^uint32(0)) {
+			return false
+		}
+		for offset := uint32(1); offset <= uint32(len(revisions)); offset++ {
+			revision := offset
 			if !revisions[revision] {
 				return false
 			}
 		}
-		if revision := current[kind]; revision != 0 && revision != uint32(len(revisions))+1 {
+		if revision := current[kind]; revision != 0 && uint64(revision) != highest+1 {
 			return false
 		}
 	}

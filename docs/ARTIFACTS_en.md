@@ -107,3 +107,17 @@ not a real Codex session running the OpenSpec executable or a Windows validation
 `collectArtifacts` compares current content with the retained Implementation/Test content digest in TEST, COMPREHENSION_REVIEW and DELIVERY; process files are included. Codex therefore completes process-file updates before final verification and reconciles them read-only afterward. If another update is needed, it uses a current legal return path and re-establishes verification. Classifying a file as `other_process` does not bypass the content check. Implementation: `internal/application/artifacts.go` and `internal/application/workspace.go`.
 
 The DeepSeek Skill packages `scripts/artifacts.mjs`. Invoke the same read-only Core preparation commands with `node <actual Skill directory>/scripts/artifacts.mjs collect` or `prepare`. Inputs and results use the shapes in this document with `host="deepseek"`. The script reuses the Adapter runtime/data-directory resolution and creates no store. Resolve its path from the actual DSH Skill resourceBase. `--help` reads no stdin and resolves no runtime. It is not a standalone taskbelay-deepseek CLI or an additional workspace_coordinator operation.
+
+## Baseline references and Action identity
+
+All older requirements, design and task-plan references remain in the Task in saved order, without
+archiving or a configured count limit. Resource and revision-number ranges still apply. The response
+first page and complete-history pages preserve each revision, digest, summary and timestamp, with an
+explicit total and next cursor. Page size never controls retention. Missing full documents are not
+reconstructed, and the current artifact set and content checks remain unchanged. File submissions
+must still cover the paths required by Core.
+
+Branch-rename preparation issues a new BLOCKED Action. After resolution, read the current Action
+and collect or prepare its artifacts against the saved effective branch. Never reuse the old Action
+or treat the creation branch as the current binding. Core verifies repository instance, HEAD, index
+and content; an artifact list cannot stand in for those checks.

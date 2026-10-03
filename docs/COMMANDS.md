@@ -175,7 +175,7 @@ package、bundled Core 和 Codex 版本，然后注册本地 marketplace、Plugi
 | `taskbelay-codex hook pre-tool-use` | **内部 Host 命令。** Codex packaged hook 通过 `PATH` 中 package-owned launcher 调用它；该命令读取一个 Hook 事件，提取 `apply_patch` 目标并执行写前检查。正常用户不应手工启动它。 |
 | `taskbelay-codex host-check pre-file-write` | **内部 Host 命令。** `hook pre-tool-use` 的实现调用它；launcher 定位 package-local Core，并原样转发 stdin/stdout 与精确的 `host-check pre-file-write` 参数。正常用户不应手工启动它。 |
 | `taskbelay-codex host-check workspace-available` | **内部 Host 命令。** 原样调用 Core 的只读目录占用检查；由本地分支启动助手使用。 |
-| `taskbelay-codex host-launch <operation>` | **内部 Host 命令。** 从 stdin 接收一个 closed JSON 对象，并输出一个 JSON 对象。`operation` 只允许 `inspect|prepare|local-provision|status|dispatch-start|dispatch-call|dispatch-recover|dispatch-reconcile|dispatch-result|bootstrap|cli-provision|scope|handoff-start|handoff-result|handoff-status|cleanup-decision|cleanup-worktree|cleanup-branch`；它执行或记录当前用户已经确认的 assessment、provisioning、relaunch、handoff 与 cleanup 步骤，不是通用 Git CLI。 |
+| `taskbelay-codex host-launch <operation>` | **内部 Host 命令。** 从 stdin 接收一个 closed JSON 对象，并输出一个 JSON 对象。`operation` 只允许 `inspect|prepare|supersede|supersede-resume|local-provision|status|dispatch-start|dispatch-call|dispatch-recover|dispatch-reconcile|dispatch-result|bootstrap|cli-provision|scope|handoff-start|handoff-result|handoff-status|cleanup-decision|cleanup-worktree|cleanup-branch`；它执行或记录当前用户已经确认的 assessment、provisioning、relaunch、handoff 与 cleanup 步骤，不是通用 Git CLI。 |
 
 工作位置选择：`workspace_mode=new_branch` 为默认值，另可选 `current_branch` 或 `dedicated_worktree`。本地模式要求 `source_type=local`、空 remote、当前分支作为 base、起始 HEAD，`worktree_path=repository_path`；`carry_changes` 表示是否接受原目录的初始修改。两个本地模式保持原会话，不使用需求交接文件；`new_branch` 需要新目标分支，`current_branch` 的 target 等于 base。
 
@@ -344,7 +344,7 @@ clean 和远端 task branch 后才使用非 force Git 命令。
 | `taskbelay-claude host-launch retry-launch` | launch_id、previous_caller_stopped、session_not_started、reason；两个事实字段须为 true。 |
 | `taskbelay-claude host-launch relocate` | 输入 launch_id、relocation_id、destinations[{repository_key,repository_path}]、authorized；返回可直接提交 Core 的 relocation_id 和 relocation_destinations[{key,repository_path}]。 |
 | `taskbelay-claude host-launch cleanup-worktree` | launch_id、repository_key、terminal、authorized。 |
-| `taskbelay-claude host-launch cleanup-branch` | launch_id、repository_key、terminal、authorized；独立于工作树清理授权。 |
+| `taskbelay-claude host-launch cleanup-branch` | launch_id、repository_key、terminal、authorized、core_task；独立于工作树清理授权。 |
 
 `prepare.repositories` 的每项均需提供 key、repository_path、workspace_mode、source_type、remote_name、base_branch、target_branch、carry_changes、worktree_path。仓库 key 遵循 Core 的 `^[a-z0-9][a-z0-9._-]{0,127}$` 规则，在 Git 修改前校验，创建与迁移使用同一标识。mode 为 `new_branch`、`current_branch` 或 `dedicated_worktree`。assessment 保存原始 `inspect` 锚点、影响面、验证安排和已解决的未知项；user_choice 记录实际用户决定。Host 操作的具体前提和值来源见 [admission 引用](../packages/claude/plugin/skills/taskbelay/references/admission.md)及[生命周期引用](../packages/claude/plugin/skills/taskbelay/references/host-lifecycle.md)。
 
@@ -376,7 +376,7 @@ clean 和远端 task branch 后才使用非 force Git 命令。
 | `taskbelay-zcode host-launch bind-task` | launch_id、task_id；绑定实际 Core 成功结果。 |
 | `taskbelay-zcode host-launch open\|resume` | launch_id；返回 UI 操作说明、工作目录和完整接续提示，不自动启动会话。 |
 | `taskbelay-zcode host-launch relocate` | launch_id、relocation_id、destinations[{repository_key,repository_path}]、authorized=true、core_preparation；core_preparation 必须为实际 `taskbelay_prepare_task_relocation` 成功响应的完整 result，含 relocation_id/task；返回供 Core 核验的目标。 |
-| `taskbelay-zcode host-launch cleanup-worktree\|cleanup-branch` | launch_id、repository_key、terminal、authorized；工作树和分支分别授权。 |
+| `taskbelay-zcode host-launch cleanup-worktree\|cleanup-branch` | launch_id、repository_key、terminal、authorized、core_task；工作树和分支分别授权。 |
 
 Host-launch 接受 stdin 中的一个封闭 JSON 对象，最多 1 MiB；`prepare.repositories` 各项必需 key、repository_path、workspace_mode、source_type、remote_name、base_branch、target_branch、carry_changes、worktree_path。模式为 `new_branch`、`current_branch`、`dedicated_worktree`；key 使用 Core 的 `^[a-z0-9][a-z0-9._-]{0,127}$` 规则。迁移核对准备结果中的已绑定 ZCode Task、当前迁移 blocker 和全部源工作区；不能只凭迁移 ID 移动目录。同一 ID 已移动时，只核验目标身份并回读；结果不确定时拒绝重复移动。Core 完成前次迁移后，新的准备结果和 ID 可以开始下一次迁移。评估、授权和迁移前提见包内 [admission](../packages/zcode/skills/taskbelay/references/admission.md) 和 [生命周期说明](../packages/zcode/skills/taskbelay/references/host-lifecycle.md)。
 
@@ -439,7 +439,7 @@ DeepSeek Adapter 会从目标最近的现存父目录定位；Core 的观察超�
 
 ## MCP 工具
 
-以下十七个工具是当前全部公开 MCP 工具。它们由 Host Adapter 调用，不是终端 shell
+以下十八个工具是当前全部公开 MCP 工具。它们由 Host Adapter 调用，不是终端 shell
 命令。
 
 | 工具 | 类型 | 作用 |
@@ -456,9 +456,10 @@ DeepSeek Adapter 会从目标最近的现存父目录定位；Core 的观察超�
 | `taskbelay_submit_comprehension` | mutation | 提交 COMPREHENSION_REVIEW 节点结果。 |
 | `taskbelay_submit_refactor` | mutation | 提交 REFACTOR 节点结果。 |
 | `taskbelay_submit_delivery` | mutation | 提交 DELIVERY 判断、明确的 acceptance 关联、风险和发现；每条验收包含 work_item_ids 与当前 Test 的 evidence_ids。汇总验证记录 ID 与 Test/Comprehension record ID 由 Core 补齐，调用方提交这些汇总字段会被拒绝。 |
-| `taskbelay_resolve_blocker` | mutation | 在 Core 确认当前 blocker 条件后解除阻塞；文件范围使用 `choice` 与 `reason`，history 使用 `history_resolution:{choice:"accept_current_history",reason}`，relocation 使用 `relocation_id` 与全部 `relocation_destinations[{key,repository_path}]`，验证/Recovery blocker 使用当前身份字段。 |
+| `taskbelay_resolve_blocker` | mutation | 在 Core 确认当前 blocker 条件后解除阻塞；文件范围使用 `choice` 与 `reason`，history 使用 `history_resolution:{choice:"accept_current_history",reason}`，relocation 使用 `relocation_id` 与全部 `relocation_destinations[{key,repository_path}]`，验证/Recovery blocker 使用当前身份字段。 未执行写前请求按保存绑定到当前观察的完整层增量核对；未变继承路径不自动获准修改。`expand_scope` 后必须重新保存并确认精确计划。 |
 | `taskbelay_recover_action` | mutation | 使用 Core 在独立 Action 操作记录中保存的规范化提交恢复不确定 Action；不接收原始 payload。 |
 | `taskbelay_cancel_task` | destructive mutation | 使用当前 revision 和非空 reason 将非终态 Task 转为 `CANCELLED`。 |
+| `taskbelay_prepare_task_branch_rename` | mutation | host、task_id、revision、repository_key、target_branch、reason；返回 rename_id/task，进入 BLOCKED 准备单仓纯改名。 |
 | `taskbelay_prepare_task_relocation` | mutation | 保存 relocation ID、源 workspace/content/surface 和 resume node；Host handoff 期间保留原 claims。 |
 | `taskbelay_abandon_task` | destructive mutation | 原 worktree 确实不可用时，用精确 host/task/revision 和非空 reason 进入 `CANCELLED` 并释放 claims；先尝试观察仓库，以确认原 worktree 不可用。 |
 
@@ -702,4 +703,29 @@ DeepSeek Skill 随包提供 `scripts/artifacts.mjs`，以 `node <实际 Skill �
 
 MCP 参数纠错分为 `correct_current_action`（普通节点提交）和 `correct_request`（握手、读取、创建及生命周期请求）。二者均要求 Core 确认零写入，并用 allowed_paths 限定本次纠正。`correct_request` 保留原请求身份和已有授权，不要求先取得一个尚不存在的 Action。四个 Host Skill 为每个请求提供完整成功响应的链接，以及经过代码比对的具体错误响应与实现位置。历史恢复分别在 `history_resolution.choice` 和 `history_resolution.reason` 上报告枚举错误和文本错误。
 
-所有 17 个工具的 `error.message` 直接说明具体失败条件；字段错误同时返回路径、规则和要求，多个原因保留在 `details` 或 `guard.failures`。JSON 语法、类型、重复成员、状态限制、仓库观察、存储和响应编码失败分别说明。编码失败保留实际工具和已有请求 ID，未知底层原因会明确说明，具体规则见 [Core 响应规范](CORE-RESPONSES.md)。
+所有 18 个工具的 `error.message` 直接说明具体失败条件；字段错误同时返回路径、规则和要求，多个原因保留在 `details` 或 `guard.failures`。JSON 语法、类型、重复成员、状态限制、仓库观察、存储和响应编码失败分别说明。编码失败保留实际工具和已有请求 ID，未知底层原因会明确说明，具体规则见 [Core 响应规范](CORE-RESPONSES.md)。
+
+## Task 接续输入
+
+`taskbelay_get_task` 可带 baseline_history={revision,after,limit}；首屏用 revision=0/after=0，后续
+保留返回的 revision/next_after，limit 为 1..32。result.baseline_history 包含 task_id、revision、total、
+next_after（结束为 null）及 entries[{sequence,reference}]。Task 变化返回 REVISION_CONFLICT；越界游标
+返回 INVALID_ARGUMENT。Task baselines.history 是完整数组的有界首页，并始终带 history_total、
+history_next_after、history_revision。存储不按页截断、不归档、无配置性条数上限；资源和修订号范围仍适用。
+每页最多 64 KiB 实际 JSON 字节，整个响应最多 1 MiB，实际返回条数可小于 limit。只用返回的 next_after
+继续，不自行加 limit；首页为空但 total 非零时从返回的 0 开始显式分页。非历史响应超限仍拒绝。
+
+`taskbelay_resolve_blocker` 只在已准备改名 blocker 中接受 rename_id 和 rename_choice=complete|cancel。
+complete 核对源 ref 消失及 Task 事实未变，cancel 要求原事实未变。两者直接返回 Task。已保存未提交的决定
+使用原 action_id 调用 recover_action，不替换载荷。
+
+`taskbelay-codex host-launch supersede` 读取 launch_id、repository_key、expected_receipt_digest、reason
+和 replacement（包含不同显式 launch_id 的完整 prepare 输入）；status 返回 receipt_digest。替代结果为
+receipt_path、receipt、receipt_digest、predecessor、prepare_input；普通准备使用返回的 prepare_input。
+`supersede-resume` 读取前驱标记的 launch_id、repository_key、seed_digest，返回同样结构。两命令均不执行
+目标 Git/Host 操作；封闭输入 Schema 见对应 operation --help。
+
+Codex/Claude/ZCode 的 cleanup-worktree、cleanup-branch 额外要求 core_task：实际完整的终态 Core Task。
+助手核对仓库 key、provisioning origin、root 及有效分支/HEAD，清理仍各自授权。Claude host-launch relocate
+额外要求 core_preparation，即 prepare_task_relocation 的实际完整 result；ZCode 已有此输入。创建回执的
+target 分支不改；缺少有效事实不选用旧名。DeepSeek 清理直接读取终态 Core Task 的 current_branch。

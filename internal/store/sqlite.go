@@ -123,8 +123,18 @@ func preflightDatabase(ctx context.Context, db *sql.DB) error {
 }
 
 func preflightSnapshot(ctx context.Context, q queryer) error {
-	if err := verifyCurrentSchema(ctx, q); err != nil {
+	if err := verifyReadableSchema(ctx, q); err != nil {
 		return err
+	}
+	integrity, err := q.QueryContext(ctx, `PRAGMA foreign_key_check`)
+	if err != nil {
+		return ErrStorageUnavailable
+	}
+	invalid := integrity.Next()
+	failed := integrity.Err()
+	integrity.Close()
+	if invalid || failed != nil {
+		return ErrStorageUnavailable
 	}
 	rows, err := q.QueryContext(ctx, `SELECT task_id,origin_host,process_id,process_definition_digest,current_node,revision,worktree_instance_digest,snapshot,created_at,updated_at,archived_at FROM tasks`)
 	if err != nil {
@@ -313,6 +323,9 @@ func preflightSnapshot(ctx context.Context, q queryer) error {
 				}
 			}
 		}
+		if err := verifyBranchRenameHistory(ctx, q, task.task, events); err != nil {
+			return err
+		}
 		if !workflow.ProjectControlCenterGraph(task.task, traversals).Safe {
 			return ErrStorageUnavailable
 		}
@@ -392,7 +405,12 @@ func (s *SQLite) load(ctx context.Context, query, arg string) (domain.ProcessTas
 	if s == nil || s.db == nil {
 		return domain.ProcessTask{}, domain.WithExplanation(ErrStorageUnavailable, "The Task store is not open.")
 	}
-	task, err := scanStoredTask(s.db.QueryRowContext(ctx, query, arg))
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.ProcessTask{}, storageFailure(err, "The Task read transaction could not be started.")
+	}
+	defer tx.Rollback()
+	task, err := scanStoredTask(tx.QueryRowContext(ctx, query, arg))
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ProcessTask{}, domain.WithExplanation(ErrTaskNotFound, "No saved Task matches the requested Task identity or workspace claim.")
 	}
@@ -473,6 +491,12 @@ func clearSupersededActionOperation(ctx context.Context, tx *sql.Tx, mutation Ta
 }
 
 func writeTaskMutation(ctx context.Context, tx *sql.Tx, m TaskMutation, snapshot []byte) error {
+	if err := writeBranchRename(ctx, tx, m); err != nil {
+		return err
+	}
+	if err := validateBaselineHistoryMutation(ctx, tx, m); err != nil {
+		return err
+	}
 	var err error
 	if m.ExpectedRevision == 0 {
 		_, err = tx.ExecContext(ctx, `INSERT INTO tasks(task_id,origin_host,process_id,process_definition_digest,current_node,revision,worktree_instance_digest,snapshot,created_at,updated_at,archived_at) VALUES(?,?,?,?,?,?,?,?,?,?,NULL)`, m.Task.TaskID, m.Task.OriginHost, m.Task.Process.ID, m.Task.Process.DefinitionDigest, m.Task.CurrentNode, m.Task.Revision, m.Task.Repository.WorktreeInstanceDigest, snapshot, formatTime(m.Task.CreatedAt), formatTime(m.Task.UpdatedAt))

@@ -11,6 +11,19 @@ import (
 )
 
 func (s *Service) GetTask(ctx context.Context, r GetTaskRequest) (GetTaskResult, error) {
+	result, err := s.getTask(ctx, r)
+	if err != nil || r.BaselineHistory == nil {
+		return result, err
+	}
+	page, err := result.Task.ReadBaselineHistory(*r.BaselineHistory)
+	if err != nil {
+		return GetTaskResult{}, err
+	}
+	result.BaselineHistory = &page
+	return result, nil
+}
+
+func (s *Service) getTask(ctx context.Context, r GetTaskRequest) (GetTaskResult, error) {
 	if !s.valid() || ctx == nil || !r.Host.IsValid() || !r.TaskID.IsValid() {
 		return GetTaskResult{}, domain.WithExplanation(domain.ErrInvalidArgument, "The application service, request context or required request identity is invalid.")
 	}
@@ -22,7 +35,7 @@ func (s *Service) GetTask(ctx context.Context, r GetTaskRequest) (GetTaskResult,
 		if err != nil {
 			return GetTaskResult{}, err
 		}
-		fresh, err := s.observeTaskRepositories(ctx, task)
+		fresh, err := s.observeOperationScope(ctx, task, r.OperationProbe.Payload)
 		if err != nil {
 			return GetTaskResult{}, err
 		}
@@ -96,7 +109,7 @@ func assessRecordedActionCommit(host domain.Host, task domain.ProcessTask, commi
 }
 
 func (s *Service) assessActionCommit(ctx context.Context, host domain.Host, task domain.ProcessTask, commit domain.ActionCommit) (*recovery.RecoveryAssessment, error) {
-	fresh, err := s.observeTaskRepositories(ctx, task)
+	fresh, err := s.observeOperationScope(ctx, task, commit.Payload)
 	if err != nil {
 		return nil, err
 	}
@@ -122,4 +135,16 @@ func validateProbeInput(p *OperationProbe) error {
 		}
 	}
 	return nil
+}
+
+func (s *Service) observeOperationScope(ctx context.Context, task domain.ProcessTask, payload []byte) (recovery.RepositoryScopeObservation, error) {
+	if task.BranchRename != nil && !bytes.Equal(bytes.TrimSpace(payload), []byte("null")) {
+		decision, _, err := workflow.DecodeBlockerResolutionPayload(payload)
+		if err != nil {
+			return recovery.RepositoryScopeObservation{}, err
+		}
+		observed, err := s.observeBranchRenameScope(ctx, task, *task.BranchRename, decision.RenameChoice)
+		return observed.scope, err
+	}
+	return s.observeTaskRepositories(ctx, task)
 }

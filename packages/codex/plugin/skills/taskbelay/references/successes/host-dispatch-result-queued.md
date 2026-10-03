@@ -105,6 +105,7 @@ Complete response:
       "phase": "queued",
       "relocation_id": null,
       "surface": "managed_worktree",
+      "target_effects": "may_have_effects",
       "worktree_cleanup": "not_requested"
     },
     "remote_name": "",

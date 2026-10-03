@@ -69,6 +69,9 @@ Complete response:
     "baselines": {
       "design": null,
       "history": null,
+      "history_next_after": null,
+      "history_revision": 2,
+      "history_total": 0,
       "requirements": {
         "acceptance_criteria": [
           "The response contains the requested field."
