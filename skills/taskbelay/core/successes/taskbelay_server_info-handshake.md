@@ -78,7 +78,7 @@ Complete response:
       "taskbelay_abandon_task"
     ],
     "transport": "stdio",
-    "version": "0.20.0"
+    "version": "0.20.1"
   },
   "tool": "taskbelay_server_info"
 }

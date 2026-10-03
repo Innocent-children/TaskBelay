@@ -699,7 +699,7 @@ DeepSeek Skill 随包提供 `scripts/artifacts.mjs`，以 `node <实际 Skill �
 
 `taskbelay_submit_test` 新增 `tests_accepted_with_known_failures` → COMPREHENSION_REVIEW，要求具体 reason，原始 failed 检查和单独 passed 的自动比较检查，以及 `node_result.known_failure_acceptance`：source=user、summary、failed_checks、comparison_check、task_plan_revision、content_digest。用户确认绑定其所见内容；失败集合必须完整，其余检查通过，无待办或未执行检查。其他转换省略该字段或传 null。普通 tests_passed 仍只接受通过检查。具体保存和交付规则见 [架构说明](ARCHITECTURE.md#既有失败验收)。
 
-`allow_manual_handoff` 仅限制待办人工检查；已完成用户检查和独立验收可如实记录。仅调整权限时 additional_automatic_commands 可以为 0，additional_checks 仍需说明涉及的检查。恢复探针复制保存的完整操作；其工具 Schema 压缩部分必填声明以保留字段结构，Core 仍核对全部身份和 payload，不能用省略字段重建操作。
+`allow_manual_handoff` 仅限制待办人工检查；已完成用户检查和独立验收可如实记录。仅调整权限时 additional_automatic_commands 可以为 0，additional_checks 仍需说明涉及的检查。`taskbelay_get_task` 和 `taskbelay_get_next_action` 的恢复探针复制保存的完整操作。公开输入 Schema 是 Host 传输提示：保留顶层和探针的字段、类型与封闭结构，但省略探针内重复的必填声明及深层检查来源枚举；`verification_plan`、`budget_adjustment`、`known_failure_acceptance` 三个深层对象只以带类型的开放对象投影，以容纳完整的已保存操作。实际运行校验由 Core 执行：私有输入校验仍要求 `operation_id`、`action_id`、`payload`，并核对全部身份、检查来源及完整 payload 的必填和封闭规则；省略或添加字段不能改变保存的操作。普通节点提交工具的 Schema 与检查来源枚举保持不变。
 
 MCP 参数纠错分为 `correct_current_action`（普通节点提交）和 `correct_request`（握手、读取、创建及生命周期请求）。二者均要求 Core 确认零写入，并用 allowed_paths 限定本次纠正。`correct_request` 保留原请求身份和已有授权，不要求先取得一个尚不存在的 Action。四个 Host Skill 为每个请求提供完整成功响应的链接，以及经过代码比对的具体错误响应与实现位置。历史恢复分别在 `history_resolution.choice` 和 `history_resolution.reason` 上报告枚举错误和文本错误。
 

@@ -30,6 +30,9 @@ func toolRequestStructureViolations(tool string, raw []byte) []domain.ContractVi
 			}
 		}
 		if probe, ok := properties["operation_probe"].(map[string]any); ok {
+			// The published recovery probe omits this repeated declaration to fit
+			// the Host projection budget. Runtime input validation remains exact.
+			probe["required"] = []string{"operation_id", "action_id", "payload"}
 			probe["properties"].(map[string]any)["payload"] = map[string]any{}
 		}
 		return workflow.RequestStructureViolations("", raw, schema)

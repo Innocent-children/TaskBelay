@@ -27,6 +27,7 @@ func TestCurrentStorageBoundaryJourney(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() { _ = sqliteStore.Close() })
 		assertFreshCurrentSchema(t, dbPath)
 		service, err := application.NewService(sqliteStore, repository.NewGitObserver())
 		if err != nil {
@@ -47,6 +48,7 @@ func TestCurrentStorageBoundaryJourney(t *testing.T) {
 		}
 		var processID, definitionDigest string
 		readOnly := openImmutableDatabase(t, dbPath)
+		t.Cleanup(func() { _ = readOnly.Close() })
 		if err := readOnly.QueryRow(`SELECT process_id,process_definition_digest FROM tasks WHERE task_id=?`, task.TaskID).Scan(&processID, &definitionDigest); err != nil {
 			t.Fatal(err)
 		}
@@ -75,7 +77,7 @@ func assertFreshCurrentSchema(t *testing.T, dbPath string) {
 	t.Helper()
 	db := openImmutableDatabase(t, dbPath)
 	defer db.Close()
-	want := []string{"index:relocation_operations_task_idx", "index:relocation_operations_unresolved_task_idx", "index:repository_claims_task_idx", "index:tasks_node_idx", "index:tasks_origin_host_idx", "index:tasks_updated_at_idx", "table:action_operations", "table:relocation_operations", "table:repository_claims", "table:schema_metadata", "table:task_events", "table:tasks"}
+	want := []string{"index:branch_rename_operations_pending_idx", "index:relocation_operations_task_idx", "index:relocation_operations_unresolved_task_idx", "index:repository_claims_task_idx", "index:tasks_node_idx", "index:tasks_origin_host_idx", "index:tasks_updated_at_idx", "table:action_operations", "table:branch_rename_operations", "table:relocation_operations", "table:repository_claims", "table:schema_metadata", "table:task_events", "table:tasks"}
 	rows, err := db.Query(`SELECT type||':'||name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name`)
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +94,7 @@ func assertFreshCurrentSchema(t *testing.T, dbPath string) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("schema=%v", got)
 	}
-	for table, columns := range map[string][]string{"schema_metadata": {"version"}, "tasks": {"task_id", "origin_host", "process_id", "process_definition_digest", "current_node", "revision", "worktree_instance_digest", "snapshot", "created_at", "updated_at", "archived_at"}, "action_operations": {"task_id", "operation_id", "process_id", "process_definition_digest", "source_node", "expected_revision", "action_id", "action_kind", "repository_binding_digest", "issuance_identity_digest", "issuance_history_digest", "issuance_content_digest", "payload", "payload_digest", "prepared_at", "applied_revision"}, "task_events": {"event_id", "task_id", "revision", "event_type", "source_node", "destination_node", "transition_id", "transition_reason", "action_id", "observed_binding_digest", "repository_delta_paths", "request_id", "payload_digest", "created_at"}, "repository_claims": {"worktree_instance_digest", "canonical_worktree_root", "task_id", "origin_host", "claimed_at"}, "relocation_operations": {"relocation_id", "task_id", "request_id", "source_binding_digest", "prepared_at", "resolved_revision"}} {
+	for table, columns := range map[string][]string{"schema_metadata": {"version"}, "tasks": {"task_id", "origin_host", "process_id", "process_definition_digest", "current_node", "revision", "worktree_instance_digest", "snapshot", "created_at", "updated_at", "archived_at"}, "action_operations": {"task_id", "operation_id", "process_id", "process_definition_digest", "source_node", "expected_revision", "action_id", "action_kind", "repository_binding_digest", "issuance_identity_digest", "issuance_history_digest", "issuance_content_digest", "payload", "payload_digest", "prepared_at", "applied_revision"}, "branch_rename_operations": {"rename_id", "task_id", "request_id", "preparation", "resolved_revision", "resolution"}, "task_events": {"event_id", "task_id", "revision", "event_type", "source_node", "destination_node", "transition_id", "transition_reason", "action_id", "observed_binding_digest", "repository_delta_paths", "request_id", "payload_digest", "created_at"}, "repository_claims": {"worktree_instance_digest", "canonical_worktree_root", "task_id", "origin_host", "claimed_at"}, "relocation_operations": {"relocation_id", "task_id", "request_id", "source_binding_digest", "prepared_at", "resolved_revision"}} {
 		columnRows, err := db.Query(`SELECT name FROM pragma_table_info(?) ORDER BY cid`, table)
 		if err != nil {
 			t.Fatal(err)
@@ -127,6 +129,7 @@ func openImmutableDatabase(t *testing.T, path string) *sql.DB {
 		t.Fatal(err)
 	}
 	if err := db.Ping(); err != nil {
+		_ = db.Close()
 		t.Fatal(err)
 	}
 	return db

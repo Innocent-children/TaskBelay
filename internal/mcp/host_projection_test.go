@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/Innocent-children/taskbelay/internal/application"
+	"github.com/Innocent-children/taskbelay/internal/domain"
 	"github.com/Innocent-children/taskbelay/internal/workflow"
 )
 
@@ -161,6 +163,245 @@ func TestApplyActionSchemaFitsHostProjectionBudget(t *testing.T) {
 			t.Logf("%s modelled schema = %d bytes", name, size)
 		}
 	}
+}
+
+func TestReadToolProjectionPreservesRuntimeGuards(t *testing.T) {
+	for _, tool := range []string{ToolGetTask, ToolGetNextAction} {
+		t.Run(tool, func(t *testing.T) {
+			schema := toolSchema(t, tool)
+			assertHostProjectable(t, schema, "$")
+			if size := modelledHostSchemaBytes(t, mustSchemaJSON(t, schema)); size > hostProjectionBudgetBytes-hostProjectionMarginBytes {
+				t.Fatalf("read-tool Host schema is %d bytes", size)
+			}
+			if !reflect.DeepEqual(stringSlice(schema["required"]), []string{"host", "task_id"}) {
+				t.Fatalf("read-tool required=%#v", schema["required"])
+			}
+			probe := childSchema(t, schema, "operation_probe")
+			if probe["additionalProperties"] != false || len(stringSlice(probe["required"])) != 0 {
+				t.Fatalf("recovery probe is not closed or still publishes repeated required members: %#v", probe)
+			}
+			for _, name := range []string{"operation_id", "process_id", "process_definition_digest", "source_cursor", "expected_revision", "action_id", "action_kind", "repository_binding_digest", "issuance_identity_digest", "issuance_history_digest", "issuance_content_digest", "payload"} {
+				if _, ok := probe["properties"].(map[string]any)[name]; !ok {
+					t.Fatalf("recovery probe lost %s", name)
+				}
+			}
+			payload := childSchema(t, probe, "payload")
+			checks := childSchema(t, childSchema(t, payload, "node_result"), "checks")
+			item, ok := checks["items"].(map[string]any)
+			if !ok {
+				t.Fatal("recovery check items lost their type")
+			}
+			source := childSchema(t, item, "source")
+			if source["type"] != "string" || source["enum"] != nil {
+				t.Fatalf("recovery source type/enum=%#v", source)
+			}
+			result := childSchema(t, payload, "node_result")
+			baseline := childSchema(t, result, "baseline")
+			for name, opaque := range map[string]map[string]any{
+				"verification_plan":        childSchema(t, baseline, "verification_plan"),
+				"budget_adjustment":        childSchema(t, result, "budget_adjustment"),
+				"known_failure_acceptance": childSchema(t, result, "known_failure_acceptance"),
+			} {
+				if len(opaque) != 1 || !hasSchemaType(opaque["type"], "object") {
+					t.Fatalf("%s must be a typed open transport hint: %#v", name, opaque)
+				}
+			}
+			if tool == ToolGetTask {
+				history := childSchema(t, schema, "baseline_history")
+				if history["additionalProperties"] != false || !reflect.DeepEqual(stringSlice(history["required"]), []string{"revision", "after", "limit"}) {
+					t.Fatalf("baseline history lost its closed paging contract: %#v", history)
+				}
+				for _, name := range []string{"revision", "after", "limit"} {
+					if childSchema(t, history, name)["type"] != "integer" {
+						t.Fatalf("baseline history %s lost integer type", name)
+					}
+				}
+			}
+
+			for _, name := range []string{"operation_id", "action_id", "payload"} {
+				probeInput := map[string]any{"operation_id": "operation", "action_id": "action", "payload": nil}
+				delete(probeInput, name)
+				input := map[string]any{"host": "codex", "task_id": "task", "operation_probe": probeInput}
+				requestID := "request-missing-" + name
+				actual := (&Server{}).dispatch(context.Background(), tool, domain.ID(requestID), mustSchemaJSON(t, input))
+				want := EncodeError(requestID, tool, domain.InvalidArgumentViolations(domain.Violation("operation_probe."+name, domain.RuleRequiredMemberMissing)))
+				if !actual.IsError || !bytes.Equal(actual.JSON, want.JSON) {
+					t.Fatalf("missing %s response=%s want=%s", name, actual.JSON, want.JSON)
+				}
+			}
+			probeInput := map[string]any{"operation_id": "operation", "action_id": "action", "payload": nil, "extra": "private-value"}
+			input := map[string]any{"host": "codex", "task_id": "task", "operation_probe": probeInput}
+			actual := (&Server{}).dispatch(context.Background(), tool, "request-closed-probe", mustSchemaJSON(t, input))
+			want := EncodeError("request-closed-probe", tool, domain.InvalidArgumentViolations(domain.Violation("operation_probe.extra", domain.RuleUnknownMember)))
+			if !actual.IsError || !bytes.Equal(actual.JSON, want.JSON) || bytes.Contains(actual.JSON, []byte("private-value")) {
+				t.Fatalf("closed recovery response=%s want=%s", actual.JSON, want.JSON)
+			}
+			assertCompleteRecoveryProbePayloads(t, tool, schema)
+		})
+	}
+}
+
+func hasSchemaType(value any, name string) bool {
+	for _, item := range schemaStringList(value) {
+		if item == name {
+			return true
+		}
+	}
+	return false
+}
+
+// The public probe schema must transport complete saved payloads while the
+// private validator still rejects malformed members inside all three opaque
+// transport hints.
+func assertCompleteRecoveryProbePayloads(t *testing.T, tool string, schema map[string]any) {
+	t.Helper()
+	fixtures := []struct {
+		name, nestedPath, requiredName, invalidName string
+		invalidValue                                any
+		payload                                     map[string]any
+		cursor                                      domain.NodeID
+	}{
+		{"verification_plan", "node_result.baseline.verification_plan", "checks", "initial_budget.level", "invalid", recoveryTasksPayload(t), domain.NodeTasks},
+		{"budget_adjustment", "node_result.budget_adjustment", "basis", "basis", "invalid", recoveryBudgetPayload(t), domain.NodeTest},
+		{"known_failure_acceptance", "node_result.known_failure_acceptance", "failed_checks", "source", "automated", recoveryKnownFailurePayload(t), domain.NodeTest},
+	}
+	for _, fixture := range fixtures {
+		t.Run(fixture.name, func(t *testing.T) {
+			input := recoveryReadInput(t, fixture.cursor, fixture.payload)
+			raw := mustSchemaJSON(t, input)
+			if violations := workflow.RequestStructureViolations("", raw, schema); len(violations) != 0 {
+				t.Fatalf("public transport rejects complete payload: %#v", violations)
+			}
+			if err := ValidateToolInput(tool, raw); err != nil {
+				t.Fatalf("private validation rejects complete payload: %v", err)
+			}
+			for _, mutation := range []struct {
+				name, member string
+				change       func(map[string]any)
+				rule         domain.ViolationRule
+			}{
+				{"unknown", "unexpected", func(nested map[string]any) { nested["unexpected"] = "private-value" }, domain.RuleUnknownMember},
+				{"missing", fixture.requiredName, func(nested map[string]any) { delete(nested, fixture.requiredName) }, domain.RuleRequiredMemberMissing},
+				{"invalid", fixture.invalidName, func(nested map[string]any) { setNestedMember(nested, fixture.invalidName, fixture.invalidValue) }, ""},
+			} {
+				t.Run(mutation.name, func(t *testing.T) {
+					mutated := cloneSchemaObject(t, input)
+					nested := nestedSchemaObject(t, mutated, "operation_probe.payload."+fixture.nestedPath)
+					mutation.change(nested)
+					raw := mustSchemaJSON(t, mutated)
+					if violations := workflow.RequestStructureViolations("", raw, schema); len(violations) != 0 {
+						t.Fatalf("Host transport narrowed opaque payload: %#v", violations)
+					}
+					if err := ValidateToolInput(tool, raw); err == nil {
+						t.Fatal("private validator accepted malformed retained payload")
+					}
+					requestID := domain.ID("request-" + fixture.name + "-" + mutation.name)
+					actual := (&Server{}).dispatch(context.Background(), tool, requestID, raw)
+					response := decodeEnvelope(t, actual)
+					if !actual.IsError || response.Error.Code != domain.ErrorInvalidArgument || bytes.Contains(actual.JSON, []byte("private-value")) {
+						t.Fatalf("malformed retained payload response=%s", actual.JSON)
+					}
+					if mutation.rule != "" {
+						path := "operation_probe.payload." + fixture.nestedPath + "." + mutation.member
+						want := EncodeError(string(requestID), tool, domain.InvalidArgumentViolations(domain.Violation(path, mutation.rule)))
+						if !bytes.Equal(actual.JSON, want.JSON) {
+							t.Fatalf("response=%s want=%s", actual.JSON, want.JSON)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func recoveryReadInput(t *testing.T, cursor domain.NodeID, payload map[string]any) map[string]any {
+	t.Helper()
+	process := workflow.StandardProcess().Reference
+	node, err := workflow.NodeDefinition(workflow.StandardProcess(), cursor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps := make([]any, 0, len(node.SemanticMethodSteps))
+	for _, step := range node.SemanticMethodSteps {
+		steps = append(steps, map[string]any{"step_id": step.StepID, "status": "plain_fallback", "capability": "", "summary": "Completed."})
+	}
+	payload["method_evidence"] = steps
+	digest := strings.Repeat("a", 64)
+	return map[string]any{"host": "codex", "task_id": "task", "operation_probe": map[string]any{
+		"operation_id": "operation", "process_id": process.ID, "process_definition_digest": process.DefinitionDigest,
+		"source_cursor": cursor, "expected_revision": 1, "action_id": "action", "action_kind": node.ActionKind,
+		"repository_binding_digest": digest, "issuance_identity_digest": digest, "issuance_history_digest": digest,
+		"issuance_content_digest": digest, "payload": payload,
+	}}
+}
+
+func recoveryTasksPayload(t *testing.T) map[string]any {
+	t.Helper()
+	return map[string]any{"transition_id": "tasks_plan_saved", "summary": "Saved plan.", "reason": "", "artifacts": []any{},
+		"node_result": map[string]any{"problem_class": "none", "findings": []any{}, "user_confirmation": nil,
+			"baseline": map[string]any{"design_revision": 1, "work_items": []any{map[string]any{
+				"work_item_id": "work", "summary": "Repair projection.", "expected_paths": []any{"internal/mcp/schemas.go"},
+				"acceptance_indexes": []any{0}, "verification_steps": []any{"Run focused test."}, "dependencies": []any{},
+			}}, "verification_plan": map[string]any{
+				"checks":              []any{map[string]any{"name": "focused", "rationale": "Check projection."}},
+				"initial_budget":      map[string]any{"level": "targeted", "max_automatic_commands": 1, "allow_full_suite": false, "allow_manual_handoff": false},
+				"full_suite_expected": false, "test_code_changes_expected": true,
+			}},
+		},
+	}
+}
+
+func recoveryBudgetPayload(t *testing.T) map[string]any {
+	t.Helper()
+	return map[string]any{"transition_id": "verification_budget_increased", "summary": "Increased budget.", "reason": "A new risk needs one focused check.", "artifacts": []any{},
+		"node_result": map[string]any{"problem_class": "none", "checks": []any{}, "failed_items": []any{}, "unverified_items": []any{}, "manual_handoff_items": []any{}, "findings": []any{},
+			"budget_adjustment": map[string]any{"basis": "new_risk", "additional_checks": []any{map[string]any{"name": "focused", "rationale": "Check new risk."}},
+				"additional_automatic_commands": 1, "allow_full_suite": false, "allow_manual_handoff": false},
+		},
+	}
+}
+
+func recoveryKnownFailurePayload(t *testing.T) map[string]any {
+	t.Helper()
+	check := func(name, status string) map[string]any {
+		return map[string]any{"source": "automated", "name": name, "status": status, "summary": "Observed.", "command_count": 1, "full_suite": false, "full_suite_reason": ""}
+	}
+	return map[string]any{"transition_id": "tests_accepted_with_known_failures", "summary": "Accepted exact known failure.", "reason": "The user accepted the compared existing failure.", "artifacts": []any{},
+		"node_result": map[string]any{"problem_class": "none", "checks": []any{check("existing", "failed"), check("comparison", "passed")},
+			"failed_items": []any{"existing"}, "unverified_items": []any{}, "manual_handoff_items": []any{}, "findings": []any{}, "budget_adjustment": nil,
+			"known_failure_acceptance": map[string]any{"source": "user", "summary": "User accepted existing failure.", "failed_checks": []any{"existing"},
+				"comparison_check": "comparison", "task_plan_revision": 1, "content_digest": strings.Repeat("a", 64)},
+		},
+	}
+}
+
+func cloneSchemaObject(t *testing.T, value map[string]any) map[string]any {
+	t.Helper()
+	var clone map[string]any
+	if err := json.Unmarshal(mustSchemaJSON(t, value), &clone); err != nil {
+		t.Fatal(err)
+	}
+	return clone
+}
+
+func nestedSchemaObject(t *testing.T, root map[string]any, path string) map[string]any {
+	t.Helper()
+	for _, name := range strings.Split(path, ".") {
+		child, ok := root[name].(map[string]any)
+		if !ok {
+			t.Fatalf("%s does not contain object %s", path, name)
+		}
+		root = child
+	}
+	return root
+}
+
+func setNestedMember(root map[string]any, path string, value any) {
+	parts := strings.Split(path, ".")
+	for _, name := range parts[:len(parts)-1] {
+		root = root[name].(map[string]any)
+	}
+	root[parts[len(parts)-1]] = value
 }
 
 // TestApplyActionTestEvidenceIsVisibleBelowCollapseDepth proves the TEST check
@@ -470,6 +711,12 @@ func assertHostProjectable(t *testing.T, schema map[string]any, path string) {
 	if object {
 		properties, ok := schema["properties"].(map[string]any)
 		if !ok || len(properties) == 0 {
+			projectedPath := strings.TrimPrefix(path, "$.operation_probe.")
+			if projectedPath != path && projectedCollapsedPaths[projectedPath] && len(schema) == 1 {
+				// Only these three deep read-probe values are opaque to the Host.
+				// ValidateToolInput still checks their complete closed payload.
+				return
+			}
 			t.Fatalf("%s is an object with no projectable properties", path)
 		}
 		if schema["additionalProperties"] != false {
@@ -532,7 +779,8 @@ func TestSDKListedSubmissionSchemasAreProjectable(t *testing.T) {
 	}
 	seen := 0
 	for _, tool := range listed.Tools {
-		if _, ok := submissionKindForTool(tool.Name); !ok {
+		_, submission := submissionKindForTool(tool.Name)
+		if !submission && tool.Name != ToolGetTask && tool.Name != ToolGetNextAction {
 			continue
 		}
 		raw, err := json.Marshal(tool.InputSchema)
@@ -552,7 +800,7 @@ func TestSDKListedSubmissionSchemasAreProjectable(t *testing.T) {
 		}
 		seen++
 	}
-	if seen != len(actionSubmissionTools) {
-		t.Fatalf("listed submission tools=%d", seen)
+	if seen != len(actionSubmissionTools)+2 {
+		t.Fatalf("listed submission and read tools=%d", seen)
 	}
 }

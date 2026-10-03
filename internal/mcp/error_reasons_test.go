@@ -273,7 +273,31 @@ func TestProbePreservesRetainedPayloadFailureReason(t *testing.T) {
 	probe := map[string]any{"operation_id": "operation", "process_id": process.ID, "process_definition_digest": process.DefinitionDigest, "source_cursor": "REQUIREMENTS", "expected_revision": 1, "action_id": "action", "action_kind": domain.ActionCompleteRequirements, "repository_binding_digest": digest, "issuance_identity_digest": digest, "issuance_history_digest": digest, "issuance_content_digest": digest, "payload": payload}
 	encoded := (&Server{}).dispatch(context.Background(), ToolGetTask, "request-probe", mustSchemaJSON(t, map[string]any{"host": "codex", "task_id": "task", "operation_probe": probe}))
 	response := decodeEnvelope(t, encoded)
-	if !encoded.IsError || !strings.Contains(response.Error.Message, "operation_probe.payload") || !strings.Contains(response.Error.Message, "exactly one result for every required Action method step") || response.Recovery.RetrySafe {
+	if !encoded.IsError || response.Error.Code != domain.ErrorInvalidArgument || !strings.Contains(response.Error.Message, "operation_probe.payload") || !strings.Contains(response.Error.Message, "exactly one result for every required Action method step") || response.Recovery.RetrySafe {
 		t.Fatalf("response=%s", encoded.JSON)
+	}
+
+	// The published recovery probe omits this deeply nested enum, while Core
+	// must still reject an invalid source in the complete retained payload.
+	node, err := workflow.NodeDefinition(workflow.StandardProcess(), domain.NodeTest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	methodEvidence := make([]any, 0, len(node.SemanticMethodSteps))
+	for _, step := range node.SemanticMethodSteps {
+		methodEvidence = append(methodEvidence, map[string]any{"step_id": step.StepID, "status": "plain_fallback", "capability": "", "summary": "Completed."})
+	}
+	probe["source_cursor"] = domain.NodeTest
+	probe["action_kind"] = domain.ActionCompleteTest
+	probe["payload"] = map[string]any{
+		"transition_id": "tests_passed", "summary": "Tests passed.", "reason": "", "artifacts": []any{}, "method_evidence": methodEvidence,
+		"node_result": map[string]any{"problem_class": "none", "checks": []any{map[string]any{"source": "invalid-source", "name": "focused", "status": "passed", "summary": "Completed.", "command_count": 0, "full_suite": false, "full_suite_reason": ""}}, "failed_items": []any{}, "unverified_items": []any{}, "manual_handoff_items": []any{}, "findings": []any{}, "budget_adjustment": nil},
+	}
+	for _, tool := range []string{ToolGetTask, ToolGetNextAction} {
+		encoded := (&Server{}).dispatch(context.Background(), tool, "request-invalid-source", mustSchemaJSON(t, map[string]any{"host": "codex", "task_id": "task", "operation_probe": probe}))
+		want := EncodeError("request-invalid-source", tool, domain.InvalidArgumentViolations(domain.Violation("operation_probe.payload.node_result.checks[0].source", domain.RuleEvidenceSourceInvalid)))
+		if !encoded.IsError || string(encoded.JSON) != string(want.JSON) {
+			t.Fatalf("%s source response=%s want=%s", tool, encoded.JSON, want.JSON)
+		}
 	}
 }

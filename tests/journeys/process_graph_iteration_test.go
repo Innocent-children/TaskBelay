@@ -100,7 +100,7 @@ func TestProcessGraphIterationJourney(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = service.ApplyAction(context.Background(), terminalJourneyApplyRequest(t, loaded, "terminal-apply", journeyPayload(t, loaded, "delivery_complete", "", deliveryJourneyResult(loaded))))
-	if err != domain.ErrTaskTerminal {
+	if !errors.Is(err, domain.ErrTaskTerminal) {
 		t.Fatalf("terminal apply error=%v", err)
 	}
 }
@@ -191,7 +191,7 @@ func TestProcessGraphIterationNegativeComprehension(t *testing.T) {
 			}
 			before := j.state()
 			_, err = service.ApplyAction(context.Background(), journeyApplyRequest(j.task, "stale-comprehension", journeyPayload(t, j.task, "comprehension_passed", "", comprehensionJourneyResult([]string{"component"}, nil, nil, "user", "passed", nil))))
-			if err != domain.ErrStorageUnavailable {
+			if !errors.Is(err, domain.ErrStorageUnavailable) {
 				t.Fatalf("error=%v", err)
 			}
 			j.assertStateUnchanged(before)
@@ -301,7 +301,7 @@ func TestProcessGraphIterationNegativeDelivery(t *testing.T) {
 			before := j.state()
 			_, err = service.ApplyAction(context.Background(), journeyApplyRequest(j.task, "tampered-delivery", journeyPayload(t, j.task, "delivery_complete", "", deliveryJourneyResult(j.task))))
 			want := domain.ErrStorageUnavailable
-			if err != want {
+			if !errors.Is(err, want) {
 				t.Fatalf("error=%v", err)
 			}
 			j.assertStateUnchanged(before)

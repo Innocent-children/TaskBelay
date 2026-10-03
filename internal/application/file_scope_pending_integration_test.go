@@ -1,11 +1,13 @@
 package application
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -154,8 +156,49 @@ func TestPendingScopeSQLiteRejectsNewFactsWithoutStage(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "mode":
-				if err := os.Chmod(filepath.Join(f.root, "carry-00.txt"), 0755); err != nil {
+				path := filepath.Join(f.root, "carry-00.txt")
+				worktreeBefore, err := os.ReadFile(path)
+				if err != nil {
 					t.Fatal(err)
+				}
+				indexBefore := strings.Fields(fileScopeRunGit(t, f.root, "ls-files", "-s", "--", "carry-00.txt"))
+				if len(indexBefore) != 4 || indexBefore[0] != "100644" {
+					t.Fatalf("unexpected initial index entry: %v", indexBefore)
+				}
+				blobBefore := fileScopeRunGit(t, f.root, "show", ":carry-00.txt")
+				headBefore := fileScopeRunGit(t, f.root, "rev-parse", "HEAD")
+				branchBefore := fileScopeRunGit(t, f.root, "branch", "--show-current")
+				fileScopeRunGit(t, f.root, "update-index", "--cacheinfo", "100755,"+indexBefore[1]+",carry-00.txt")
+				indexAfter := strings.Fields(fileScopeRunGit(t, f.root, "ls-files", "-s", "--", "carry-00.txt"))
+				worktreeAfter, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(indexAfter) != 4 || indexAfter[0] != "100755" || indexAfter[1] != indexBefore[1] ||
+					fileScopeRunGit(t, f.root, "show", ":carry-00.txt") != blobBefore || !bytes.Equal(worktreeAfter, worktreeBefore) ||
+					fileScopeRunGit(t, f.root, "rev-parse", "HEAD") != headBefore || fileScopeRunGit(t, f.root, "branch", "--show-current") != branchBefore {
+					t.Fatal("index mode change altered the blob, worktree content, HEAD or branch")
+				}
+				_, observed, err := repository.NewGitObserver().ObserveWorkspace(context.Background(), f.root, persistedOriginSelection(f.task.WorkspaceOrigin), &f.task.Repository)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if observed.ContentDigest == f.task.Repository.ContentDigest {
+					t.Fatal("index mode change was not observable")
+				}
+				var beforeEntry, afterEntry *domain.RepositoryChangedEntry
+				for i := range f.task.Repository.TaskSurface {
+					if f.task.Repository.TaskSurface[i].Path == "carry-00.txt" {
+						beforeEntry = &f.task.Repository.TaskSurface[i]
+					}
+				}
+				for i := range observed.TaskSurface {
+					if observed.TaskSurface[i].Path == "carry-00.txt" {
+						afterEntry = &observed.TaskSurface[i]
+					}
+				}
+				if beforeEntry == nil || afterEntry == nil || beforeEntry.IndexMode != "100644" || afterEntry.IndexMode != "100755" || beforeEntry.IndexContentDigest == afterEntry.IndexContentDigest {
+					t.Fatalf("index mode was not reflected in the observed entry: before=%+v after=%+v", beforeEntry, afterEntry)
 				}
 			case "new":
 				if err := os.WriteFile(filepath.Join(f.root, "outside.txt"), []byte("outside"), 0644); err != nil {

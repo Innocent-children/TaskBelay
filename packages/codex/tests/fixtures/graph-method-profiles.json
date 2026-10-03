@@ -3,7 +3,7 @@
   "evidence_class": "simulated_static_adapter_journey",
   "server_info": {
     "product": "taskbelay",
-    "version": "0.19.3",
+    "version": "0.20.1",
     "transport": "stdio",
     "health": "ready",
     "supported_hosts": [

@@ -3,6 +3,7 @@ package comprehensive_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -16,7 +17,7 @@ import (
 func TestMCPGeneratedCatalogMatchesProcessAndClosedSchemas(t *testing.T) {
 	names := coremcp.ToolNames()
 	catalog := coremcp.ToolCatalog()
-	if len(names) != 17 || len(catalog) != len(names) {
+	if len(names) != 18 || len(catalog) != len(names) {
 		t.Fatalf("names=%d catalog=%d", len(names), len(catalog))
 	}
 	seen := map[string]bool{}
@@ -198,7 +199,7 @@ func TestMCPErrorResultsAreBoundedAndRedacted(t *testing.T) {
 			t.Fatalf("error result leaked %q", forbidden)
 		}
 	}
-	if coremcp.ValidateToolInput("taskbelay_unknown", []byte(`{}`)) != domain.ErrInvalidArgument {
+	if !errors.Is(coremcp.ValidateToolInput("taskbelay_unknown", []byte(`{}`)), domain.ErrInvalidArgument) {
 		t.Fatal("unknown MCP tool was not rejected")
 	}
 }
@@ -233,7 +234,9 @@ func assertClosedSchema(t *testing.T, value any, path string) {
 	switch typed := value.(type) {
 	case map[string]any:
 		if schemaHasObjectType(typed["type"]) && typed["additionalProperties"] != false {
-			t.Fatalf("open object schema at %s", path)
+			if !isOpaqueRecoveryTransportPath(path) || len(typed) != 1 {
+				t.Fatalf("open object schema at %s", path)
+			}
 		}
 		for name, member := range typed {
 			assertClosedSchema(t, member, path+"/"+name)
@@ -243,6 +246,19 @@ func assertClosedSchema(t *testing.T, value any, path string) {
 			assertClosedSchema(t, member, fmt.Sprintf("%s/%d", path, index))
 		}
 	}
+}
+
+func isOpaqueRecoveryTransportPath(path string) bool {
+	for _, tool := range []string{coremcp.ToolGetTask, coremcp.ToolGetNextAction} {
+		prefix := tool + "/properties/operation_probe/properties/payload/properties/node_result/properties/"
+		switch path {
+		case prefix + "baseline/properties/verification_plan",
+			prefix + "budget_adjustment",
+			prefix + "known_failure_acceptance":
+			return true
+		}
+	}
+	return false
 }
 
 func schemaHasObjectType(value any) bool {
