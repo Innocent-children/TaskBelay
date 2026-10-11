@@ -17,7 +17,7 @@ of future edits or authenticate user conversation. Never describe unsupported sh
 implemented.
 
 Start in the authorized current workspace and session when possible. Existing authorization remains
-valid across ordinary follow-ups; no repeated selector, plan verdict or phase confirmation is needed.
+valid across ordinary follow-ups. Show the understanding and complete plan, obtain the actual user answer, then record taskbelay_confirm_plan for that exact plan_digest before implementation. Reuse a prior answer only if it explicitly approved this unchanged displayed plan; never treat a general development request as approval of an unseen plan.
 A new chat or Git branch/worktree operation is optional and requires actual authorization. Use taskbelay-codex host-launch only for explicitly authorized workspace preparation; its receipt tracks that operation, not a second Task cursor.
 Use its returned repositories with open_task. Task workspaces remain bound; cross-workspace
 relocation is unsupported. Restore the original workspace or cancel without deleting work.

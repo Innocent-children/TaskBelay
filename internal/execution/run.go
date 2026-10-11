@@ -20,6 +20,10 @@ import (
 )
 
 type Run struct {
+	RequirementDigest domain.Digest `json:"requirement_digest"`
+	Rationale         string        `json:"rationale"`
+	NewInformation    string        `json:"new_information,omitempty"`
+	FullSuiteBasis    string        `json:"full_suite_basis,omitempty"`
 	RunID             string        `json:"run_id"`
 	TaskID            string        `json:"task_id"`
 	CheckID           string        `json:"check_id"`
@@ -54,7 +58,8 @@ func OwnerAlive(r Run) bool {
 	return e == nil && v == r.OwnerIdentity
 }
 func (r Run) InputKey() domain.Digest {
-	return domain.Hash([]any{r.CheckDigest, r.Before.Inputs, r.Before.Environment})
+	// Names, prose and timeout changes do not turn the same execution into new information.
+	return domain.Hash([]any{r.Check.Argv, r.RequirementDigest, r.Before.Inputs, r.Before.Environment})
 }
 
 type output struct {

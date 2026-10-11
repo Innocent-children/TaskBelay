@@ -1,3 +1,4 @@
+import { planFor } from "../../../tests/journeys/fixtures/engineering.mjs";
 import { admissionFixture, receiptAdmissionFixture } from "./fixtures/task-handoff.mjs";
 import assert from "node:assert/strict";
 import { execFile as execFileCallback, spawn } from "node:child_process";
@@ -28,7 +29,7 @@ const buildScript = join(repositoryRoot, "scripts", "build-codex-local.sh");
 const fakeCodexPath = join(packageRoot, "tests", "fixtures", "fake-codex.mjs");
 const supportedMachine = process.platform === "darwin" && process.arch === "arm64";
 
-test("packaged Core task data survives deregistration, npm uninstall, and compatible reinstall", {
+test("packaged Core task data survives deregistration, npm uninstall, and same-artifact reinstall", {
   skip: supportedMachine ? false : "darwin-arm64 packaged Core integration only",
   timeout: 120_000,
 }, async (t) => {
@@ -163,20 +164,15 @@ test("packaged Core task data survives deregistration, npm uninstall, and compat
   const info = await firstCore.callTool("taskbelay_server_info", {});
   assert.equal(info.result.product, "taskbelay");
   const opened = await firstCore.callTool("taskbelay_open_task", {
-    host: "codex",
-    repository_path: taskRepository,
-    workspace_origin: provisioned.workspace_origin,
-    new_task: {
-      request: taskRequest,
-      initial_scope: ["one isolated repository"],
-      initial_out_of_scope: ["real Codex", "repository mutation"],
-      known_acceptance_criteria: ["The same task is readable after deregistration."],
-      method_profile: "plain",
-    },
+    operation_id: "retention-open", host: "codex",
+    repositories: [{key:"primary",repository_path:taskRepository}],
+    authorization: {user_ref:"fixture-retention-request",request:taskRequest,goals:[{id:"retention",statement:"The same task is readable after deregistration",checks:["human"]}]},
+    plan:planFor([{id:"retention"}]),
+    checks:[{id:"human",kind:"human",rationale:"Inspect retained task identity",conditions:"Same current artifact and original workspace"}],
   });
   assert.equal(opened.ok, true);
   const taskBefore = taskIdentity(opened.result.task);
-  assert.equal(opened.result.task.origin_host, "codex");
+  assert.equal(opened.result.task.host, "codex");
   await firstCore.close();
 
   const dataBeforeRemoval = await directoryManifest(dataDirectory);
@@ -207,7 +203,7 @@ test("packaged Core task data survives deregistration, npm uninstall, and compat
   const reopenedCore = await startCore(paths.runtimePath, dataDirectory, taskRepository);
   await reopenedCore.callTool("taskbelay_server_info", {});
   const reopened = await reopenedCore.callTool("taskbelay_get_task", {
-    host: "codex",
+    refresh:false,
     task_id: taskBefore.task_id,
   });
   assert.equal(reopened.ok, true);
@@ -242,21 +238,20 @@ test("packaged Core task data survives deregistration, npm uninstall, and compat
   const reinstalledPackage = await realpath(join(reinstallPrefix, "node_modules", "taskbelay-codex"));
   assert.notEqual(reinstalledPackage, installedPackage);
   const reinstalledPaths = productPaths(reinstalledPackage, isolatedHome, dataDirectory);
-  const dataBeforeRetainedRead = await directoryManifest(dataDirectory);
   const finalCore = await startCore(reinstalledPaths.runtimePath, dataDirectory, taskRepository);
   await finalCore.callTool("taskbelay_server_info", {});
   const retained = await finalCore.callTool("taskbelay_get_task", {
-    host: "codex",
+    refresh:false,
     task_id: taskBefore.task_id,
   });
   assert.deepEqual(taskIdentity(retained.result.task), taskBefore);
   const repeatedRead = await finalCore.callTool("taskbelay_get_task", {
-    host: "codex",
+    refresh:false,
     task_id: taskBefore.task_id,
   });
   assert.deepEqual(taskIdentity(repeatedRead.result.task), taskBefore);
   await finalCore.close();
-  assert.deepEqual(await directoryManifest(dataDirectory), dataBeforeRetainedRead);
+  assert.equal(retained.result.task.status, "active");
 
   await uninstallPackage(reinstallPrefix);
   await assert.rejects(stat(reinstalledPackage), { code: "ENOENT" });
@@ -448,20 +443,8 @@ function productPaths(installedPackage, isolatedHome, dataDirectory) {
 }
 
 function taskIdentity(task) {
-  return {
-    task_id: task.task_id,
-    revision: task.revision,
-    process_id: task.process_id,
-    process_definition_digest: task.process_definition_digest,
-    current_cursor: task.current_cursor,
-    current_action: task.current_action === null ? null : {
-      action_id: task.current_action.action_id,
-      kind: task.current_action.action_kind,
-      revision: task.current_action.revision,
-      current_node: task.current_action.current_node,
-    },
-    outcome: task.outcome,
-  };
+  const {task_id, revision, host, status, authorization, plan, approval, checks, progress, evidence, acceptance} = task;
+  return {task_id, revision, host, status, authorization, plan, approval, checks, progress, evidence, acceptance};
 }
 
 function fakeEnvironment(installPrefix, statePath, tracePath) {

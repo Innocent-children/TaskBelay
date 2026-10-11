@@ -2,39 +2,23 @@
 
 [中文](PROJECT-STATUS.md) | [English](PROJECT-STATUS_en.md)
 
-本页记录 2026-10-11 工程控制源码的实际验证范围。当前源码 Core 版本由 CORE_VERSION 决定；本次没有发布 npm、Tag 或 GitHub Release，现有公开版本不包含这次升级。
+当前源码实现开发前需求理解与完整方案确认、明确路径范围、验证必要性、跨仓库证据适用性、累计成本、已知失败例外和恢复。Core 保持唯一 Task；没有恢复旧节点流程或历史数据兼容。公开 npm、Tag、GitHub Release 和原生 Host 支持声明没有随源码变更更新。
 
-## 当前交付
+## 验证入口与适用范围
 
-Core 用一个持久任务关联用户授权、实际改动、语义判断、真实执行、证据适用性和累计消耗。实现与验证可交替，需求修订保留未受影响的结果。CLI、MCP、WebUI 共用应用服务；四个宿主使用同一套生成的 Core 指令。原有只读 Git 观察、平台实现与安装管理保留；旧阶段流程及其协议、数据读取与生成规则已删除。详细职责见 [架构](ARCHITECTURE.md)。
-
-## 实际检查
-
-环境：Windows x64、Go 1.27.0、Node.js 24.18.0；临时 Git 仓库和隔离 SQLite，未改动用户安装或历史任务。
-
-| 检查 | 实际结果与边界 |
+| 检查 | 覆盖范围 |
 | --- | --- |
-| Go 验证 | go vet ./... 和 go test ./... 通过；覆盖当前 Core、存储、执行、平台、HTTP/MCP 契约和保留的仓库观察器 |
-| 本机开发旅程 | 真实执行失败测试、修复后通过；声明不满足执行要求；独立修订保留证据、相关代码变化使其失效；同路径语义偏离由带依据的脚本输入指出；未授权依赖变化阻止执行；相同请求不重复启动进程；真实终止 Core 后恢复未知运行并重新验证，最终完成 |
-| 四个宿主包 | 从仓库之外的独立目录调用实际 Core，检查当前工具目录、打开任务、执行检查以及完整 Skill 引用；这不等于真实宿主聊天或已认证模型调用 |
-| WebUI | TypeScript/打包通过；Go HTTP 测试覆盖同一 Core 投影、loopback Host/Origin 和 CSRF；浏览器显示核验另行记录 |
-| Node 检查 | 当前安装管理、工作位置、结构化写入、打包及资源检查通过；平台或本机权限导致的跳过明确保留在测试输出 |
-| 平台构建 | Windows x64 本机执行；macOS arm64 仅交叉构建和 Go 元数据检查，没有原生运行 |
+| go test -count=1 -timeout=90s ./... | 当前领域、批准、存储、执行、CLI/MCP/HTTP 和保留的仓库观察契约 |
+| tests/journeys/engineering.test.mjs | 隔离 Git/SQLite 中的真实进程、批准阻断、验收降级反例、跨仓库失效、重复投入、例外和真实中断恢复 |
+| tests/host-engineering.test.mjs | 从独立目录运行四个 Host 包及当前 Core，检查工具与引用闭包 |
+| 四 Host 包的 Node 测试 | 启动、目录、钩子、Skill、安装管理的直接消费方；平台或能力不可用项明确跳过 |
+| scripts/build-webui.mjs | TypeScript 检查和生成资源；浏览器交互另行核对 |
+| scripts/sync-skill-references.mjs --check、scripts/check-versions.mjs | 生成契约和版本责任一致 |
 
-可复现入口：node scripts/validate-engineering.mjs。Go 不在 PATH 时设置 GO_EXECUTABLE，并将其目录加入 PATH。实际旅程及成本记录见 [原始 JSON](../tests/journeys/evidence/engineering-windows.json)；测试方法见 [旅程说明](../tests/journeys/README.md)。
+Windows x64 本机 Go 1.27.0、Node.js 24.18.0 是本次开发环境。检查使用临时仓库和数据目录，保留用户安装及历史数据。完整入口是 node scripts/validate-engineering.mjs；单项命令按改动范围选择，实际通过、失败和跳过以本次执行输出为准。旧 tests/journeys/evidence/ 记录只说明各自记录时的产物，不能替代当前源码验证。
 
-## 对照与尚未证明的收益
+## 尚未证明的结果
 
-旧 main 的实际测试表明，旧预算只统计当前计划轮次，并以宿主提供的自动检查记录计数。新系统的实际旅程证明执行来源区分、内容相关的证据保留、累计成本和中断运行恢复。完整对照方法与结果见 [工程验收](ENGINEERING-CONTROL.md)。
+真实 Core 执行与实际用户、模型会话不同。旅程的用户答复和语义判断是 fixture 输入，不能证明 AI 会正确理解全部需求或杜绝过度设计。没有完成原生 Codex/Claude Code/ZCode/DSH 模型会话、macOS 原生执行、最终注册表安装产物或长期用户成本对照，不据此增加支持或收益声明。
 
-这些事实不能证明 AI 模型输出质量、真人监督时间或总费用已经改善。脚本提供语义判断，未进行原生代理的随机对照实验。短小本机旅程中 Core 观察耗时明显高于命令本身，控制并非免费；所有查询和未知成本也记录，不能只统计测试命令来宣称节省。
-
-## 当前限制
-
-结构化钩子只拦截各宿主实际支持的写入；shell、外部编辑在下一次观察中检查。任意未经过 Core 的执行、远端服务和隐藏依赖不能自动成为可信执行证据。语义结论有依据和不确定性，但仍是宿主判断；用户消息引用不是密码学授权凭据。TaskBelay 不是沙箱，不能抵御同一用户权限下恶意修改数据。旧内部数据拒绝打开并保留原文件，没有迁移层。
-
-原生 Codex/Claude Code/ZCode/DSH 模型会话、macOS 运行、长期真实用户成本收益和最终注册表安装产物未执行。支持范围见 [支持矩阵](SUPPORT-MATRIX.md)。
-
-最终 Node 检查：469 项，446 通过、23 项明确跳过、0 失败；本机旅程与四宿主检查 8 项通过。ZCode 解包产物实际完成 npm launcher、stdio MCP、检查执行、禁止路径钩子、取消与数据保留。旧 Core 实际 stdio 对照在本地断言前后均退出 1 时接受宿主自动通过声明并推进；省略计划确认返回 TRANSITION_NOT_ALLOWED。见 [旧 Core 原始记录](../tests/journeys/evidence/old-core-comparison-windows.json)。这没有执行旧系统全部交付节点，不能据此声称旧最终交付必然错误。
-
-Go 默认测试结果缓存运行曾无法返回，本机旧的完整检查也留下实际超时；未计作通过。最终检查使用 go test -count=1 -timeout=90s ./...，实际通过。Core 还对真实升级仓库运行完整 Go 与旅程检查，保存退出码、日志及实际耗时。崩溃未知控制成本按持久开始至首次发现执行者已停止的区间保守估算，可能包含离线时间，与实测分开。
+Core 可以拒绝未确认方案、明确越权、过期证据和无依据重复；语义必要性、比较检查充分性和宿主消息真实性仍需真实 Host 与用户审查。宿主绕过接入边界的写入不能声称已被预先拦截。详细验收见[工程控制](ENGINEERING-CONTROL.md)，已交付源码边界见[支持矩阵](SUPPORT-MATRIX.md)。

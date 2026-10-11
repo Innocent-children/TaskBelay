@@ -30,97 +30,68 @@ func Observe(ctx context.Context, t domain.Task, c domain.Check) (Fingerprint, e
 	if !ok {
 		return Fingerprint{}, domain.Invalid("check.repository_key", "repository is absent")
 	}
-	root := r.Origin.CanonicalWorktreeRoot
-	raw, e := repository.ReadGit(ctx, root, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
-	if e != nil {
-		return Fingerprint{}, e
-	}
-	paths := map[string]bool{}
-	for _, p := range strings.Split(string(raw), "\x00") {
-		if p == "" {
-			continue
-		}
-		for _, scope := range c.Inputs {
-			if domain.MatchPath(scope, p) {
-				paths[p] = true
+	entries := []string{}
+	files := 0
+	for _, inputRepository := range t.Repositories {
+		scopes := []string{}
+		for _, input := range c.Inputs {
+			key, path, qualified := strings.Cut(input, "::")
+			if input == "." {
+				scopes = append(scopes, ".")
+			} else if qualified {
+				if domain.RepositoryKey(key) == inputRepository.Key {
+					scopes = append(scopes, path)
+				}
+			} else if inputRepository.Key == r.Key {
+				scopes = append(scopes, input)
 			}
 		}
-	}
-	for _, scope := range c.Inputs {
-		if scope == "." {
+		if len(scopes) == 0 {
 			continue
 		}
-		p, e := repository.SafePath(root, scope)
+		root := inputRepository.Origin.CanonicalWorktreeRoot
+		paths, e := inputPaths(ctx, root, scopes)
 		if e != nil {
 			return Fingerprint{}, e
 		}
-		info, e := os.Lstat(p)
-		if os.IsNotExist(e) {
-			paths[scope] = true
-			continue
+		files += len(paths)
+		if files > domain.MaxInputFiles {
+			return Fingerprint{}, domain.Fail("RESOURCE_LIMIT", "check.inputs", "input file count exceeds 16384")
 		}
-		if e != nil {
-			return Fingerprint{}, e
+		ordered := []string{}
+		for path := range paths {
+			ordered = append(ordered, path)
 		}
-		if info.IsDir() {
-			e = filepath.WalkDir(p, func(local string, d os.DirEntry, er error) error {
-				if er != nil {
-					return er
-				}
-				if d.Name() == ".git" && d.IsDir() {
-					return filepath.SkipDir
-				}
-				if d.IsDir() {
-					return nil
-				}
-				rel, _ := filepath.Rel(root, local)
-				paths[filepath.ToSlash(rel)] = true
-				if len(paths) > domain.MaxInputFiles {
-					return domain.Fail("RESOURCE_LIMIT", "check.inputs", "input file count exceeds 16384")
-				}
-				return nil
-			})
+		sort.Strings(ordered)
+		for _, path := range ordered {
+			if e = ctx.Err(); e != nil {
+				return Fingerprint{}, e
+			}
+			local, e := repository.SafePath(root, path)
 			if e != nil {
 				return Fingerprint{}, e
 			}
-		} else {
-			paths[scope] = true
+			info, e := os.Lstat(local)
+			prefix := string(inputRepository.Key) + "::" + path
+			if os.IsNotExist(e) {
+				entries = append(entries, prefix+":missing")
+				continue
+			}
+			if e != nil {
+				return Fingerprint{}, e
+			}
+			if !info.Mode().IsRegular() {
+				return Fingerprint{}, domain.Fail("UNSUPPORTED_INPUT", "check.inputs", "non-regular inputs need an explicit external verification boundary")
+			}
+			d, e := hashFile(local)
+			if e != nil {
+				return Fingerprint{}, e
+			}
+			entries = append(entries, fmt.Sprintf("%s:%s:%d", prefix, d, info.Mode()))
 		}
 	}
-	if len(paths) > domain.MaxInputFiles {
-		return Fingerprint{}, domain.Fail("RESOURCE_LIMIT", "check.inputs", "input file count exceeds 16384")
-	}
-	ordered := []string{}
-	for p := range paths {
-		ordered = append(ordered, p)
-	}
-	sort.Strings(ordered)
-	entries := []string{}
-	for _, p := range ordered {
-		if e = ctx.Err(); e != nil {
-			return Fingerprint{}, e
-		}
-		local, e := repository.SafePath(root, p)
-		if e != nil {
-			return Fingerprint{}, e
-		}
-		info, e := os.Lstat(local)
-		if os.IsNotExist(e) {
-			entries = append(entries, p+":missing")
-			continue
-		}
-		if e != nil {
-			return Fingerprint{}, e
-		}
-		if !info.Mode().IsRegular() {
-			return Fingerprint{}, domain.Fail("UNSUPPORTED_INPUT", "check.inputs", "non-regular inputs need an explicit external verification boundary")
-		}
-		d, e := hashFile(local)
-		if e != nil {
-			return Fingerprint{}, e
-		}
-		entries = append(entries, fmt.Sprintf("%s:%s:%d", p, d, info.Mode()))
-	}
+	sort.Strings(entries)
+	root := r.Origin.CanonicalWorktreeRoot
 	cwd, e := repository.SafePath(root, c.Cwd)
 	if e != nil {
 		return Fingerprint{}, e
@@ -155,7 +126,69 @@ func Observe(ctx context.Context, t domain.Task, c domain.Check) (Fingerprint, e
 		}
 		env = append(env, executable+":"+string(d))
 	}
-	return Fingerprint{Inputs: domain.Hash(entries), Environment: domain.Hash(env), Executable: executable, Files: len(ordered)}, nil
+	return Fingerprint{Inputs: domain.Hash(entries), Environment: domain.Hash(env), Executable: executable, Files: files}, nil
+}
+func inputPaths(ctx context.Context, root string, scopes []string) (map[string]bool, error) {
+	raw, e := repository.ReadGit(ctx, root, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
+	if e != nil {
+		return nil, e
+	}
+	paths := map[string]bool{}
+	for _, p := range strings.Split(string(raw), "\x00") {
+		if p == "" {
+			continue
+		}
+		for _, scope := range scopes {
+			if domain.MatchPath(scope, p) {
+				paths[p] = true
+			}
+		}
+	}
+	for _, scope := range scopes {
+		if scope == "." {
+			continue
+		}
+		p, e := repository.SafePath(root, scope)
+		if e != nil {
+			return nil, e
+		}
+		info, e := os.Lstat(p)
+		if os.IsNotExist(e) {
+			paths[scope] = true
+			continue
+		}
+		if e != nil {
+			return nil, e
+		}
+		if info.IsDir() {
+			e = filepath.WalkDir(p, func(local string, d os.DirEntry, er error) error {
+				if er != nil {
+					return er
+				}
+				if d.Name() == ".git" && d.IsDir() {
+					return filepath.SkipDir
+				}
+				if d.IsDir() {
+					return nil
+				}
+				rel, _ := filepath.Rel(root, local)
+				paths[filepath.ToSlash(rel)] = true
+				if len(paths) > domain.MaxInputFiles {
+					return domain.Fail("RESOURCE_LIMIT", "check.inputs", "input file count exceeds 16384")
+				}
+				return nil
+			})
+			if e != nil {
+				return nil, e
+			}
+		} else {
+			paths[scope] = true
+		}
+	}
+	if len(paths) > domain.MaxInputFiles {
+		return nil, domain.Fail("RESOURCE_LIMIT", "check.inputs", "input file count exceeds 16384")
+	}
+	return paths, nil
 }
 func hashFile(p string) (domain.Digest, error) {
 	f, e := os.Open(p)

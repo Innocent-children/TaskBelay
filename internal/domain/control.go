@@ -6,20 +6,22 @@ type Freshness struct {
 	EvidenceID string `json:"evidence_id"`
 	CheckID    string `json:"check_id"`
 	Valid      bool   `json:"valid"`
+	Applicable bool   `json:"applicable"`
 	Reason     string `json:"reason"`
 }
 type Decision struct {
-	Advice        string      `json:"advice"`
-	Ready         bool        `json:"ready"`
-	Findings      []Fact      `json:"findings"`
-	MissingChecks []string    `json:"missing_checks"`
-	Evidence      []Freshness `json:"evidence"`
-	PendingRuns   []string    `json:"pending_runs"`
+	Advice           string         `json:"advice"`
+	Ready            bool           `json:"ready"`
+	Findings         []Fact         `json:"findings"`
+	MissingChecks    []string       `json:"missing_checks"`
+	Evidence         []Freshness    `json:"evidence"`
+	PendingRuns      []string       `json:"pending_runs"`
+	AcceptedFailures []KnownFailure `json:"accepted_failures"`
 }
 
 // Decide uses observations and provenance; it never grades semantic truth.
 func Decide(t Task, evidence []Freshness, pending []string) Decision {
-	d := Decision{Advice: "continue", Findings: append([]Fact{}, t.Facts...), MissingChecks: []string{}, Evidence: evidence, PendingRuns: pending}
+	d := Decision{Advice: "continue", Findings: append([]Fact{}, t.Facts...), MissingChecks: []string{}, Evidence: evidence, PendingRuns: pending, AcceptedFailures: []KnownFailure{}}
 	if t.Status != "active" {
 		d.Advice = "stop"
 		return d
@@ -36,7 +38,7 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 				p := t.QualifiedPath(r.Key, e.Path)
 				found := false
 				for _, j := range review.Paths {
-					if j.Path == p && len(j.GoalIDs) > 0 && j.Basis != "" && j.ScopeDigest == t.PathReviewDigest(j.Path, j.GoalIDs) {
+					if j.Path == p && len(j.GoalIDs) > 0 && j.Basis != "" && j.ScopeDigest == t.PathReviewDigest(j.Path, j.GoalIDs, j.WorkID) {
 						found = true
 					}
 				}
@@ -80,6 +82,10 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 			}
 		}
 	}
+	d.AcceptedFailures = t.AcceptedFailures(evidence)
+	for _, x := range d.AcceptedFailures {
+		valid[x.CheckID] = true
+	}
 	done := true
 	for _, g := range t.Authorization.Goals {
 		completed := false
@@ -96,6 +102,9 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 		}
 	}
 	blocking := false
+	if !t.ReviewComplete() {
+		add("design-review", "semantic", "Review root cause, responsibility, complexity and verification against the current plan and changes before delivery.")
+	}
 	for _, f := range d.Findings {
 		blocking = blocking || f.Blocking
 	}
@@ -119,7 +128,14 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 		d.Advice = "ask_user"
 		add("user-decision", "authorization", t.Issue.Summary)
 	}
-	d.Ready = done && !blocking && len(d.MissingChecks) == 0 && len(pending) == 0 && t.Issue == nil
+	if !t.PlanApproved() {
+		d.Advice = "ask_user"
+		if t.ContentDigest() != t.ProposedContentDigest {
+			add("unapproved-changes", "authorization", "Changes were observed before plan confirmation; restore the proposed contents or disclose them in a revised plan.")
+		}
+		add("plan-confirmation", "authorization", "Show the complete understanding and plan, then record the user's confirmation of this exact plan before implementation or checks.")
+	}
+	d.Ready = t.PlanApproved() && done && !blocking && len(d.MissingChecks) == 0 && len(pending) == 0 && t.Issue == nil
 	return d
 }
 func (t Task) QualifiedPath(key RepositoryKey, p string) string {

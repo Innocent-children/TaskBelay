@@ -39,6 +39,7 @@ type Authorization struct {
 	Goals            []Goal             `json:"goals"`
 	Constraints      []Constraint       `json:"constraints,omitempty"`
 	ExpectedPaths    []string           `json:"expected_paths,omitempty"`
+	AllowedPaths     []string           `json:"allowed_paths,omitempty"`
 	ForbiddenPaths   []string           `json:"forbidden_paths,omitempty"`
 	Pins             []Pin              `json:"pins,omitempty"`
 	Dependencies     []DependencyPolicy `json:"dependencies,omitempty"`
@@ -59,6 +60,10 @@ type Check struct {
 	TimeoutMS     int64         `json:"timeout_ms,omitempty"`
 	Retry         string        `json:"retry,omitempty"`
 	Rationale     string        `json:"rationale"`
+	GoalIDs       []string      `json:"goal_ids,omitempty"`
+	Purpose       string        `json:"purpose,omitempty"`
+	FullSuite     bool          `json:"full_suite,omitempty"`
+	Compares      string        `json:"compares,omitempty"`
 }
 type Usage struct {
 	Runs          int64 `json:"runs"`
@@ -77,6 +82,8 @@ type PathJudgment struct {
 	GoalIDs     []string `json:"goal_ids"`
 	Basis       string   `json:"basis"`
 	ScopeDigest Digest   `json:"scope_digest,omitempty"`
+	WorkID      string   `json:"work_id"`
+	Necessity   string   `json:"necessity"`
 }
 type Judgment struct {
 	ID          string `json:"id"`
@@ -92,6 +99,7 @@ type Assessment struct {
 	Constraints         []Judgment     `json:"constraints"`
 	Facts               []Judgment     `json:"facts"`
 	Summary             string         `json:"summary"`
+	Review              *DesignReview  `json:"review,omitempty"`
 }
 type Progress struct {
 	GoalID     string `json:"goal_id"`
@@ -131,25 +139,30 @@ type Evidence struct {
 	RecordedAt        time.Time `json:"recorded_at"`
 }
 type Task struct {
-	TaskID        string                 `json:"task_id"`
-	Host          Host                   `json:"host"`
-	Status        string                 `json:"status"`
-	Revision      uint64                 `json:"revision"`
-	Authorization Authorization          `json:"authorization"`
-	Checks        []Check                `json:"checks"`
-	Repositories  []RepositoryScopeEntry `json:"repositories"`
-	Assessment    *Assessment            `json:"assessment"`
-	Progress      []Progress             `json:"progress"`
-	Issue         *Issue                 `json:"issue"`
-	Evidence      []Evidence             `json:"evidence"`
-	Attempts      []Attempt              `json:"attempts"`
-	Facts         []Fact                 `json:"facts"`
-	Usage         Usage                  `json:"usage"`
-	Acceptance    []Acceptance           `json:"acceptance"`
-	Summary       string                 `json:"summary"`
-	Risks         []string               `json:"risks"`
-	CreatedAt     time.Time              `json:"created_at"`
-	UpdatedAt     time.Time              `json:"updated_at"`
+	TaskID                string                 `json:"task_id"`
+	Host                  Host                   `json:"host"`
+	Status                string                 `json:"status"`
+	Revision              uint64                 `json:"revision"`
+	Authorization         Authorization          `json:"authorization"`
+	Plan                  Plan                   `json:"plan"`
+	ProposedContentDigest Digest                 `json:"proposed_content_digest"`
+	Approval              *PlanApproval          `json:"approval"`
+	Exceptions            []KnownFailure         `json:"exceptions"`
+	Archived              bool                   `json:"archived"`
+	Checks                []Check                `json:"checks"`
+	Repositories          []RepositoryScopeEntry `json:"repositories"`
+	Assessment            *Assessment            `json:"assessment"`
+	Progress              []Progress             `json:"progress"`
+	Issue                 *Issue                 `json:"issue"`
+	Evidence              []Evidence             `json:"evidence"`
+	Attempts              []Attempt              `json:"attempts"`
+	Facts                 []Fact                 `json:"facts"`
+	Usage                 Usage                  `json:"usage"`
+	Acceptance            []Acceptance           `json:"acceptance"`
+	Summary               string                 `json:"summary"`
+	Risks                 []string               `json:"risks"`
+	CreatedAt             time.Time              `json:"created_at"`
+	UpdatedAt             time.Time              `json:"updated_at"`
 }
 type Acceptance struct {
 	GoalID      string   `json:"goal_id"`
@@ -264,6 +277,9 @@ func (a Authorization) Validate() error {
 	if e := Paths("authorization.expected_paths", a.ExpectedPaths); e != nil {
 		return e
 	}
+	if e := Paths("authorization.allowed_paths", a.AllowedPaths); e != nil {
+		return e
+	}
 	if e := Paths("authorization.forbidden_paths", a.ForbiddenPaths); e != nil {
 		return e
 	}
@@ -318,6 +334,9 @@ func (t Task) Validate() error {
 	if e := t.Authorization.Validate(); e != nil {
 		return e
 	}
+	if e := t.ValidatePlan(); e != nil {
+		return e
+	}
 	if len(t.Checks) == 0 || len(t.Checks) > 64 || len(t.Repositories) == 0 || len(t.Repositories) > 8 || len(t.Evidence) > 192 || len(t.Attempts) > 64 || len(t.Progress) > 64 {
 		return Invalid("task", "current snapshot exceeds its bounded collections")
 	}
@@ -327,6 +346,26 @@ func (t Task) Validate() error {
 			return Invalid(fmt.Sprintf("checks[%d].retry", i), "must be repeatable or requires_user")
 		}
 		p := fmt.Sprintf("checks[%d]", i)
+		if !slices.Contains([]string{"acceptance", "regression", "diagnostic"}, c.Purpose) {
+			return Invalid(p+".purpose", "requires acceptance, regression or diagnostic")
+		}
+		if len(t.CheckGoals(c)) == 0 {
+			return Invalid(p+".goal_ids", "every check must serve an authorized goal")
+		}
+		if e := IDs(p+".goal_ids", c.GoalIDs); e != nil {
+			return e
+		}
+		for _, id := range c.GoalIDs {
+			if _, ok := t.Goal(id); !ok {
+				return Invalid(p+".goal_ids", "goal must exist")
+			}
+		}
+		if c.Compares != "" {
+			compared, ok := t.Check(c.Compares)
+			if !ok || compared.ID == c.ID || compared.Kind != "command" || compared.Purpose != "regression" || c.Kind != "command" {
+				return Invalid(p+".compares", "comparison must reference another regression command")
+			}
+		}
 		ids = append(ids, c.ID)
 		if c.Kind != "command" && c.Kind != "human" {
 			return Invalid(p+".kind", "must be command or human")
@@ -339,6 +378,13 @@ func (t Task) Validate() error {
 		}
 		if e := Paths(p+".inputs", c.Inputs); e != nil {
 			return e
+		}
+		for _, input := range c.Inputs {
+			if key, _, qualified := strings.Cut(input, "::"); qualified {
+				if _, ok := t.Repository(RepositoryKey(key)); !ok {
+					return Invalid(p+".inputs", "input repository must be bound to this task")
+				}
+			}
 		}
 		if len(c.Inputs) == 0 {
 			return Invalid(p+".inputs", "must declare inputs, default .")

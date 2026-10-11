@@ -3,6 +3,19 @@ package domain
 import "slices"
 
 func (t Task) ValidateRecords() error {
+	if len(t.Exceptions) > 64 {
+		return Invalid("exceptions", "at most 64 current known-failure decisions")
+	}
+	for _, x := range t.Exceptions {
+		if !ID(x.CheckID).IsValid() || !ID(x.FailedEvidenceID).IsValid() || !ID(x.ComparisonEvidenceID).IsValid() || len(x.Failures) == 0 || len(x.Failures) > 64 || Text("exceptions.user_ref", x.UserRef) != nil || Text("exceptions.reason", x.Reason) != nil || !x.PlanDigest.IsValid() || !x.ContentDigest.IsValid() || validateUTC(x.AcceptedAt) != nil {
+			return Invalid("exceptions", "invalid user decision or evidence binding")
+		}
+		for _, f := range x.Failures {
+			if Text("exceptions.failures", f) != nil {
+				return Invalid("exceptions.failures", "name each accepted existing failure")
+			}
+		}
+	}
 	if validateUTC(t.CreatedAt) != nil || validateUTC(t.UpdatedAt) != nil || t.UpdatedAt.Before(t.CreatedAt) {
 		return Invalid("task.timestamps", "invalid creation or update time")
 	}
@@ -47,7 +60,7 @@ func (t Task) ValidateRecords() error {
 			}
 		}
 	}
-	if t.Status == "done" && len(t.Acceptance) != len(t.Authorization.Goals) {
+	if t.Status == "done" && (!t.PlanApproved() || len(t.Acceptance) != len(t.Authorization.Goals)) {
 		return Invalid("acceptance", "terminal completion requires saved conclusions for every goal")
 	}
 	return nil

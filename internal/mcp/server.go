@@ -18,6 +18,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/application"
 	"github.com/Innocent-children/taskbelay/internal/domain"
 	"github.com/Innocent-children/taskbelay/internal/execution"
+	"github.com/Innocent-children/taskbelay/internal/store"
 	"github.com/Innocent-children/taskbelay/internal/userconfig"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -54,9 +55,9 @@ type Tool struct {
 
 var Catalog = []Tool{
 	{"taskbelay_server_info", "Read actual tools, evidence boundary and Host coverage.", Empty{}, map[string]any{}, true},
-	{"taskbelay_open_task", "Create an authorized local engineering task; existing authorization is sufficient. Git is read-only.", application.OpenRequest{}, application.View{}, false},
+	{"taskbelay_open_task", "Save the understanding and complete proposed plan. Implementation and checks require actual user confirmation of its digest.", application.OpenRequest{}, application.View{}, false},
 	{"taskbelay_get_task", "Refresh actual code changes and evidence applicability; recover latest requirements and progress.", GetRequest{}, application.View{}, false},
-	{"taskbelay_checkpoint", "Record current semantic reasoning, progress, check refinements and Host cost without a phase gate.", application.CheckpointRequest{}, application.View{}, false},
+	{"taskbelay_checkpoint", "Record current reasoning, necessary changes, progress and cost. This cannot change the approved plan or check definitions.", application.CheckpointRequest{}, application.View{}, false},
 	{"taskbelay_revise_task", "Replace the current user-authorized contract; preserve unaffected work/evidence and cumulative cost.", application.ReviseRequest{}, application.View{}, false},
 	{"taskbelay_run_check", "Execute one approved argv locally with a durable reservation and actual result. Respect native Host permission.", application.RunRequest{}, application.RunResult{}, false},
 	{"taskbelay_record_evidence", "Record an agent claim or a completed human observation; cannot manufacture Core execution.", application.EvidenceRequest{}, application.View{}, false},
@@ -64,7 +65,10 @@ var Catalog = []Tool{
 	{"taskbelay_recover_run", "Recover a signed result receipt or classify a stopped owner with no receipt; never infer passing or replay execution.", application.RecoverRequest{}, application.RunResult{}, false},
 	{"taskbelay_finish_task", "Conclude only with current scope reasoning and applicable passing evidence for every authorized goal.", application.FinishRequest{}, application.View{}, false},
 	{"taskbelay_cancel_task", "End the task and release claims while retaining files and results; unresolved execution prevents cancellation.", application.CancelRequest{}, application.View{}, false},
-	{"taskbelay_list_tasks", "Read the latest 200 saved task summaries; no code execution.", Empty{}, map[string]any{}, true},
+	{"taskbelay_list_tasks", "Read a bounded page of saved task summaries, including archived tasks when requested.", store.ListQuery{}, map[string]any{}, true},
+	{"taskbelay_confirm_plan", "Record the actual user's understanding and approval of the exact displayed plan; never fabricate a confirmation.", application.ConfirmPlanRequest{}, application.View{}, false},
+	{"taskbelay_accept_known_failure", "Record a user's explicit acceptance of named existing regression failures with current actual comparison evidence; never waive acceptance checks.", application.AcceptFailureRequest{}, application.View{}, false},
+	{"taskbelay_archive_task", "Archive or restore a terminal task without changing its outcome or deleting work.", application.ArchiveRequest{}, application.View{}, false},
 }
 
 type ServerOptions struct {
@@ -157,10 +161,10 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 		case "STORAGE_CORRUPT", "SCHEMA_UNSUPPORTED":
 			r.Action = "repair_storage"
 			r.Message = "Preserve local data and report the storage problem; do not reset or migrate it."
-		case "COST_LIMIT":
+		case "COST_LIMIT", "PLAN_CONFIRMATION_REQUIRED", "PLAN_CHANGED", "AUTHORIZATION_PENDING":
 			r.Action = "request_authorization"
-			r.Message = "Keep acceptance requirements. Request a real authorized cost adjustment if necessary."
-		case "SCOPE_VIOLATION", "REPEATED_FAILURE", "ACCEPTANCE_INCOMPLETE":
+			r.Message = "Show the current plan or required decision and obtain actual user authorization; preserve acceptance requirements."
+		case "SCOPE_VIOLATION", "REPEATED_FAILURE", "ACCEPTANCE_INCOMPLETE", "CHECK_ALREADY_SATISFIED", "RETRY_BASIS_REQUIRED", "UNAPPROVED_CHANGES", "FAILURE_ACCEPTANCE_NOT_ALLOWED":
 			r.Action = "self_correct"
 			r.Message = "Inspect the current facts and gaps, then correct within existing authorization."
 		}
@@ -184,7 +188,7 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 			for _, d := range Catalog {
 				names = append(names, d.Name)
 			}
-			result = map[string]any{"product": "taskbelay", "version": s.version, "schema": "1.0.0", "tools": names, "host_preferences": s.options.HostPreferences, "coverage": map[string]any{"core_execution": "local argv only; not a sandbox", "codex": "apply_patch path preflight; other writes observed at checkpoints", "claude": "Write/Edit/NotebookEdit path preflight; other writes observed at checkpoints", "zcode": "registered structured writes only; Host capability must be verified", "deepseek": "write/edit/str_replace_editor path preflight; other writes observed at checkpoints"}, "semantic_evidence": "Host judgment with cited basis and uncertainty; not a correctness proof", "cost": "Core wall/observation/execution measured; Host analysis, tokens and wait are reported, potentially incomplete"}
+			result = map[string]any{"product": "taskbelay", "version": s.version, "schema": store.DatabaseSchemaVersion, "tools": names, "host_preferences": s.options.HostPreferences, "coverage": map[string]any{"core_execution": "local argv only; not a sandbox", "codex": "apply_patch path preflight; other writes observed at checkpoints", "claude": "Write/Edit/NotebookEdit path preflight; other writes observed at checkpoints", "zcode": "registered structured writes only; Host capability must be verified", "deepseek": "write/edit/str_replace_editor path preflight; other writes observed at checkpoints"}, "semantic_evidence": "Host judgment with cited basis and uncertainty; not a correctness proof", "cost": "Core wall/observation/execution measured; Host analysis, tokens and wait are reported, potentially incomplete"}
 			cost, err := s.service.ControlCost(ctx)
 			e = err
 			result.(map[string]any)["control_cost"] = cost
@@ -202,6 +206,21 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 		if e = Decode(raw, &q); e == nil {
 			refresh := q.Refresh == nil || *q.Refresh
 			result, e = s.service.Inspect(ctx, q.TaskID, refresh)
+		}
+	case "taskbelay_confirm_plan":
+		var q application.ConfirmPlanRequest
+		if e = Decode(raw, &q); e == nil {
+			result, e = s.service.ConfirmPlan(ctx, q)
+		}
+	case "taskbelay_accept_known_failure":
+		var q application.AcceptFailureRequest
+		if e = Decode(raw, &q); e == nil {
+			result, e = s.service.AcceptFailure(ctx, q)
+		}
+	case "taskbelay_archive_task":
+		var q application.ArchiveRequest
+		if e = Decode(raw, &q); e == nil {
+			result, e = s.service.Archive(ctx, q)
 		}
 	case "taskbelay_checkpoint":
 		var q application.CheckpointRequest
@@ -251,19 +270,19 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 			result, e = s.service.Cancel(ctx, q)
 		}
 	case "taskbelay_list_tasks":
-		var q Empty
+		var q store.ListQuery
 		if e = Decode(raw, &q); e == nil {
-			var ts []domain.Task
-			ts, e = s.service.Store.List(ctx)
+			var page store.TaskPage
+			page, e = s.service.Store.List(ctx, q)
 			items := []map[string]any{}
-			for _, t := range ts {
+			for _, t := range page.Items {
 				items = append(items, Summary(t))
 			}
 			cost, err := s.service.ControlCost(ctx)
 			if e == nil {
 				e = err
 			}
-			result = map[string]any{"items": items, "limit": 200, "control_cost": cost}
+			result = map[string]any{"items": items, "page": page.Page, "has_next": page.HasNext, "control_cost": cost}
 		}
 	}
 	if e != nil {
@@ -277,6 +296,12 @@ func Summary(t domain.Task) map[string]any {
 	lifecycle := t.Status
 	node := strings.ToUpper(t.Status)
 	var blocker *string
+	if t.Status == "active" && !t.PlanApproved() {
+		lifecycle = "blocked"
+		node = "BLOCKED"
+		x := "Waiting for confirmation of the displayed plan"
+		blocker = &x
+	}
 	if t.Status == "active" && t.Issue != nil {
 		lifecycle = "blocked"
 		node = "BLOCKED"
@@ -294,7 +319,7 @@ func Summary(t domain.Task) map[string]any {
 	for _, r := range t.Repositories {
 		keys = append(keys, string(r.Key))
 	}
-	return map[string]any{"task_id": t.TaskID, "request_summary": t.Authorization.Request, "origin_host": t.Host, "execution_host": t.Host, "current_node": node, "lifecycle": lifecycle, "revision": t.Revision, "updated_at": t.UpdatedAt, "archived": false, "repository_keys": keys, "repository_group_id": t.Repositories[0].Origin.SourceRepositoryGroupDigest, "worktree_path": t.Repositories[0].Origin.CanonicalWorktreeRoot, "blocker": blocker, "outcome": t.Summary}
+	return map[string]any{"task_id": t.TaskID, "request_summary": t.Authorization.Request, "origin_host": t.Host, "execution_host": t.Host, "current_node": node, "lifecycle": lifecycle, "revision": t.Revision, "updated_at": t.UpdatedAt, "archived": t.Archived, "repository_keys": keys, "repository_group_id": t.Repositories[0].Origin.SourceRepositoryGroupDigest, "worktree_path": t.Repositories[0].Origin.CanonicalWorktreeRoot, "blocker": blocker, "outcome": t.Summary}
 }
 func newID() string {
 	b := make([]byte, 16)

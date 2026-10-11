@@ -100,17 +100,15 @@ func ScopeFacts(ctx context.Context, t domain.Task) ([]domain.Fact, error) {
 		root := r.Origin.CanonicalWorktreeRoot
 		for _, e := range r.Binding.TaskSurface {
 			p := t.QualifiedPath(r.Key, e.Path)
+			if !t.Authorization.AllowsPath(p) {
+				add("unauthorized_path", p, "Change is outside the approved allowed paths or touches a forbidden path.", true)
+			}
 			expected := false
 			for _, v := range t.Authorization.ExpectedPaths {
 				expected = expected || domain.MatchPath(v, p)
 			}
 			if !expected {
 				add("unexpected_path", p, "Path was not predicted; explain its necessity for an authorized goal.", false)
-			}
-			for _, v := range t.Authorization.ForbiddenPaths {
-				if domain.MatchPath(v, p) {
-					add("forbidden_path", p, "Authorization forbids changes here.", true)
-				}
 			}
 			if e.Gitlink {
 				add("gitlink", p, "Submodule object changed; ordinary-file checks do not establish its contents.", false)

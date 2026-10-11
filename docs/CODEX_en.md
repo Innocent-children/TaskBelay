@@ -6,6 +6,6 @@ Install the public manager with npm install -g taskbelay@latest and taskbelay in
 
 Reload Codex and inspect/trust the apply_patch hook with /hooks.
 
-Invoke the Skill with outcome, non-goals and necessary limits. Existing authority remains valid without internal phase approvals. Alternate implementation, checks and scope review; actual Core execution is distinct from claims/human results. Disclose unsupported shell/remote coverage. Resume in the bound workspace and read the original run without replay. Optional workspace helpers retain actual authorization_ref and return current repositories; relocation is unsupported.
+Invoke the Skill with outcome, non-goals and necessary limits. Show the understanding and complete plan and obtain explicit confirmation before implementation. Confirm material revisions; retain valid approval for ordinary progress. Alternate implementation, checks and scope review; actual Core execution is distinct from claims/human results. Disclose unsupported shell/remote coverage. Resume in the bound workspace and read the original run without replay. Optional workspace helpers retain actual authorization_ref and return current repositories; relocation is unsupported.
 
 Use the unified manager with --host codex for status/doctor/update/remove; ordinary removal retains Task data. Ending tasks grants no Git/publication/cleanup authority. See [package guide](../packages/codex/README.md), [commands](COMMANDS_en.md), [verification boundaries](SUPPORT-MATRIX_en.md). Adapter tests are not real Host-session validation.

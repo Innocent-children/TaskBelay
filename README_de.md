@@ -36,7 +36,7 @@ Adapter nach der [Host-Anleitung](packages/codex/README.md) aktivieren und ein b
 Verwende TaskBelay für eine Begrenzung fehlgeschlagener Anmeldungen. Erhalte die öffentliche Authentifizierungs-API und vorhandene Nutzerdaten; entwirf keine neue Kontoverwaltung. Führe relevante bestehende Tests aus und berichte tatsächliche Ergebnisse.
 ```
 
-Ergebnis und notwendige Grenzen nennen. Bestehende Autorisierung bleibt gültig; interne Phasen und Verwaltungsformulare müssen nicht wiederholt bestätigt werden. Die lokale WebUI zeigt Ergebnisse, Lücken und notwendige Entscheidungen. Mit gespeicherter Task ID im ursprünglichen Arbeitsbereich fortsetzen.
+Beschreiben Sie Ergebnis und Grenzen. Vor der Umsetzung legt der Agent sein Verständnis, die Ursache, den vollständigen Plan, Zuständigkeiten, Umfang, Prüfungen und Kostenlimits zur ausdrücklichen Bestätigung vor. Wesentliche Änderungen benötigen eine neue Bestätigung; normaler Fortschritt behält die gültige Freigabe. Prüfungen müssen eine aktuelle Lücke schließen; weiterhin gültige Erfolge werden wiederverwendet. Die WebUI zeigt Plan, Nachweise und Kosten, ermöglicht Bestätigung und Archivierung abgeschlossener Aufgaben und öffnet Aufgaben über direkte Detail-Links. Setzen Sie mit der gespeicherten Task ID im ursprünglichen Arbeitsbereich fort.
 
 ```sh
 taskbelay webui start

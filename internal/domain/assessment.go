@@ -24,7 +24,7 @@ func (t Task) semanticSurface(scopes []string) Digest {
 	}
 	return Hash(entries)
 }
-func (t Task) PathReviewDigest(p string, ids []string) Digest {
+func (t Task) PathReviewDigest(p string, ids []string, workID string) Digest {
 	goals := []Goal{}
 	for _, id := range ids {
 		g, ok := t.Goal(id)
@@ -33,7 +33,11 @@ func (t Task) PathReviewDigest(p string, ids []string) Digest {
 		}
 		goals = append(goals, g)
 	}
-	return Hash([]any{p, goals, t.semanticSurface([]string{p})})
+	work, ok := t.Work(workID)
+	if !ok {
+		return ""
+	}
+	return Hash([]any{p, goals, work, t.semanticSurface([]string{p})})
 }
 func (t Task) ConstraintReviewDigest(c Constraint) Digest {
 	return Hash([]any{c, t.semanticSurface(c.Paths)})
@@ -49,23 +53,31 @@ func (t Task) FactReviewDigest(f Fact) Digest {
 // MergeAssessment stamps submitted fragments from observed facts. Host-provided
 // scope digests cannot bless retained reasoning or override deterministic rules.
 func (t Task) MergeAssessment(a Assessment) *Assessment {
+	if a.Review != nil {
+		r := *a.Review
+		r.PlanDigest, r.ContentDigest = t.PlanDigest(), t.ContentDigest()
+		a.Review = &r
+	}
 	old := Assessment{}
 	if t.Assessment != nil {
 		old = *t.Assessment
+	}
+	if a.Review == nil && old.Review != nil {
+		a.Review = old.Review
 	}
 	paths := []PathJudgment{}
 	for _, r := range t.Repositories {
 		for _, e := range r.Binding.TaskSurface {
 			p := t.QualifiedPath(r.Key, e.Path)
 			for _, j := range old.Paths {
-				if j.Path == p && j.ScopeDigest == t.PathReviewDigest(j.Path, j.GoalIDs) {
+				if j.Path == p && j.ScopeDigest == t.PathReviewDigest(j.Path, j.GoalIDs, j.WorkID) {
 					paths = append(paths, j)
 				}
 			}
 		}
 	}
 	for _, j := range a.Paths {
-		j.ScopeDigest = t.PathReviewDigest(j.Path, j.GoalIDs)
+		j.ScopeDigest = t.PathReviewDigest(j.Path, j.GoalIDs, j.WorkID)
 		paths = slices.DeleteFunc(paths, func(v PathJudgment) bool { return v.Path == j.Path })
 		paths = append(paths, j)
 	}

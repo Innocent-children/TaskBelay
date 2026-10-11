@@ -16,7 +16,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/store"
 )
 
-func fixture(t *testing.T) (*Service, View, string) {
+func proposedFixture(t *testing.T) (*Service, View, string) {
 	t.Helper()
 	root := t.TempDir()
 	git := func(args ...string) {
@@ -37,7 +37,7 @@ func fixture(t *testing.T) (*Service, View, string) {
 	}
 	t.Cleanup(func() { db.Close() })
 	s, _ := NewService(db, repository.NewGitObserver())
-	v, e := s.Open(context.Background(), OpenRequest{OperationID: "open", Host: "cli", Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: domain.Authorization{UserRef: "actual-test-user", Request: "Change file text", Goals: []domain.Goal{{ID: "goal", Statement: "Change the text", Checks: []string{"human"}}}, Limits: domain.DefaultLimits()}, Checks: []domain.Check{{ID: "human", Kind: "human", Rationale: "User checks requested text", Conditions: "Read current file"}}})
+	v, e := s.Open(context.Background(), OpenRequest{Plan: testPlan(), OperationID: "open", Host: "cli", Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: domain.Authorization{UserRef: "actual-test-user", Request: "Change file text", Goals: []domain.Goal{{ID: "goal", Statement: "Change the text", Checks: []string{"human"}}}, Limits: domain.DefaultLimits()}, Checks: []domain.Check{{ID: "human", Kind: "human", Rationale: "User checks requested text", Conditions: "Read current file"}}})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -137,7 +137,7 @@ func TestHumanObservationInvalidatesOnInputChange(t *testing.T) {
 func TestWorkspaceClaimIsAtomicAndHistoryConflictCannotBeBlessed(t *testing.T) {
 	s, v, root := fixture(t)
 	ctx := context.Background()
-	_, e := s.Open(ctx, OpenRequest{OperationID: "second", Host: "cli", Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: v.Task.Authorization, Checks: v.Task.Checks})
+	_, e := s.Open(ctx, OpenRequest{OperationID: "second", Host: "cli", Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: v.Task.Authorization, Plan: v.Task.Plan, Checks: v.Task.Checks})
 	if code(e) != "WORKSPACE_CLAIMED" {
 		t.Fatal("duplicate claim allowed", e)
 	}
@@ -201,7 +201,7 @@ func TestIndependentRevisionRetainsAnUnresolvedUserDecision(t *testing.T) {
 	authorization := v.Task.Authorization
 	authorization.UserRef = "fixture-user-independent-revision"
 	authorization.Request += "; also describe the result"
-	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "independent-revision", v.Task.Revision}, Authorization: authorization, Checks: v.Task.Checks, Reason: "This request does not answer the saved API question"})
+	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "independent-revision", v.Task.Revision}, Authorization: authorization, Plan: v.Task.Plan, Checks: v.Task.Checks, Reason: "This request does not answer the saved API question"})
 	if e != nil || v.Task.Issue == nil || v.Decision.Advice != "ask_user" {
 		t.Fatal("revision fabricated a user decision", e)
 	}

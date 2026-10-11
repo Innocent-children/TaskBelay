@@ -31,7 +31,7 @@ test("plugin identity and injection surface are fixed", () => {
   assert.deepEqual(inject, ["skills", "tools"]);
   assert.equal(typeof apply, "function");
   assert.equal(TASKBELAY_TOOL_NAMESPACE_PREFIX, "mcp__taskbelay__");
-  assert.equal(TASKBELAY_QUALIFIED_TOOL_NAMES.length,12);
+  assert.equal(TASKBELAY_QUALIFIED_TOOL_NAMES.length,15);
   assert.ok(TASKBELAY_QUALIFIED_TOOL_NAMES.includes("mcp__taskbelay__taskbelay_run_check"));
 });
 

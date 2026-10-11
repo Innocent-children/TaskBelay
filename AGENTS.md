@@ -22,7 +22,7 @@ Core semantic code contains no OS selection. Keep interfaces small and consumer-
 
 ## Engineering contract maintenance
 
-The lifecycle is active/done/cancelled. Control advice is derived from observations and required evidence; it is not another workflow. Do not introduce mandatory phases, repeated plan confirmations or management forms. Existing authorization remains valid until an actual material change requires a user decision.
+The lifecycle is active/done/cancelled. Control advice is derived from observations and required evidence; it is not another workflow. Require actual user confirmation of the displayed understanding and complete implementation plan before writes or checks. Bind confirmation to the exact plan, checks, limits and workspace. Material revisions invalidate confirmation; ordinary progress does not. Do not introduce a general workflow engine or repeated approvals for unchanged plans.
 
 When behavior changes, update the owning contract and DTO/Schema before consumers. Define deterministic observations, semantic testimony/uncertainty, evidence sources, applicability dependencies, cumulative cost, recovery of uncertain effects and forbidden outcomes. Programs check facts; model scores never establish correctness. Claims cannot manufacture execution. Limits cannot waive acceptance. Replanning/compaction cannot reset cost or erase unresolved operations.
 

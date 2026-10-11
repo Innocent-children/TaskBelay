@@ -11,3 +11,5 @@ recovery.action 指定 correct_request、read_task、self_correct、recover_run�
 操作结果不明先读原 Task/run。执行已持久预留后不可盲目重放。恢复匹配签名收据只保存原结果；执行者停止但缺收据只产生 interrupted_unknown。旧 Schema 保留原数据且拒绝打开。完整 JSON 示例及同工具具体错误在共享 Skill 的 protocol.md，测试比较完整编码并校验输出 Schema；in-memory SDK 测试核对实际传输。见[命令](COMMANDS.md)和[架构](ARCHITECTURE.md)。
 
 JSON 未知成员、重复成员及类型错误定位到具体 arguments 路径，包括数组下标，例如 arguments.checks[0].argv[0]；邻接示例使用真实生产者的完整编码。
+
+PLAN_CONFIRMATION_REQUIRED、PLAN_CHANGED、AUTHORIZATION_PENDING 要求真实用户决定；UNAPPROVED_CHANGES 要求恢复提案时内容或明确披露后修订。CHECK_ALREADY_SATISFIED 表示复用已有结果，RETRY_BASIS_REQUIRED 要求读取原运行并提供新诊断信息。FAILURE_ACCEPTANCE_NOT_ALLOWED 不允许以例外绕过目标验收。拒绝未启动进程，但调用成本仍记录。

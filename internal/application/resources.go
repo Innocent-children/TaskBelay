@@ -28,6 +28,10 @@ func (s *Service) boundEvidence(ctx context.Context, t *domain.Task) error {
 			protected[f.EvidenceID] = true
 		}
 	}
+	for _, x := range v.Decision.AcceptedFailures {
+		protected[x.FailedEvidenceID] = true
+		protected[x.ComparisonEvidenceID] = true
+	}
 	retained := []domain.Evidence{}
 	for _, record := range t.Evidence {
 		if protected[record.ID] {

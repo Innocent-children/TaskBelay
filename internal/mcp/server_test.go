@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -81,7 +82,7 @@ func TestNestedRequestErrorsIdentifyTheExactMember(t *testing.T) {
 			t.Fatalf("incorrect field error for %s: %+v", c.raw, actual)
 		}
 		validate(t, OutputSchema(application.View{}), actual)
-		if tasks, e := s.service.Store.List(context.Background()); e != nil || len(tasks) != 0 {
+		if tasks, e := s.service.Store.List(context.Background(), store.ListQuery{}); e != nil || len(tasks.Items) != 0 {
 			t.Fatal("invalid input created semantic state", e)
 		}
 	}
@@ -147,5 +148,69 @@ func TestCompleteSkillErrorExampleMatchesActualProducer(t *testing.T) {
 	}
 	if !strings.Contains(string(doc), string(b)) {
 		t.Fatal("shared complete error example differs from the producer")
+	}
+}
+
+func TestPlanBoundaryResponsesAndExecutionValidateAgainstPublishedSchemas(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	for _, args := range [][]string{{"init", "-b", "main"}, {"config", "user.name", "Contract fixture"}, {"config", "user.email", "fixture@localhost"}} {
+		c := exec.Command("git", append([]string{"-C", root}, args...)...)
+		if b, e := c.CombinedOutput(); e != nil {
+			t.Fatal(e, string(b))
+		}
+	}
+	os.WriteFile(filepath.Join(root, "file.txt"), []byte("fixture"), 0600)
+	for _, args := range [][]string{{"add", "."}, {"commit", "-m", "fixture"}} {
+		c := exec.Command("git", append([]string{"-C", root}, args...)...)
+		if b, e := c.CombinedOutput(); e != nil {
+			t.Fatal(e, string(b))
+		}
+	}
+	dispatch := func(name string, q any) Envelope {
+		t.Helper()
+		b, _ := json.Marshal(q)
+		v := s.Dispatch(ctx, name, b)
+		for _, tool := range Catalog {
+			if tool.Name == name {
+				validate(t, OutputSchema(tool.Output), v)
+			}
+		}
+		return v
+	}
+	q := application.OpenRequest{OperationID: "open-contract", Host: "cli", Repositories: []application.RepositoryInput{{Key: "primary", Path: root}}, Authorization: domain.Authorization{UserRef: "fixture-request", Request: "Inspect the committed fixture", Goals: []domain.Goal{{ID: "goal", Statement: "The fixture status command succeeds", Checks: []string{"check"}}}},
+		Plan:   domain.Plan{Understanding: "Inspect the fixture", RootCause: "Status needs verification", Approach: "Use read-only Git status", SimplerAlternative: "No file editing or framework needed", VerificationBasis: "One exact status command suffices", Completion: "Status succeeds and no code changes", Work: []domain.PlannedWork{{ID: "inspect", GoalIDs: []string{"goal"}, Change: "Inspect current status", Owner: "Git observer", Necessity: "Requested fixture check"}}},
+		Checks: []domain.Check{{ID: "check", Kind: "command", Argv: []string{"git", "status", "--porcelain"}, Rationale: "Inspect actual Git state", Conditions: "Local fixture", Retry: "repeatable", TimeoutMS: 3000}}}
+	opened := dispatch("taskbelay_open_task", q)
+	if !opened.OK {
+		t.Fatal(opened)
+	}
+	v := opened.Result.(application.View)
+	run := application.RunRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "unconfirmed-run"}, CheckID: "check", Rationale: "Inspect fixture"}
+	rejected := dispatch("taskbelay_run_check", run)
+	expected := `{"ok":false,"request_id":"unconfirmed-run","tool":"taskbelay_run_check","error":{"code":"PLAN_CONFIRMATION_REQUIRED","message":"show the understanding and complete plan and record actual user confirmation first","details":[{"path":"plan_digest","rule":"requirement","message":"show the understanding and complete plan and record actual user confirmation first"}]},"recovery":{"action":"request_authorization","retry_safe":false,"message":"Show the current plan or required decision and obtain actual user authorization; preserve acceptance requirements."}}`
+	b, _ := json.Marshal(rejected)
+	if string(b) != expected {
+		t.Fatalf("unexpected complete error\n%s", b)
+	}
+	confirmed := dispatch("taskbelay_confirm_plan", application.ConfirmPlanRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "confirm-contract"}, PlanDigest: v.PlanDigest, UserRef: "fixture-answer", Response: "I understand and approve the displayed plan"})
+	if !confirmed.OK {
+		t.Fatal(confirmed)
+	}
+	v = confirmed.Result.(application.View)
+	run.Identity = application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "approved-run"}
+	executed := dispatch("taskbelay_run_check", run)
+	if !executed.OK || executed.Result.(application.RunResult).Run.Status != "passed" {
+		t.Fatal(executed)
+	}
+	before := executed.Result.(application.RunResult).View.Task.Revision
+	invalid := dispatch("taskbelay_checkpoint", map[string]any{"task_id": v.Task.TaskID, "revision": before, "operation_id": "weaken-check", "checks": []any{}})
+	if invalid.OK || invalid.Error.Details[0].Path != "arguments.checks" {
+		t.Fatal("checkpoint accepted changed checks", invalid)
+	}
+	saved, e := s.service.Store.Get(ctx, v.Task.TaskID)
+	if e != nil || saved.Revision != before || saved.Usage.Runs != 1 {
+		t.Fatal("rejection changed semantic state", e)
 	}
 }

@@ -36,7 +36,7 @@ Ative o adaptador seguindo seu [guia](packages/codex/README.md) e peça um resul
 Use TaskBelay para limitar tentativas de login com falha. Preserve a API pública de autenticação e os dados existentes; não redesenhe o gerenciamento de contas. Execute os testes existentes relevantes e informe resultados reais.
 ```
 
-Descreva o resultado e os limites necessários. A autorização existente continua válida; não é necessário aprovar fases internas nem preencher formulários de fluxo. A WebUI local mostra resultados, lacunas e decisões necessárias. Retome com o Task ID salvo no espaço de trabalho original.
+Descreva o resultado e os limites. Antes de implementar, o agente apresenta seu entendimento, a causa raiz, o plano completo, responsabilidades, escopo, verificações e limites de custo para confirmação explícita. Mudanças importantes exigem nova confirmação; o progresso normal preserva a aprovação válida. Cada verificação deve cobrir uma lacuna atual e resultados ainda válidos são reutilizados. A WebUI mostra plano, evidências e custo, permite confirmar e arquivar tarefas concluídas e abre tarefas por links diretos. Retome com o Task ID salvo no espaço original.
 
 ```sh
 taskbelay webui start

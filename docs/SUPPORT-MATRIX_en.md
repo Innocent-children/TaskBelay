@@ -8,7 +8,7 @@ This record concerns the current engineering-control source and does not change 
 
 | Component | Implementation scope | Verification in this change |
 | --- | --- | --- |
-| Go Core, CLI, MCP, HTTP | Local authorization, Git observation, actual argv execution, evidence and recovery | Native Windows x64 tests and development journey |
+| Go Core, CLI, MCP, HTTP | Complete plan approval, scope/verification control, Git observation, actual argv execution, cross-repository evidence and recovery | Native Windows x64 tests and development journey |
 | Codex | Current tools, Skill, workspace operations and apply_patch path preflight | Actual Core calls from an independent package and adapter tests; no model chat |
 | Claude Code | Current tools, Skill, workspaces, Write/Edit/NotebookEdit preflight | Actual Core calls from an independent package and adapter tests; no model chat |
 | ZCode | Current tools, Skill, workspaces and registered structured write hooks | Actual Core calls from an independent package and adapter tests; no UI installation or model chat |

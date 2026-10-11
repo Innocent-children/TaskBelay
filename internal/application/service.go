@@ -44,9 +44,11 @@ type OpenRequest struct {
 	Repositories  []RepositoryInput    `json:"repositories"`
 	Authorization domain.Authorization `json:"authorization"`
 	Checks        []domain.Check       `json:"checks"`
+	Plan          domain.Plan          `json:"plan"`
 }
 type View struct {
 	Task                domain.Task        `json:"task"`
+	PlanDigest          domain.Digest      `json:"plan_digest"`
 	AuthorizationDigest domain.Digest      `json:"authorization_digest"`
 	ContentDigest       domain.Digest      `json:"content_digest"`
 	Decision            domain.Decision    `json:"decision"`
@@ -91,7 +93,7 @@ func (s *Service) Open(ctx context.Context, q OpenRequest) (View, error) {
 		return View{}, e
 	}
 	now := time.Now().UTC()
-	t := domain.Task{TaskID: id, Host: q.Host, Status: "active", Revision: 1, Authorization: q.Authorization, Checks: normalizeChecks(q.Checks), Repositories: []domain.RepositoryScopeEntry{}, Progress: []domain.Progress{}, Evidence: []domain.Evidence{}, Attempts: []domain.Attempt{}, Facts: []domain.Fact{}, Risks: []string{}, CreatedAt: now, UpdatedAt: now}
+	t := domain.Task{TaskID: id, Host: q.Host, Status: "active", Revision: 1, Authorization: q.Authorization, Plan: q.Plan, Checks: normalizeChecks(q.Checks), Repositories: []domain.RepositoryScopeEntry{}, Progress: []domain.Progress{}, Evidence: []domain.Evidence{}, Attempts: []domain.Attempt{}, Facts: []domain.Fact{}, Risks: []string{}, CreatedAt: now, UpdatedAt: now}
 	for i, input := range q.Repositories {
 		if input.Key == "" && i == 0 {
 			input.Key = "primary"
@@ -113,6 +115,7 @@ func (s *Service) Open(ctx context.Context, q OpenRequest) (View, error) {
 		}
 		t.Repositories = append(t.Repositories, domain.RepositoryScopeEntry{Key: input.Key, Origin: origin, Binding: b})
 	}
+	t.ProposedContentDigest = t.ContentDigest()
 	if e := t.Validate(); e != nil {
 		return View{}, e
 	}
@@ -131,6 +134,9 @@ func normalizeChecks(cs []domain.Check) []domain.Check {
 	for i := range cs {
 		if cs[i].RepositoryKey == "" {
 			cs[i].RepositoryKey = "primary"
+		}
+		if cs[i].Purpose == "" {
+			cs[i].Purpose = "acceptance"
 		}
 		if cs[i].Cwd == "" {
 			cs[i].Cwd = "."
@@ -239,10 +245,12 @@ func (s *Service) view(ctx context.Context, t domain.Task, refreshed bool) (View
 				f.Reason = "declared code inputs changed"
 			} else if probe.Environment != v.EnvironmentDigest {
 				f.Reason = "declared environment or executable changed"
-			} else if v.Status != "passed" {
-				f.Reason = "check did not pass"
 			} else {
-				f.Valid = true
+				f.Applicable = true
+				f.Valid = v.Status == "passed"
+				if !f.Valid {
+					f.Reason = "check did not pass"
+				}
 			}
 		}
 		fresh = append(fresh, f)
@@ -251,7 +259,7 @@ func (s *Service) view(ctx context.Context, t domain.Task, refreshed bool) (View
 	if e != nil {
 		return View{}, e
 	}
-	return View{Task: t, AuthorizationDigest: t.Authorization.Digest(), ContentDigest: t.ContentDigest(), Decision: domain.Decide(t, fresh, pending), Refreshed: refreshed, ControlCost: cost}, nil
+	return View{Task: t, PlanDigest: t.PlanDigest(), AuthorizationDigest: t.Authorization.Digest(), ContentDigest: t.ContentDigest(), Decision: domain.Decide(t, fresh, pending), Refreshed: refreshed, ControlCost: cost}, nil
 }
 
 func (s *Service) ControlCost(ctx context.Context) (store.ControlUsage, error) {
@@ -281,7 +289,7 @@ func (s *Service) begin(ctx context.Context, q Identity, kind string, payload an
 	if t.Revision != q.Revision {
 		return t, o, false, domain.Fail("REVISION_CONFLICT", "revision", "read the latest task and submit a new operation identity")
 	}
-	if t.Status != "active" {
+	if t.Status != "active" && kind != "archive" {
 		return t, o, false, domain.Fail("TASK_TERMINAL", "task_id", "terminal tasks cannot be changed")
 	}
 	return t, o, false, nil
@@ -310,7 +318,6 @@ type CheckpointRequest struct {
 	Identity
 	Assessment    *domain.Assessment `json:"assessment,omitempty"`
 	Progress      []domain.Progress  `json:"progress,omitempty"`
-	Checks        []domain.Check     `json:"checks,omitempty"`
 	Issue         *domain.Issue      `json:"issue,omitempty"`
 	ClearIssue    bool               `json:"clear_issue,omitempty"`
 	ResolutionRef string             `json:"resolution_ref,omitempty"`
@@ -336,9 +343,10 @@ func (s *Service) Checkpoint(ctx context.Context, q CheckpointRequest) (View, er
 	if q.HostMS < 0 || q.WaitMS < 0 || q.Tokens < 0 {
 		return View{}, domain.Invalid("cost", "reported cost deltas must be nonnegative")
 	}
-	if q.Checks != nil {
-		t.Checks = normalizeChecks(q.Checks)
-		t.Evidence = retainedEvidence(t)
+	if len(q.Progress) > 0 {
+		if e = requireExecutionAuthority(t); e != nil {
+			return View{}, e
+		}
 	}
 	for _, p := range q.Progress {
 		g, ok := t.Goal(p.GoalID)
@@ -384,8 +392,19 @@ func validateAssessment(t domain.Task, a domain.Assessment) error {
 	if e := domain.Text("assessment.summary", a.Summary); e != nil {
 		return e
 	}
+	if a.Review != nil {
+		for _, f := range []struct{ name, value string }{{"root_cause", a.Review.RootCause}, {"responsibilities", a.Review.Responsibilities}, {"proportionality", a.Review.Proportionality}, {"verification", a.Review.Verification}} {
+			if e := domain.Text("assessment.review."+f.name, f.value); e != nil {
+				return e
+			}
+		}
+	}
 	seen := map[string]bool{}
 	for _, p := range a.Paths {
+		work, workOK := t.Work(p.WorkID)
+		if !workOK || domain.Text("assessment.paths.necessity", p.Necessity) != nil {
+			return domain.Invalid("assessment.paths.work_id", "bind the change and its necessity to approved work")
+		}
 		if domain.ScopedPath(p.Path) != nil || seen[p.Path] || len(p.GoalIDs) == 0 || domain.Text("assessment.paths.basis", p.Basis) != nil {
 			return domain.Invalid("assessment.paths", "requires unique changed paths, goal references and concrete reasons")
 		}
@@ -403,8 +422,8 @@ func validateAssessment(t domain.Task, a domain.Assessment) error {
 			return e
 		}
 		for _, id := range p.GoalIDs {
-			if _, ok := t.Goal(id); !ok {
-				return domain.Invalid("assessment.paths.goal_ids", "must name existing goals")
+			if _, ok := t.Goal(id); !ok || !slices.Contains(work.GoalIDs, id) {
+				return domain.Invalid("assessment.paths.goal_ids", "must name goals served by the planned work")
 			}
 		}
 	}
@@ -432,6 +451,7 @@ func validateAssessment(t domain.Task, a domain.Assessment) error {
 
 type ReviseRequest struct {
 	Identity
+	Plan          domain.Plan          `json:"plan"`
 	Authorization domain.Authorization `json:"authorization"`
 	Checks        []domain.Check       `json:"checks"`
 	Reason        string               `json:"reason"`
@@ -453,8 +473,13 @@ func (s *Service) Revise(ctx context.Context, q ReviseRequest) (View, error) {
 	if e = q.Authorization.Validate(); e != nil {
 		return View{}, e
 	}
+	previousPlan := t.PlanDigest()
 	t.Authorization = q.Authorization
+	t.Plan = q.Plan
 	t.Checks = normalizeChecks(q.Checks)
+	if t.PlanDigest() != previousPlan {
+		t.Approval = nil
+	}
 	progress := []domain.Progress{}
 	for _, p := range t.Progress {
 		g, ok := t.Goal(p.GoalID)
@@ -467,6 +492,9 @@ func (s *Service) Revise(ctx context.Context, q ReviseRequest) (View, error) {
 	t, e = s.observe(ctx, t)
 	if e != nil {
 		return View{}, e
+	}
+	if t.Approval == nil {
+		t.ProposedContentDigest = t.ContentDigest()
 	}
 	return s.save(ctx, t, o, store.Charge{})
 }
@@ -484,7 +512,11 @@ func retainedEvidence(t domain.Task) []domain.Evidence {
 
 type RunRequest struct {
 	Identity
-	CheckID string `json:"check_id"`
+	CheckID        string `json:"check_id"`
+	Rationale      string `json:"rationale"`
+	PreviousRunID  string `json:"previous_run_id,omitempty"`
+	NewInformation string `json:"new_information,omitempty"`
+	FullSuiteBasis string `json:"full_suite_basis,omitempty"`
 }
 type RunResult struct {
 	View View          `json:"view"`
@@ -505,6 +537,12 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 		v.Replayed = true
 		return RunResult{v, run}, e
 	}
+	if e = requireExecutionAuthority(t); e != nil {
+		return RunResult{}, e
+	}
+	if e = domain.Text("rationale", q.Rationale); e != nil {
+		return RunResult{}, e
+	}
 	t, e = s.observe(ctx, t)
 	if e != nil {
 		return RunResult{}, e
@@ -524,6 +562,9 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 	c, ok := t.Check(q.CheckID)
 	if !ok || c.Kind != "command" {
 		return RunResult{}, domain.Invalid("check_id", "requires an existing command check")
+	}
+	if c.FullSuite && domain.Text("full_suite_basis", q.FullSuiteBasis) != nil {
+		return RunResult{}, domain.Invalid("full_suite_basis", "explain the current gap that targeted checks cannot cover; remaining budget is not a reason")
 	}
 	if e := execution.CheckCommand(c.Argv); e != nil {
 		return RunResult{}, e
@@ -547,19 +588,30 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 	if e != nil {
 		return RunResult{}, e
 	}
-	r := execution.Run{RunID: "run-" + string(domain.Hash([]string{t.TaskID, q.OperationID}))[:24], TaskID: t.TaskID, CheckID: c.ID, CheckDigest: t.CheckDigest(c), Check: c, Before: f, Status: "running", OwnerPID: pid, OwnerIdentity: identity, StartedAt: time.Now().UTC()}
-	sig, count, e := s.Store.Failure(ctx, t.TaskID, c.ID)
+	r := execution.Run{RunID: "run-" + string(domain.Hash([]string{t.TaskID, q.OperationID}))[:24], TaskID: t.TaskID, CheckID: c.ID, CheckDigest: t.CheckDigest(c), RequirementDigest: t.CheckRequirementDigest(c), Check: c, Before: f, Status: "running", OwnerPID: pid, OwnerIdentity: identity, StartedAt: time.Now().UTC(), Rationale: q.Rationale, NewInformation: q.NewInformation, FullSuiteBasis: q.FullSuiteBasis}
+	var previous execution.Run
+	found, e := s.Store.LatestRun(ctx, t.TaskID, r.InputKey(), &previous)
 	if e != nil {
 		return RunResult{}, e
 	}
-	if sig == r.InputKey() && count >= 3 {
+	if found && previous.Status == "passed" {
+		return RunResult{}, domain.Fail("CHECK_ALREADY_SATISFIED", "check_id", "this command already passed for the same inputs and conditions; reuse its evidence")
+	}
+	if found && (q.PreviousRunID != previous.RunID || domain.Text("new_information", q.NewInformation) != nil || q.NewInformation == previous.NewInformation) {
+		return RunResult{}, domain.Fail("RETRY_BASIS_REQUIRED", "new_information", "read the previous run and explain new diagnostic information before repeating unchanged conditions")
+	}
+	count, e := s.Store.Failure(ctx, t.TaskID, r.InputKey())
+	if e != nil {
+		return RunResult{}, e
+	}
+	if count >= 3 {
 		return RunResult{}, domain.Fail("REPEATED_FAILURE", "check_id", "three failed executions have the same check and observed inputs; change the code, conditions or verification approach before retrying")
 	}
 	o.RunID = r.RunID
 	expected := t.Revision
 	t.Revision++
 	t.UpdatedAt = time.Now().UTC()
-	if e = s.Store.Save(ctx, t, expected, o, store.Charge{Runs: 1, ReserveMS: c.TimeoutMS}, r.RunID, r, r.Status, c.ID); e != nil {
+	if e = s.Store.Save(ctx, t, expected, o, store.Charge{Runs: 1, ReserveMS: c.TimeoutMS, InputKey: r.InputKey()}, r.RunID, r, r.Status, c.ID); e != nil {
 		return RunResult{}, e
 	}
 	// Reservation is durable before any child process is started.
@@ -611,7 +663,7 @@ func (s *Service) finalize(ctx context.Context, r execution.Run, operation store
 		expected := t.Revision
 		t.Revision++
 		t.UpdatedAt = time.Now().UTC()
-		charge := store.Charge{ReleaseMS: r.Check.TimeoutMS, ExecutionMS: r.DurationMS}
+		charge := store.Charge{ReleaseMS: r.Check.TimeoutMS, ExecutionMS: r.DurationMS, InputKey: r.InputKey()}
 		if r.Status != "passed" {
 			charge.FailureSignature = r.InputKey()
 		}
@@ -675,6 +727,9 @@ func (s *Service) RecordEvidence(ctx context.Context, q EvidenceRequest) (View, 
 	c, ok := t.Check(q.CheckID)
 	if !ok {
 		return View{}, domain.Invalid("check_id", "unknown check")
+	}
+	if e = requireExecutionAuthority(t); e != nil {
+		return View{}, e
 	}
 	if !slices.Contains([]string{"claim", "human"}, q.Source) || !slices.Contains([]string{"passed", "failed", "not_run"}, q.Status) {
 		return View{}, domain.Invalid("evidence", "only claim or human evidence and passed/failed/not_run can be submitted; command execution is Core-owned")
@@ -804,7 +859,11 @@ func (s *Service) Finish(ctx context.Context, q FinishRequest) (View, error) {
 		for _, id := range a.EvidenceIDs {
 			found := false
 			for _, f := range v.Decision.Evidence {
-				if f.EvidenceID == id && f.Valid {
+				accepted := false
+				for _, x := range v.Decision.AcceptedFailures {
+					accepted = accepted || x.FailedEvidenceID == id
+				}
+				if f.EvidenceID == id && (f.Valid || accepted) {
 					for _, ev := range t.Evidence {
 						if ev.ID == id && slices.Contains(g.Checks, ev.CheckID) {
 							covered[ev.CheckID] = true
@@ -862,7 +921,7 @@ func (s *Service) Cancel(ctx context.Context, q CancelRequest) (View, error) {
 
 // PreWrite gates supported structured paths. It cannot inspect future semantics or shell writes.
 func (s *Service) PreWrite(ctx context.Context, root string, paths []string, complete bool) (map[string]any, error) {
-	canonical, _, e := s.Observer.IdentifyWorkspace(ctx, root)
+	canonical, instance, e := s.Observer.IdentifyWorkspace(ctx, root)
 	if e != nil {
 		if errors.Is(e, repository.ErrNotGitRepository) {
 			return map[string]any{"decision": "allow", "coverage": "no_active_task"}, nil
@@ -883,6 +942,14 @@ func (s *Service) PreWrite(ctx context.Context, root string, paths []string, com
 	deny := func(reason string) map[string]any {
 		return map[string]any{"decision": "deny", "reason": reason, "task_id": id, "task_revision": t.Revision, "coverage": "structured_paths"}
 	}
+	for _, r := range t.Repositories {
+		if r.Origin.CanonicalWorktreeRoot == canonical && r.Binding.WorktreeInstanceDigest != instance {
+			return deny("Restore the original bound workspace instance before writing."), nil
+		}
+	}
+	if e := requireExecutionAuthority(t); e != nil {
+		return deny(e.Error()), nil
+	}
 	if !complete || len(paths) == 0 {
 		return deny("Target paths were not fully parsed; inspect the tool operation before writing."), nil
 	}
@@ -898,9 +965,12 @@ func (s *Service) PreWrite(ctx context.Context, root string, paths []string, com
 		if domain.ScopedPath(relative) != nil {
 			return deny("Write target is outside the bound workspace."), nil
 		}
-		for _, scope := range t.Authorization.ForbiddenPaths {
-			if domain.MatchPath(scope, relative) {
-				return deny("The current authorization forbids this path; correct the operation or request changed authorization."), nil
+		if !t.Authorization.AllowsPath(relative) {
+			return deny("This path is outside the approved write scope."), nil
+		}
+		for _, pin := range t.Authorization.Pins {
+			if pin.Path == relative {
+				return deny("This content is pinned by the approved plan."), nil
 			}
 		}
 	}

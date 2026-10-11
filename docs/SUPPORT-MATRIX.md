@@ -8,7 +8,7 @@
 
 | 组件 | 实现范围 | 此次实际验证 |
 | --- | --- | --- |
-| Go Core、CLI、MCP、HTTP | 本地授权契约、Git 观察、真实 argv 执行、证据与恢复 | Windows x64 本机测试与开发旅程 |
+| Go Core、CLI、MCP、HTTP | 完整方案批准、路径和验证控制、Git 观察、真实 argv 执行、跨仓库证据与恢复 | Windows x64 本机测试与开发旅程 |
 | Codex | 当前工具、Skill、工作位置、apply_patch 路径预检 | 独立包的实际 Core 调用与适配器测试；未运行模型聊天 |
 | Claude Code | 当前工具、Skill、工作位置、Write/Edit/NotebookEdit 预检 | 独立包的实际 Core 调用与适配器测试；未运行模型聊天 |
 | ZCode | 当前工具、Skill、工作位置、已注册结构化写入钩子 | 独立包的实际 Core 调用与适配器测试；未执行 UI 安装与模型聊天 |

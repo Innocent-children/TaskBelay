@@ -36,7 +36,7 @@ Enable the adapter using its [Host guide](packages/codex/README.md), then reques
 Use TaskBelay to add login failure throttling. Preserve the public authentication API and stored user data; do not redesign account management. Run the relevant existing tests and report actual results.
 ```
 
-State the desired result and necessary limits. Existing authorization remains valid; you do not need to approve internal phases or fill workflow forms. The local WebUI shows results, remaining gaps and necessary decisions. Resume by providing the saved Task ID in its original workspace.
+State the outcome and limits. Before implementation, the agent shows its understanding, root cause, complete plan, ownership, scope, checks and cost limits for your explicit confirmation. Material revisions need confirmation again; ordinary progress retains valid approval. Checks must address a current gap, and unchanged passing results are reused. The WebUI shows the plan, evidence and cost, supports confirmation and terminal-task archiving, and opens saved task links directly. Resume with the saved Task ID in its original workspace.
 
 ```sh
 taskbelay webui start

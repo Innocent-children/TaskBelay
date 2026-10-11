@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/application"
+	"github.com/Innocent-children/taskbelay/internal/domain"
 	coremcp "github.com/Innocent-children/taskbelay/internal/mcp"
+	"github.com/Innocent-children/taskbelay/internal/store"
 )
 
 type SystemStatusProvider func() SystemStatusResponse
@@ -29,44 +31,28 @@ func NewAPI(service *application.Service, core *coremcp.Server, status SystemSta
 	}
 	mux.HandleFunc("GET /api/system/status", func(w http.ResponseWriter, r *http.Request) { s := status(); s.OK = true; write(w, s) })
 	mux.HandleFunc("GET /api/tasks", func(w http.ResponseWriter, r *http.Request) {
-		ts, e := service.Store.List(r.Context())
+		pageNumber, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		page, e := taskSummaryPage(r.Context(), service.Store.List, store.ListQuery{Page: pageNumber, IncludeArchived: r.URL.Query().Get("include_archived") == "true", Status: r.URL.Query().Get("status")}, r.URL.Query().Get("lifecycle"))
 		if e != nil {
-			http.Error(w, "task store unavailable", 503)
+			http.Error(w, "invalid task page or unavailable store", 400)
 			return
 		}
-		items := []map[string]any{}
-		for _, t := range ts {
-			s := coremcp.Summary(t)
-			filter := r.URL.Query().Get("lifecycle")
-			if filter == "" || s["lifecycle"] == filter {
-				items = append(items, s)
-			}
-		}
-		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		if page < 1 {
-			page = 1
-		}
-		start := (page - 1) * 20
-		if start > len(items) {
-			start = len(items)
-		}
-		end := start + 20
-		if end > len(items) {
-			end = len(items)
-		}
-		write(w, map[string]any{"ok": true, "readiness": "ready", "page": page, "has_next": end < len(items), "items": items[start:end]})
+		write(w, page)
 	})
 	mux.HandleFunc("GET /api/dashboard", func(w http.ResponseWriter, r *http.Request) {
-		ts, e := service.Store.List(r.Context())
+		page, e := service.Store.List(r.Context(), store.ListQuery{})
 		if e != nil {
 			http.Error(w, "task store unavailable", 503)
 			return
 		}
-		counts := map[string]int{}
+		counts, e := service.Store.StatusCounts(r.Context())
+		if e != nil {
+			http.Error(w, "task store unavailable", 503)
+			return
+		}
 		recent := []map[string]any{}
-		for _, t := range ts {
+		for _, t := range page.Items {
 			s := coremcp.Summary(t)
-			counts[s["lifecycle"].(string)]++
 			if len(recent) < 20 {
 				recent = append(recent, s)
 			}
@@ -126,6 +112,70 @@ func NewAPI(service *application.Service, core *coremcp.Server, status SystemSta
 		}
 		mux.ServeHTTP(w, r)
 	}), nil
+}
+
+// Desktop discovery filters the saved Core presentation before paging. A blocked
+// task remains active in storage; the summary producer owns that classification.
+func taskSummaryPage(ctx context.Context, list func(context.Context, store.ListQuery) (store.TaskPage, error), q store.ListQuery, lifecycle string) (map[string]any, error) {
+	if q.Page == 0 {
+		q.Page = 1
+	}
+	if q.Page < 1 || q.Page > 1000000 {
+		return nil, domain.Invalid("page", "page must be 1..1000000")
+	}
+	pageNumber := q.Page
+	items := []map[string]any{}
+	result := func(next bool) map[string]any {
+		return map[string]any{"ok": true, "readiness": "ready", "page": pageNumber, "has_next": next, "items": items}
+	}
+	if lifecycle == "" {
+		page, e := list(ctx, q)
+		if e != nil {
+			return nil, e
+		}
+		for _, t := range page.Items {
+			items = append(items, coremcp.Summary(t))
+		}
+		return result(page.HasNext), nil
+	}
+	status := lifecycle
+	if lifecycle == "blocked" {
+		status = "active"
+	}
+	if status != "active" && status != "done" && status != "cancelled" {
+		return nil, domain.Invalid("lifecycle", "unsupported task lifecycle filter")
+	}
+	if q.Status != "" && q.Status != status {
+		return nil, domain.Invalid("status", "status conflicts with lifecycle filter")
+	}
+	q.Status = status
+	q.Page = 1
+	q.PageSize = 100
+	skip := (pageNumber - 1) * 20
+	for {
+		page, e := list(ctx, q)
+		if e != nil {
+			return nil, e
+		}
+		for _, t := range page.Items {
+			summary := coremcp.Summary(t)
+			if summary["lifecycle"] != lifecycle {
+				continue
+			}
+			if skip > 0 {
+				skip--
+				continue
+			}
+			if len(items) == 20 {
+				return result(true), nil
+			}
+			items = append(items, summary)
+		}
+		if !page.HasNext {
+			return result(false), nil
+		}
+		q.Page++
+	}
 }
 
 type Server struct {

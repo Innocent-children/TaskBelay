@@ -126,6 +126,8 @@ Before editing, read the [I18n policy](docs/I18N_en.md), the
 
 ## Implementation principles
 
+Before implementation, show the understanding, complete plan and verification arrangement and obtain explicit confirmation of that exact plan. Material changes need confirmation again. Acceptance also checks root cause, responsibility and complexity; passing tests alone is insufficient.
+
 - Solve only the problem stated by the pull request; do not add future capabilities, generic
   frameworks, or unrelated refactoring.
 - Keep Go Core responsible for Task authorization, observations, evidence applicability, cumulative

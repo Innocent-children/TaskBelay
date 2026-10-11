@@ -1,3 +1,4 @@
+import {planFor} from "../journeys/fixtures/engineering.mjs";
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { mkdtemp, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
@@ -85,8 +86,8 @@ try {
   await rpc("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "zcode-package-verification", version: "1.0" } });
   child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const info = await tool("taskbelay_server_info", {});
-  assert.equal(info.ok, true); assert.equal(info.result.tools.length, 12);
-  const openRequest = { operation_id: "zcode-package-open", host: "zcode", ...scope,
+  assert.equal(info.ok, true); assert.equal(info.result.tools.length, 15);
+  const openRequest = { plan:planFor([{id:"package"}]), operation_id: "zcode-package-open", host: "zcode", ...scope,
     authorization: {user_ref: "isolated-fixture-user", request,
       goals: [{id: "package", statement: "The packaged Core runs the real local assertion", checks: ["readme"]}],
       expected_paths: ["README.md"], forbidden_paths: ["unexpected.txt"]},
@@ -98,7 +99,9 @@ try {
   await command(["host-launch", "bind-task"], { launch_id: prepared.launch_id, task_id: view.task.task_id });
   const resumed = await tool("taskbelay_open_task", openRequest);
   assert.equal(resumed.ok, true); assert.equal(resumed.result.task.task_id, view.task.task_id); assert.equal(resumed.result.replayed, true);
-  const executed = await tool("taskbelay_run_check", {task_id: view.task.task_id, revision: view.task.revision, operation_id: "zcode-package-run", check_id: "readme"});
+  const confirmed=await tool("taskbelay_confirm_plan",{task_id:view.task.task_id,revision:view.task.revision,operation_id:"zcode-package-confirm",plan_digest:view.plan_digest,user_ref:"fixture-user-answer",response:"I understand and approve the displayed package check plan"});
+  assert.equal(confirmed.ok,true);view=confirmed.result;
+  const executed = await tool("taskbelay_run_check", {task_id: view.task.task_id, revision: view.task.revision, operation_id: "zcode-package-run", check_id: "readme", rationale:"Validate the exact current packaged assertion"});
   assert.equal(executed.ok, true, JSON.stringify(executed)); assert.equal(executed.result.run.status, "passed"); assert.equal(executed.result.run.exit_code, 0); view = executed.result.view;
   report.checks.push("packaged native stdio MCP, current catalog, Task creation, identical-open replay and actual local check");
   assert.equal(await command(["hook", "pre-tool-use"], { hook_event_name: "PreToolUse", cwd: repository,
@@ -106,7 +109,7 @@ try {
   const hook = await command(["hook", "pre-tool-use"], { hook_event_name: "PreToolUse", cwd: repository,
     tool_name: "Write", tool_input: { file_path: join(repository, "unexpected.txt"), content: "must not write" } });
   assert.equal(hook.hookSpecificOutput.permissionDecision, "deny");
-  report.checks.push("native Core-backed hook permits an authorized Edit and denies an explicitly forbidden Write without a phase approval");
+  report.checks.push("native Core-backed hook permits an authorized Edit and denies an explicitly forbidden Write after exact plan confirmation");
   const saved = await tool("taskbelay_get_task", {task_id: view.task.task_id});
   const cancelled = await tool("taskbelay_cancel_task", {task_id: view.task.task_id, revision: saved.result.task.revision,
     operation_id: "zcode-package-cancel", reason: "The isolated package verification is complete."});

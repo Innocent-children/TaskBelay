@@ -18,7 +18,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const DatabaseSchemaVersion = "1.0.0"
+const DatabaseSchemaVersion = "2.0.0"
 const MaxSnapshotBytes = 8 * 1024 * 1024
 
 var schema = []string{
@@ -26,9 +26,10 @@ var schema = []string{
 	`CREATE TABLE tasks(task_id TEXT PRIMARY KEY, revision INTEGER NOT NULL, status TEXT NOT NULL, snapshot BLOB NOT NULL, runs INTEGER NOT NULL DEFAULT 0, execution_ms INTEGER NOT NULL DEFAULT 0, reserved_ms INTEGER NOT NULL DEFAULT 0, uncertain_ms INTEGER NOT NULL DEFAULT 0, core_calls INTEGER NOT NULL DEFAULT 0, core_ms INTEGER NOT NULL DEFAULT 0, observation_ms INTEGER NOT NULL DEFAULT 0, host_ms INTEGER NOT NULL DEFAULT 0, wait_ms INTEGER NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0)`,
 	`CREATE TABLE claims(root TEXT PRIMARY KEY, instance TEXT NOT NULL UNIQUE, task_id TEXT NOT NULL REFERENCES tasks(task_id))`,
 	`CREATE TABLE operations(task_id TEXT NOT NULL REFERENCES tasks(task_id), operation_id TEXT NOT NULL, kind TEXT NOT NULL, digest TEXT NOT NULL, revision INTEGER NOT NULL, run_id TEXT NOT NULL, PRIMARY KEY(task_id,operation_id))`,
-	`CREATE TABLE runs(run_id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(task_id), check_id TEXT NOT NULL, status TEXT NOT NULL, snapshot BLOB NOT NULL, created_at TEXT NOT NULL)`,
+	`CREATE TABLE runs(run_id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(task_id), check_id TEXT NOT NULL, status TEXT NOT NULL, snapshot BLOB NOT NULL, created_at TEXT NOT NULL, input_key TEXT NOT NULL)`,
 	`CREATE INDEX runs_task ON runs(task_id,created_at)`,
-	`CREATE TABLE failures(task_id TEXT NOT NULL, check_id TEXT NOT NULL, signature TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(task_id,check_id))`,
+	`CREATE INDEX runs_context ON runs(task_id,input_key,created_at)`,
+	`CREATE TABLE failures(task_id TEXT NOT NULL, signature TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(task_id,signature))`,
 	`CREATE TABLE control_calls(call_id TEXT PRIMARY KEY,started_at TEXT NOT NULL,completed_ms INTEGER,owner_pid INTEGER NOT NULL,owner_identity TEXT NOT NULL)`,
 	`CREATE TABLE control_totals(calls INTEGER NOT NULL,wall_ms INTEGER NOT NULL,unknown_ms INTEGER NOT NULL)`,
 }
@@ -226,6 +227,7 @@ func insertOperation(ctx context.Context, tx *sql.Tx, t domain.Task, o Operation
 }
 
 type Charge struct {
+	InputKey         domain.Digest
 	FailureSignature domain.Digest
 	Runs             int64
 	ReserveMS        int64
@@ -276,12 +278,12 @@ func (s *Store) Save(ctx context.Context, t domain.Task, expected uint64, o Oper
 		if e != nil {
 			return e
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO runs VALUES (?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET status=excluded.status,snapshot=excluded.snapshot`, runID, t.TaskID, checkID, runStatus, rb, time.Now().UTC().Format(time.RFC3339Nano)); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO runs VALUES (?,?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET status=excluded.status,snapshot=excluded.snapshot`, runID, t.TaskID, checkID, runStatus, rb, time.Now().UTC().Format(time.RFC3339Nano), c.InputKey); e != nil {
 			return e
 		}
 	}
 	if c.FailureSignature != "" {
-		if _, e = tx.ExecContext(ctx, `INSERT INTO failures VALUES (?,?,?,1) ON CONFLICT(task_id,check_id) DO UPDATE SET count=CASE WHEN signature=excluded.signature THEN count+1 ELSE 1 END,signature=excluded.signature`, t.TaskID, checkID, c.FailureSignature); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO failures VALUES (?,?,1) ON CONFLICT(task_id,signature) DO UPDATE SET count=count+1`, t.TaskID, c.FailureSignature); e != nil {
 			return e
 		}
 	}
@@ -343,27 +345,79 @@ func (s *Store) Claim(ctx context.Context, root string) (string, error) {
 	}
 	return id, e
 }
-func (s *Store) List(ctx context.Context) ([]domain.Task, error) {
-	rows, e := s.db.QueryContext(ctx, "SELECT task_id FROM tasks ORDER BY rowid DESC LIMIT 200")
+
+type ListQuery struct {
+	Page            int    `json:"page,omitempty"`
+	PageSize        int    `json:"page_size,omitempty"`
+	IncludeArchived bool   `json:"include_archived,omitempty"`
+	Status          string `json:"status,omitempty"`
+}
+type TaskPage struct {
+	Items   []domain.Task
+	Page    int
+	HasNext bool
+}
+
+func (s *Store) List(ctx context.Context, q ListQuery) (TaskPage, error) {
+	if q.Page == 0 {
+		q.Page = 1
+	}
+	if q.PageSize == 0 {
+		q.PageSize = 20
+	}
+	if q.Page < 1 || q.Page > 1000000 || q.PageSize < 1 || q.PageSize > 100 {
+		return TaskPage{}, domain.Invalid("page", "page must be positive and page_size must be 1..100")
+	}
+	if q.Status != "" && q.Status != "active" && q.Status != "done" && q.Status != "cancelled" {
+		return TaskPage{}, domain.Invalid("status", "requires active, done or cancelled")
+	}
+	rows, e := s.db.QueryContext(ctx, `SELECT task_id FROM tasks WHERE (? OR json_extract(snapshot,'$.archived')=0) AND (?='' OR status=?) ORDER BY rowid DESC LIMIT ? OFFSET ?`, q.IncludeArchived, q.Status, q.Status, q.PageSize+1, (q.Page-1)*q.PageSize)
 	if e != nil {
-		return nil, e
+		return TaskPage{}, e
 	}
 	ids := []string{}
 	for rows.Next() {
 		var id string
-		rows.Scan(&id)
+		if e = rows.Scan(&id); e != nil {
+			rows.Close()
+			return TaskPage{}, e
+		}
 		ids = append(ids, id)
 	}
+	e = rows.Err()
 	rows.Close()
-	ts := []domain.Task{}
+	if e != nil {
+		return TaskPage{}, e
+	}
+	page := TaskPage{Items: []domain.Task{}, Page: q.Page, HasNext: len(ids) > q.PageSize}
+	if page.HasNext {
+		ids = ids[:q.PageSize]
+	}
 	for _, id := range ids {
 		t, e := s.Get(ctx, id)
 		if e != nil {
+			return TaskPage{}, e
+		}
+		page.Items = append(page.Items, t)
+	}
+	return page, nil
+}
+func (s *Store) StatusCounts(ctx context.Context) (map[string]int, error) {
+	rows, e := s.db.QueryContext(ctx, `SELECT status,COUNT(*) FROM tasks WHERE json_extract(snapshot,'$.archived')=0 GROUP BY status`)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var status string
+		var n int
+		if e = rows.Scan(&status, &n); e != nil {
 			return nil, e
 		}
-		ts = append(ts, t)
+		counts[status] = n
 	}
-	return ts, nil
+	return counts, rows.Err()
 }
 func (s *Store) Run(ctx context.Context, id string, out any) error {
 	var b []byte
@@ -405,14 +459,24 @@ func (s *Store) Pending(ctx context.Context, task string) ([]string, error) {
 	}
 	return ids, rows.Err()
 }
-func (s *Store) Failure(ctx context.Context, task, check string) (domain.Digest, int, error) {
-	var sig domain.Digest
+func (s *Store) Failure(ctx context.Context, task string, signature domain.Digest) (int, error) {
 	var count int
-	e := s.db.QueryRowContext(ctx, "SELECT signature,count FROM failures WHERE task_id=? AND check_id=?", task, check).Scan(&sig, &count)
+	e := s.db.QueryRowContext(ctx, "SELECT count FROM failures WHERE task_id=? AND signature=?", task, signature).Scan(&count)
 	if errors.Is(e, sql.ErrNoRows) {
-		return "", 0, nil
+		return 0, nil
 	}
-	return sig, count, e
+	return count, e
+}
+func (s *Store) LatestRun(ctx context.Context, task string, key domain.Digest, out any) (bool, error) {
+	var id string
+	e := s.db.QueryRowContext(ctx, "SELECT run_id FROM runs WHERE task_id=? AND input_key=? ORDER BY created_at DESC LIMIT 1", task, key).Scan(&id)
+	if errors.Is(e, sql.ErrNoRows) {
+		return false, nil
+	}
+	if e != nil {
+		return false, e
+	}
+	return true, s.Run(ctx, id, out)
 }
 func (s *Store) HasRun(ctx context.Context, id string) (bool, error) {
 	var n int

@@ -51,7 +51,7 @@ const info = await new Promise((done, fail) => {
   child.on("close", code => { if (!settled) finish(new Error("MCP exited " + code + ": " + errors)); });
   child.stdin.write(JSON.stringify({jsonrpc:"2.0",id:1,method:"initialize",params:{protocolVersion:"2024-11-05",capabilities:{},clientInfo:{name:"claude-adapter-acceptance",version:"1.0"}}})+"\n");
 });
-assert.equal(info.ok,true); assert.equal(info.result.tools.length,12); assert.ok(info.result.coverage.claude);
+assert.equal(info.ok,true); assert.equal(info.result.tools.length,15); assert.ok(info.result.coverage.claude);
 report.checks.push("packaged stdio Core handshake exposes current tools and Claude coverage");
 assert.equal((await command(["remove"])).status,"absent");
 assert.equal(await readFile(join(config,"unrelated.txt"),"utf8"),"preserve");

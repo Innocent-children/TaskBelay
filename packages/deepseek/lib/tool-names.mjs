@@ -13,7 +13,10 @@ export const TASKBELAY_RAW_TOOL_NAMES = Object.freeze([
   "taskbelay_recover_run",
   "taskbelay_finish_task",
   "taskbelay_cancel_task",
-  "taskbelay_list_tasks"
+  "taskbelay_list_tasks",
+  "taskbelay_confirm_plan",
+  "taskbelay_accept_known_failure",
+  "taskbelay_archive_task"
 ]);
 
 export const TASKBELAY_QUALIFIED_TOOL_NAMES = Object.freeze(

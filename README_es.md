@@ -36,7 +36,7 @@ Active el adaptador con su [guía](packages/codex/README.md) y solicite un resul
 Usa TaskBelay para limitar los intentos fallidos de inicio de sesión. Conserva la API pública de autenticación y los datos existentes; no rediseñes la gestión de cuentas. Ejecuta las pruebas existentes pertinentes e informa de los resultados reales.
 ```
 
-Indique el resultado y los límites necesarios. La autorización vigente se conserva; no hace falta aprobar fases internas ni rellenar formularios de flujo. La WebUI local muestra resultados, carencias y decisiones necesarias. Reanude con el Task ID guardado en su espacio original.
+Indique el resultado y los límites. Antes de implementar, el agente presenta su comprensión, causa raíz, plan completo, responsabilidades, alcance, comprobaciones y límites de coste para su confirmación explícita. Los cambios importantes requieren otra confirmación; el progreso normal conserva la aprobación válida. Cada comprobación debe cubrir una carencia actual y los resultados válidos se reutilizan. La WebUI muestra el plan, las pruebas y el coste, permite confirmar y archivar tareas terminadas y abre tareas mediante enlaces directos. Reanude con el Task ID guardado en su espacio original.
 
 ```sh
 taskbelay webui start

@@ -14,7 +14,7 @@ run(go,['test','-count=1','-timeout=90s','./...']);
 run(process.execPath,['scripts/build-webui.mjs']);
 const executable=join(output,process.platform==='win32'?'taskbelay.exe':'taskbelay');
 run(go,['build','-o',executable,'./cmd/taskbelay']);
-run(process.execPath,['--test','tests/journeys/engineering.test.mjs','tests/host-engineering.test.mjs'],{ENGINEERING_CORE:executable,ENGINEERING_REPORT:join(root,'tests/journeys/evidence/engineering-windows.json')});
+run(process.execPath,['--test','tests/journeys/engineering.test.mjs','tests/host-engineering.test.mjs'],{ENGINEERING_CORE:executable,ENGINEERING_REPORT:join(output,'engineering-windows.json')});
 const tests=['scripts/sync-skill-references.test.mjs','scripts/sync-host-commands.test.mjs','scripts/build-core-runtimes.test.mjs','scripts/taskbelay-local.test.mjs','tests/version-governance.test.mjs','tests/comprehensive/package_contract.test.mjs'];
 for(const host of ['codex','deepseek','claude','zcode','taskbelay'])for(const f of readdirSync(join(root,'packages',host,'tests')))if(f.endsWith('.test.mjs'))tests.push(`packages/${host}/tests/${f}`);
 for(const f of readdirSync(join(root,'packages/desktop-pet/windows/tests')))if(f.endsWith('.test.cjs'))tests.push(`packages/desktop-pet/windows/tests/${f}`);

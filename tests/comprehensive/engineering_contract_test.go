@@ -8,7 +8,7 @@ import (
 )
 
 func TestCurrentContractHasOneLifecycleAndNoClaimExecution(t *testing.T) {
-	if len(mcp.Catalog) != 12 {
+	if len(mcp.Catalog) != 15 {
 		t.Fatal("current tool surface differs")
 	}
 	for _, tool := range mcp.Catalog {

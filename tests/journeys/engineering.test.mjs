@@ -1,99 +1,102 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {spawn,spawnSync} from 'node:child_process';
-import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,mkdirSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {join,resolve,dirname} from 'node:path';
-import {fileURLToPath} from 'node:url';
-import {createHash} from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { existsSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { core, fixture, check } from './fixtures/engineering.mjs';
 
-const repository=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
-const executable=process.env.ENGINEERING_CORE??join(repository,process.platform==='win32'?'.taskbelay-engineering.exe':'.taskbelay-engineering');
-test('native engineering control: development, revision, drift, actual execution and restart',async()=>{
- assert.ok(existsSync(executable),'build the current Core before this native journey');
- const root=mkdtempSync(join(tmpdir(),'taskbelay-engineering-'));const repo=join(root,'repo'),data=join(root,'data');mkdirSync(repo);mkdirSync(data);const env={...process.env,TASKBELAY_DATA_DIR:data};let n=0,view;const transcript=[];
- function git(...args){const c=spawnSync('git',['-C',repo,...args],{encoding:'utf8',windowsHide:true});assert.equal(c.status,0,c.stderr);return c.stdout}
- function write(p,b){writeFileSync(join(repo,p),b)}
- function dispatch(name,args,expectedError){const c=spawnSync(executable,['call',name],{input:JSON.stringify(args),encoding:'utf8',env,windowsHide:true,timeout:30000,maxBuffer:16*1024*1024});assert.ok(c.stdout,`${name}: ${c.stderr}`);const v=JSON.parse(c.stdout);transcript.push({tool:name,ok:v.ok,error:v.error?.code});if(expectedError){assert.equal(v.ok,false);assert.equal(v.error.code,expectedError);return v}assert.equal(c.status,0,JSON.stringify(v));assert.equal(v.ok,true,JSON.stringify(v));return v.result}
- const identity=()=>({task_id:view.task.task_id,revision:view.task.revision,operation_id:`scenario-${++n}`});
- const inspect=()=>view=dispatch('taskbelay_get_task',{task_id:view.task.task_id});
- function checkpoint(extra={}){view=dispatch('taskbelay_checkpoint',{...identity(),...extra});return view}
- function review(verdict='satisfied'){inspect();const paths=view.task.repositories.flatMap(r=>r.binding.task_surface.map(e=>({path:e.path,goal_ids:[view.task.authorization.goals.some(g=>g.id==='slug')&&e.path.includes('slug')?'slug':'address'],basis:'Observed diff implements only normalization; test and documentation changes directly support that goal.'})));return checkpoint({assessment:{authorization_digest:view.authorization_digest,content_digest:view.content_digest,paths,constraints:view.task.authorization.constraints.map(c=>({id:c.id,verdict,basis:'Reviewed the actual normalization diff against the instruction to preserve validation and avoid new output side effects.',uncertainty:''})),facts:view.task.facts.map(f=>({id:f.id,verdict:'satisfied',basis:'This observed interface or predicted-path change is necessary for the stated normalization behavior.',uncertainty:''})),summary:'Semantic assessment supplied by this scripted fixture; this is not a native AI judgment experiment.'}})}
- function run(id){const result=dispatch('taskbelay_run_check',{...identity(),check_id:id});view=result.view;return result.run}
- const base="module.exports = value => { if (typeof value !== 'string' || !value.includes('@')) throw new Error('invalid'); return value.toLowerCase(); };\n";
- const fixed="module.exports = value => { if (typeof value !== 'string' || !value.includes('@')) throw new Error('invalid'); return value.trim().toLowerCase(); };\n";
- try{
-  git('init','-b','main');git('config','user.name','TaskBelay evaluation');git('config','user.email','evaluation@localhost');write('.gitignore','*.marker\n');write('address.cjs',base);write('address.test.cjs',"const assert=require('node:assert/strict'),normalize=require('./address.cjs'); assert.equal(normalize(' USER@EXAMPLE.COM '),'user@example.com');assert.throws(()=>normalize(123));assert.throws(()=>normalize('invalid'));\n");write('README.md','Local address normalization service.\n');write('package.json','{"name":"local-example","version":"1.0.0"}\n');git('add','.');git('commit','-m','baseline');
-  const authorization={user_ref:'fixture-user-message-1',request:'Normalize surrounding whitespace in addresses while preserving validation errors.',goals:[{id:'address',statement:'Trim and lowercase valid addresses, retain error behavior.',checks:['address-test']}],constraints:[{id:'no-side-effects',kind:'non_goal',statement:'Do not add output side effects, network calls or change validation rules.',paths:['address.cjs']}],expected_paths:['address.cjs','address.test.cjs','README.md'],forbidden_paths:['secrets'],pins:[],dependencies:[{path:'package.json',allowed:[]}],limits:{runs:20,execution_ms:30000,core_ms:600000,host_ms:600000,tokens:100000},review_after_lines:100};
-  const checks=[{id:'address-test',kind:'command',argv:[process.execPath,'address.test.cjs'],cwd:'.',inputs:['address.cjs','address.test.cjs'],input_basis:'The test imports only this module and Node built-in assertions; no application dependencies or external services.',conditions:'Local Node built-ins, no network or database.',retry:'repeatable',timeout_ms:3000,rationale:'Exercise the requested normalization and retained validation errors.'}];
-  view=dispatch('taskbelay_open_task',{operation_id:'open-engineering-journey',host:'cli',repositories:[{key:'primary',repository_path:repo}],authorization,checks});
-  assert.equal(view.task.status,'active');assert.equal(view.task.usage.runs,0);
-  view=dispatch('taskbelay_record_evidence',{...identity(),check_id:'address-test',source:'claim',status:'passed',summary:'Agent claims that the test passed.',content_digest:view.content_digest});inspect();assert.ok(view.decision.missing_checks.includes('address-test'));assert.equal(view.task.usage.runs,0);
-  const failure=run('address-test');assert.equal(failure.status,'failed');assert.notEqual(failure.exit_code,0);assert.equal(view.task.usage.runs,1);
-  write('address.cjs',fixed);inspect();checkpoint({progress:[{goal_id:'address',status:'done',summary:'Implemented trimming and lowercasing with retained type/address errors.'}],host_ms:20,wait_ms:10,tokens:50});
-  const passed=run('address-test');assert.equal(passed.status,'passed');assert.equal(passed.exit_code,0);assert.ok(passed.stdout_digest);assert.equal(view.task.usage.runs,2);review();assert.equal(view.decision.ready,true);
-  write('README.md','Address normalization trims whitespace.\n');inspect();assert.equal(view.decision.evidence.find(e=>e.evidence_id===passed.run_id).valid,true);
-  git('add','.');git('commit','-m','checked normalization');inspect();assert.equal(view.decision.evidence.find(e=>e.evidence_id===passed.run_id).valid,true);
-  const revised=structuredClone(view.task.authorization);revised.user_ref='fixture-user-message-2';revised.request+=' Also normalize slugs independently.';revised.goals.push({id:'slug',statement:'Normalize spaces and case in slugs.',checks:['slug-test']});revised.expected_paths.push('slug.cjs','slug.test.cjs');
-  write('slug.cjs',"module.exports = value => value.trim().toLowerCase().replace(/\\s+/g,'-');\n");write('slug.test.cjs',"require('node:assert/strict').equal(require('./slug.cjs')(' Hello World '),'hello-world');\n");
-  const moreChecks=[...checks,{...checks[0],id:'slug-test',argv:[process.execPath,'slug.test.cjs'],inputs:['slug.cjs','slug.test.cjs'],rationale:'Exercise independently authorized slug normalization.'}];inspect();view=dispatch('taskbelay_revise_task',{...identity(),authorization:revised,checks:moreChecks,reason:'The fixture user added an independent slug result; preserve address work and cumulative cost.'});assert.equal(view.task.usage.runs,2);assert.ok(view.task.progress.some(p=>p.goal_id==='address'&&p.status==='done'));assert.equal(view.decision.evidence.find(e=>e.evidence_id===passed.run_id).valid,true);
-  assert.ok(view.task.assessment.paths.some(p=>p.path==='address.cjs'),'independent revision preserves address reasoning');
-  assert.ok(!view.decision.findings.some(f=>f.id==='unmapped:address.cjs'),'unchanged path reasoning remains applicable');
-  assert.ok(!view.decision.findings.some(f=>f.id==='constraint:no-side-effects'),'unchanged path-scoped constraint remains applicable');
-  checkpoint({progress:[{goal_id:'slug',status:'done',summary:'Implemented and inspected independent slug normalization.'}]});const slug=run('slug-test');assert.equal(slug.status,'passed');
-  write('address.cjs',base);inspect();assert.equal(view.decision.evidence.find(e=>e.evidence_id===passed.run_id).valid,false);assert.equal(view.decision.evidence.find(e=>e.evidence_id===slug.run_id).valid,true);dispatch('taskbelay_finish_task',{...identity(),summary:'Premature delivery',acceptance:[],risks:[]},'ACCEPTANCE_INCOMPLETE');
-  write('address.cjs',fixed+"console.log('Unrequested side effect');\n");review('violation');assert.equal(view.decision.advice,'self_correct');assert.equal(view.decision.ready,false);assert.notEqual(view.decision.advice,'ask_user');
-  write('package.json','{"name":"local-example","version":"1.0.0","dependencies":{"unapproved":"1.0.0"}}\n');inspect();assert.ok(view.task.facts.some(f=>f.kind==='dependency_change'&&f.blocking));dispatch('taskbelay_run_check',{...identity(),check_id:'address-test'},'SCOPE_VIOLATION');
-  write('package.json','{"name":"local-example","version":"1.0.0"}\n');write('address.cjs',fixed);inspect();review();assert.equal(view.decision.ready,true);assert.equal(view.task.usage.runs,3);
-  const repeatRequest={...identity(),check_id:'address-test'};const once=dispatch('taskbelay_run_check',repeatRequest);view=once.view;const duplicate=dispatch('taskbelay_run_check',repeatRequest);assert.equal(duplicate.run.run_id,once.run.run_id);assert.equal(duplicate.view.task.usage.runs,4);assert.equal(duplicate.view.replayed,true);assert.equal(dispatch('taskbelay_get_run',{run_id:once.run.run_id}).status,'passed');
-  write('slow.cjs',"require('node:fs').writeFileSync('started.marker','started');setTimeout(()=>process.exit(0),2000);\n");inspect();const slowCheck={...checks[0],id:'slow',argv:[process.execPath,'slow.cjs'],inputs:['slow.cjs'],timeout_ms:10000,rationale:'Exercise actual process interruption and recovery; the command is repeatable.'};checkpoint({checks:[...moreChecks,slowCheck]});const crashRequest={...identity(),check_id:'slow'};const child=spawn(executable,['call','taskbelay_run_check'],{env,stdio:['pipe','pipe','pipe'],windowsHide:true});child.stdin.end(JSON.stringify(crashRequest));const deadline=Date.now()+10000;while(!existsSync(join(repo,'started.marker'))&&Date.now()<deadline){await new Promise(r=>setTimeout(r,20))};assert.ok(existsSync(join(repo,'started.marker')),'actual check process started');child.kill();await new Promise(r=>child.once('exit',r));inspect();const pending=view.decision.pending_runs;assert.equal(pending.length,1);assert.equal(view.task.usage.runs,5);assert.equal(dispatch('taskbelay_get_run',{run_id:pending[0]}).status,'running');dispatch('taskbelay_run_check',{...identity(),check_id:'address-test'},'EXECUTION_PENDING');const recovered=dispatch('taskbelay_recover_run',{...identity(),run_id:pending[0],resolution_basis:'The real Core owner was killed, its process job ended, and this fixture command only writes an ignored marker and exits.',user_ref:''});view=recovered.view;assert.equal(recovered.run.status,'interrupted_unknown');assert.equal(view.task.usage.runs,5);assert.equal(view.task.usage.uncertain_ms,10000);assert.equal(view.decision.pending_runs.length,0);const restored=run('slow');assert.equal(restored.status,'passed');assert.equal(view.task.usage.runs,6);
-  const recoveredRequest={...identity(),run_id:pending[0],resolution_basis:'Read the already classified original execution.',user_ref:''};
-  const readRecovered=dispatch('taskbelay_recover_run',recoveredRequest);view=readRecovered.view;
-  const replayRecovered=dispatch('taskbelay_recover_run',recoveredRequest);assert.equal(replayRecovered.view.replayed,true);assert.equal(replayRecovered.view.task.usage.runs,6);
-  dispatch('taskbelay_recover_run',{...recoveredRequest,resolution_basis:'Different content under the same operation identity.'},'OPERATION_CONFLICT');
-  review();const acceptance=view.task.authorization.goals.map(g=>({goal_id:g.id,evidence_ids:view.task.evidence.filter(e=>e.source==='core_execution'&&e.status==='passed'&&g.checks.includes(e.check_id)).map(e=>e.id),basis:'The actual local command passed and the current semantic fixture review addresses the authorized outcome.'}));view=dispatch('taskbelay_finish_task',{...identity(),summary:'Address and slug normalization delivered with actual checks and an explicitly classified interrupted attempt.',acceptance,risks:['Scripted semantic judgments are fixture inputs; no AI-agent efficiency claim is made.']});assert.equal(view.task.status,'done');assert.equal(view.task.acceptance.length,2);assert.equal(view.task.usage.runs,6);
-  const report={environment:{platform:process.platform,node:process.version},core_sha256:createHash('sha256').update(readFileSync(executable)).digest('hex'),native_command_executions:view.task.usage.runs,actual_failed_test:true,claim_rejected_as_execution:true,unrelated_document_evidence_preserved:true,linear_commit_evidence_preserved:true,independent_requirement_evidence_preserved:true,relevant_code_evidence_invalidated:true,semantic_violation_self_correction:true,unapproved_dependency_execution_rejected:true,response_loss_no_duplicate_execution:true,actual_owner_interruption_recovered_without_passing_claim:true,unknown_execution_ms_conservative:view.task.usage.uncertain_ms,cumulative_cost_after_revisions:view.task.usage,global_control_cost:view.control_cost,finished:true,transcript,limitations:['Scripted development and semantic judgments; not a native AI agent or human-time experiment.','This native run applies only to the execution host platform.']};
-  if(process.env.ENGINEERING_REPORT){mkdirSync(dirname(resolve(process.env.ENGINEERING_REPORT)),{recursive:true});writeFileSync(resolve(process.env.ENGINEERING_REPORT),JSON.stringify(report,null,2)+'\n')};console.log(JSON.stringify(report));
- }finally{assert.ok(root.startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true})}
+const goal = (id = 'goal', checks = ['check']) => ({ id, statement: 'Requested behavior passes its actual assertion.', checks });
+
+test('approval binds the complete plan and checkpoint cannot weaken failed acceptance', t => {
+  const f = fixture(t, { primary: { 'check.cjs': "require('node:assert/strict').equal(1,2);\n" } });
+  f.open([goal()], [check('check', 'check.cjs')]);
+  f.run('check', {}, 'PLAN_CONFIRMATION_REQUIRED'); assert.equal(f.view.task.usage.runs, 0);
+  const digest = f.view.plan_digest;
+  f.write('check.cjs', 'process.exit(0);\n');
+  f.call('taskbelay_confirm_plan', {...f.identity(),plan_digest:digest,user_ref:'fixture-user-answer',response:'Approve the previously displayed plan'},'UNAPPROVED_CHANGES');
+  f.write('check.cjs', "require('node:assert/strict').equal(1,2);\n");
+  f.confirm(); const failure=f.run('check').run; assert.equal(failure.status, 'failed');
+  f.call('taskbelay_accept_known_failure',{...f.identity(),check_id:'check',failed_evidence_id:failure.run_id,comparison_evidence_id:failure.run_id,failures:['required-assertion'],user_ref:'fixture-user',reason:'Attempt to waive required acceptance'},'FAILURE_ACCEPTANCE_NOT_ALLOWED');
+  const changed = structuredClone(f.view.task.checks); changed[0].argv = [process.execPath, '-e', 'process.exit(0)'];
+  const revision = f.view.task.revision;
+  f.checkpoint({ checks: changed }, 'INVALID_ARGUMENT'); f.inspect();
+  assert.equal(f.view.task.revision, revision); assert.equal(f.view.plan_digest, digest);
+  assert.deepEqual(f.view.task.checks[0].argv, [process.execPath, 'check.cjs']);
+  f.revise(f.view.task.authorization, changed);
+  assert.equal(f.view.task.approval, null); assert.equal(f.view.task.usage.runs, 1);
+  f.call('taskbelay_confirm_plan', { ...f.identity(), plan_digest: digest, user_ref: 'old-answer', response: 'Prior answer' }, 'PLAN_CHANGED');
+  f.run('check', {}, 'PLAN_CONFIRMATION_REQUIRED'); f.finish('ACCEPTANCE_INCOMPLETE');
 });
 
-test('explicit repositories preserve independently applicable execution evidence',()=>{
- const root=mkdtempSync(join(tmpdir(),'taskbelay-multi-engineering-'));
- const data=join(root,'data');mkdirSync(data);const env={...process.env,TASKBELAY_DATA_DIR:data};
- const repos=['client','server'].map(key=>{const path=join(root,key);mkdirSync(path);
-  const git=(...args)=>{const r=spawnSync('git',['-C',path,...args],{windowsHide:true,encoding:'utf8'});assert.equal(r.status,0,r.stderr)};
-  git('init','-b','main');git('config','user.name','Native multi-repository test');git('config','user.email','test@localhost');
-  writeFileSync(join(path,'normalize.cjs'),"module.exports = value => value.toLowerCase();\n");
-  writeFileSync(join(path,'check.cjs'),"require('node:assert/strict').equal(require('./normalize.cjs')('TEST'),'test');\n");git('add','.');git('commit','-m','base');return{key,repository_path:path};
- });
- const dispatch=(tool,q)=>{const r=spawnSync(executable,['call',tool],{input:JSON.stringify(q),env,windowsHide:true,encoding:'utf8',maxBuffer:8*1024*1024});const v=JSON.parse(r.stdout);assert.equal(v.ok,true,JSON.stringify(v));assert.equal(r.status,0,r.stderr);return v.result};
- try{
-  let view=dispatch('taskbelay_open_task',{operation_id:'multi-open',host:'cli',repositories:repos,
-   authorization:{user_ref:'fixture-explicit-two-repositories',request:'Verify independently maintained normalization modules in the explicitly selected client and server repositories.',goals:repos.map(r=>({id:r.key,statement:'The '+r.key+' module preserves lowercase normalization.',checks:[r.key]})),expected_paths:['client::normalize.cjs','server::normalize.cjs']},
-   checks:repos.map(r=>({id:r.key,kind:'command',repository_key:r.key,argv:[process.execPath,'check.cjs'],inputs:['normalize.cjs','check.cjs'],input_basis:'This assertion imports only the local module and Node built-ins; the two modules have no cross-repository dependency.',conditions:'Local Node, no services',rationale:'Check the independently authorized '+r.key+' behavior.',timeout_ms:3000,retry:'repeatable'}))});
-  const runs=[];
-  for(const key of ['client','server']){const r=dispatch('taskbelay_run_check',{task_id:view.task.task_id,revision:view.task.revision,operation_id:'multi-run-'+key,check_id:key});view=r.view;assert.equal(r.run.status,'passed');runs.push(r.run)}
-  writeFileSync(join(repos[0].repository_path,'normalize.cjs'),"module.exports = value => value.trim().toLowerCase();\n");
-  view=dispatch('taskbelay_get_task',{task_id:view.task.task_id});
-  assert.equal(view.task.repositories.length,2);assert.equal(view.decision.evidence.find(e=>e.evidence_id===runs[0].run_id).valid,false);assert.equal(view.decision.evidence.find(e=>e.evidence_id===runs[1].run_id).valid,true);
-  view=dispatch('taskbelay_cancel_task',{task_id:view.task.task_id,revision:view.task.revision,operation_id:'multi-cancel',reason:'The native isolated verification is complete; retain both code directories.'});assert.equal(view.task.status,'cancelled');
-  assert.ok(existsSync(join(repos[0].repository_path,'normalize.cjs')));assert.ok(existsSync(join(repos[1].repository_path,'normalize.cjs')));
- }finally{assert.ok(root.startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true})}
+test('actual provenance, scope review and stopping after a pass', t => {
+  const f = fixture(t, { primary: { 'value.cjs': 'module.exports=1;\n', 'check.cjs': "require('node:assert/strict').equal(require('./value.cjs'),2);\n", 'README.md': 'base\n' } });
+  f.open([goal()], [check('check', 'check.cjs', { inputs: ['value.cjs', 'check.cjs'], input_basis: 'Only local module and Node assertions are used.' })], { allowed_paths: ['value.cjs', 'README.md'], constraints: [{ id: 'scope', kind: 'non_goal', statement: 'Do not add side effects.', paths: ['value.cjs'] }] }); f.confirm();
+  f.call('taskbelay_record_evidence', { ...f.identity(), check_id: 'check', source: 'claim', status: 'passed', summary: 'Fixture agent claims success.', content_digest: f.view.content_digest });
+  f.inspect(); assert.ok(f.view.decision.missing_checks.includes('check'));
+  assert.equal(f.run('check').run.status, 'failed'); f.write('value.cjs', 'module.exports=2;\n');
+  const request = { ...f.identity(), check_id: 'check', rationale: 'Verify the corrected implementation.' };
+  const passed = f.call('taskbelay_run_check', request); assert.equal(passed.run.status, 'passed');
+  const replay = f.call('taskbelay_run_check', request); assert.equal(replay.view.replayed, true); assert.equal(replay.view.task.usage.runs, 2);
+  f.run('check', {}, 'CHECK_ALREADY_SATISFIED');
+  f.write('README.md', 'documented\n'); f.inspect(); assert.equal(f.view.decision.evidence.find(e => e.evidence_id === passed.run.run_id).valid, true);
+  f.review('violation'); assert.equal(f.view.decision.ready, false);
+  f.write('extra.cjs', 'module.exports=3;\n'); f.inspect(); f.run('check', {}, 'SCOPE_VIOLATION');
+  f.call('taskbelay_cancel_task', { ...f.identity(), reason: 'Preserve the detected unrelated fixture change for inspection.' });
 });
 
-test('restoring inputs reuses an actual pass without hiding a later failed attempt',()=>{
- const root=mkdtempSync(join(tmpdir(),'taskbelay-evidence-context-')),repo=join(root,'repo'),data=join(root,'data');mkdirSync(repo);mkdirSync(data);
- const env={...process.env,TASKBELAY_DATA_DIR:data};
- const git=(...args)=>{const r=spawnSync('git',['-C',repo,...args],{windowsHide:true,encoding:'utf8'});assert.equal(r.status,0,r.stderr)};
- const call=(tool,q)=>{const r=spawnSync(executable,['call',tool],{env,input:JSON.stringify(q),windowsHide:true,encoding:'utf8',maxBuffer:8*1024*1024});const v=JSON.parse(r.stdout);assert.equal(v.ok,true,JSON.stringify(v));return v.result};
- try{
-  git('init','-b','main');git('config','user.name','Evidence test');git('config','user.email','test@localhost');
-  writeFileSync(join(repo,'helper.cjs'),'module.exports = n => n * 2;\n');writeFileSync(join(repo,'check.cjs'),"require('node:assert/strict').equal(require('./helper.cjs')(2),4);\n");git('add','.');git('commit','-m','base');
-  let v=call('taskbelay_open_task',{operation_id:'context-open',host:'cli',repositories:[{key:'primary',repository_path:repo}],authorization:{user_ref:'fixture-context-user',request:'Verify the existing local doubling helper',goals:[{id:'double',statement:'The doubling assertion passes',checks:['check']}]},checks:[{id:'check',kind:'command',argv:[process.execPath,'check.cjs'],rationale:'Actual local assertion',conditions:'Node built-ins',timeout_ms:3000,retry:'repeatable'}]});
-  const first=call('taskbelay_run_check',{task_id:v.task.task_id,revision:v.task.revision,operation_id:'context-pass',check_id:'check'});v=first.view;assert.equal(first.run.status,'passed');
-  writeFileSync(join(repo,'helper.cjs'),'module.exports = n => n * 3;\n');
-  const failed=call('taskbelay_run_check',{task_id:v.task.task_id,revision:v.task.revision,operation_id:'context-fail',check_id:'check'});v=failed.view;assert.equal(failed.run.status,'failed');assert.equal(v.decision.evidence.find(e=>e.evidence_id===first.run.run_id).valid,false);
-  writeFileSync(join(repo,'helper.cjs'),'module.exports = n => n * 2;\n');v=call('taskbelay_get_task',{task_id:v.task.task_id});
-  assert.equal(v.task.usage.runs,2);assert.equal(v.decision.evidence.find(e=>e.evidence_id===first.run.run_id).valid,true);assert.equal(v.decision.evidence.find(e=>e.evidence_id===failed.run.run_id).valid,false);assert.ok(v.task.attempts.some(a=>a.run_id===failed.run.run_id&&a.status==='failed'));assert.ok(!v.decision.missing_checks.includes('check'));
- }finally{assert.ok(root.startsWith(resolve(tmpdir())));rmSync(root,{recursive:true,force:true})}
+test('default evidence covers all repositories while justified independent evidence is retained', t => {
+  const f = fixture(t, { client: { 'check.cjs': "require('node:assert/strict').equal(require('../server/value.cjs'),1);\n", 'independent.cjs': 'process.exit(0);\n' }, server: { 'value.cjs': 'module.exports=1;\n' } });
+  f.open([goal('goal', ['integration', 'independent'])], [check('integration', 'check.cjs', { repository_key: 'client' }), check('independent', 'independent.cjs', { repository_key: 'client', inputs: ['client::independent.cjs'], input_basis: 'The independent command uses no server code or data.' })]); f.confirm();
+  const integration = f.run('integration').run, independent = f.run('independent').run;
+  f.write('value.cjs', 'module.exports=2;\n', 'server'); f.inspect();
+  assert.equal(f.view.decision.evidence.find(e => e.evidence_id === integration.run_id).valid, false);
+  assert.equal(f.view.decision.evidence.find(e => e.evidence_id === independent.run_id).valid, true);
+  f.review(); f.finish('ACCEPTANCE_INCOMPLETE'); assert.equal(f.run('integration').run.status, 'failed');
+  f.write('value.cjs', 'module.exports=1;\n', 'server'); f.inspect();
+  assert.equal(f.view.decision.evidence.find(e => e.evidence_id === integration.run_id).valid, true);
+  assert.ok(f.view.task.attempts.some(a => a.status === 'failed')); f.review(); f.finish(); assert.equal(f.view.task.status, 'done');
+});
+
+test('unchanged failure retries need information and labels cannot reset their count', t => {
+  const f = fixture(t, { primary: { 'check.cjs': 'process.exit(1);\n' } });
+  f.open([goal()], [check('check', 'check.cjs', { full_suite: true })]); f.confirm();
+  f.run('check', {}, 'INVALID_ARGUMENT');
+  let failed = f.run('check', { full_suite_basis: 'Test the explicit full-suite boundary.' }).run;
+  f.run('check', { full_suite_basis: 'Same boundary.' }, 'RETRY_BASIS_REQUIRED');
+  for (let n = 1; n <= 2; n++) failed = f.run('check', { full_suite_basis: 'Investigate this suite result.', previous_run_id: failed.run_id, new_information: `Fixture diagnostic observation ${n}.` }).run;
+  const duplicates=structuredClone(f.view.task.checks);duplicates[0].goal_ids=['goal','goal'];
+  f.call('taskbelay_revise_task',{...f.identity(),authorization:f.view.task.authorization,plan:f.view.task.plan,checks:duplicates,reason:'Try duplicate bookkeeping references'},'INVALID_ARGUMENT');
+  const a = structuredClone(f.view.task.authorization), checks = structuredClone(f.view.task.checks);
+  a.goals[0].checks = ['renamed']; checks[0].id = 'renamed'; checks[0].rationale = 'Changed display label';
+  f.revise(a, checks); f.confirm();
+  f.run('renamed', { full_suite_basis: 'Another repetition', previous_run_id: failed.run_id, new_information: 'Labels do not change actual inputs.' }, 'REPEATED_FAILURE');
+  assert.equal(f.view.task.usage.runs, 3);
+});
+
+test('known failure acceptance retains failed provenance and expires on changed content', t => {
+  const f = fixture(t, { primary: { 'regression.cjs': 'process.exit(1);\n', 'compare.cjs': 'process.exit(0);\n', 'feature.cjs': 'process.exit(0);\n' } });
+  f.open([goal('goal', ['feature', 'regression'])], [check('feature', 'feature.cjs'), check('regression', 'regression.cjs', { purpose: 'regression' }), check('compare', 'compare.cjs', { purpose: 'diagnostic', goal_ids: ['goal'], compares: 'regression' })]); f.confirm();
+  f.run('feature'); const failed = f.run('regression').run, comparison = f.run('compare').run; f.review(); f.finish('ACCEPTANCE_INCOMPLETE');
+  f.call('taskbelay_accept_known_failure', { ...f.identity(), check_id: 'regression', failed_evidence_id: failed.run_id, comparison_evidence_id: comparison.run_id, failures: ['fixture-existing-failure'], user_ref: 'fixture-user-accepts-existing-failure', reason: 'The approved comparison reports no new failures; this is scripted semantic input.' });
+  assert.equal(f.view.decision.accepted_failures.length, 1); assert.equal(f.view.task.evidence.find(e => e.id === failed.run_id).status, 'failed');
+  assert.equal(f.view.decision.evidence.find(e => e.evidence_id === failed.run_id).valid, false);
+  assert.equal(f.view.decision.ready, true);
+  f.write('feature.cjs', 'process.exit(0); // changed\n'); f.inspect();
+  assert.equal(f.view.decision.accepted_failures.length, 0); f.finish('ACCEPTANCE_INCOMPLETE');
+});
+
+test('interrupted real execution is recovered without a passing claim or cost reset', async t => {
+  const f = fixture(t, { primary: { 'slow.cjs': "require('node:fs').writeFileSync('started.marker','started');setTimeout(()=>process.exit(0),1500);\n" } });
+  f.open([goal()], [check('check', 'slow.cjs', { timeout_ms: 5000 })]); f.confirm();
+  const child = spawn(core, ['call', 'taskbelay_run_check'], { env: f.env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  child.stdin.end(JSON.stringify({ ...f.identity(), check_id: 'check', rationale: 'Verify actual process interruption and recovery.' }));
+  const marker = join(f.repositories[0].repository_path, 'started.marker'), deadline = Date.now() + 10000;
+  while (!existsSync(marker) && Date.now() < deadline) await new Promise(r => setTimeout(r, 20));
+  assert.ok(existsSync(marker)); const exited = new Promise(r => child.once('exit', r)); child.kill(); await exited;
+  f.inspect(); const id = f.view.decision.pending_runs[0]; assert.ok(id); f.run('check', {}, 'EXECUTION_PENDING');
+  f.call('taskbelay_recover_run', { ...f.identity(), run_id: id, resolution_basis: 'Stopped owner only wrote the ignored fixture marker.', user_ref: '' });
+  assert.equal(f.view.task.usage.uncertain_ms, 5000); assert.equal(f.view.task.usage.runs, 1);
+  const result = f.run('check', { previous_run_id: id, new_information: 'The stopped execution was inspected and its repeatable operation is safe.' });
+  assert.equal(result.run.status, 'passed'); assert.equal(f.view.task.usage.runs, 2); f.review(); f.finish();
+  if (process.env.ENGINEERING_REPORT) writeFileSync(process.env.ENGINEERING_REPORT, JSON.stringify({ platform: process.platform, actual_process_interruption: true, cumulative_cost: f.view.task.usage, limitations: ['Scripted authorization and semantic reviews; not a native Host conversation.'] }, null, 2) + '\n');
 });

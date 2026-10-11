@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/Innocent-children/taskbelay/internal/application"
+	"github.com/Innocent-children/taskbelay/internal/domain"
 	core "github.com/Innocent-children/taskbelay/internal/mcp"
 	"github.com/Innocent-children/taskbelay/internal/repository"
 	"github.com/Innocent-children/taskbelay/internal/store"
@@ -55,5 +56,37 @@ func TestExactHostRejectsAlternateAddress(t *testing.T) {
 	h.ServeHTTP(w, httptest.NewRequest("GET", "http://localhost:1234/", nil))
 	if w.Code != 403 {
 		t.Fatal("alternate host accepted")
+	}
+}
+
+func TestDesktopLifecycleFilteringPrecedesPagination(t *testing.T) {
+	approved := domain.Task{TaskID: "approved", Status: "active", Repositories: []domain.RepositoryScopeEntry{{Key: "primary"}}}
+	approved.Approval = &domain.PlanApproval{PlanDigest: approved.PlanDigest()}
+	blocked := approved
+	blocked.TaskID = "blocked"
+	blocked.Approval = nil
+	list := func(_ context.Context, q store.ListQuery) (store.TaskPage, error) {
+		if q.Status != "active" || q.PageSize != 100 {
+			t.Fatal("discovery must restrict storage to active tasks", q)
+		}
+		items := []domain.Task{}
+		if q.Page == 1 {
+			for i := 0; i < 100; i++ {
+				items = append(items, approved)
+			}
+		} else {
+			for i := 0; i < 21; i++ {
+				items = append(items, blocked)
+			}
+		}
+		return store.TaskPage{Items: items, Page: q.Page, HasNext: q.Page == 1}, nil
+	}
+	first, e := taskSummaryPage(context.Background(), list, store.ListQuery{Page: 1}, "blocked")
+	if e != nil || len(first["items"].([]map[string]any)) != 20 || first["has_next"] != true {
+		t.Fatal("older blocked tasks disappeared", first, e)
+	}
+	second, e := taskSummaryPage(context.Background(), list, store.ListQuery{Page: 2}, "blocked")
+	if e != nil || len(second["items"].([]map[string]any)) != 1 || second["has_next"] != false {
+		t.Fatal("filtered pagination is incorrect", second, e)
 	}
 }

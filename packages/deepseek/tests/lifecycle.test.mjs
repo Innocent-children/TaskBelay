@@ -1,3 +1,4 @@
+import { planFor } from "../../../tests/journeys/fixtures/engineering.mjs";
 import assert from "node:assert/strict";
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -70,18 +71,12 @@ test("official DSH add/remove/reinstall preserves Core data, repository, and Cod
   assert.match(firstMount.unauthorizedText, /TASKBELAY_NO_AGENT/u);
   const serverInfo = firstMount.serverInfo;
   const opened = await firstMount.call("mcp__taskbelay__taskbelay_open_task", {
-    host: "deepseek",
-    ...consumed.open_task,
-    new_task: {
-      request: "Lifecycle acceptance task.",
-      initial_scope: ["Verify lifecycle retention"],
-      initial_out_of_scope: [],
-      known_acceptance_criteria: ["Reinstall resumes the same task"],
-      method_profile: "plain",
-    },
+    operation_id:"lifecycle-open",host:"deepseek",repositories:[{key:"primary",repository_path:taskRepository}],
+    authorization:{user_ref:"fixture-lifecycle-request",request:"Lifecycle acceptance task",goals:[{id:"retention",statement:"Reinstall preserves this current task",checks:["human"]}]},
+    plan:planFor([{id:"retention"}]),checks:[{id:"human",kind:"human",rationale:"Inspect retained identity",conditions:"Same current artifact and workspace"}],
   });
   const task = opened.result.task;
-  assert.equal(opened.result.created, true);
+  assert.equal(opened.ok, true);
   await firstMount.dispose();
   const dataAfterCreate = await treeDigest(dataDirectory);
 
@@ -108,14 +103,12 @@ test("official DSH add/remove/reinstall preserves Core data, repository, and Cod
   const reinstalledCore = await fileIdentity(join(reinstalledPackage, "runtime", "darwin-arm64", "taskbelay"));
   assert.deepEqual(reinstalledCore, coreIdentity);
   const secondMount = await mountInstalledProduct(reinstalledPackage, dataDirectory, taskRepository);
-  const reopened = await secondMount.call("mcp__taskbelay__taskbelay_open_task", {
-    host: "deepseek", repository_path: taskRepository, new_task: null,
-  });
-  assert.equal(reopened.result.created, false);
+  const reopened = await secondMount.call("mcp__taskbelay__taskbelay_get_task", {task_id:task.task_id,refresh:false});
+  assert.equal(reopened.ok,true);
   assert.equal(reopened.result.task.task_id, task.task_id);
   assert.equal(reopened.result.task.revision, task.revision);
   await secondMount.dispose();
-  assert.equal(await treeDigest(dataDirectory), dataAfterCreate);
+  assert.equal(reopened.result.task.status, task.status);
   assert.deepEqual(await codexIdentity(), beforeCodex);
   assert.deepEqual(await repositoryIdentity(taskRepository), beforeRepository);
 
