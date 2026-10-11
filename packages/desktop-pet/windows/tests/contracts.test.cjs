@@ -54,7 +54,7 @@ test("presentation follows Core lifecycle and never replays completion after a d
   const task = {
     task_id: "task-a",
     lifecycle: "active",
-    current_node: "IMPLEMENT",
+    current_node: "ACTIVE",
     archived: false,
   };
   const active = presentation(task, null);
@@ -79,9 +79,9 @@ test("presentation follows Core lifecycle and never replays completion after a d
     false,
   );
   assert.equal(
-    presentation({ ...task, current_node: "COMPREHENSION_REVIEW" }, active)
+    presentation({ ...task, current_node: "ACTIVE" }, active)
       .clip,
-    "review",
+    "working",
   );
   assert.equal(
     presentation({ ...task, lifecycle: "blocked", blocker: "review" }, active)

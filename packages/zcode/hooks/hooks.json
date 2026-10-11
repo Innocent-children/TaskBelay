@@ -7,11 +7,16 @@
           {
             "type": "process",
             "command": "node",
-            "args": ["${ZCODE_PLUGIN_ROOT}/bin/taskbelay-zcode.mjs", "hook", "pre-tool-use"],
+            "args": [
+              "${ZCODE_PLUGIN_ROOT}/bin/taskbelay-zcode.mjs",
+              "hook",
+              "pre-tool-use"
+            ],
             "timeoutMs": 30000
           }
         ]
       }
     ]
-  }
+  },
+  "description": "TaskBelay checks supported structured write paths against current authorization; semantic and external changes are observed at checkpoints."
 }

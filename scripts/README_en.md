@@ -21,9 +21,7 @@ install real Host products or create npm, Tag, or GitHub Release state.
 | `pnpm --dir packages/codex test` | Run Codex package-local tests |
 | `pnpm --dir packages/deepseek test` | Run DeepSeek package-local tests |
 
-`validate-repository.sh` checks toolchains, frozen dependency installation, version files,
-whitespace, Go formatting, package contracts, Host Adapter tests, deterministic end-to-end tests, and
-release-tooling contracts. It does not invoke a real release entrypoint.
+`validate-repository.sh` wraps the portable Node entry. `node scripts/validate-engineering.mjs` checks versions/generated copies, whitespace, Go vet/test, WebUI build, native engineering journeys, independent Host packages and current package-local tests. Install locked dependencies first. It neither publishes nor runs authenticated Host model sessions.
 
 Windows CI runs the Codex, DeepSeek, ZCode and lifecycle manager package suites in separate PowerShell steps, each explicitly returning its own exit code. A failed suite fails its step and prevents later default steps from running.
 
@@ -191,7 +189,7 @@ Build the Windows desktop package with `build-desktop-pet-windows.mjs`. From the
 
 The Windows desktop development distribution carries complete Codex, DeepSeek, Claude and ZCode packages through buildCoreRuntimes and stageAndPack. It does not create special Adapter archives missing the other Core runtime. After launcher bootstrap, `taskbelay install --host all --yes` prepares all four Adapters and the desktop app; ZCode still requires UI installation and enablement as instructed in the result.
 
-WebUI semantic submission and recovery regressions run with `pnpm --dir packages/webui test`. They exercise current components and the HTTP client with simulated hooks and HTTP, covering transport failure, reopening pending Actions and recovery by Action ID. These are not native browser checks.
+WebUI type checking and bundling run through build-webui.mjs. go test ./internal/webui checks actual HTTP contracts, CSRF and Core projection. Native browser inspection is separate.
 
 ## Shared Host commands
 
@@ -210,6 +208,6 @@ generated copies.
 
 ## Shared Skill references
 
-Edit common Core instructions and examples only in `skills/taskbelay/core/`. Run `node scripts/sync-skill-references.mjs` to generate the Codex, DeepSeek, Claude and ZCode package copies, whose headers identify the source. These copies support source browsing and local loading. `node scripts/sync-skill-references.mjs --check` detects stale copies. The Codex local builder and `stageAndPack` also render references in temporary staging, so installed packages do not depend on a shared directory outside the package. Shared text substitutes only the Host value; Host operations remain separately authored. Validation covers the four Host MCP schemas, current transitions, DSH confirmation text and actual packaged files.
+Edit common Core instructions and examples only in `skills/taskbelay/core/`. Run `node scripts/sync-skill-references.mjs` to generate the Codex, DeepSeek, Claude and ZCode copies. `--check` detects stale copies. Local staging also renders them, so installed packages need no repository shared directory. Core text substitutes only the Host value; actual Host authorization, permissions and workspace instructions remain separately authored. Checks cover current MCP contracts and complete packaged references.
 
-Targeted tests maintain the complete response examples. After editing shared requests, synchronize the package copies first. To update Core examples, run `TASKBELAY_UPDATE_SKILL_EXAMPLES=1 go test ./internal/mcp -run TestSkillSuccessExamplesMatchExecution -count=1`, then synchronize shared references. To update Host examples, run `TASKBELAY_UPDATE_SKILL_EXAMPLES=1 node --test packages/codex/tests/skill-success-examples.test.mjs packages/deepseek/tests/skill-success-examples.test.mjs`. Normal tests compare saved requests and responses without writing files. Review changed example fields and update package and staging lists when adding files. Node test helpers for reading examples, substituting stable values and comparing results live in `tests/skills/executed-examples.mjs`.
+Shared protocol.md keeps same-tool errors beside complete requests. internal/mcp/server_test.go compares actual producer encoding and validates output Schema. tests/host-engineering.test.mjs checks independent Host packages. Retired stage examples and updaters are removed.

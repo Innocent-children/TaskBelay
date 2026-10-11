@@ -36,7 +36,7 @@ final class WebUIModelTests: XCTestCase {
         let detail = try WebUIDecoding.decodeTaskDetail(TestFixtures.taskDetail(readiness: "read_only"))
         XCTAssertEqual(detail.readiness, .readOnly)
         XCTAssertEqual(detail.summary.taskID, "task-1")
-        XCTAssertEqual(detail.summary.currentNode, "IMPLEMENT")
+        XCTAssertEqual(detail.summary.currentNode, "ACTIVE")
         XCTAssertEqual(detail.summary.originHost, "codex")
         XCTAssertEqual(detail.summary.repositoryKeys, ["repo-a"])
         XCTAssertEqual(detail.summary.worktreePath, "/tmp/worktrees/task-1")

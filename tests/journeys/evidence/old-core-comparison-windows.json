@@ -1,0 +1,57 @@
+{
+  "baseline_commit": "9f46885e259f62cf1cd2adddc6edcc4eb1eac897",
+  "old_core_version": "0.19.3",
+  "old_core_sha256": "754e6ef182649feb95b85c5e8d1a42a9b2d666c6ab63b2d7aa7c7547be2743b1",
+  "environment": {
+    "platform": "win32",
+    "node": "v24.18.0"
+  },
+  "actual_assertion_exit_before": 1,
+  "actual_assertion_exit_after": 1,
+  "old_accepted_host_automated_pass_without_core_execution": true,
+  "old_node_after_claim": "COMPREHENSION_REVIEW",
+  "plan_confirmation_gate_error": "TRANSITION_NOT_ALLOWED",
+  "transcript": [
+    {
+      "tool": "taskbelay_server_info",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_open_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_submit_requirements",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_submit_design",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_submit_tasks",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_submit_tasks",
+      "ok": false,
+      "error": "TRANSITION_NOT_ALLOWED"
+    },
+    {
+      "tool": "taskbelay_submit_tasks",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_submit_implementation",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_submit_test",
+      "ok": true
+    }
+  ],
+  "limits": [
+    "Actual old Core/Git/SQLite/MCP and Node assertions; semantic work and user approval are fixture inputs.",
+    "This demonstrates evidence provenance and a phase gate, not delivery after all old stages or native-agent efficiency."
+  ]
+}

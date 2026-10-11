@@ -1,155 +1,53 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="packages/webui/src/assets/taskbelay-wordmark-dark.svg" />
-    <img src="packages/webui/src/assets/taskbelay-wordmark.svg" width="360" height="180" alt="TaskBelay" />
-  </picture>
-</p>
+# TaskBelay
 
-<h1 align="center">TaskBelay</h1>
+[English](README.md) · [简体中文](README_zh-CN.md) · [繁體中文](README_zh-TW.md) · [日本語](README_ja.md) · [한국어](README_ko.md) · [Español](README_es.md) · [Français](README_fr.md) · [Deutsch](README_de.md) · [Português](README_pt-BR.md)
 
-<p align="center"><strong>長時間の AI コーディングに、ビレイの支えを。</strong></p>
+**実際の AI コーディング作業を支えるエンジニアリング制御。**
 
-<p align="center">
-  <a href="README.md">English</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_zh-TW.md">繁體中文</a> · <a href="README_ja.md">日本語</a> · <a href="README_ko.md">한국어</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_de.md">Deutsch</a> · <a href="README_pt-BR.md">Português (Brasil)</a>
-</p>
+TaskBelay は Codex、DeepSeek Harness、Claude Code、ZCode と連携し、許可された目標、実際のコード変更、検証証拠を一緒に保存します。セッションをまたいでも判断の繰り返しを減らせます。実装と技術判断はエージェントが担当します。
 
-## TaskBelay でできること
+## できること
 
-技術的な判断は、Agent に。<br />
-タスクの範囲と進行は、TaskBelay で。
+- 目標、対象外の事項、インターフェース・データ・依存関係・設計の制約を開発中も維持します。パスだけでなくファイル内の変更を確認します。範囲の逸脱は既存の許可内で修正し、許可や重要な選択を変更する必要がある場合にユーザーへ確認します。
+- 許可されたローカル検証を実行し、実際の終了コード、入力、環境条件、結果を保存します。エージェントの申告、プロセス実行、受入判断を区別します。関連変更で証拠は失効しますが、依存範囲の根拠がある独立した検証は保持できます。計画変更で累計コストはリセットされません。
+- 実装と検証を交互に行い、要件を修正し、成果・失敗した試行・結果不明の実行から再開します。最近の履歴は上限内で保持し、有効な結果と累計コストは残します。
 
-Codex、DeepSeek、Claude Code、ZCode と組み合わせて使います。コードを読み解き、次の技術的な行動を選ぶのは Agent です。
+## 開始する
 
-クライミングのビレイでは、登る人がルートを選び、確保する人がロープを管理して墜落を防ぎます。TaskBelay も同じ役割分担です。技術的な判断は Agent に任せ、承認された範囲と検証の上限を確認し、失敗や結果が不明な操作には保存済みの記録を使って対処します。サンドボックスでも、別のコーディング Agent でもありません。
+Node.js >=24 と導入済みのコーディングホストが必要です。ソース開発には Go >=1.26 と pnpm >=11 <12 も必要です。このソースには互換性を破る工程制御の更新が含まれます。公開済みパッケージと安定版の対応記録は変更されていません。新しい契約を使うにはソースをビルドしてください。旧データは保持し、別のデータディレクトリを明示的に選びます。移行や自動リセットはありません。
 
-- **明確な範囲:** 実際の変更を承認済みのファイルと照合。計画外の作業には判断が必要です。
-- **検証の上限:** 必要な検証と上限を計画。追加する場合は具体的な理由を記録します。
-- **永続的な状態:** セッションをまたいでも、ローカルに保存したタスク状態を基準にします。
-- **安全な復旧:** 失敗や結果が不明な操作は、保存した状態と記録を確認してから再開や再試行を判断します。
-
-複数のセッションにまたがる作業や、ファイル範囲とテスト量を明確にしたいリポジトリ作業に向いています。
-一度きりの質問、コードの説明、進捗保存が不要な小さな変更は、Codex、DeepSeek、Claude Code、ZCode を直接使う方が簡単です。
-
-## クイックスタート
-
-> Node.js `>=24` と利用する Host を先にインストールしてください。必要なバージョンと検証済み環境は[サポート表](docs/SUPPORT-MATRIX_en.md)を参照してください。
-
-### 1. TaskBelay をインストールする
-
-TaskBelay をインストールしたら、[Codex](docs/CODEX_en.md)、[DeepSeek](docs/DEEPSEEK_en.md)、[Claude Code](docs/CLAUDE_en.md)、[ZCode](docs/ZCODE_en.md) の手順に従って利用する Host を有効にしてください。パッケージは Windows x64 と macOS arm64 に対応しています。macOS 上の ZCode の実機検証は未完了です。
+公開版のインストール：
 
 ```sh
 npm install -g taskbelay@latest
 taskbelay
 ```
 
-利用するインストーラーの選択肢から対応する Host を選びます。Codex は `/hooks` で TaskBelay hook を確認して信頼し、DeepSeek は選択した Profile を再起動します。Claude Code はプラグインを再読み込みするか新しい会話を開始し、権限の案内を確認してください。
+現在のソースをローカルでビルドして導入：
 
-ZCode では Settings → Plugins でプラグインをインストールして有効にし、新しい会話を開始して Hook を反映させます。ローカルの準備完了だけでは、ZCode がプラグインを読み込んだことは確認できません。
-
-### 2. 作業を開始する
-
-対応するインストールを完了してから、Host の会話に次のいずれかを送信してください。
-
-**Codex**
-
-```text
-$taskbelay-codex:taskbelay ログイン失敗のレート制限を追加してください。認証関連のファイルだけを変更し、対象を絞った確認を最大 4 件実行してください。
+```sh
+pnpm install --frozen-lockfile --ignore-scripts
+node scripts/taskbelay-local.mjs install --host codex --yes
 ```
 
-**DeepSeek Harness**
+対応する[ホストガイド](packages/codex/README.md)でアダプターを有効化し、範囲の明確な結果を依頼します：
 
 ```text
-/taskbelay ログイン失敗のレート制限を追加してください。認証関連のファイルだけを変更し、対象を絞った確認を最大 4 件実行してください。
+TaskBelay を使ってログイン失敗のレート制限を追加してください。公開認証 API と既存のユーザーデータを維持し、アカウント管理は作り直さないでください。関連する既存テストを実行し、実際の結果を報告してください。
 ```
 
-**Claude Code**
+期待する結果と必要な制限を伝えます。既存の許可は有効で、内部段階の承認や管理フォームは不要です。ローカル WebUI で結果、残る不足、必要な判断を確認できます。保存した Task ID を指定し、元のワークスペースで再開します。
 
-```text
-/taskbelay-claude:taskbelay ログイン失敗のレート制限を追加してください。認証関連のファイルだけを変更し、対象を絞った確認を最大 4 件実行してください。
-```
-
-**ZCode**
-
-入力欄の `/` → Skills から `taskbelay` を選択し、タスクを説明してください。
-
-```text
-TaskBelay を使ってログイン失敗のレート制限を追加してください。認証関連のファイルだけを変更し、対象を絞った確認を最大 4 件実行してください。
-```
-
-これらはターミナルではなく会話に送信します。目標、受け入れ条件、ファイル範囲、テスト上限を具体的に記載してください。
-
-最初の応答では依頼を評価し、直接作業するか TaskBelay を使うかを尋ねます。TaskBelay を選ぶと、
-既定では現在のディレクトリで現在の HEAD から新しいタスクブランチを作成します。新しいブランチと、
-既存の未コミット変更をタスクに含めるかを確認します。依存関係、ローカル設定、ファイル、ステージ状態を
-維持し、すべての対象ディレクトリにアクセスできる場合は同じセッションで続行します。
-
-現在のブランチをそのまま使うか、専用の Git 作業ツリーを作成することも明示的に選べます。専用作業ツリーでは
-ローカルまたはリモートのソースと開始ブランチも指定します。Codex は宿主が対応していれば新しいディレクトリを
-開き、DeepSeek と Claude Code は必要な再起動コマンドを案内します。
-
-同じディレクトリで実行できる Task は一つです。手動や他のツールによる変更も確認対象となり、タスク中の
-ブランチ切り替えは進行を一時停止します。完了後もローカルのディレクトリとブランチを残します。次のタスクを
-開始する際には、残っている未コミット変更の扱いを確認します。
-
-実装前に、要件、設計、作業項目、変更予定のファイル、検証計画を確認して話し合います。計画全体への明確な承認後に開発を開始します。計画の修正やファイル範囲の拡大には再承認が必要です。TaskBelay やワークツリーの選択は計画の承認とは別です。
-
-### 3. 再開して進捗を確認する
-
-セッションを再起動したら、タスクの元の作業ディレクトリに戻り、続行を明示的に依頼してください。TaskBelay は保存済みの
-進捗から再開します。元の作業ディレクトリが消失または置換された場合、復元するかタスクの放棄を明示するまで停止します。
-
-DeepSeek Harness では、再開を依頼するメッセージにも `/taskbelay` を含めてください。
-
-Claude では元の作業ディレクトリと会話を開き、`/taskbelay-claude:taskbelay` で保存済みタスクの再開を明示してください。
-
-ZCode では元の作業ディレクトリを開き、TaskBelay Skill を選択して保存済みタスクの再開を依頼します。新しいディレクトリを準備した場合は、返されたワークスペースの開き方に従ってください。
-
-以下はインストール済みのグローバル管理コマンドです。ソース版では、ガイドに記載された対応する入口を使ってください。
-
-```bash
-# インストール済みの連携を確認
-taskbelay status --host all
-
-# ローカルのタスク画面を開く
+```sh
 taskbelay webui start
 ```
 
-非対話形式のインストール、独自の DSH Profile、更新、修復、削除については
-[コマンドリファレンス](docs/COMMANDS_en.md)を参照してください。
+## 制限
 
-## デスクトップペット
+構造化フックは対応する書き込みパスを検査します。shell や外部編集はチェックポイントで観測します。Core が実行した検証だけが Core 実行の証拠になります。宣言した入力と環境は ignored の依存物、データベース、外部サービスを自動的には含みません。意味の判断は根拠を残しますが、正しさの証明ではありません。TaskBelay はサンドボックスでも別のコーディングエージェントでもありません。
 
-ペットには、設定済みの Adapter とインストール済みのデスクトップアプリが必要です。Adapter だけをインストールしても、デスクトップアプリは入りません。
+Core の負担は実測します。ホストの分析、待機、token は申告値で、不完全な場合があります。小さな機械的作業は通常、元のエージェントだけで十分です。ソーステストは能力を検証しますが、不具合や人の監督コストが減ったことを実証しません。完了後もファイルは残り、Git 操作、公開、削除の権限は追加されません。
 
-デスクトップペットは複数のタスクを重ねた吹き出しで表示し、それぞれの WebUI を開けます。ブロック中のタスクを優先し、完了後は別の未完了タスクに自動で切り替わります。特定のタスクを固定することもできます。外観の変更、アニメーションの制御、サイズ変更、個別の起動と停止に対応しています。
+## 詳しく見る
 
-```bash
-taskbelay pet start
-taskbelay pet stop
-```
-
-デスクトップアプリの対象は macOS arm64 と Windows 10/11 x64 です。インストールと操作は
-[ペットガイド](docs/DESKTOP-PETS_en.md)、検証済みの利用範囲は[サポート一覧](docs/SUPPORT-MATRIX_en.md)を参照してください。
-
-## 利用上の制限
-
-TaskBelay が管理するのはタスクの進行です。OS の権限は管理せず、すべてのファイル操作やシェルコマンドを遮断する仕組みではありません。
-
-専用の作業ツリーはコードの変更を分離します。プロセス、ネットワーク、認証情報、外部サービスは現在の環境と共有されます。
-
-タスクが完了しても、コードのコミット、プッシュ、作業ツリーの削除は自動では実行されません。これらには別途許可が必要です。
-
-## ドキュメント
-
-- **使い方：** [Codex](docs/CODEX_en.md) · [DeepSeek](docs/DEEPSEEK_en.md) · [Claude Code](docs/CLAUDE_en.md) · [ZCode](docs/ZCODE_en.md) · [コマンド](docs/COMMANDS_en.md) · [Control Center](docs/WEBUI_en.md)
-- **プロジェクト：** [製品定義](docs/PRODUCT_en.md) · [サポート一覧](docs/SUPPORT-MATRIX_en.md) · [セキュリティ](SECURITY.md)
-- **開発と貢献：** [ドキュメント一覧](MANIFEST_en.md) · [貢献ガイド](CONTRIBUTING.md)
-
-## コミュニティ
-
-[LINUX DO](https://linux.do/)
-
-## ライセンス
-
-[Apache License 2.0](LICENSE)
+[Product](docs/PRODUCT_en.md) · [Commands](docs/COMMANDS_en.md) · [Support and verification](docs/SUPPORT-MATRIX_en.md) · [Codex](packages/codex/README.md) · [DeepSeek](packages/deepseek/README.md) · [Claude Code](docs/CLAUDE_en.md) · [ZCode](docs/ZCODE_en.md)

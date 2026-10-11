@@ -16,5 +16,6 @@
         ]
       }
     ]
-  }
+  },
+  "description": "TaskBelay checks supported structured write paths against current authorization; semantic and external changes are observed at checkpoints."
 }

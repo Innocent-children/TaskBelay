@@ -172,7 +172,7 @@ final class ActivationAndNavigationTests: XCTestCase {
     // MARK: - Navigation targets
 
     func testNavigationOpensTheTaskDetailForReadablePhases() {
-        for phase: DisplayPhase in [.working(node: "IMPLEMENT"), .blocked(node: "BLOCKED"), .completed, .cancelled, .archived] {
+        for phase: DisplayPhase in [.working(node: "ACTIVE"), .blocked(node: "BLOCKED"), .completed, .cancelled, .archived] {
             XCTAssertEqual(
                 NavigationRules.target(origin: TestFixtures.origin, phase: phase, selectedTaskID: "task-1"),
                 .taskDetail(url: "\(TestFixtures.origin)/tasks/task-1")
@@ -190,21 +190,21 @@ final class ActivationAndNavigationTests: XCTestCase {
             .taskList(url: "\(TestFixtures.origin)/tasks")
         )
         XCTAssertEqual(
-            NavigationRules.target(origin: TestFixtures.origin, phase: .working(node: "IMPLEMENT"), selectedTaskID: ""),
+            NavigationRules.target(origin: TestFixtures.origin, phase: .working(node: "ACTIVE"), selectedTaskID: ""),
             .taskList(url: "\(TestFixtures.origin)/tasks")
         )
     }
 
     func testNavigationKeepsTheTaskIdentifierInsideOneSegment() {
         XCTAssertEqual(
-            NavigationRules.target(origin: TestFixtures.origin, phase: .working(node: "IMPLEMENT"), selectedTaskID: "a/b"),
+            NavigationRules.target(origin: TestFixtures.origin, phase: .working(node: "ACTIVE"), selectedTaskID: "a/b"),
             .taskDetail(url: "\(TestFixtures.origin)/tasks/a%2Fb")
         )
     }
 
     func testNavigationUsesTheRecheckedOriginAfterRecovery() {
         XCTAssertEqual(
-            NavigationRules.target(origin: "http://10.0.0.5:8080", phase: .working(node: "IMPLEMENT"), selectedTaskID: "task-1"),
+            NavigationRules.target(origin: "http://10.0.0.5:8080", phase: .working(node: "ACTIVE"), selectedTaskID: "task-1"),
             .blocked(.invalidAddress)
         )
         XCTAssertEqual(

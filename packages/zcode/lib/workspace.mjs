@@ -38,15 +38,9 @@ export async function inspect(input, { runGit = defaultRunGit } = {}) {
   return { request_digest: hash(input.request), repositories };
 }
 export async function prepare(input, options = {}) {
-  exact(input, ["request", "assessment", "user_choice", "repositories", "handoff"]);
-  if (input.user_choice?.source !== "user" || input.user_choice.mode !== "taskbelay" || !input.user_choice.summary?.trim()) throw new Error("Explicit TaskBelay selection required");
-  const a = input.assessment;
-  if (!a || !["small", "standard", "large"].includes(a.change_level) || !Array.isArray(a.unknowns) || a.unknowns.length) throw new Error("Complete resolved assessment required");
-  for (const name of ["candidate_components", "candidate_paths", "public_contract_flags", "persistence_or_state_flags", "host_or_platform_flags", "verification_shape", "reasons"]) if (!Array.isArray(a[name]) || a[name].some(v => typeof v !== "string")) throw new Error("Missing assessment " + name);
-  if (!a.candidate_components.length || !a.verification_shape.length || !a.reasons.length) throw new Error("Assessment must describe impact and verification");
-  if (!Array.isArray(input.repositories) || input.repositories.length < 1 || input.repositories.length > 8) throw new Error("One to eight repositories required");
+  exact(input, ["request", "authorization_ref", "repositories", "handoff"]);
+  if (typeof input.authorization_ref !== "string" || !input.authorization_ref.trim()) throw new Error("Actual workspace authorization reference required");
   const anchor = await inspect({ request: input.request, repositories: input.repositories.map(r => ({ key: r.key, repository_path: r.repository_path })) }, options);
-  if (hash(anchor) !== hash(a.anchor)) throw new Error("Assessment is stale; inspect and assess again");
   const runGit = options.runGit ?? defaultRunGit;
   const repositories = [];
   for (const selection of input.repositories) {
@@ -69,7 +63,7 @@ export async function prepare(input, options = {}) {
   if (repositories.some(r => r.workspace_mode === "dedicated_worktree") && (!input.handoff || !Array.isArray(input.handoff.discussion) || !input.handoff.discussion.length)) throw new Error("Dedicated workspace needs complete original requirement discussion");
   const launchID = randomUUID(), dir = await directory(launchID, options.environment);
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  const receipt = { launch_id: launchID, host: "zcode", request: input.request, assessment: a, user_choice: input.user_choice, handoff: input.handoff, handoff_digest: hash(input.handoff), repositories, relocation: null };
+  const receipt = { launch_id: launchID, host: "zcode", request: input.request, authorization_ref: input.authorization_ref, request_digest: hash(input.request), handoff: input.handoff, handoff_digest: hash(input.handoff), repositories, relocation: null };
   await atomic(join(dir, "receipt.json"), receipt);
   return locked(launchID, options, async (r, save) => {
     for (const repo of r.repositories) {
@@ -143,7 +137,7 @@ export async function status(id, options = {}) {
 }
 function validateReceipt(receipt, id) {
   if (receipt.host !== "zcode" || receipt.launch_id !== id ||
-      hash(receipt.request) !== receipt.assessment?.anchor?.request_digest ||
+      hash(receipt.request) !== receipt.request_digest || !receipt.authorization_ref ||
       hash(receipt.handoff) !== receipt.handoff_digest) throw new Error("Receipt identity or retained discussion changed");
 }
 export async function bindTask(id, input, options = {}) {
@@ -190,8 +184,7 @@ export async function scope(id, options = {}) {
     const actual = await inspectSourceRepository(repo.worktree_path, options);
     if (actual.source_repository_identity !== repo.source_identity || actual.branch !== repo.target_branch || await workspaceIdentity(actual) !== repo.worktree_identity) throw new Error("Workspace identity or branch changed");
   }
-  return { repository_path: primary.worktree_path, primary_repository_key: primary.key, workspace_origin: origin(r, primary),
-    ...(additional.length ? { additional_repositories: additional.map(repo => ({ key: repo.key, repository_path: repo.worktree_path, workspace_origin: origin(r, repo) })) } : {}) };
+  return { repositories: [primary, ...additional].map(repo => ({key: repo.key, repository_path:repo.worktree_path, workspace_origin:origin(r,repo)})) };
 }
 
 // ZCode's documented desktop integration does not expose a session-launch CLI.
@@ -204,7 +197,7 @@ export async function session(id, operation, options = {}) {
   const taskInstruction = receipt.core_task_id
     ? `Read the saved Core Task ${receipt.core_task_id} by ID with host=zcode, handle its blocker/recovery before work, and never create another Task for this launch.`
     : "Check Core for an existing Task in these exact repositories before creation. An unbound launch receipt does not prove that Core creation never occurred. If a previous open result is uncertain, recover it first. After a successful open, save the actual task_id with host-launch bind-task.";
-  const prompt = `Continue this TaskBelay task in its prepared workspace. First read the entire retained request, assessment and original discussion at ${receiptPath}. Read taskbelay-zcode host-launch status and scope for launch ${id}; verify every actual workspace and its permissions, and preserve existing content. Discover the actual plugin MCP tools and perform server_info before work. ${taskInstruction} Follow the saved Core Action and preserve the user's requirements and corrections.`;
+  const prompt = `Continue this TaskBelay task in its prepared workspace. First read the entire retained request, authorization and original discussion at ${receiptPath}. Read taskbelay-zcode host-launch status and scope for launch ${id}; verify every actual workspace and its permissions, and preserve existing content. Discover the actual plugin MCP tools and perform server_info before work. ${taskInstruction} Follow the current authorized goals, observed changes and evidence decision and preserve the user's requirements and corrections.`;
   return {
     operation, status: "action_required", host: "zcode", launch_id: id,
     receipt_path: receiptPath, task_id: receipt.core_task_id ?? null,
@@ -218,11 +211,14 @@ export async function session(id, operation, options = {}) {
 
 export async function cleanup(id, operation, input, options = {}) {
   if (!["cleanup-worktree", "cleanup-branch"].includes(operation)) throw new Error("Unknown cleanup operation");
-  exact(input, ["repository_key", "terminal", "authorized"]);
+  exact(input, ["repository_key", "task_id", "revision", "terminal", "authorized"]);
   return locked(id, options, async (r, save) => {
     const repo = r.repositories.find(v => v.key === input.repository_key);
     if (!repo || repo.workspace_mode !== "dedicated_worktree") throw new Error("Only receipt-owned dedicated worktrees can be cleaned");
     if (input.terminal !== true || input.authorized !== true) throw new Error("Terminal Task and separate deletion authorization required");
+    const response = await (options.readTask ?? (taskID => coreJSON(["call","taskbelay_get_task"], {task_id:taskID,refresh:false}, options)))(input.task_id);
+    const task = response?.result?.task;
+    if (!task || !["done","cancelled"].includes(task.status) || task.revision !== input.revision || task.task_id !== input.task_id || !task.repositories?.some(entry => entry.key === repo.key && entry.workspace_origin.provisioning_receipt_id === id && entry.workspace_origin.canonical_worktree_root === repo.worktree_path)) throw new Error("Current terminal Core task does not own this workspace");
     const key = operation === "cleanup-worktree" ? "worktree_cleanup" : "branch_cleanup";
     if (repo[key] === "completed") return r;
     if (repo[key]) throw new Error("Cleanup has already been requested; inspect its outcome");
@@ -235,81 +231,9 @@ export async function cleanup(id, operation, input, options = {}) {
   });
 }
 
-export async function relocate(id, input, options = {}) {
-  exact(input, ["relocation_id", "destinations", "authorized", "core_preparation"]);
-  identifier(input.relocation_id);
-  if (input.authorized !== true || !Array.isArray(input.destinations)) throw new Error("Confirmed Core relocation and explicit Host authorization required");
-  const runGit = options.runGit ?? defaultRunGit;
-  return locked(id, options, async (r, save) => {
-    const prepared = input.core_preparation, task = prepared?.task;
-    if (prepared?.relocation_id !== input.relocation_id || !r.core_task_id || task?.task_id !== r.core_task_id ||
-        task.origin_host !== "zcode" || task.current_cursor !== "BLOCKED" ||
-        task.relocation?.relocation_id !== input.relocation_id ||
-        task.blocker?.cause !== "task_relocation_pending" ||
-        task.blocker?.condition?.kind !== "resolve_task_relocation" ||
-        task.blocker.condition.relocation_id !== input.relocation_id ||
-        !Number.isSafeInteger(task.revision) || task.revision < 1) {
-      throw new Error("Pass the actual Core relocation preparation result for the bound ZCode Task");
-    }
-    if (r.relocation?.id === input.relocation_id) {
-      if (r.relocation.phase !== "moved") throw new Error("Relocation is incomplete or uncertain; inspect recorded destinations and Core recovery");
-      const destinations = entries => entries.map(entry => [entry.repository_key, resolve(entry.repository_path)]).sort(([a], [b]) => a.localeCompare(b));
-      if (r.relocation.preparation_digest !== hash(prepared) || hash(destinations(input.destinations)) !== hash(destinations(r.relocation.destinations))) {
-        throw new Error("Repeated relocation must retain the original Core preparation and destinations");
-      }
-      for (const repo of r.repositories) await verifyWorkspace(repo, runGit);
-      return relocationResult(r);
-    }
-    if (r.relocation && (r.relocation.phase !== "moved" || task.revision <= r.relocation.core_revision)) {
-      throw new Error("Previous relocation is incomplete or the Core preparation is stale");
-    }
-    if (r.repositories.some(repo => repo.workspace_mode !== "dedicated_worktree" || repo.phase !== "provisioned")) throw new Error("Relocation requires all dedicated provisioned worktrees");
-    const sources = [{ key: task.primary_repository_key, origin: task.workspace_origin },
-      ...(task.additional_repositories ?? []).map(repo => ({ key: repo.key, origin: repo.workspace_origin }))];
-    if (sources.length !== r.repositories.length || r.repositories.some(repo => {
-      const matches = sources.filter(source => source.key === repo.key);
-      return matches.length !== 1 || matches[0].origin?.mode !== "dedicated_worktree" ||
-        matches[0].origin.canonical_worktree_root !== repo.worktree_path;
-    })) throw new Error("Core relocation source workspaces do not match the prepared Host workspaces");
-    if (input.destinations.length !== r.repositories.length) throw new Error("Relocation must include every repository");
-    const targets = new Set();
-    for (const repo of r.repositories) {
-      const matches = input.destinations.filter(d => d.repository_key === repo.key);
-      if (matches.length !== 1) throw new Error("Missing or duplicate relocation repository");
-      exact(matches[0], ["repository_key", "repository_path"]);
-      if (!isAbsolute(matches[0].repository_path) || targets.has(resolve(matches[0].repository_path))) throw new Error("Invalid relocation destination");
-      const destination = resolve(matches[0].repository_path);
-      const offset = relative(repo.worktree_path, destination);
-      if (!offset || (!offset.startsWith("..") && !isAbsolute(offset))) throw new Error("Relocation destination must be outside the original worktree");
-      try { await lstat(destination); throw new Error("Relocation destination already exists"); }
-      catch (error) { if (error.code !== "ENOENT") throw error; }
-      targets.add(resolve(matches[0].repository_path));
-      await verifyWorkspace(repo, runGit);
-    }
-    r.relocation = { id: input.relocation_id, phase: "requested", destinations: input.destinations, moved: [],
-      core_revision: task.revision, preparation_digest: hash(prepared) }; await save();
-    for (const repo of r.repositories) {
-      const destination = input.destinations.find(d => d.repository_key === repo.key).repository_path;
-      await runGit(["-C", repo.repository_path, "worktree", "move", repo.worktree_path, destination]);
-      const actual = await inspectSourceRepository(destination, { runGit });
-      if (actual.source_repository_identity !== repo.source_identity || actual.branch !== repo.target_branch) throw new Error("Relocation target identity mismatch");
-      repo.worktree_path = actual.canonical_root;
-      repo.worktree_identity = await workspaceIdentity(actual);
-      r.relocation.moved.push(repo.key); await save();
-    }
-    r.relocation.phase = "moved"; await save();
-    return relocationResult(r);
-  });
-}
 
 async function verifyWorkspace(repo, runGit) {
   const actual = await inspectSourceRepository(repo.worktree_path, { runGit });
   if (actual.source_repository_identity !== repo.source_identity || actual.branch !== repo.target_branch ||
       await workspaceIdentity(actual) !== repo.worktree_identity) throw new Error("Relocation workspace identity changed");
-}
-
-function relocationResult(receipt) {
-  return { relocation_id: receipt.relocation.id,
-    relocation_destinations: receipt.repositories.map(repo => ({ key: repo.key, repository_path: repo.worktree_path })),
-    core_resolution_required: true };
 }

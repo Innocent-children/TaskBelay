@@ -9,12 +9,12 @@ import XCTest
 /// and only after continuous observation of the same Task, and that a first read
 /// never replays a historical prompt.
 final class PresentationRulesTests: XCTestCase {
-    func testActiveReviewNodeSelectsReviewArtworkAndLeavingItRestoresWorking() {
+    func testActiveTaskKeepsWorkingArtwork() {
         let state = PresentationState()
-        let review = state.apply(.task(TestFixtures.summary(currentNode: "COMPREHENSION_REVIEW", lifecycle: .active), detailReadiness: .ready))
-        XCTAssertEqual(review.clip, .review)
-        XCTAssertEqual(review.phase, .working(node: "COMPREHENSION_REVIEW"))
-        let working = state.apply(.task(TestFixtures.summary(currentNode: "IMPLEMENT", lifecycle: .active), detailReadiness: .ready))
+        let review = state.apply(.task(TestFixtures.summary(currentNode: "ACTIVE", lifecycle: .active), detailReadiness: .ready))
+        XCTAssertEqual(review.clip, .working)
+        XCTAssertEqual(review.phase, .working(node: "ACTIVE"))
+        let working = state.apply(.task(TestFixtures.summary(currentNode: "ACTIVE", lifecycle: .active), detailReadiness: .ready))
         XCTAssertEqual(working.clip, .working)
     }
 
@@ -23,7 +23,7 @@ final class PresentationRulesTests: XCTestCase {
             input: .disconnected,
             previous: PresentationRules.Snapshot(summary: TestFixtures.summary(lifecycle: .done)),
             continuousObservation: true,
-            previousPhase: .working(node: "IMPLEMENT"),
+            previousPhase: .working(node: "ACTIVE"),
             lastKnownSummary: TestFixtures.summary(),
             lastKnownReadiness: .ready
         )
@@ -79,7 +79,7 @@ final class PresentationRulesTests: XCTestCase {
             input: .taskMissing,
             previous: nil,
             continuousObservation: true,
-            previousPhase: .working(node: "IMPLEMENT"),
+            previousPhase: .working(node: "ACTIVE"),
             lastKnownSummary: nil,
             lastKnownReadiness: nil
         )
@@ -90,12 +90,12 @@ final class PresentationRulesTests: XCTestCase {
     }
 
     func testArchivedTaskBeatsItsCurrentNode() {
-        let summary = TestFixtures.summary(currentNode: "IMPLEMENT", lifecycle: .done, archived: true)
+        let summary = TestFixtures.summary(currentNode: "ACTIVE", lifecycle: .done, archived: true)
         let result = PresentationRules.evaluate(
             input: .task(summary, detailReadiness: .ready),
             previous: PresentationRules.Snapshot(summary: TestFixtures.summary(lifecycle: .active)),
             continuousObservation: true,
-            previousPhase: .working(node: "IMPLEMENT"),
+            previousPhase: .working(node: "ACTIVE"),
             lastKnownSummary: nil,
             lastKnownReadiness: nil
         )
@@ -112,7 +112,7 @@ final class PresentationRulesTests: XCTestCase {
             input: .task(done, detailReadiness: .ready),
             previous: PresentationRules.Snapshot(summary: previous),
             continuousObservation: true,
-            previousPhase: .working(node: "IMPLEMENT"),
+            previousPhase: .working(node: "ACTIVE"),
             lastKnownSummary: nil,
             lastKnownReadiness: nil
         )
@@ -129,7 +129,7 @@ final class PresentationRulesTests: XCTestCase {
             input: .task(done, detailReadiness: .ready),
             previous: PresentationRules.Snapshot(summary: blocked),
             continuousObservation: true,
-            previousPhase: .blocked(node: "IMPLEMENT"),
+            previousPhase: .blocked(node: "ACTIVE"),
             lastKnownSummary: nil,
             lastKnownReadiness: nil
         )
@@ -165,7 +165,7 @@ final class PresentationRulesTests: XCTestCase {
             input: .task(done, detailReadiness: .ready),
             previous: PresentationRules.Snapshot(summary: other),
             continuousObservation: true,
-            previousPhase: .working(node: "IMPLEMENT"),
+            previousPhase: .working(node: "ACTIVE"),
             lastKnownSummary: nil,
             lastKnownReadiness: nil
         )
@@ -178,7 +178,7 @@ final class PresentationRulesTests: XCTestCase {
             input: .task(TestFixtures.summary(currentNode: "CANCELLED", lifecycle: .cancelled), detailReadiness: .ready),
             previous: PresentationRules.Snapshot(summary: TestFixtures.summary(lifecycle: .active)),
             continuousObservation: true,
-            previousPhase: .working(node: "IMPLEMENT"),
+            previousPhase: .working(node: "ACTIVE"),
             lastKnownSummary: nil,
             lastKnownReadiness: nil
         )
@@ -195,7 +195,7 @@ final class PresentationRulesTests: XCTestCase {
             input: .task(blocked, detailReadiness: .ready),
             previous: PresentationRules.Snapshot(summary: previous),
             continuousObservation: true,
-            previousPhase: .working(node: "IMPLEMENT"),
+            previousPhase: .working(node: "ACTIVE"),
             lastKnownSummary: nil,
             lastKnownReadiness: nil
         )
@@ -267,11 +267,11 @@ final class PresentationRulesTests: XCTestCase {
         XCTAssertEqual(content.blocker, PetStrings.english.blockedFallback)
     }
 
-    func testNodeRegressionShowsTheNewCurrentValue() {
+    func testActiveRefreshDoesNotReplayAnIntro() {
         let state = PresentationState()
-        state.apply(.task(TestFixtures.summary(currentNode: "TEST", lifecycle: .active), detailReadiness: .ready))
-        let regressed = state.apply(.task(TestFixtures.summary(currentNode: "IMPLEMENT", lifecycle: .active), detailReadiness: .ready))
-        XCTAssertEqual(regressed.phase, .working(node: "IMPLEMENT"))
+        state.apply(.task(TestFixtures.summary(currentNode: "ACTIVE", lifecycle: .active), detailReadiness: .ready))
+        let regressed = state.apply(.task(TestFixtures.summary(currentNode: "ACTIVE", lifecycle: .active), detailReadiness: .ready))
+        XCTAssertEqual(regressed.phase, .working(node: "ACTIVE"))
         XCTAssertEqual(regressed.clip, .working)
         XCTAssertFalse(regressed.playIntro)
     }
@@ -285,7 +285,7 @@ final class PresentationRulesTests: XCTestCase {
             lastKnownSummary: nil,
             lastKnownReadiness: nil
         )
-        XCTAssertEqual(result.phase, .working(node: "IMPLEMENT"))
+        XCTAssertEqual(result.phase, .working(node: "ACTIVE"))
         XCTAssertEqual(result.detailReadiness, .readOnly)
         let content = BubbleRules.content(result: result, lastSyncAt: nil, strings: .english, language: .english)
         XCTAssertEqual(content.stage, "Implementation · \(PetStrings.english.readOnlyHint)")

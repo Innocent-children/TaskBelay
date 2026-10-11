@@ -57,7 +57,7 @@ test("DeepSeek pre-execute gate blocks a selected TaskBelay write before dispatc
   assert.equal(dispatched, 0);
 });
 
-test("DeepSeek gate ignores ordinary turns and read-only editor calls", async () => {
+test("DeepSeek gate retains scope checks across ordinary follow-ups and bypasses read-only calls", async () => {
   let listener;
   let spawns = 0;
   const ctx = { on: (_event, callback) => { listener = callback; return () => undefined; } };
@@ -66,7 +66,7 @@ test("DeepSeek gate ignores ordinary turns and read-only editor calls", async ()
   await listener(selectedExecution("str_replace_editor", { command: "view", path: "/workspace/file" }), async () => { dispatched += 1; return { kind: "allow" }; });
   await listener(ordinaryExecution("write", { file_path: "/workspace/file", content: "x" }), async () => { dispatched += 1; return { kind: "allow" }; });
   assert.equal(dispatched, 2);
-  assert.equal(spawns, 0);
+  assert.equal(spawns, 1);
 });
 
 function selectedExecution(name, argumentsValue, text = "/taskbelay continue") {

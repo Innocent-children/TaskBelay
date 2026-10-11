@@ -31,13 +31,11 @@ import { assertNoDuplicateJSONMembers } from "../lib/json.mjs";
 import { execPortableCommand } from "../lib/command.mjs";
 import { inspectAdmissionAnchor } from "../lib/task-admission.mjs";
 import { HOST_LAUNCH_OPERATIONS, hostLaunchHelp } from "../lib/host-launch-contract.mjs";
-import { ARTIFACT_OPERATIONS, artifactsHelp } from "../lib/artifacts-help.mjs";
 import {
   beginManagedTaskDispatch,
   claimManagedTaskDispatch,
   reconcileManagedTaskDispatch,
   recoverUncalledManagedTaskDispatch,
-  beginTaskHandoff,
   bootstrapManagedTask,
   cleanupCliTaskWorktree,
   cleanupTaskBranch,
@@ -46,8 +44,6 @@ import {
   provisionCliTask,
   provisionLocalTask,
   recordManagedTaskDispatch,
-  recordTaskHandoff,
-  recordTaskHandoffStatus,
 } from "../lib/task-launch.mjs";
 import { provisioningReceiptPath, readProvisioningReceipt } from "../lib/provisioning-receipt.mjs";
 import { terminalCleanupDecision } from "../lib/worktree-lifecycle.mjs";
@@ -72,7 +68,7 @@ export async function runCLI(arguments_, dependencies = {}) {
   let setupAttempted = false;
 
   if (Array.isArray(arguments_) && arguments_.length === 1 && arguments_[0] === "--help") {
-    stdout.write("Usage: taskbelay-codex status|setup|remove [--json]\n       taskbelay-codex --version\n       taskbelay-codex mcp\n       taskbelay-codex artifacts <collect|prepare> [--help]\n       taskbelay-codex hook pre-tool-use\n       taskbelay-codex host-check pre-file-write\n       taskbelay-codex host-check workspace-available\n\n" + artifactsHelp() + "\n" + hostLaunchHelp());
+    stdout.write("Usage: taskbelay-codex status|setup|remove [--json]\n       taskbelay-codex --version\n       taskbelay-codex mcp\n       taskbelay-codex call <tool_name>\n       taskbelay-codex hook pre-tool-use\n       taskbelay-codex host-check pre-file-write\n       taskbelay-codex host-check workspace-available\n\n" + hostLaunchHelp());
     return { code: 0, signal: null };
   }
   if (Array.isArray(arguments_) && arguments_[0] === "host-launch" && (
@@ -82,16 +78,9 @@ export async function runCLI(arguments_, dependencies = {}) {
     stdout.write(hostLaunchHelp(arguments_.length === 3 ? arguments_[1] : undefined));
     return { code: 0, signal: null };
   }
-  if (Array.isArray(arguments_) && arguments_[0] === "artifacts" && (
-    arguments_.length === 2 && arguments_[1] === "--help" ||
-    arguments_.length === 3 && ARTIFACT_OPERATIONS.includes(arguments_[1]) && arguments_[2] === "--help"
-  )) {
-    stdout.write(artifactsHelp(arguments_.length === 3 ? arguments_[1] : undefined));
-    return { code: 0, signal: null };
-  }
 
   if (!isProductionCommand(arguments_)) {
-    stderr.write("taskbelay-codex: invalid arguments; expected status [--json], setup [--json], remove [--json], mcp, artifacts <collect|prepare>, hook pre-tool-use, host-check <pre-file-write|workspace-available>, host-launch <operation>, --version, or --help\n");
+    stderr.write("taskbelay-codex: invalid arguments; expected status [--json], setup [--json], remove [--json], mcp, hook pre-tool-use, host-check <pre-file-write|workspace-available>, host-launch <operation>, --version, or --help\n");
     return { code: 2, signal: null };
   }
 
@@ -105,13 +94,6 @@ export async function runCLI(arguments_, dependencies = {}) {
       return { code: await invokeHook(), signal: null };
     }
     const paths = await resolvePaths();
-    if (arguments_.length === 2 && arguments_[0] === "artifacts") {
-      return await launchPackagedCore(paths, arguments_, {
-        environment,
-        spawnImpl: dependencies.spawnImpl ?? spawn,
-        signalSource: dependencies.signalSource ?? process,
-      });
-    }
     if (arguments_.length === 1 && arguments_[0] === "mcp") {
       if (paths.usesDefaultDataDirectory) await ensureDataDirectory(paths);
       return await launchPackagedCore(paths, ["mcp", "--stdio"], {
@@ -120,7 +102,7 @@ export async function runCLI(arguments_, dependencies = {}) {
         signalSource: dependencies.signalSource ?? process,
       });
     }
-    if (arguments_.length === 2 && arguments_[0] === "host-check") {
+    if (arguments_.length === 2 && ["host-check","call"].includes(arguments_[0])) {
       return await launchPackagedCore(paths, arguments_, {
         environment,
         spawnImpl: dependencies.spawnImpl ?? spawn,
@@ -373,7 +355,7 @@ function writeSetupSuccess(stdout, result, json, { environment, renderSetupResul
 
 function isProductionCommand(arguments_) {
   if (!Array.isArray(arguments_)) return false;
-  if (arguments_.length === 2 && arguments_[0] === "artifacts" && ["collect", "prepare"].includes(arguments_[1])) return true;
+  if (arguments_.length === 2 && arguments_[0] === "call" && arguments_[1].startsWith("taskbelay_")) return true;
   if (arguments_.length === 1 && ["mcp", "--version"].includes(arguments_[0])) return true;
   if (arguments_.length === 2 && arguments_[0] === "hook" && arguments_[1] === "pre-tool-use") return true;
   if (arguments_.length === 2 && arguments_[0] === "host-check" && ["pre-file-write", "workspace-available"].includes(arguments_[1])) return true;
@@ -426,9 +408,6 @@ async function runHostLaunchCommand(operation, input, paths, dependencies) {
   if (operation === "dispatch-call") return await claimManagedTaskDispatch(input, common);
   if (operation === "dispatch-recover") return await recoverUncalledManagedTaskDispatch(input, common);
   if (operation === "dispatch-result") return await recordManagedTaskDispatch(input, common);
-  if (operation === "handoff-start") return await beginTaskHandoff(input, common);
-  if (operation === "handoff-result") return await recordTaskHandoff(input, common);
-  if (operation === "handoff-status") return await recordTaskHandoffStatus(input, common);
   if (operation === "cleanup-decision") {
     assertClosedObject(input, ["lifecycle", "surface", "clean", "pushed", "stateCertain"], "cleanup decision input");
     return terminalCleanupDecision(input);

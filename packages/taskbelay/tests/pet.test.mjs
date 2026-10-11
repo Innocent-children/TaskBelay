@@ -24,7 +24,7 @@ import { ensurePetInstalled } from "../lib/platform/macos/pet-installer.mjs";
 
 const currentPetPlatform = await loadPetPlatform(process.platform, process.arch);
 
-test("macOS application replacement preserves the installed copy when source staging fails", async t => {
+test("macOS application replacement preserves the installed copy when source staging fails", {skip:process.platform==='win32'?'Windows cannot create unprivileged file symlinks':false}, async t => {
   const root = await mkdtemp(join(tmpdir(), "taskbelay-mac-pet-copy-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const source = join(root, "package"), petDirectory = join(root, "pet");

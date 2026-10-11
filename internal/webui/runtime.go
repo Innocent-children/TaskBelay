@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/application"
+	"github.com/Innocent-children/taskbelay/internal/domain"
+	coremcp "github.com/Innocent-children/taskbelay/internal/mcp"
 	"github.com/Innocent-children/taskbelay/internal/repository"
 	"github.com/Innocent-children/taskbelay/internal/store"
 )
@@ -136,7 +138,9 @@ func classifyStoppedStorage(ctx context.Context, dataDirectory string, state Run
 		_ = taskStore.Close()
 		return state
 	}
-	if errors.Is(err, store.ErrSchemaUnsupported) || errors.Is(err, store.ErrProcessUnsupported) {
+	var failure *domain.Error
+	if errors.As(err, &failure) && (failure.Code == "SCHEMA_UNSUPPORTED" || failure.Code == "STORAGE_CORRUPT") {
+		state.Readiness = ReadinessIncompatible
 		return state
 	}
 	if file, openErr := os.Open(databasePath); openErr == nil {
@@ -225,7 +229,7 @@ func Serve(ctx context.Context, dataDirectory, coreIdentity string) error {
 		return err
 	}
 	defer taskStore.Close()
-	controlCenter, err := application.NewControlCenter(taskStore, repository.NewGitObserver())
+	service, err := application.NewService(taskStore, repository.NewGitObserver())
 	if err != nil {
 		return err
 	}
@@ -237,7 +241,11 @@ func Serve(ctx context.Context, dataDirectory, coreIdentity string) error {
 		}
 		return SystemStatusResponse{Readiness: ReadinessReady, CoreIdentity: coreIdentity, DataRootDigest: digest, URL: url}
 	}
-	api, err := NewAPI(controlCenter, controlCenter, status)
+	core, err := coremcp.NewServer(service, coreIdentity, nil)
+	if err != nil {
+		return err
+	}
+	api, err := NewAPI(service, core, status)
 	if err != nil {
 		return err
 	}

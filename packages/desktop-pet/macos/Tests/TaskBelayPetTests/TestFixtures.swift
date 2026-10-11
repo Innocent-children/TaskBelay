@@ -27,7 +27,7 @@ enum TestFixtures {
         taskID: String = "task-1",
         requestSummary: String = "Add the desktop pet",
         originHost: String = "codex",
-        currentNode: String = "IMPLEMENT",
+        currentNode: String = "ACTIVE",
         lifecycle: String = "active",
         revision: UInt64 = 3,
         updatedAt: String = "2026-09-06T08:15:30.123456789Z",
@@ -87,7 +87,7 @@ enum TestFixtures {
     static func summary(
         taskID: String = "task-1",
         requestSummary: String = "Add the desktop pet",
-        currentNode: String = "IMPLEMENT",
+        currentNode: String = "ACTIVE",
         lifecycle: TaskLifecycle = .active,
         revision: UInt64 = 3,
         archived: Bool = false,

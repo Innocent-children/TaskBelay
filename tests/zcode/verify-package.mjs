@@ -44,12 +44,7 @@ await writeFile(join(repository, "README.md"), "package verification\n");
 await run("git", ["-C", repository, "add", "README.md"]);
 await run("git", ["-C", repository, "commit", "-m", "Initialize verification repository"]);
 const request = "Verify a packaged ZCode Task can be created, resumed and cancelled.";
-const anchor = await command(["host-launch", "inspect"], { request, repositories: [{ key: "primary", repository_path: repository }] });
-const prepared = await command(["host-launch", "prepare"], { request,
-  assessment: { change_level: "standard", candidate_components: ["verification repository"], candidate_paths: ["README.md"],
-    public_contract_flags: [], persistence_or_state_flags: [], host_or_platform_flags: ["ZCode package verification"],
-    verification_shape: ["native Core creation and recovery"], unknowns: [], reasons: ["Verify the final package"], anchor },
-  user_choice: { source: "user", mode: "taskbelay", summary: "Automated isolated package acceptance fixture" },
+const prepared = await command(["host-launch", "prepare"], { request, authorization_ref: "isolated-fixture-user",
   repositories: [{ key: "primary", repository_path: repository, workspace_mode: "new_branch", source_type: "local", remote_name: "", base_branch: "main", target_branch: "verify/zcode", carry_changes: false, worktree_path: repository }], handoff: null });
 await command(["host-launch", "provision"], { launch_id: prepared.launch_id });
 const scope = await command(["host-launch", "scope"], { launch_id: prepared.launch_id });
@@ -90,61 +85,34 @@ try {
   await rpc("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "zcode-package-verification", version: "1.0" } });
   child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const info = await tool("taskbelay_server_info", {});
-  assert.equal(info.ok, true); assert.ok(info.result.supported_hosts.includes("zcode"));
-  const opened = await tool("taskbelay_open_task", { host: "zcode", ...scope, new_task: {
-    request, initial_scope: ["README.md"], initial_out_of_scope: ["other files"], known_acceptance_criteria: ["Same Task is resumed."], method_profile: "plain",
-  } });
+  assert.equal(info.ok, true); assert.equal(info.result.tools.length, 12);
+  const openRequest = { operation_id: "zcode-package-open", host: "zcode", ...scope,
+    authorization: {user_ref: "isolated-fixture-user", request,
+      goals: [{id: "package", statement: "The packaged Core runs the real local assertion", checks: ["readme"]}],
+      expected_paths: ["README.md"], forbidden_paths: ["unexpected.txt"]},
+    checks: [{id: "readme", kind: "command", argv: [process.execPath, "-e", "require('node:assert/strict').ok(require('node:fs').readFileSync('README.md','utf8').includes('package verification'))"],
+      inputs: ["README.md"], input_basis: "Only this file and Node built-ins affect the assertion", conditions: "Local Node and README", rationale: "Execute an actual package check", timeout_ms: 3000, retry: "repeatable"}]};
+  const opened = await tool("taskbelay_open_task", openRequest);
   assert.equal(opened.ok, true, JSON.stringify(opened));
-  const task = opened.result.task;
-  await command(["host-launch", "bind-task"], { launch_id: prepared.launch_id, task_id: task.task_id });
-  const resumed = await tool("taskbelay_open_task", { host: "zcode", repository_path: repository });
-  assert.equal(resumed.ok, true); assert.equal(resumed.result.task.task_id, task.task_id);
-  const forbidden = await tool("taskbelay_get_task", { host: "codex", task_id: task.task_id });
-  assert.equal(forbidden.ok, false);
-  assert.equal(forbidden.error.code, "HOST_OWNERSHIP_CONFLICT");
-  report.checks.push("packaged stdio MCP, zcode Task creation/original-directory resume and cross-Host ownership refusal");
-  let current = resumed.result.task;
-  async function submit(name, transition, nodeResult) {
-    const result = await tool(name, { host: "zcode", task_id: current.task_id, action_id: current.current_action.action_id,
-      transition_id: transition, summary: "Isolated native package acceptance fixture", reason: "",
-      artifacts: { current: [], other_process: [] },
-      method_results: Object.fromEntries(current.current_action.method_steps.map(step => [step.step_id, { capability: "", summary: "Completed fixture planning work" }])),
-      node_result: nodeResult });
-    assert.equal(result.ok, true, JSON.stringify(result));
-    current = result.result;
-  }
-  await submit("taskbelay_submit_requirements", "requirements_ready", { problem_class: "none", unresolved_questions: [], baseline: {
-    goal: request, scope: ["README.md"], out_of_scope: ["other files"], acceptance_criteria: ["README is updated."], constraints: [], assumptions: [],
-  } });
-  await submit("taskbelay_submit_design", "design_ready", { problem_class: "none", findings: [], baseline: {
-    approach: "Update the verification README", components: ["README.md"], decisions: ["Only the README may change."],
-    rejected_alternatives: ["No other file is needed."], complexity_justification: ["One documentation edit."], risks: [],
-  } });
-  await submit("taskbelay_submit_tasks", "tasks_plan_saved", { problem_class: "none", findings: [], user_confirmation: null, baseline: {
-    work_items: [{ work_item_id: "readme", summary: "Update README", expected_paths: ["README.md"], acceptance_indexes: [0], verification_steps: ["Read the diff"], dependencies: [] }],
-    verification_plan: { checks: [{ name: "readme", rationale: "Verify the only planned file" }],
-      initial_budget: { level: "minimal", max_automatic_commands: 2, allow_full_suite: false, allow_manual_handoff: false }, full_suite_expected: false, test_code_changes_expected: false },
-  } });
-  await submit("taskbelay_submit_tasks", "tasks_ready", { problem_class: "none", findings: [], baseline: null, user_confirmation: {
-    source: "user", status: "passed", summary: "Simulated user decision in this isolated automated acceptance fixture",
-    requirements_digest: current.baselines.requirements.digest, design_digest: current.baselines.design.digest,
-    task_plan_digest: current.baselines.task_plan.digest, task_plan_revision: current.baselines.task_plan.revision,
-  } });
+  let view = opened.result;
+  await command(["host-launch", "bind-task"], { launch_id: prepared.launch_id, task_id: view.task.task_id });
+  const resumed = await tool("taskbelay_open_task", openRequest);
+  assert.equal(resumed.ok, true); assert.equal(resumed.result.task.task_id, view.task.task_id); assert.equal(resumed.result.replayed, true);
+  const executed = await tool("taskbelay_run_check", {task_id: view.task.task_id, revision: view.task.revision, operation_id: "zcode-package-run", check_id: "readme"});
+  assert.equal(executed.ok, true, JSON.stringify(executed)); assert.equal(executed.result.run.status, "passed"); assert.equal(executed.result.run.exit_code, 0); view = executed.result.view;
+  report.checks.push("packaged native stdio MCP, current catalog, Task creation, identical-open replay and actual local check");
   assert.equal(await command(["hook", "pre-tool-use"], { hook_event_name: "PreToolUse", cwd: repository,
     tool_name: "Edit", tool_input: { file_path: join(repository, "README.md"), old_string: "verification", new_string: "verified" } }), null);
   const hook = await command(["hook", "pre-tool-use"], { hook_event_name: "PreToolUse", cwd: repository,
     tool_name: "Write", tool_input: { file_path: join(repository, "unexpected.txt"), content: "must not write" } });
   assert.equal(hook.hookSpecificOutput.permissionDecision, "deny");
-  report.checks.push("native Core-backed Hook permits a planned Edit and denies an out-of-plan Write after fixture plan confirmation");
-  const saved = await tool("taskbelay_get_task", { host: "zcode", task_id: task.task_id });
-  const rejected = await tool("taskbelay_resolve_blocker", { host: "zcode", task_id: task.task_id,
-    action_id: saved.result.task.current_action.action_id, choice: "reject", reason: "The fixture user rejects the out-of-plan file." });
-  assert.equal(rejected.ok, true, JSON.stringify(rejected));
-  const cancelled = await tool("taskbelay_cancel_task", { host: "zcode", task_id: task.task_id,
-    revision: rejected.result.revision, request_id: "package-verification-cancel", reason: "The isolated package verification is complete." });
-  assert.equal(cancelled.ok, true, JSON.stringify(cancelled));
-  assert.equal(cancelled.result.current_cursor, "CANCELLED");
-  report.checks.push("cancel releases the isolated repository claim");
+  report.checks.push("native Core-backed hook permits an authorized Edit and denies an explicitly forbidden Write without a phase approval");
+  const saved = await tool("taskbelay_get_task", {task_id: view.task.task_id});
+  const cancelled = await tool("taskbelay_cancel_task", {task_id: view.task.task_id, revision: saved.result.task.revision,
+    operation_id: "zcode-package-cancel", reason: "The isolated package verification is complete."});
+  assert.equal(cancelled.ok, true, JSON.stringify(cancelled)); assert.equal(cancelled.result.task.status, "cancelled");
+  report.checks.push("cancellation releases the isolated repository claim and preserves code");
+
 } finally {
   child.stdin.end(); child.kill();
 }

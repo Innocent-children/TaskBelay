@@ -78,9 +78,6 @@ export function authorizeTaskBelayExecution(execution, {
   if (turn === undefined) {
     return `${DENIAL_CODES.NO_OPEN_TURN}: ${selectorInstruction}.`;
   }
-  if (!turn.selectorPresent) {
-    return `${DENIAL_CODES.SELECTOR_REQUIRED}: ${selectorInstruction}.`;
-  }
   if (execution.name === TASKBELAY_QUALIFIED_TOOL_NAMES[1]) {
     return authorizeRepositoryScope(execution.arguments, { workspaceRoot, realpathImpl });
   }
@@ -114,18 +111,8 @@ function authorizeRepositoryScope(arguments_, { workspaceRoot, realpathImpl }) {
     return `${DENIAL_CODES.REPOSITORY_PATH_INVALID}: Workspace Root is not accessible.`;
   }
 
-  const declared = [{ key: arguments_.primary_repository_key ?? "primary", path: arguments_.repository_path }];
-  if (arguments_.additional_repositories !== undefined) {
-    if (!Array.isArray(arguments_.additional_repositories)) {
-      return `${DENIAL_CODES.REPOSITORY_PATH_INVALID}: additional_repositories must be an array.`;
-    }
-    for (const entry of arguments_.additional_repositories) {
-      if (!isPlainObject(entry)) {
-        return `${DENIAL_CODES.REPOSITORY_PATH_INVALID}: an additional repository declaration is invalid.`;
-      }
-      declared.push({ key: entry.key, path: entry.repository_path });
-    }
-  }
+  if (!Array.isArray(arguments_.repositories) || arguments_.repositories.length === 0) return "TASKBELAY_REPOSITORY_PATH_INVALID: repositories are required.";
+  const declared = arguments_.repositories.map(entry => ({key:entry.key ?? "primary",path:entry.repository_path}));
 
   for (const repository of declared) {
     if (typeof repository.key !== "string" || repository.key.length === 0 || typeof repository.path !== "string" || !isAbsolute(repository.path)) {

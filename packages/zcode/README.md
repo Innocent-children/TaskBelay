@@ -1,48 +1,15 @@
 # TaskBelay for ZCode
 
-TaskBelay preserves a development task's requirements, file scope, verification plan and progress across ZCode sessions. The Go Core remains the authority for its saved state.
+This source adapter uses the current local engineering Core: authorized goals, actual changes, real execution evidence, cumulative cost and recovery. Published versions and stable support records are unchanged; build this checkout for the new contract. Old data is preserved and unsupported, so select a separate explicit TASKBELAY_DATA_DIR.
 
-This Adapter requires Node.js `>=24`, Git and ZCode with native plugins, local stdio MCP and process hooks. It targets Windows x64 and macOS arm64. Check the [support matrix](https://github.com/Innocent-children/taskbelay/blob/main/docs/SUPPORT-MATRIX_en.md) for platform verification and remaining limits; macOS device verification is pending.
+Install the public manager with npm install -g taskbelay@latest and taskbelay install --host zcode. For current source use node scripts/taskbelay-local.mjs install --host zcode --yes from the repository. Node.js >=24 is required; source builds additionally need Go >=1.26 and pnpm >=11 <12.
 
-## Install and activate
+Complete installation/enablement in Settings → Plugins and reload the session; local preparation alone does not prove plugin loading.
 
-Install the published Adapter:
+Invoke the TaskBelay Skill and state the desired outcome and limits. Existing authorization survives ordinary follow-ups. Alternate coding and verification, retain semantic basis/uncertainty and use Core run_check for actual local results. Unsupported shell/remote operations must be described honestly. Resume a saved Task in its bound workspace and read the original run after a lost response.
 
-```sh
-npm install --global taskbelay-zcode@latest
-taskbelay-zcode setup --json
-taskbelay-zcode status --json
-```
+The hook covers registered native structured writes paths; other changes are observed at checkpoints. Core cannot authenticate conversation or prove semantic judgments. Checks still follow native Host permissions.
 
-For a maintainer-provided local tarball, replace `taskbelay-zcode@latest` with its path.
+Status/doctor/upgrade/uninstall use the unified manager with --host zcode; ordinary removal retains Task data. Optional workspace preparation reuses actual authorization_ref and yields current repositories. Relocation is unsupported. Done/cancelled does not authorize Git, publication or cleanup.
 
-Setup returns `action_required` and the local marketplace path. Open a ZCode workspace, then Settings → Plugins → Create → Add marketplace. Add that file, install and enable `taskbelay-zcode` from `taskbelay-zcode-local`, and start a new session. Check the Skill, plugin MCP server and Write/Edit Hook in ZCode. The CLI verifies the local package; it cannot verify the client has installed or loaded it. `partial` requires fixing local setup first.
-
-For installation from source, see the [ZCode guide](https://github.com/Innocent-children/taskbelay/blob/main/docs/ZCODE_en.md). This package provides the Adapter, not the general manager or desktop application.
-
-## Start and resume
-
-In the repository you want to change, type `/` in ZCode and select the TaskBelay Skill under Skills, then describe your task. Review the assessment and approve the complete work/file/verification plan before implementation. A new branch in the current directory is the default; current-branch and dedicated-worktree modes are also supported.
-
-To resume, reopen the original workspace and ask the Skill to continue the saved Task. Prepared workspaces and handoffs use retained receipts; the Adapter's `host-launch open|resume` returns UI instructions and does not pretend to launch a ZCode process.
-
-## Maintain and remove
-
-For local package builds, refresh the marketplace in ZCode after updating package files. If the package version is unchanged, uninstall and reinstall the plugin so its cached files are replaced. Start a new session for the current Hook configuration.
-
-Ordinary removal retains Task data, workspaces and unrelated settings:
-
-```sh
-taskbelay-zcode remove --json
-```
-
-Follow the returned instructions to uninstall the plugin, remove its marketplace in ZCode, and close affected sessions. After explicitly confirming those steps:
-
-```sh
-taskbelay-zcode remove --confirm-host-removed --json
-npm uninstall --global taskbelay-zcode
-```
-
-The confirmation command clears only the owned pending-removal record; it reports human confirmation, not an automatic ZCode UI check. Shared data reset and Git cleanup are separate operations. Use the same `TASKBELAY_DATA_DIR` for management and ZCode when overriding the default data directory.
-
-[中文指南](https://github.com/Innocent-children/taskbelay/blob/main/docs/ZCODE.md) · [English guide](https://github.com/Innocent-children/taskbelay/blob/main/docs/ZCODE_en.md)
+See [product](../../docs/PRODUCT_en.md), [commands](../../docs/COMMANDS_en.md), [verification boundaries](../../docs/SUPPORT-MATRIX_en.md). Adapter/package tests are distinct from actual ZCode sessions.

@@ -55,7 +55,7 @@ test("Claude plugin paths stay inside the independently cached package", async (
   const pkg = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
   assert.equal(pkg.version, manifest.version);
   assert.ok(pkg.files.includes("lib/worktree-snapshot.mjs"));
-  assert.ok(pkg.files.includes("plugin/skills/taskbelay/references/tool-results.md"));
+  assert.ok(pkg.files.includes("plugin/skills/taskbelay/references/protocol.md"));
 });
 
 test("Claude platform policies load from an independent package directory", async t => {

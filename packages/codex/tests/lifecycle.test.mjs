@@ -216,7 +216,7 @@ test("setup preflights compatibility, resources, runtime, and PATH before regist
   await assert.rejects(stat(wrongSkillName.statePath), { code: "ENOENT" });
 
   const missingReference = await makeSetupFixture(t, "missing-skill-reference");
-  await rm(join(missingReference.paths.pluginRoot, "skills", "taskbelay", "references", "nodes", "test.md"));
+  await rm(join(missingReference.paths.pluginRoot, "skills", "taskbelay", "references", "engineering.md"));
   await assert.rejects(setupRegistration(missingReference.options), /Skill reference must exist and be readable/);
   await assert.rejects(stat(missingReference.statePath), { code: "ENOENT" });
 

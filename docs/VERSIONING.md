@@ -18,7 +18,7 @@ Products evolve independently. Releasing one product changes only its version fi
 the copies that must match it. Host Adapters may package a different Core version; build and release checks
 read it from the actual Core executable.
 
-SQLite additionally has one Core-owned database Schema version, currently `0.7.0`. It identifies
+SQLite additionally has one Core-owned database Schema version, currently `1.0.0`. It identifies
 the one supported persisted layout and changes with that current layout.
 
 Internal protocols, limits, snapshots, process definitions, payload contracts,
@@ -37,3 +37,6 @@ package version and add its missing public identity without requiring a previous
 Local package metadata and release tooling do not establish a published release or verified Host
 support. Claude and ZCode remain outside the stable release metadata until their own confirmed
 release runs. See [Release Ownership](../release/README.md) for npm setup and publication requirements.
+
+
+Before 1.0, incompatible Core contract changes increment MINOR. The current source engineering upgrade changes the executable and data contract; stable public identities remain under the separate release flow.

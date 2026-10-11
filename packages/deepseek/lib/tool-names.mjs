@@ -5,20 +5,15 @@ export const TASKBELAY_RAW_TOOL_NAMES = Object.freeze([
   "taskbelay_server_info",
   "taskbelay_open_task",
   "taskbelay_get_task",
-  "taskbelay_get_next_action",
-  "taskbelay_submit_requirements",
-  "taskbelay_submit_design",
-  "taskbelay_submit_tasks",
-  "taskbelay_submit_implementation",
-  "taskbelay_submit_test",
-  "taskbelay_submit_comprehension",
-  "taskbelay_submit_refactor",
-  "taskbelay_submit_delivery",
-  "taskbelay_prepare_task_relocation",
-  "taskbelay_resolve_blocker",
-  "taskbelay_recover_action",
+  "taskbelay_checkpoint",
+  "taskbelay_revise_task",
+  "taskbelay_run_check",
+  "taskbelay_record_evidence",
+  "taskbelay_get_run",
+  "taskbelay_recover_run",
+  "taskbelay_finish_task",
   "taskbelay_cancel_task",
-  "taskbelay_abandon_task",
+  "taskbelay_list_tasks"
 ]);
 
 export const TASKBELAY_QUALIFIED_TOOL_NAMES = Object.freeze(

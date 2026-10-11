@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 
-import { deriveCurrentTurn } from "./authorization.mjs";
 
 const SUPPORTED_TOOLS = new Set(["write", "edit", "str_replace_editor"]);
 const MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -18,7 +17,7 @@ export function registerFileScopeGate(ctx, {
     throw new Error("file-scope gate paths are required");
   }
   return ctx.on("tools/pre-execute", async (execution, next) => {
-    if (!SUPPORTED_TOOLS.has(execution?.name) || deriveCurrentTurn(execution)?.selectorPresent !== true) {
+    if (!SUPPORTED_TOOLS.has(execution?.name)) {
       return next();
     }
     if (execution.name === "str_replace_editor" && execution.arguments?.command === "view") {

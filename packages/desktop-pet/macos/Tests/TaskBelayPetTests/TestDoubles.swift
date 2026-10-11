@@ -269,7 +269,7 @@ func assertEventually(
 enum TestDetails {
     static func detail(
         taskID: String = "task-1",
-        currentNode: String = "IMPLEMENT",
+        currentNode: String = "ACTIVE",
         lifecycle: TaskLifecycle = .active,
         revision: UInt64 = 1,
         archived: Bool = false,

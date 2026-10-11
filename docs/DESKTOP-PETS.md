@@ -10,7 +10,7 @@
 
 桌面组件面向 macOS arm64（Apple Silicon）与 Windows 10/11 x64，运行时需要至少一个已安装并配置的 Codex、DeepSeek、Claude Code 或 ZCode Adapter 提供 Core。
 Swift Package 与应用 metadata 的部署目标为 macOS 14；最低系统实际运行、Developer ID 签名和 Apple 公证尚未完成正式分发验证。
-具体已验证范围见[支持矩阵](SUPPORT-MATRIX.md#桌面宠物功能检查)。
+具体已验证范围见[支持矩阵](SUPPORT-MATRIX.md)。
 
 下文 `productRoot` 指产品目录，macOS 默认是 `~/.taskbelay`；设置与形象保存在其中的 `pet/` 子目录。
 
@@ -160,7 +160,7 @@ Windows 调整大小时会结束当前待机活动、停止对应位移，再按
 
 五类必需动作是 `idle`、`working`、`blocked`、`complete`、`disconnected`，保证任务状态都有对应展示。
 四类附加动作是 `running-right`、`running-left`、`waving`、`review`，用于散步、回应和思考。
-缺少的附加动作会从休闲候选中排除；审核节点缺少 review 素材时使用 working。
+缺少的附加动作会从休闲候选中排除；活动任务使用 working。
 安装副本的动作可在 `productRoot/pet/appearances/<id>/animations.json` 的 `clips` 中查看。
 
 ## 导入与切换
@@ -244,7 +244,7 @@ my-pet/
 ## Codex 标准宠物格式兼容
 
 TaskBelay 兼容 Codex 精灵图格式 1 和 2。兼容范围是本地包中的图集布局、所需动作帧和逐帧时长；
-任务阶段、提示和点击跳转由 TaskBelay 决定。导入入口接受以下字段组成的 `pet.json` 与 PNG/WebP 图集：
+任务状态、提示和点击跳转由 TaskBelay 决定。导入入口接受以下字段组成的 `pet.json` 与 PNG/WebP 图集：
 
 ```json
 {
@@ -280,8 +280,8 @@ TaskBelay 兼容 Codex 精灵图格式 1 和 2。兼容范围是本地包中的�
 | 完成 | `complete` | jumping，行 4 | 5 |
 | 未连接 | `disconnected` | failed，行 5 | 8 |
 | 受阻 | `blocked` | waiting，行 6 | 6 |
-| 普通阶段 | `working` | running，行 7 | 6 |
-| Review | `review` | review，行 8 | 6 |
+| 活动任务 | `working` | running，行 7 | 6 |
+| Idle thinking | `review` | review，行 8 | 6 |
 
 导入时拆成 PNG 帧并保留标准逐帧时长，之后使用统一播放器。向右走、向左走、挥手和 review
 参与下述待机活动与任务动作选择；循环素材也可按指定完整遍数播放后结束。
@@ -321,10 +321,10 @@ TaskBelay 导入成功不表示原图集能被 Codex 识别。需要同时在 Co
 | 基础待机 | 每个短动作结束后等待随机 6–12 秒，再选择下一项。相同状态的普通轮询保持当前动作和倒计时。 |
 | 向右走、向左走 | 初始权重各 25%。对应方向至少有 40 pt 空间时，水平移动 40–80 pt，平均速度约 `20 × scale` pt/秒，持续时间为距离除以速度，100% 大小时为 2–4 秒。结束后有 30% 概率接一次挥手。 |
 | 挥手 | 随机权重 20%；空闲启动或重新显示、角色悬停至少 0.4 秒、拖动放下也可触发。每次播放 1–2 遍，共享 20 秒冷却。持续悬停只回应一次，离开至少 2 秒后可重新触发。 |
-| Review／看电脑思考 | 随机权重 30%；空闲时随机选择 3–5 秒目标时长，播足完整遍数后回到待机。实际任务位于 `COMPREHENSION_REVIEW` 节点时持续播放，离开该节点后恢复工作动作。 |
+| Review／看电脑思考 | 随机权重 30%；空闲时随机选择 3–5 秒目标时长，播足完整遍数后回到待机。活动任务统一使用 working；review 仅表示空闲动画，不代表 Core 阶段。 |
 
 先排除缺少素材、冷却中或空间不足的动作，再按剩余权重选择；有其他候选时避免连续重复同一动作。
-未提供 review 素材的形象在审核节点使用 working。空闲思考保留原气泡文字，任务含义和跳转目标继续由 Core 状态决定。
+未提供 review 素材的形象不参与空闲思考候选。空闲思考保留原气泡文字，任务含义和跳转目标继续由 Core 状态决定。
 
 自动散步以最后手动摆放位置为中心，水平范围为左右各 120 pt，目标距当前屏幕边缘至少 16 pt，
 完整窗口保持在可见区域内。自动位移只保存在内存中，手动拖动才更新保存位置；屏幕布局变化会取消当前路线并重新约束位置。

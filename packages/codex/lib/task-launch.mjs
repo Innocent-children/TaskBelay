@@ -3,7 +3,7 @@ import { isAbsolute, resolve } from "node:path";
 
 import { captureWorkspaceChanges, applyWorkspaceChanges } from "./worktree-snapshot.mjs";
 import { assertNoDuplicateJSONMembers } from "./json.mjs";
-import { requestDigest, validateLaunchAdmission } from "./task-admission.mjs";
+import { requestDigest } from "./task-admission.mjs";
 import {
   buildManagedBootstrapPrompt,
   readTaskHandoff,
@@ -45,16 +45,10 @@ export async function prepareTaskLaunch(input, {
   const launchId = input.launch_id ?? createLaunchId();
   const receiptInput = { ...input, launch_id: launchId };
   const currentRequestDigest = requestDigest(input.request);
-  const admission = validateLaunchAdmission(input.assessment, input.user_choice);
-  const assessmentAnchor = admission.assessment.anchor;
-  if (assessmentAnchor.request_digest !== currentRequestDigest) {
-    throw new Error("launch request changed after suitability assessment");
-  }
+  const authorizationRef = input.authorization_ref;
   const local = input.workspace_mode !== "dedicated_worktree";
   const handoff = local ? null : await readTaskHandoffDraft(input.handoff_file, input.request);
   const handoffDigest = local ? null : taskHandoffDigest(handoff);
-  const assessedRepository = assessmentAnchor.repositories.find((entry) => entry.repository_key === input.repository_key);
-  if (assessedRepository === undefined) throw new Error("launch repository was not present in the suitability assessment");
   const path = provisioningReceiptPath(productSupportRoot, launchId, input.repository_key);
   const existing = await readProvisioningReceipt(path, { productSupportRoot });
   if (existing !== null) {
@@ -74,19 +68,11 @@ export async function prepareTaskLaunch(input, {
     runGit,
   });
   if (local) await requireAvailableWorkspace(source.canonical_root, checkWorkspaceAvailable);
-  const currentSource = await inspectSourceRepository(source.canonical_root, { runGit });
-  if (
-    assessedRepository.canonical_root !== currentSource.canonical_root ||
-    assessedRepository.head !== currentSource.head ||
-    assessedRepository.status_digest !== currentSource.status_digest
-  ) {
-    throw new Error("suitability assessment is stale; reassess before provisioning");
-  }
   let initial = existing;
   if (initial === null) {
     initial = createProvisioningReceipt({
       launchId,
-      admission,
+      authorizationRef,
       requestDigest: currentRequestDigest,
       handoffDigest,
       sourceRepositoryIdentity: source.source_repository_identity,
@@ -221,7 +207,7 @@ export async function recoverUncalledManagedTaskDispatch(input, options = {}) {
     const status = state.receipt.operation_status;
     assertDispatchAttempt(status, input);
     if (status.phase !== "dispatching" || state.receipt.worktree_path !== null ||
-        status.host_thread_id !== null || status.host_client_thread_id !== null || status.host_operation_id !== null || status.relocation_id !== null) {
+        status.host_thread_id !== null || status.host_client_thread_id !== null) {
       throw new Error("recovery requires an uncalled dispatching receipt without Host resources");
     }
     const next = updateProvisioningReceipt(state.receipt, {
@@ -250,7 +236,7 @@ export async function reconcileManagedTaskDispatch(input, options = {}) {
   }
   return await withLockedReceipt(input, options, async (state) => {
     const status = state.receipt.operation_status;
-    if (status.surface !== "managed_worktree" || status.host_request === null || status.relocation_id !== null ||
+    if (status.surface !== "managed_worktree" || status.host_request === null ||
         !["dispatching", "uncertain", "queued", "dispatched"].includes(status.phase)) {
       throw new Error("reconciliation requires a pending managed creation");
     }
@@ -270,7 +256,7 @@ export async function recordManagedTaskDispatch(input, options = {}) {
     if (![
       "dispatching",
       "queued",
-      ...(state.receipt.operation_status.relocation_id === null ? ["uncertain"] : []),
+      "uncertain",
     ].includes(state.receipt.operation_status.phase)) {
       return Object.freeze({ receipt_path: state.path, receipt: state.receipt, changed: false });
     }
@@ -493,16 +479,7 @@ export function buildOpenTaskRepositoryScope(receipts, { primaryRepositoryKey = 
   }
   const primary = entries.find((entry) => entry.key === primaryRepositoryKey);
   if (primary === undefined) throw new Error("primary repository receipt is missing");
-  const result = {
-    repository_path: primary.repository_path,
-    workspace_origin: primary.workspace_origin,
-  };
-  if (entries.length > 1) {
-    result.primary_repository_key = primaryRepositoryKey;
-    result.additional_repositories = entries
-      .filter((entry) => entry.key !== primaryRepositoryKey)
-      .sort((left, right) => left.key.localeCompare(right.key));
-  }
+  const result = { repositories: [primary, ...entries.filter(entry => entry.key !== primaryRepositoryKey)] };
   return Object.freeze(result);
 }
 
@@ -521,89 +498,8 @@ export function buildCliRelaunchDescriptor({ worktreePath, additionalWorktreePat
   return Object.freeze({ executable: "codex", arguments: Object.freeze(arguments_) });
 }
 
-export async function beginTaskHandoff(input, options = {}) {
-  assertExactKeys(input, ["launch_id", "repository_key", "relocation_id", "thread_id"], "handoff input");
-  assertNonEmpty(input.relocation_id, "relocation_id");
-  assertNonEmpty(input.thread_id, "thread_id");
-  return await withLockedReceipt(input, options, async (state) => {
-    const receipt = state.receipt;
-    if (receipt.workspace_mode !== "dedicated_worktree") throw new Error("local branch Tasks retain their original directory and do not support worktree handoff");
-    if (["handoff_dispatching", "handoff_pending"].includes(receipt.operation_status.phase)) {
-      return Object.freeze({ should_dispatch: false, receipt_path: state.path, receipt });
-    }
-    if (["handoff_succeeded", "handoff_failed"].includes(receipt.operation_status.phase) && receipt.operation_status.relocation_id === input.relocation_id) {
-      return Object.freeze({ should_dispatch: false, receipt_path: state.path, receipt });
-    }
-    if (!["provisioned", "handoff_succeeded", "handoff_failed"].includes(receipt.operation_status.phase)) {
-      throw new Error("handoff requires a provisioned Task receipt");
-    }
-    const next = updateProvisioningReceipt(receipt, {
-      phase: "handoff_dispatching",
-      values: {
-        relocation_id: input.relocation_id,
-        host_operation_id: null,
-        host_operation_revision: null,
-      },
-    });
-    await persistReceipt(state.path, next, options);
-    return Object.freeze({
-      should_dispatch: true,
-      receipt_path: state.path,
-      receipt: next,
-      host_request: Object.freeze({
-        threadId: input.thread_id,
-        followUpPrompt: `Resume TaskBelay relocation ${input.relocation_id}; inspect the Host result, then resolve the Core blocker with the exact destination repository paths.`,
-      }),
-    });
-  });
-}
 
-export async function recordTaskHandoff(input, options = {}) {
-  assertExactKeys(input, ["launch_id", "repository_key", "host_result"], "handoff result input");
-  return await withLockedReceipt(input, options, async (state) => {
-    if (![
-      "handoff_dispatching",
-      ...(state.receipt.operation_status.relocation_id === null ? [] : ["uncertain"]),
-    ].includes(state.receipt.operation_status.phase)) {
-      return Object.freeze({ receipt_path: state.path, receipt: state.receipt, changed: false });
-    }
-    const hostResult = normalizedStructuredResult(input.host_result);
-    const operationId = hostResult?.operationId;
-    const revision = hostResult?.revision;
-    const valid = typeof operationId === "string" && operationId !== "" && Number.isSafeInteger(revision) && revision >= 0;
-    const next = valid
-      ? updateProvisioningReceipt(state.receipt, {
-        phase: "handoff_pending",
-        values: { host_operation_id: operationId, host_operation_revision: revision },
-      })
-      : updateProvisioningReceipt(state.receipt, { phase: "uncertain", values: {} });
-    await persistReceipt(state.path, next, options);
-    return Object.freeze({ receipt_path: state.path, receipt: next, changed: true });
-  });
-}
 
-export async function recordTaskHandoffStatus(input, options = {}) {
-  assertExactKeys(input, ["launch_id", "repository_key", "status", "revision", "worktree_path"], "handoff status input");
-  if (!["succeeded", "failed", "pending"].includes(input.status)) throw new Error("handoff status is invalid");
-  if (!Number.isSafeInteger(input.revision) || input.revision < 0) throw new Error("handoff revision is invalid");
-  if (input.worktree_path !== null) assertAbsolutePath(input.worktree_path, "worktree_path");
-  return await withLockedReceipt(input, options, async (state) => {
-    if (state.receipt.operation_status.phase !== "handoff_pending") {
-      return Object.freeze({ receipt_path: state.path, receipt: state.receipt, changed: false });
-    }
-    const phase = input.status === "succeeded" ? "handoff_succeeded" : input.status === "failed" ? "handoff_failed" : "handoff_pending";
-    const values = { host_operation_revision: input.revision };
-    if (input.worktree_path !== null) values.worktree_path = input.worktree_path;
-    const next = updateProvisioningReceipt(state.receipt, { phase, values });
-    await persistReceipt(state.path, next, options);
-    return Object.freeze({
-      receipt_path: state.path,
-      receipt: next,
-      changed: true,
-      relocation_id: next.operation_status.relocation_id,
-    });
-  });
-}
 
 export async function cleanupCliTaskWorktree(input, options = {}) {
   assertExactKeys(input, ["launch_id", "repository_key", "terminal", "authorized"], "worktree cleanup input");
@@ -750,12 +646,13 @@ function normalizedStructuredResult(value) {
 
 function validatePrepareInput(value) {
   const keys = [
-    "request", "assessment", "user_choice", "repository_key", "repository_path", "workspace_mode", "source_type", "carry_changes", "remote_name", "base_branch", "target_branch",
+    "request", "authorization_ref", "repository_key", "repository_path", "workspace_mode", "source_type", "carry_changes", "remote_name", "base_branch", "target_branch",
     "surface", "worktree_path", "handoff_file",
   ];
   if (Object.hasOwn(value ?? {}, "launch_id")) keys.push("launch_id");
   assertExactKeys(value, keys, "launch preparation input");
   assertNonEmpty(value.request, "request");
+  assertNonEmpty(value.authorization_ref, "authorization_ref");
   if (!["new_branch", "current_branch", "dedicated_worktree"].includes(value.workspace_mode)) throw new Error("workspace_mode is invalid");
   if (value.workspace_mode === "dedicated_worktree") assertAbsolutePath(value.handoff_file, "handoff_file");
   else if (value.handoff_file !== null) throw new Error("current-session launch requires handoff_file=null");
@@ -777,7 +674,7 @@ function validatePrepareInput(value) {
 function assertInputMatchesReceipt(receipt, input, requestDigest, handoffDigest) {
   const requested = {
     launch_id: input.launch_id,
-    admission: { assessment: input.assessment, user_choice: input.user_choice },
+    authorization_ref: input.authorization_ref,
     request_digest: requestDigest,
     handoff_digest: handoffDigest,
     repository_key: input.repository_key,
@@ -792,7 +689,7 @@ function assertInputMatchesReceipt(receipt, input, requestDigest, handoffDigest)
   };
   const retained = {
     launch_id: receipt.launch_id,
-    admission: receipt.admission,
+    authorization_ref: receipt.authorization_ref,
     request_digest: receipt.request_digest,
     handoff_digest: receipt.handoff_digest,
     repository_key: receipt.repository_key,

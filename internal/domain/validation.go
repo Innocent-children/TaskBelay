@@ -1,177 +1,54 @@
 package domain
 
-import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"path/filepath"
-	"strings"
-	"time"
-	"unicode"
-	"unicode/utf8"
-)
+import "slices"
 
-func compactJSONSize(value any) (int, error) {
-	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(value); err != nil {
-		return 0, ErrInvalidArgument
+func (t Task) ValidateRecords() error {
+	if validateUTC(t.CreatedAt) != nil || validateUTC(t.UpdatedAt) != nil || t.UpdatedAt.Before(t.CreatedAt) {
+		return Invalid("task.timestamps", "invalid creation or update time")
 	}
-	encoded := buffer.Bytes()
-	if len(encoded) == 0 || encoded[len(encoded)-1] != '\n' {
-		return 0, ErrInvalidArgument
-	}
-	return len(encoded) - 1, nil
-}
-
-func normalizeRequiredText(value string, maxBytes int) (string, error) {
-	if !utf8.ValidString(value) {
-		return "", ErrInvalidArgument
-	}
-	value = strings.TrimSpace(value)
-	if value == "" || len(value) > maxBytes {
-		return "", ErrInvalidArgument
-	}
-	return value, nil
-}
-
-func normalizeOptionalText(value string, maxBytes int) (string, error) {
-	if !utf8.ValidString(value) {
-		return "", ErrInvalidArgument
-	}
-	value = strings.TrimSpace(value)
-	if len(value) > maxBytes {
-		return "", ErrInvalidArgument
-	}
-	return value, nil
-}
-
-func requireNormalizedText(value string, maxBytes int, required bool) error {
-	if !utf8.ValidString(value) {
-		return WithExplanation(ErrInvalidArgument, "text must be valid UTF-8")
-	}
-	if strings.TrimSpace(value) != value {
-		return WithExplanation(ErrInvalidArgument, "text must not have leading or trailing whitespace")
-	}
-	if required && value == "" {
-		return WithExplanation(ErrInvalidArgument, "text must not be empty")
-	}
-	if len(value) > maxBytes {
-		return WithExplanation(ErrInvalidArgument, fmt.Sprintf("text must contain at most %d UTF-8 bytes", maxBytes))
-	}
-	return nil
-}
-
-func normalizeTextList(values []string, maxItems, maxItemBytes int, requireItems bool) ([]string, error) {
-	if len(values) > maxItems || (requireItems && len(values) == 0) {
-		return nil, ErrInvalidArgument
-	}
-	result := make([]string, len(values))
-	seen := make(map[string]struct{}, len(values))
-	for i, value := range values {
-		normalized, err := normalizeRequiredText(value, maxItemBytes)
-		if err != nil {
-			return nil, err
+	seen := map[string]bool{}
+	for _, p := range t.Progress {
+		if _, ok := t.Goal(p.GoalID); !ok || seen[p.GoalID] || !p.GoalDigest.IsValid() || !slices.Contains([]string{"planned", "doing", "done"}, p.Status) || Text("progress.summary", p.Summary) != nil {
+			return Invalid("progress", "invalid current progress record")
 		}
-		if _, duplicate := seen[normalized]; duplicate {
-			return nil, ErrInvalidArgument
+		seen[p.GoalID] = true
+	}
+	seen = map[string]bool{}
+	for _, e := range t.Evidence {
+		c, ok := t.Check(e.CheckID)
+		if !ok || !ID(e.ID).IsValid() || seen[e.ID] || !slices.Contains([]string{"core_execution", "claim", "human"}, e.Source) || !slices.Contains([]string{"passed", "failed", "not_run", "timeout", "interrupted", "interrupted_unknown", "invalidated", "output_limit"}, e.Status) || !e.CheckDigest.IsValid() || !e.InputsDigest.IsValid() || !e.EnvironmentDigest.IsValid() || validateUTC(e.RecordedAt) != nil || Text("evidence.summary", e.Summary) != nil {
+			return Invalid("evidence", "invalid provenance or applicability record")
 		}
-		seen[normalized] = struct{}{}
-		result[i] = normalized
+		if e.Source == "human" && (c.Kind != "human" || Text("evidence.user_ref", e.UserRef) != nil) {
+			return Invalid("evidence", "human record requires an actual observation reference")
+		}
+		if e.Source == "core_execution" && c.Kind != "command" {
+			return Invalid("evidence", "only a command has Core execution provenance")
+		}
+		seen[e.ID] = true
 	}
-	return result, nil
-}
-
-func validateNormalizedTextList(values []string, maxItems, maxItemBytes int, requireItems bool) error {
-	normalized, err := normalizeTextList(values, maxItems, maxItemBytes, requireItems)
-	if err != nil || len(normalized) != len(values) {
-		return ErrInvalidArgument
-	}
-	for i := range values {
-		if normalized[i] != values[i] {
-			return ErrInvalidArgument
+	if t.Assessment != nil {
+		if !t.Assessment.AuthorizationDigest.IsValid() || !t.Assessment.ContentDigest.IsValid() || Text("assessment.summary", t.Assessment.Summary) != nil {
+			return Invalid("assessment", "invalid saved semantic assessment")
+		}
+		if len(t.Assessment.Paths) > MaxFingerprintPaths*8 || len(t.Assessment.Constraints) > 64 || len(t.Assessment.Facts) > MaxFingerprintPaths*8 {
+			return Invalid("assessment", "semantic review exceeds its bound")
+		}
+		for _, p := range t.Assessment.Paths {
+			if !p.ScopeDigest.IsValid() {
+				return Invalid("assessment.paths.scope_digest", "requires a Core-bound semantic scope")
+			}
+		}
+		for _, js := range [][]Judgment{t.Assessment.Constraints, t.Assessment.Facts} {
+			for _, j := range js {
+				if !j.ScopeDigest.IsValid() {
+					return Invalid("assessment.scope_digest", "requires a Core-bound semantic scope")
+				}
+			}
 		}
 	}
-	return nil
-}
-
-func validateID(value ID) error {
-	text := string(value)
-	if !utf8.ValidString(text) || text == "" || len(text) > MaxIdentifierBytes ||
-		text != strings.TrimSpace(text) || strings.IndexFunc(text, unicode.IsSpace) >= 0 {
-		return ErrInvalidArgument
+	if t.Status == "done" && len(t.Acceptance) != len(t.Authorization.Goals) {
+		return Invalid("acceptance", "terminal completion requires saved conclusions for every goal")
 	}
 	return nil
-}
-
-func validateDigest(value Digest) error {
-	text := string(value)
-	if len(text) != sha256.Size*2 || strings.ToLower(text) != text {
-		return ErrInvalidArgument
-	}
-	decoded, err := hex.DecodeString(text)
-	if err != nil || len(decoded) != sha256.Size {
-		return ErrInvalidArgument
-	}
-	return nil
-}
-
-func validateObjectID(value string) error {
-	if len(value) != 40 && len(value) != 64 {
-		return ErrInvalidArgument
-	}
-	if strings.ToLower(value) != value {
-		return ErrInvalidArgument
-	}
-	_, err := hex.DecodeString(value)
-	if err != nil {
-		return ErrInvalidArgument
-	}
-	return nil
-}
-
-func validateUTC(value time.Time) error {
-	if value.IsZero() {
-		return ErrInvalidArgument
-	}
-	_, offset := value.Zone()
-	if offset != 0 {
-		return ErrInvalidArgument
-	}
-	return nil
-}
-
-func validateCanonicalPath(value string) error {
-	if !utf8.ValidString(value) || value == "" || len(value) > MaxRepositoryPathBytes ||
-		!filepath.IsAbs(value) || filepath.Clean(value) != value {
-		return ErrInvalidArgument
-	}
-	return nil
-}
-
-func cloneStringPointer(value *string) *string {
-	if value == nil {
-		return nil
-	}
-	copy := *value
-	return &copy
-}
-
-func cloneIDPointer(value *ID) *ID {
-	if value == nil {
-		return nil
-	}
-	copy := *value
-	return &copy
-}
-
-func cloneTimePointer(value *time.Time) *time.Time {
-	if value == nil {
-		return nil
-	}
-	copy := *value
-	return &copy
 }

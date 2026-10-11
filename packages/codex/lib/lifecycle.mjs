@@ -27,22 +27,7 @@ export const PLUGIN_SELECTOR = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
 const MCP_SCHEMA_URI = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json";
 const IMPLICIT_SKILL_POLICY = "policy:\n  allow_implicit_invocation: true";
 
-export const CODEX_MCP_INSTRUCTIONS = [
-  "Display requirements, design, work items, expected files and verification before implementation. Save the complete draft with tasks_plan_saved; obtain an explicit user verdict for the saved digests and plan revision before tasks_ready. Waiting stays in TASKS. A revised or expanded plan needs fresh confirmation. The workspace and TaskBelay choices do not approve an unseen plan. prepare requires the full assessment and user_choice and retains them in receipt.admission. Every new user development request, including `$taskbelay-codex:taskbelay` and a parallel batch, receives a read-only suitability assessment and explicit user choice before any TaskBelay Core call, receipt, fetch, branch, worktree, or child dispatch; only explicit Task resume or a receipt-backed confirmed bootstrap bypasses duplicate assessment.",
-  "Bind assessment to the request, canonical repository roots, HEADs, and status digests; an anchor change requires reassessment.",
-  "A direct choice creates no TaskBelay state. A TaskBelay choice defaults to workspace_mode=new_branch in the current directory from its current HEAD. Explicit alternatives are current_branch and dedicated_worktree. Display the actual roots, current branches and initial changes; obtain only missing target-branch and carry_changes decisions. Dedicated worktrees additionally select local/remote source and base. Reuse valid choices.",
-  "After confirmation, use the packaged host-launch receipt helpers, local resolution or remote fetch, and frozen base commit; read taskbelay-codex host-launch <operation> --help for input Schemas and use host-launch scope to assemble all provisioned repositories. Current-session launches use handoff_file=null and local-provision after Core checks workspace availability; retain the directory, index and ignored content and open Core in the same session after scope. Dedicated worktrees copy staged, unstaged and non-ignored untracked content only for local carry_changes=true, preserving the source checkout.",
-  "Managed Codex task creation starts exactly once from the frozen base_commit with target.environment.type=worktree and no onMissing fallback; queued, clientThreadId, timeout, or uncertain results are read from the receipt and Host state without redispatch.",
-  "dispatch-start persists the complete host_request; dispatch-call grants one creation call. Parse complete stdout files rather than displayed output. dispatch-recover requires confirmed non-invocation and a stopped caller; dispatch-reconcile matches actual Host task initial prompts after an unknown result, never granting another creation.",
-  "The child verifies the frozen HEAD and dedicated worktree, creates the confirmed target branch and applies the saved snapshot if selected, and only then performs taskbelay_server_info followed by taskbelay_open_task with receipt-backed workspace_origin.",
-  "ACTIVE_TASK_CONFLICT is a safe stop and never authorizes relocation or replacement dispatch.",
-  "Core computes repository file effects from Git; Host node results carry semantic facts only.",
-  "Relocation requires taskbelay_prepare_task_relocation followed by one coordinator-owned Host Handoff and exact blocker resolution; an uncertain Handoff is inspected and never repeated.",
-  "Relocation resolution uses relocation_id plus relocation_destinations entries; workspace-history resolution uses history_resolution with accept_current_history and a reason.",
-  "DONE and CANCELLED release claims without deleting a worktree or branch. Local Tasks retain their directory and branch and do not support workspace handoff or cleanup; dedicated managed cleanup stays Host-owned and worktree/branch deletion require separate user authorization.",
-  "Discover candidate repositories from the user request and applicable AGENTS.md project-index instructions, then confirm every repository before provisioning; keep the resulting Task Scope fixed and preserve Codex permissions.",
-  "The packaged PreToolUse hook checks apply_patch targets against the current Task Plan; every Git-visible change in the bound directory is observed, including manual and external edits in local modes.",
-].join(" ");
+export const CODEX_MCP_INSTRUCTIONS = "Use the TaskBelay Skill and current engineering Core. Preserve real user authorization across turns; ask only for missing authorization or an important unresolved tradeoff. Core owns the single Task, actual code observations, evidence applicability and cumulative cost. Implement and verify in any useful order. Record semantic basis and uncertainty; claims cannot prove execution. Execute approved checks through taskbelay_run_check within native Host permissions; inspect taskbelay_get_run after a lost response and never replay an uncertain command. Structured hooks only cover declared paths; shell and external writes are observed at checkpoints. TaskBelay is not a sandbox. Existing workspace and authorization suffice; optional Git, new chat, deletion and publication operations require their own actual authorization. Done/cancelled retains files and grants no Git or publication authority.";
 
 const semverPattern = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
 const digestPattern = /^[0-9a-f]{64}$/;
@@ -530,20 +515,7 @@ async function assertPackageResources(paths, packageVersion) {
   if (skillMetadata.replace(/\r\n?/gu, "\n").trim() !== IMPLICIT_SKILL_POLICY) {
     throw new Error("TaskBelay implicit Skill policy must enable implicit invocation");
   }
-  for (const required of [
-    "Every new user development request", "$taskbelay-codex:taskbelay", "read-only suitability assessment",
-    "receipt-backed confirmed bootstrap bypasses duplicate assessment", "request", "HEADs", "status digests",
-    "workspace_mode=new_branch", "current_branch", "local-provision", "workspace availability", "host-launch receipt helpers", "frozen base commit",
-    "frozen base_commit", "target.environment.type=worktree", "no onMissing fallback",
-    "clientThreadId", "without redispatch", "receipt-backed workspace_origin",
-    "ACTIVE_TASK_CONFLICT", "never authorizes relocation", "semantic facts only",
-    "taskbelay_prepare_task_relocation", "separate user authorization",
-    "relocation_destinations", "history_resolution", "accept_current_history",
-  ]) {
-    if (!CODEX_MCP_INSTRUCTIONS.includes(required)) {
-      throw new Error(`TaskBelay MCP admission is missing activation boundary: ${required}`);
-    }
-  }
+  if (!CODEX_MCP_INSTRUCTIONS.includes("taskbelay_run_check") || !CODEX_MCP_INSTRUCTIONS.includes("cumulative cost")) throw new Error("Current engineering instructions are missing");
 }
 
 // Registration checks that routed instructions are readable; contract tests own

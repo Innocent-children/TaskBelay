@@ -60,7 +60,7 @@ test("native plugin, marketplace, MCP and process Hook share a self-contained pa
   }
   assert.ok(pkg.files.includes("runtime/win32-x64/taskbelay.exe"));
   assert.ok(pkg.files.includes("runtime/darwin-arm64/taskbelay"));
-  assert.ok(pkg.files.includes("skills/taskbelay/references/successes/taskbelay_open_task-create.md"));
+  assert.ok(pkg.files.includes("skills/taskbelay/references/engineering.md"));
   assert.ok(pkg.files.includes("lib/worktree-snapshot.mjs"));
   assert.ok(operations.includes("open"));
   assert.equal(operations.includes("launch"), false);

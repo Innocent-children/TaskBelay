@@ -47,8 +47,8 @@ export async function activateDeepSeekIntegration(ctx, {
 
   ctx.skills.register(Object.freeze({
     name: "taskbelay",
-    description: "Assess bounded development requests, then use TaskBelay only after the developer confirms an isolated worktree launch.",
-    whenToUse: "Use for new development-request suitability assessment, explicit worktree confirmation, or an explicit TaskBelay Task resume.",
+    description: "Keep authorized outcomes, actual changes and verification evidence together.",
+    whenToUse: "Use for authorized development or recovery of an existing Task; retain existing authorization.",
     invocation: Object.freeze({
       modelInvocable: true,
       userInvocable: true,
@@ -101,8 +101,8 @@ export async function activateDeepSeekIntegration(ctx, {
     args: ["mcp", "--stdio"],
     env: { TASKBELAY_DATA_DIR: dataSelection.dataDirectory },
     cwd: runtime.packageRoot,
-    toolCallTimeoutMs: 60_000,
-    failOnStartupError: false,
+    toolCallTimeoutMs: 3_660_000,
+    failOnStartupError: true,
     reconnect: {
       enabled: true,
       initialDelayMs: 500,

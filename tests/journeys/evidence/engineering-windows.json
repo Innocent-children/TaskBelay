@@ -1,0 +1,208 @@
+{
+  "environment": {
+    "platform": "win32",
+    "node": "v24.18.0"
+  },
+  "core_sha256": "e6ef4479cf85ba5465acdf155a49c00f900f98d49e1964e9d157776061e36128",
+  "native_command_executions": 6,
+  "actual_failed_test": true,
+  "claim_rejected_as_execution": true,
+  "unrelated_document_evidence_preserved": true,
+  "linear_commit_evidence_preserved": true,
+  "independent_requirement_evidence_preserved": true,
+  "relevant_code_evidence_invalidated": true,
+  "semantic_violation_self_correction": true,
+  "unapproved_dependency_execution_rejected": true,
+  "response_loss_no_duplicate_execution": true,
+  "actual_owner_interruption_recovered_without_passing_claim": true,
+  "unknown_execution_ms_conservative": 10000,
+  "cumulative_cost_after_revisions": {
+    "runs": 6,
+    "execution_ms": 2686,
+    "reserved_ms": 0,
+    "uncertain_ms": 10000,
+    "core_calls": 41,
+    "core_ms": 32910,
+    "observation_ms": 24827,
+    "host_reported_ms": 20,
+    "host_reported_wait_ms": 10,
+    "host_reported_tokens": 50
+  },
+  "global_control_cost": {
+    "calls": 41,
+    "wall_ms": 34112,
+    "unknown_ms": 875,
+    "pending": 1
+  },
+  "finished": true,
+  "transcript": [
+    {
+      "tool": "taskbelay_open_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_record_evidence",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_run_check",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_checkpoint",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_run_check",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_checkpoint",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_revise_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_checkpoint",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_run_check",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_finish_task",
+      "ok": false,
+      "error": "ACCEPTANCE_INCOMPLETE"
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_checkpoint",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_run_check",
+      "ok": false,
+      "error": "SCOPE_VIOLATION"
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_checkpoint",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_run_check",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_run_check",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_run",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_checkpoint",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_get_run",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_run_check",
+      "ok": false,
+      "error": "EXECUTION_PENDING"
+    },
+    {
+      "tool": "taskbelay_recover_run",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_run_check",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_recover_run",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_recover_run",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_recover_run",
+      "ok": false,
+      "error": "OPERATION_CONFLICT"
+    },
+    {
+      "tool": "taskbelay_get_task",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_checkpoint",
+      "ok": true
+    },
+    {
+      "tool": "taskbelay_finish_task",
+      "ok": true
+    }
+  ],
+  "limitations": [
+    "Scripted development and semantic judgments; not a native AI agent or human-time experiment.",
+    "This native run applies only to the execution host platform."
+  ]
+}

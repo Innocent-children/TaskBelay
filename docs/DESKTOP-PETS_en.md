@@ -10,7 +10,7 @@ updating the program and artwork, animation rules, pack creation, and troublesho
 
 The desktop component targets macOS arm64 (Apple Silicon) and Windows 10/11 x64 and requires at least one installed and configured Codex, DeepSeek, Claude Code or ZCode Adapter to provide Core.
 The Swift Package and app metadata target macOS 14; actual minimum-system operation, Developer ID signing, and Apple notarization have not completed
-formal distribution verification. See the [support matrix](SUPPORT-MATRIX_en.md#desktop-pet-functional-checks) for the verified scope.
+formal distribution verification. See the [support matrix](SUPPORT-MATRIX_en.md) for the verified scope.
 
 Below, `productRoot` means the product directory, which defaults to `~/.taskbelay` on macOS; settings and appearances live in its `pet/` subdirectory.
 
@@ -33,7 +33,7 @@ It prefers the installed user-directory app over the bundled app. `pet start` re
 
 ## Local build and installation
 
-Configure at least one Adapter through the [unified installation entry](COMMANDS_en.md#recommended-entry-for-most-users); existing configurations can be reused.
+Configure at least one Adapter through the [unified installation entry](COMMANDS_en.md); existing configurations can be reused.
 Run the following from the repository root, with an absolute output directory outside the repository:
 
 ```bash
@@ -164,7 +164,7 @@ Rules use animation keys for every appearance, with no behavior tied to a partic
 
 The five required clips are `idle`, `working`, `blocked`, `complete`, and `disconnected`, ensuring each task state has artwork.
 The four additional clips are `running-right`, `running-left`, `waving`, and `review`, supporting walking, responses, and thinking.
-Missing additional clips are removed from the idle candidate set; review nodes use working if review artwork is absent.
+Missing additional clips are removed from the idle candidate set; active Tasks use working artwork.
 Inspect `clips` in `productRoot/pet/appearances/<id>/animations.json` to see the installed copy's animations.
 
 ## Import and selection
@@ -284,8 +284,8 @@ Here, 1 and 2 identify Codex artwork formats, not TaskBelay product versions.
 | Completion | `complete` | jumping, row 4 | 5 |
 | Disconnected | `disconnected` | failed, row 5 | 8 |
 | Blocked | `blocked` | waiting, row 6 | 6 |
-| Ordinary stage | `working` | running, row 7 | 6 |
-| Review | `review` | review, row 8 | 6 |
+| Active Task | `working` | running, row 7 | 6 |
+| Idle thinking | `review` | review, row 8 | 6 |
 
 Import crops PNG frames and preserves standard frame timings, then uses the common player. Walk right, walk left, wave, and review
 participate in the idle activities and task animation selection below. Looping artwork can also finish after a specified number of full cycles.
@@ -327,10 +327,10 @@ Active, blocked, unavailable, or unknown tasks and disconnected services use the
 | Baseline idle | Wait a random 6–12 seconds after each short activity before selecting the next one. Ordinary reads of the same state preserve the current animation and deadline. |
 | Walk right, walk left | Initial weight: 25% each. With at least 40 pt available in the direction, move horizontally 40–80 pt at an average of about `20 × scale` pt/second. Duration is distance divided by speed, or 2–4 seconds at 100% size. A finished walk has a 30% chance of continuing with one wave. |
 | Wave | Random weight: 20%. Idle startup or showing the pet, hovering over the character for at least 0.4 seconds, and dropping it after a drag can also trigger a wave. Play 1–2 cycles with a shared 20-second cooldown. Continuous hover responds once; leaving for at least two seconds rearms it. |
-| Review / thinking at the computer | Random weight: 30%. During idle, play enough complete cycles to meet a randomly selected 3–5-second target, then return to idle. During an actual task's `COMPREHENSION_REVIEW` node, loop continuously; leaving that node restores working artwork. |
+| Review / thinking at the computer | Random weight: 30%. During idle, play enough complete cycles to meet a randomly selected 3–5-second target, then return to idle. Active Tasks use working artwork; review is an idle animation, not a Core stage. |
 
 Exclude unavailable artwork, cooling-down actions, and directions with insufficient room before sampling the remaining weights.
-Avoid consecutive identical choices when alternatives exist. Appearances without review artwork use working during review nodes.
+Avoid consecutive identical choices when alternatives exist. Appearances without review artwork omit that idle choice.
 Idle thinking preserves the existing bubble text; Core state continues to determine task meaning and navigation.
 
 Automatic walking stays within 120 pt horizontally of the last manual placement, with targets at least 16 pt from the current screen edge

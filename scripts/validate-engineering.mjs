@@ -1,0 +1,22 @@
+import {spawnSync} from 'node:child_process';
+import {mkdirSync,readdirSync} from 'node:fs';
+import {join,resolve} from 'node:path';
+const root=resolve(import.meta.dirname,'..');
+const go=process.env.GO_EXECUTABLE??'go';
+const output=join(root,'.evaluation');mkdirSync(output,{recursive:true});
+function run(program,args,extra={}){process.stdout.write(`${program} ${args.join(' ')}\n`);const r=spawnSync(program,args,{cwd:root,stdio:'inherit',env:{...process.env,...extra},windowsHide:true});if(r.status!==0)throw new Error(`check failed: ${program} ${args.join(' ')}`)}
+run(process.execPath,['scripts/sync-skill-references.mjs','--check']);
+run(process.execPath,['scripts/sync-host-commands.mjs','--check']);
+run(process.execPath,['scripts/check-versions.mjs']);
+run('git',['diff','--check']);
+run(go,['vet','./...']);
+run(go,['test','-count=1','-timeout=90s','./...']);
+run(process.execPath,['scripts/build-webui.mjs']);
+const executable=join(output,process.platform==='win32'?'taskbelay.exe':'taskbelay');
+run(go,['build','-o',executable,'./cmd/taskbelay']);
+run(process.execPath,['--test','tests/journeys/engineering.test.mjs','tests/host-engineering.test.mjs'],{ENGINEERING_CORE:executable,ENGINEERING_REPORT:join(root,'tests/journeys/evidence/engineering-windows.json')});
+const tests=['scripts/sync-skill-references.test.mjs','scripts/sync-host-commands.test.mjs','scripts/build-core-runtimes.test.mjs','scripts/taskbelay-local.test.mjs','tests/version-governance.test.mjs','tests/comprehensive/package_contract.test.mjs'];
+for(const host of ['codex','deepseek','claude','zcode','taskbelay'])for(const f of readdirSync(join(root,'packages',host,'tests')))if(f.endsWith('.test.mjs'))tests.push(`packages/${host}/tests/${f}`);
+for(const f of readdirSync(join(root,'packages/desktop-pet/windows/tests')))if(f.endsWith('.test.cjs'))tests.push(`packages/desktop-pet/windows/tests/${f}`);
+run(process.execPath,['--test',...tests]);
+process.stdout.write('Engineering validation passed. Native Host chats and other-platform runtime checks are separate.\n');

@@ -106,4 +106,4 @@ function fixtureReceipt() {
   });
 }
 
-function createProvisioningReceipt(input) { return rawCreateProvisioningReceipt({workspaceMode:"dedicated_worktree", ...input, admission:receiptAdmissionFixture(input)}); }
+function createProvisioningReceipt(input) { return rawCreateProvisioningReceipt({workspaceMode:"dedicated_worktree", ...input, authorizationRef:receiptAdmissionFixture(input)}); }

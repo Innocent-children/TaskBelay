@@ -20,8 +20,7 @@
 | `pnpm --dir packages/codex test` | 运行 Codex package-local tests |
 | `pnpm --dir packages/deepseek test` | 运行 DeepSeek package-local tests |
 
-`validate-repository.sh` 检查工具链、按锁定版本安装依赖、版本文件、空白字符、Go 格式、安装包
-约定、Host Adapter、可重复的完整流程测试和发布工具约定。该脚本不执行实际发布。
+`validate-repository.sh` 是 Node 验证入口的 Unix 包装层；`node scripts/validate-engineering.mjs` 检查版本/生成副本、空白、Go vet/test、WebUI 构建、真实工程旅程、独立宿主包和当前 package-local tests。先按锁文件安装依赖。此入口不发布，也不运行真实宿主模型会话。
 
 Windows CI 将 Codex、DeepSeek、ZCode 和统一管理器的包测试分别放在独立 PowerShell 步骤中，并显式返回各自的退出码。任一套件失败都会使对应步骤失败，阻止后续默认步骤继续执行。
 
@@ -161,7 +160,7 @@ Windows 桌面包由 `build-desktop-pet-windows.mjs` 构建；在仓库根目录
 
 Windows 桌面开发包同时携带完整的 Codex、DeepSeek、Claude 与 ZCode 安装包；构建复用 buildCoreRuntimes 和 stageAndPack，不生成缺少另一平台 Core 的临时特制 Adapter 包。安装统一入口后，`taskbelay install --host all --yes` 准备四个 Adapter 与桌面应用；ZCode 仍需按返回说明在 UI 中安装和启用。
 
-WebUI 的语义提交和恢复回归使用 `pnpm --dir packages/webui test`，运行当前组件与 HTTP 客户端的模拟检查，覆盖网络异常、待恢复页面重开和仅按 Action ID 恢复。这不是原生浏览器验证。
+WebUI 类型和构建由 build-webui.mjs 检查；HTTP 契约、CSRF 和 Core 投影由 go test ./internal/webui 检查。原生浏览器显示另行核验，不以构建或模拟输入替代。
 
 ## 共享 Host 命令
 
@@ -177,6 +176,6 @@ Codex、Claude、ZCode 的共同命令入口和 Windows、macOS 命令实现只�
 
 ## 共享 Skill 引用
 
-Core 通用说明和示例只在 `skills/taskbelay/core/` 编辑。执行 `node scripts/sync-skill-references.mjs` 生成 Codex、DeepSeek、Claude 与 ZCode 包内副本；副本供源码阅读和本地加载，文件头标明来源。`node scripts/sync-skill-references.mjs --check` 检查副本是否与共享源一致。Codex 本地构建和 `stageAndPack` 都在临时 staging 中重新生成引用，安装包不依赖仓库外的共享目录。共享说明只替换 `host` 值，Host 操作说明分别维护。校验还覆盖四个 Host 的 MCP Schema、当前节点转移、DSH 确认文本及实际包内文件。
+Core 通用说明和示例只在 `skills/taskbelay/core/` 编辑。执行 `node scripts/sync-skill-references.mjs` 生成 Codex、DeepSeek、Claude 与 ZCode 包内副本；副本供源码阅读和本地加载，文件头标明来源。`node scripts/sync-skill-references.mjs --check` 检查副本是否与共享源一致。Codex 本地构建和 `stageAndPack` 都在临时 staging 中重新生成引用，安装包不依赖仓库外的共享目录。共享说明只替换 `host` 值，Host 操作说明分别维护。校验覆盖四个 Host 的当前 MCP 契约、授权与执行边界及完整包内引用。
 
-完整响应示例由定向测试维护。修改共享请求后先同步包内引用。更新 Core 示例运行 `TASKBELAY_UPDATE_SKILL_EXAMPLES=1 go test ./internal/mcp -run TestSkillSuccessExamplesMatchExecution -count=1`，再运行共享引用同步命令。更新 Host 示例运行 `TASKBELAY_UPDATE_SKILL_EXAMPLES=1 node --test packages/codex/tests/skill-success-examples.test.mjs packages/deepseek/tests/skill-success-examples.test.mjs`。正常测试不写文件，而是逐字段比较已保存的请求和响应；修改示例字段时须检查差异，新增文件时同步包清单与 staging 清单。Node 测试的读取、稳定值替换和比较辅助函数位于 `tests/skills/executed-examples.mjs`。
+共享 protocol.md 的完整请求旁保留同工具错误示例。internal/mcp/server_test.go 通过实际生产者比较完整错误编码，并校验输出 Schema；四个独立宿主包测试由 tests/host-engineering.test.mjs 维护。旧阶段样例和更新器已删除。

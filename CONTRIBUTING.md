@@ -12,7 +12,7 @@ final-package test results, and clearly scoped product improvements that solve r
 | Spelling, links, translation, or correction of existing behavior documentation | Open a bounded pull request directly and synchronize the maintained languages of the affected document family according to the [I18n policy](docs/I18N_en.md) |
 | Template or documentation-maintenance rule change | Explain the affected surface; do not change product versions or perform a release |
 | Implementation defect that does not change public semantics | Identify the gap between the approved contract and actual behavior, then fix only that gap |
-| Business functionality, user workflow, Core/MCP contract, persistence, process graph, or host-adapter contract change | Explain the user problem, scope, acceptance criteria, and approach, synchronize implementation/tests/docs/i18n, and update `CORE_VERSION` when shipped Core changes |
+| Business functionality, user workflow, Core/MCP contract, persistence, control decision, or host-adapter contract change | Explain the user problem, scope, acceptance criteria, and approach, synchronize implementation/tests/docs/i18n, and update `CORE_VERSION` when shipped Core changes |
 | npm package version, npm publication, Tag, or GitHub Release | Do not make this an ordinary pull-request deliverable; maintainers run the separate release flow after product work is merged |
 
 When classification is unclear, open an Issue first and describe the user problem, current behavior,
@@ -48,7 +48,7 @@ How does the user handle it without TaskBelay?
 
 ## Available data
 
-What can the Task, Action, repository, and saved results tell us?
+What can the Task, authorization, repository, and saved results tell us?
 
 ## Behavior rules
 
@@ -76,7 +76,7 @@ Which capabilities will this change not expand?
 Before implementation, a proposal must answer clearly:
 
 1. Does it help a long-running task resume from the correct state?
-2. Is it based on Task, Action, repository observation, or retained records rather than only the
+2. Is it based on Task, authorization, repository observation, or retained records rather than only the
    agent's narrative?
 3. Does it reduce the user's effort to judge current state and next step?
 4. Can we repeat the full workflow in an actual Codex, DeepSeek, Claude Code or ZCode session?
@@ -128,10 +128,10 @@ Before editing, read the [I18n policy](docs/I18N_en.md), the
 
 - Solve only the problem stated by the pull request; do not add future capabilities, generic
   frameworks, or unrelated refactoring.
-- Keep Go Core responsible for Task state, current nodes, legal next steps, recovery classification,
-  and terminal outcomes.
-- Keep Core's Git observation read-only; do not add shell, commit, push, merge, tag, or publication
-  capability.
+- Keep Go Core responsible for Task authorization, observations, evidence applicability, cumulative
+  cost, recovery and terminal acceptance.
+- Keep Core's Git observation read-only. Authorized local checks use the execution boundary and native
+  Host permissions; they grant no Git mutation or publication authority.
 - Run only validation directly connected to the changed surface, acceptance criteria, or known risk.
 - Update affected explanations by document responsibility: README covers the project and everyday
   use, `docs/PRODUCT*` covers product scope and behavior rules, and technical references cover

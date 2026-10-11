@@ -1,142 +1,449 @@
+// Package store owns current-only SQLite persistence, CAS and operation identity.
 package store
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/domain"
+	_ "modernc.org/sqlite"
 )
 
-type Store interface {
-	LoadTask(context.Context, domain.ID) (domain.ProcessTask, error)
-	LoadActiveTask(context.Context, domain.Digest) (domain.ProcessTask, error)
-	CommitTask(context.Context, TaskMutation) error
+const DatabaseSchemaVersion = "1.0.0"
+const MaxSnapshotBytes = 8 * 1024 * 1024
+
+var schema = []string{
+	`CREATE TABLE schema_metadata(version TEXT PRIMARY KEY)`,
+	`CREATE TABLE tasks(task_id TEXT PRIMARY KEY, revision INTEGER NOT NULL, status TEXT NOT NULL, snapshot BLOB NOT NULL, runs INTEGER NOT NULL DEFAULT 0, execution_ms INTEGER NOT NULL DEFAULT 0, reserved_ms INTEGER NOT NULL DEFAULT 0, uncertain_ms INTEGER NOT NULL DEFAULT 0, core_calls INTEGER NOT NULL DEFAULT 0, core_ms INTEGER NOT NULL DEFAULT 0, observation_ms INTEGER NOT NULL DEFAULT 0, host_ms INTEGER NOT NULL DEFAULT 0, wait_ms INTEGER NOT NULL DEFAULT 0, tokens INTEGER NOT NULL DEFAULT 0)`,
+	`CREATE TABLE claims(root TEXT PRIMARY KEY, instance TEXT NOT NULL UNIQUE, task_id TEXT NOT NULL REFERENCES tasks(task_id))`,
+	`CREATE TABLE operations(task_id TEXT NOT NULL REFERENCES tasks(task_id), operation_id TEXT NOT NULL, kind TEXT NOT NULL, digest TEXT NOT NULL, revision INTEGER NOT NULL, run_id TEXT NOT NULL, PRIMARY KEY(task_id,operation_id))`,
+	`CREATE TABLE runs(run_id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(task_id), check_id TEXT NOT NULL, status TEXT NOT NULL, snapshot BLOB NOT NULL, created_at TEXT NOT NULL)`,
+	`CREATE INDEX runs_task ON runs(task_id,created_at)`,
+	`CREATE TABLE failures(task_id TEXT NOT NULL, check_id TEXT NOT NULL, signature TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(task_id,check_id))`,
+	`CREATE TABLE control_calls(call_id TEXT PRIMARY KEY,started_at TEXT NOT NULL,completed_ms INTEGER,owner_pid INTEGER NOT NULL,owner_identity TEXT NOT NULL)`,
+	`CREATE TABLE control_totals(calls INTEGER NOT NULL,wall_ms INTEGER NOT NULL,unknown_ms INTEGER NOT NULL)`,
 }
 
-type WorkspaceLookupStore interface {
-	LoadActiveTaskByCanonicalRoot(context.Context, string) (domain.ProcessTask, error)
+type Store struct {
+	db        *sql.DB
+	Directory string
 }
 
-type ActionOperationStore interface {
-	Store
-	LoadActionOperation(context.Context, domain.ID) (ActionOperation, bool, error)
-	StageActionOperation(context.Context, domain.ProcessTask, domain.ActionCommit) error
-	CommitActionOperation(context.Context, domain.ID, TaskMutation) error
-}
-
-type ActionOperation struct {
-	TaskID          domain.ID
-	Commit          domain.ActionCommit
-	AppliedRevision *uint64
-}
-
-type TaskListQuery struct {
-	Text        string
-	Host        domain.Host
-	Repository  string
-	Node        domain.NodeID
-	Lifecycle   string
-	UpdatedFrom *time.Time
-	UpdatedTo   *time.Time
-	Page        int
-	PageSize    int
-}
-
-type ControlCenterTask struct {
-	Task       domain.ProcessTask
-	ArchivedAt *time.Time
-	Events     []TaskEvent
-}
-
-type ControlCenterTaskPage struct {
-	Items   []ControlCenterTask
-	Page    int
-	HasNext bool
-}
-
-type ArchiveTaskMutation struct {
-	TaskID           domain.ID
-	ExpectedRevision uint64
-	Archived         bool
-	ArchivedAt       time.Time
-}
-
-type PurgeTaskMutation struct {
-	TaskID           domain.ID
-	ExpectedRevision uint64
-	TypedTaskID      domain.ID
-	Reason           string
-	Irreversible     bool
-}
-
-// ControlCenterStore owns existing Task persistence and the bounded read models used by ControlCenter.
-type ControlCenterStore interface {
-	ActionOperationStore
-	ListControlCenterTasks(context.Context, TaskListQuery) (ControlCenterTaskPage, error)
-	LoadControlCenterTask(context.Context, domain.ID) (ControlCenterTask, error)
-	LoadTaskEvents(context.Context, domain.ID) ([]TaskEvent, error)
-	SetTaskArchived(context.Context, ArchiveTaskMutation) (*time.Time, error)
-	PurgeTask(context.Context, PurgeTaskMutation) error
-}
-type ClaimOperation string
-
-const (
-	ClaimAcquire ClaimOperation = "acquire"
-	ClaimRetain  ClaimOperation = "retain"
-	ClaimRelease ClaimOperation = "release"
-	ClaimReplace ClaimOperation = "replace"
-)
-
-type TaskMutation struct {
-	ExpectedRevision uint64
-	Task             domain.ProcessTask
-	Event            TaskEvent
-	Claim            ClaimOperation
-	PreviousClaims   []domain.Digest
-}
-
-func repositoryClaimIdentities(task domain.ProcessTask) []domain.Digest {
-	identities := make([]domain.Digest, 0, len(task.AdditionalRepositories)+1)
-	identities = append(identities, task.Repository.WorktreeInstanceDigest)
-	for _, entry := range task.AdditionalRepositories {
-		identities = append(identities, entry.Binding.WorktreeInstanceDigest)
+func Open(ctx context.Context, file string) (*Store, error) {
+	if !filepath.IsAbs(file) {
+		return nil, domain.Invalid("data_directory", "must be absolute")
 	}
-	return identities
-}
-
-func RepositoryClaimIdentities(task domain.ProcessTask) []domain.Digest {
-	return append([]domain.Digest(nil), repositoryClaimIdentities(task)...)
-}
-
-type repositoryClaim struct {
-	identity domain.Digest
-	root     string
-}
-
-func repositoryClaims(task domain.ProcessTask) []repositoryClaim {
-	claims := []repositoryClaim{{identity: task.Repository.WorktreeInstanceDigest, root: task.WorkspaceOrigin.CanonicalWorktreeRoot}}
-	for _, entry := range task.AdditionalRepositories {
-		claims = append(claims, repositoryClaim{identity: entry.Binding.WorktreeInstanceDigest, root: entry.Origin.CanonicalWorktreeRoot})
+	if e := os.MkdirAll(filepath.Dir(file), 0700); e != nil {
+		return nil, e
 	}
-	return claims
+	// Inspect an existing file read-only before allowing SQLite to write anything.
+	info, e := os.Lstat(file)
+	if e == nil {
+		if !info.Mode().IsRegular() {
+			return nil, domain.Fail("STORAGE_UNAVAILABLE", "", "database must be a regular file")
+		}
+		db, e := sql.Open("sqlite", file+"?mode=ro")
+		if e != nil {
+			return nil, e
+		}
+		e = verify(ctx, db)
+		db.Close()
+		if e != nil {
+			return nil, e
+		}
+	} else if !os.IsNotExist(e) {
+		return nil, e
+	}
+	db, e := sql.Open("sqlite", file)
+	if e != nil {
+		return nil, e
+	}
+	db.SetMaxOpenConns(1)
+	s := &Store{db: db, Directory: filepath.Dir(file)}
+	for _, p := range []string{"PRAGMA busy_timeout=5000", "PRAGMA foreign_keys=ON", "PRAGMA journal_mode=WAL"} {
+		if _, e = db.ExecContext(ctx, p); e != nil {
+			db.Close()
+			return nil, e
+		}
+	}
+	if info == nil {
+		tx, e := db.BeginTx(ctx, nil)
+		if e != nil {
+			db.Close()
+			return nil, e
+		}
+		for _, q := range schema {
+			if _, e = tx.ExecContext(ctx, q); e != nil {
+				tx.Rollback()
+				db.Close()
+				return nil, e
+			}
+		}
+		if _, e = tx.ExecContext(ctx, "INSERT INTO schema_metadata VALUES (?)", DatabaseSchemaVersion); e == nil {
+			_, e = tx.ExecContext(ctx, "INSERT INTO control_totals VALUES (0,0,0)")
+		}
+		if e == nil {
+			e = tx.Commit()
+		} else {
+			tx.Rollback()
+		}
+		if e != nil {
+			db.Close()
+			return nil, e
+		}
+	}
+	return s, nil
 }
 
-type TaskEvent struct {
-	EventID               domain.ID
-	TaskID                domain.ID
-	Revision              uint64
-	Kind                  domain.OperationKind
-	SourceNode            domain.NodeID
-	DestinationNode       domain.NodeID
-	TransitionID          *domain.TransitionID
-	TransitionReason      string
-	ActionID              *domain.ID
-	ObservedBindingDigest *domain.Digest
-	RepositoryDeltaPaths  []string
-	RequestID             domain.ID
-	PayloadDigest         domain.Digest
-	CreatedAt             time.Time
+type query interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
-var _ Store = (*SQLite)(nil)
-var _ ActionOperationStore = (*SQLite)(nil)
+func verify(ctx context.Context, q query) error {
+	var v string
+	if e := q.QueryRowContext(ctx, "SELECT version FROM schema_metadata").Scan(&v); e != nil || v != DatabaseSchemaVersion {
+		return domain.Fail("SCHEMA_UNSUPPORTED", "", "database is not the current engineering-control schema; it was not modified")
+	}
+	rows, e := q.QueryContext(ctx, "SELECT sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name")
+	if e != nil {
+		return e
+	}
+	defer rows.Close()
+	actual := map[string]bool{}
+	for rows.Next() {
+		var x string
+		if e = rows.Scan(&x); e != nil {
+			return e
+		}
+		actual[strings.Join(strings.Fields(x), " ")] = true
+	}
+	if e = rows.Err(); e != nil {
+		return e
+	}
+	if len(actual) != len(schema) {
+		return domain.Fail("SCHEMA_UNSUPPORTED", "", "unexpected schema objects; database was not modified")
+	}
+	for _, x := range schema {
+		if !actual[strings.Join(strings.Fields(x), " ")] {
+			return domain.Fail("SCHEMA_UNSUPPORTED", "", "schema definition differs from current contract; database was not modified")
+		}
+	}
+	return nil
+}
+func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Get(ctx context.Context, id string) (domain.Task, error) {
+	var b []byte
+	var revision uint64
+	var status string
+	var u domain.Usage
+	e := s.db.QueryRowContext(ctx, `SELECT snapshot,revision,status,runs,execution_ms,reserved_ms,uncertain_ms,core_calls,core_ms,observation_ms,host_ms,wait_ms,tokens FROM tasks WHERE task_id=?`, id).Scan(&b, &revision, &status, &u.Runs, &u.ExecutionMS, &u.ReservedMS, &u.UncertainMS, &u.CoreCalls, &u.CoreMS, &u.ObservationMS, &u.HostMS, &u.WaitMS, &u.Tokens)
+	if errors.Is(e, sql.ErrNoRows) {
+		return domain.Task{}, domain.Fail("TASK_NOT_FOUND", "task_id", "task does not exist")
+	}
+	if e != nil {
+		return domain.Task{}, e
+	}
+	var t domain.Task
+	if len(b) > MaxSnapshotBytes || decodeSnapshot(b, &t) != nil || t.Validate() != nil || t.ValidateRecords() != nil || t.TaskID != id || t.Revision != revision || t.Status != status {
+		return domain.Task{}, domain.Fail("STORAGE_CORRUPT", "", "saved task does not satisfy the current contract")
+	}
+	t.Usage = u
+	return t, nil
+}
+
+type Operation struct {
+	ID       string
+	Kind     string
+	Digest   domain.Digest
+	RunID    string
+	Revision uint64
+}
+
+func (s *Store) Operation(ctx context.Context, task, id string) (Operation, bool, error) {
+	var o Operation
+	o.ID = id
+	e := s.db.QueryRowContext(ctx, "SELECT kind,digest,run_id,revision FROM operations WHERE task_id=? AND operation_id=?", task, id).Scan(&o.Kind, &o.Digest, &o.RunID, &o.Revision)
+	if errors.Is(e, sql.ErrNoRows) {
+		return o, false, nil
+	}
+	return o, e == nil, e
+}
+func encode(t domain.Task) ([]byte, error) {
+	if e := t.Validate(); e != nil {
+		return nil, e
+	}
+	if e := t.ValidateRecords(); e != nil {
+		return nil, e
+	}
+	b, e := json.Marshal(t)
+	if e != nil {
+		return nil, e
+	}
+	if len(b) > MaxSnapshotBytes {
+		return nil, domain.Fail("RESOURCE_LIMIT", "task", "current task snapshot exceeds 8 MiB")
+	}
+	return b, nil
+}
+func (s *Store) Create(ctx context.Context, t domain.Task, o Operation) error {
+	b, e := encode(t)
+	if e != nil {
+		return e
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	if _, e = tx.ExecContext(ctx, "INSERT INTO tasks(task_id,revision,status,snapshot) VALUES (?,?,?,?)", t.TaskID, t.Revision, t.Status, b); e != nil {
+		return domain.Fail("CONFLICT", "task_id", "task or operation identity already exists")
+	}
+	for _, r := range t.Repositories {
+		if _, e = tx.ExecContext(ctx, "INSERT INTO claims VALUES (?,?,?)", r.Origin.CanonicalWorktreeRoot, r.Binding.WorktreeInstanceDigest, t.TaskID); e != nil {
+			return domain.Fail("WORKSPACE_CLAIMED", "repository_path", "workspace already belongs to an active task")
+		}
+	}
+	if e = insertOperation(ctx, tx, t, o); e != nil {
+		return e
+	}
+	return tx.Commit()
+}
+func insertOperation(ctx context.Context, tx *sql.Tx, t domain.Task, o Operation) error {
+	if o.ID == "" {
+		return nil
+	}
+	_, e := tx.ExecContext(ctx, "INSERT INTO operations VALUES (?,?,?,?,?,?)", t.TaskID, o.ID, o.Kind, o.Digest, t.Revision, o.RunID)
+	return e
+}
+
+type Charge struct {
+	FailureSignature domain.Digest
+	Runs             int64
+	ReserveMS        int64
+	ExecutionMS      int64
+	ReleaseMS        int64
+	UncertainMS      int64
+	HostMS           int64
+	WaitMS           int64
+	Tokens           int64
+}
+
+func (s *Store) Save(ctx context.Context, t domain.Task, expected uint64, o Operation, c Charge, runID string, run any, runStatus, checkID string) error {
+	b, e := encode(t)
+	if e != nil {
+		return e
+	}
+	if t.Revision != expected+1 {
+		return domain.Invalid("revision", "mutation must advance one revision")
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	var used, reserved, spent, uncertain int64
+	if e = tx.QueryRowContext(ctx, "SELECT runs,reserved_ms,execution_ms,uncertain_ms FROM tasks WHERE task_id=?", t.TaskID).Scan(&used, &reserved, &spent, &uncertain); e != nil {
+		return e
+	}
+	if c.Runs > 0 && used+c.Runs > t.Authorization.Limits.Runs {
+		return &domain.Error{Code: "COST_LIMIT", Message: "cumulative run limit cannot reserve this check; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits.runs", Rule: "quantity", Message: "lifetime runs cannot exceed the authorized limit"}}, Budget: &domain.BudgetFailure{Used: used, Requested: c.Runs, Limit: t.Authorization.Limits.Runs}}
+	}
+	if c.ReserveMS > 0 && spent+uncertain+reserved+c.ReserveMS > t.Authorization.Limits.ExecutionMS {
+		return &domain.Error{Code: "COST_LIMIT", Message: "cumulative execution time cannot reserve this check; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits.execution_ms", Rule: "quantity", Message: "reserve the command timeout without lowering acceptance quality"}}, Budget: &domain.BudgetFailure{Used: spent + uncertain + reserved, Requested: c.ReserveMS, Limit: t.Authorization.Limits.ExecutionMS}}
+	}
+	r, e := tx.ExecContext(ctx, `UPDATE tasks SET revision=?,status=?,snapshot=?,runs=runs+?,reserved_ms=reserved_ms+?-?,execution_ms=execution_ms+?,uncertain_ms=uncertain_ms+?,host_ms=host_ms+?,wait_ms=wait_ms+?,tokens=tokens+? WHERE task_id=? AND revision=?`, t.Revision, t.Status, b, c.Runs, c.ReserveMS, c.ReleaseMS, c.ExecutionMS, c.UncertainMS, c.HostMS, c.WaitMS, c.Tokens, t.TaskID, expected)
+	if e != nil {
+		return e
+	}
+	n, _ := r.RowsAffected()
+	if n != 1 {
+		return domain.Fail("REVISION_CONFLICT", "revision", "task changed; read current state before submitting a new operation")
+	}
+	if e = insertOperation(ctx, tx, t, o); e != nil {
+		return e
+	}
+	if runID != "" {
+		rb, e := json.Marshal(run)
+		if e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, `INSERT INTO runs VALUES (?,?,?,?,?,?) ON CONFLICT(run_id) DO UPDATE SET status=excluded.status,snapshot=excluded.snapshot`, runID, t.TaskID, checkID, runStatus, rb, time.Now().UTC().Format(time.RFC3339Nano)); e != nil {
+			return e
+		}
+	}
+	if c.FailureSignature != "" {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO failures VALUES (?,?,?,1) ON CONFLICT(task_id,check_id) DO UPDATE SET count=CASE WHEN signature=excluded.signature THEN count+1 ELSE 1 END,signature=excluded.signature`, t.TaskID, checkID, c.FailureSignature); e != nil {
+			return e
+		}
+	}
+	if t.Status != "active" {
+		if _, e = tx.ExecContext(ctx, "DELETE FROM claims WHERE task_id=?", t.TaskID); e != nil {
+			return e
+		}
+	}
+	// Retain live operations and enough recent identity to reconcile response loss.
+	if _, e = tx.ExecContext(ctx, `DELETE FROM operations WHERE task_id=? AND kind<>'open' AND revision < ? AND (run_id='' OR run_id NOT IN (SELECT run_id FROM runs WHERE status IN ('running','uncertain')))`, t.TaskID, int64(t.Revision)-256); e != nil {
+		return e
+	}
+	keep := map[string]bool{}
+	for _, v := range t.Evidence {
+		keep[v.ID] = true
+	}
+	for _, v := range t.Attempts {
+		keep[v.RunID] = true
+	}
+	rows, e := tx.QueryContext(ctx, "SELECT run_id,status FROM runs WHERE task_id=? ORDER BY created_at DESC", t.TaskID)
+	if e != nil {
+		return e
+	}
+	remove := []string{}
+	i := 0
+	for rows.Next() {
+		var id, status string
+		rows.Scan(&id, &status)
+		if i >= 128 && !keep[id] && status != "running" && status != "uncertain" {
+			remove = append(remove, id)
+		}
+		i++
+	}
+	rows.Close()
+	for _, id := range remove {
+		if _, e = tx.ExecContext(ctx, "DELETE FROM runs WHERE run_id=?", id); e != nil {
+			return e
+		}
+	}
+	return tx.Commit()
+}
+func (s *Store) AddCost(ctx context.Context, id string, core, observe int64) error {
+	_, e := s.db.ExecContext(ctx, "UPDATE tasks SET core_ms=core_ms+?,observation_ms=observation_ms+? WHERE task_id=?", core, observe, id)
+	return e
+}
+func (s *Store) StartCall(ctx context.Context, id string) error {
+	_, e := s.db.ExecContext(ctx, "UPDATE tasks SET core_calls=core_calls+1 WHERE task_id=?", id)
+	return e
+}
+func (s *Store) AddObservation(ctx context.Context, id string, duration int64) error {
+	_, e := s.db.ExecContext(ctx, "UPDATE tasks SET observation_ms=observation_ms+? WHERE task_id=?", duration, id)
+	return e
+}
+func (s *Store) Claim(ctx context.Context, root string) (string, error) {
+	var id string
+	e := s.db.QueryRowContext(ctx, "SELECT task_id FROM claims WHERE root=?", root).Scan(&id)
+	if errors.Is(e, sql.ErrNoRows) {
+		return "", nil
+	}
+	return id, e
+}
+func (s *Store) List(ctx context.Context) ([]domain.Task, error) {
+	rows, e := s.db.QueryContext(ctx, "SELECT task_id FROM tasks ORDER BY rowid DESC LIMIT 200")
+	if e != nil {
+		return nil, e
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	rows.Close()
+	ts := []domain.Task{}
+	for _, id := range ids {
+		t, e := s.Get(ctx, id)
+		if e != nil {
+			return nil, e
+		}
+		ts = append(ts, t)
+	}
+	return ts, nil
+}
+func (s *Store) Run(ctx context.Context, id string, out any) error {
+	var b []byte
+	e := s.db.QueryRowContext(ctx, "SELECT snapshot FROM runs WHERE run_id=?", id).Scan(&b)
+	if errors.Is(e, sql.ErrNoRows) {
+		return domain.Fail("RUN_NOT_FOUND", "run_id", "run is absent or compacted; it must not be replayed")
+	}
+	if e != nil {
+		return e
+	}
+	if len(b) > MaxSnapshotBytes || decodeSnapshot(b, out) != nil {
+		return domain.Fail("STORAGE_CORRUPT", "", "invalid saved execution")
+	}
+	return nil
+}
+func decodeSnapshot(b []byte, out any) error {
+	d := json.NewDecoder(bytes.NewReader(b))
+	d.DisallowUnknownFields()
+	if e := d.Decode(out); e != nil {
+		return e
+	}
+	var trailing any
+	if e := d.Decode(&trailing); e != io.EOF {
+		return fmt.Errorf("snapshot has trailing data")
+	}
+	return nil
+}
+func (s *Store) Pending(ctx context.Context, task string) ([]string, error) {
+	rows, e := s.db.QueryContext(ctx, "SELECT run_id FROM runs WHERE task_id=? AND status IN ('running','uncertain')", task)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		rows.Scan(&id)
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+func (s *Store) Failure(ctx context.Context, task, check string) (domain.Digest, int, error) {
+	var sig domain.Digest
+	var count int
+	e := s.db.QueryRowContext(ctx, "SELECT signature,count FROM failures WHERE task_id=? AND check_id=?", task, check).Scan(&sig, &count)
+	if errors.Is(e, sql.ErrNoRows) {
+		return "", 0, nil
+	}
+	return sig, count, e
+}
+func (s *Store) HasRun(ctx context.Context, id string) (bool, error) {
+	var n int
+	e := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM runs WHERE run_id=?", id).Scan(&n)
+	return n == 1, e
+}
+func (s *Store) Purge(ctx context.Context, id string, revision uint64) error {
+	t, e := s.Get(ctx, id)
+	if e != nil {
+		return e
+	}
+	if t.Status == "active" || t.Revision != revision {
+		return domain.Fail("PURGE_NOT_ALLOWED", "task_id", "only the exact terminal task can be explicitly purged")
+	}
+	tx, e := s.db.BeginTx(ctx, nil)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback()
+	for _, table := range []string{"operations", "runs", "failures", "claims"} {
+		if _, e = tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE task_id=?", table), id); e != nil {
+			return e
+		}
+	}
+	r, e := tx.ExecContext(ctx, "DELETE FROM tasks WHERE task_id=? AND revision=? AND status<>'active'", id, revision)
+	if e != nil {
+		return e
+	}
+	n, _ := r.RowsAffected()
+	if n != 1 {
+		return domain.Fail("REVISION_CONFLICT", "revision", "task changed")
+	}
+	return tx.Commit()
+}

@@ -8,7 +8,7 @@ import { runHook } from "../hooks/pre-tool-use.mjs";
 import { assertNoDuplicateJSONMembers } from "../lib/json.mjs";
 
 export const operations = Object.freeze([
-  "inspect", "prepare", "provision", "status", "scope", "bind-task", "open", "resume", "relocate", "cleanup-worktree", "cleanup-branch",
+  "inspect", "prepare", "provision", "status", "scope", "bind-task", "open", "resume", "cleanup-worktree", "cleanup-branch",
 ]);
 
 function input() {
@@ -43,17 +43,18 @@ export async function runCLI(args) {
     process.stdout.write("taskbelay-zcode status|setup|remove [--json]\n" +
       "taskbelay-zcode remove --confirm-host-removed [--json]\n" +
       "taskbelay-zcode --version\ntaskbelay-zcode mcp\n" +
-      "taskbelay-zcode artifacts collect|prepare\n" +
+      "" +
       "taskbelay-zcode host-check pre-file-write|workspace-available\n" +
       "taskbelay-zcode hook pre-tool-use\n" +
       `taskbelay-zcode host-launch ${operations.join("|")}\n` +
-      "Host-launch accepts one closed JSON object on stdin. inspect: {request,repositories:[{key,repository_path}]}; prepare: {request,assessment,user_choice,repositories:[{key,repository_path,workspace_mode,source_type,remote_name,base_branch,target_branch,carry_changes,worktree_path}],handoff}. Other operations: {launch_id,...operation inputs}. Read the Skill for exact contracts.\n" +
+      "Host-launch accepts one closed JSON object on stdin. inspect: {request,repositories:[{key,repository_path}]}; prepare: {request,authorization_ref,repositories:[{key,repository_path,workspace_mode,source_type,remote_name,base_branch,target_branch,carry_changes,worktree_path}],handoff}. Other operations: {launch_id,...operation inputs}. Read the Skill for exact contracts.\n" +
       "open/resume return UI guidance only. --confirm-host-removed records the user's confirmation that the plugin/marketplace were removed in ZCode and affected sessions were closed; it does not check ZCode automatically.\n");
     return 0;
   }
   if (args.length === 1 && args[0] === "--version") {
     process.stdout.write((await core(["version"])).stdout); return 0;
   }
+  if (args.length === 2 && args[0] === "call") { const result = await core(["call",args[1]], {stream:true}); return result?.code ?? 0; }
   if (args.length === 1 && args[0] === "mcp") { await core(["mcp", "--stdio"], { stream: true }); return 0; }
   const settings = lifecycleOptions(args);
   if (settings) { process.stdout.write(JSON.stringify(await lifecycle[args[0]](settings)) + "\n"); return 0; }
@@ -67,8 +68,7 @@ export async function runCLI(args) {
       return 2;
     }
   }
-  if (args.length === 2 && (args[0] === "artifacts" && ["collect", "prepare"].includes(args[1]) ||
-      args[0] === "host-check" && ["pre-file-write", "workspace-available"].includes(args[1]))) {
+  if (args.length === 2 && (args[0] === "host-check" && ["pre-file-write", "workspace-available"].includes(args[1]))) {
     try { process.stdout.write((await core(args, { input: input() })).stdout); return 0; }
     catch (error) {
       if (error.stdout) { process.stdout.write(error.stdout); return error.code || 1; }
@@ -86,7 +86,6 @@ export async function runCLI(args) {
         result = ["open", "resume"].includes(operation)
           ? await workspace.session(launch_id, operation) : await workspace[operation](launch_id);
       } else if (operation === "bind-task") result = await workspace.bindTask(launch_id, rest);
-      else if (operation === "relocate") result = await workspace.relocate(launch_id, rest);
       else result = await workspace.cleanup(launch_id, operation, rest);
     }
     process.stdout.write(JSON.stringify(result) + "\n"); return 0;

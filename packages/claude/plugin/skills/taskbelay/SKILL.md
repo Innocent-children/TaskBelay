@@ -1,38 +1,32 @@
 ---
 name: taskbelay
-description: Assess development requests, then execute and resume complete TaskBelay tasks in Claude Code with Core-owned state.
+description: "Use TaskBelay for authorized development across components or sessions: track actual scope, verification provenance, cumulative cost and recovery. Preserve existing user authorization and ask only for necessary decisions."
 ---
 
 # TaskBelay for Claude Code
 
-Use `/taskbelay-claude:taskbelay` for assessment. Claude performs repository work and authorized Host
-operations; Core owns Task state, Actions, transitions, verification, blockers and recovery.
-Invocation does not authorize Git changes or approve an unseen plan. Reuse valid user answers.
+Follow [engineering work](references/engineering.md), the [current protocol](references/protocol.md) and [optional workspaces](references/workspace.md).
+The agent performs coding and technical judgment; Core owns Task decisions and evidence.
 
-| Request or state | Read and perform |
-| --- | --- |
-| New development request | [Admission](references/admission.md): assess read-only, obtain missing choices, then prepare every confirmed repository; default to a new local branch. |
-| Saved launch | Read its status/receipt and actual workspace identity through admission before creation/resume; a requested Claude session does not prove Core creation. |
-| Existing Task | Return to the original workspace and [connect/resume](references/connection.md), without preparing another workspace or creating another Task. |
-| Current Action | [Action execution](references/node-payloads.md) and only the current node guide. |
-| Rejection, lost result or blocker | [Response handling](references/tool-results.md) and its linked recovery procedure. |
-| Installation, relocation, cancellation, abandonment or cleanup | [Host lifecycle](references/host-lifecycle.md). |
+Use actually visible local MCP tools. If unavailable, report it and repair the configured integration
+within authorization; do not silently claim controlled execution. The packaged MCP launcher exposes the same current Core contract.
 
-After provisioning or on resume, perform [server_info](references/connection.md#server-handshake)
-first and require Claude support. Use actually visible tools through [transport](references/transport.md).
-Retain full responses, inspect `ok`, then recovery/blocker/outcome and the complete Action.
+The structured write hook covers Write/Edit/NotebookEdit; other edits are observed at checkpoints.
+Hooks check known paths and actual authorization restrictions. They cannot determine the semantics
+of future edits or authenticate user conversation. Never describe unsupported shell interception as
+implemented.
 
-Follow the Action procedure for requirements/design discussion, saved-plan approval, method steps and
-submission. Use [artifacts](references/artifacts.md) before writes and every submission, and
-[verification](references/verification.md) for checks. Required user decisions stay with the user.
-Write/Edit/NotebookEdit require the trusted PreToolUse Hook; a denial or disabled gate cannot be
-bypassed with another tool. Bash/external writes are observed later. Claude permissions still apply.
+Start in the authorized current workspace and session when possible. Existing authorization remains
+valid across ordinary follow-ups; no repeated selector, plan verdict or phase confirmation is needed.
+A new chat or Git branch/worktree operation is optional and requires actual authorization. Use taskbelay-claude host-launch only for explicitly authorized workspace preparation; its receipt tracks that operation, not a second Task cursor.
+Use its returned repositories with open_task. Task workspaces remain bound; cross-workspace
+relocation is unsupported. Restore the original workspace or cancel without deleting work.
 
-Follow current user and CLAUDE.md/AGENTS.md instructions. Confirm every repository (at most eight)
-and its permissions before preparation; never create a partial Task. Indexes are optional and are
-not installed automatically. Read [handoff](references/task-handoff.md) before another session.
-DONE/CANCELLED preserves local work and grants no commit, push, publication or deletion authority;
-dedicated worktree and branch deletion require their separate authorization.
+Native tool permissions apply to Core-executed checks. Avoid passing credentials in argv. Retain
+complete responses and operation identities. After response loss read the saved run; do not rerun
+commands from memory. A real user observation, an agent claim and a Core process result are distinct.
 
-Implementation: `packages/claude/lib/workspace.mjs`; `packages/claude/bin/taskbelay-claude.mjs`;
-`packages/claude/plugin/hooks/pre-tool-use.mjs`.
+When a task is done or cancelled, report the actual result and remaining limitations. Commit, push,
+PR, merge, publish and deletion still need their own authorization.
+
+Implementation: `internal/application/service.go`, `internal/mcp/server.go`, `packages/claude/lib/` and the packaged structured write hook.

@@ -137,9 +137,7 @@ function presentation(
       : phase === "blocked"
         ? "blocked"
         : phase === "active" || !["archived", "cancelled"].includes(phase)
-          ? summary.current_node === "COMPREHENSION_REVIEW"
-            ? "review"
-            : "working"
+          ? "working"
           : "idle";
   const prompt =
     observed &&

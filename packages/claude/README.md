@@ -1,46 +1,15 @@
 # TaskBelay for Claude Code
 
-TaskBelay keeps a development task's requirements, file scope, verification plan and progress available across Claude Code sessions.
+This source adapter uses the current local engineering Core: authorized goals, actual changes, real execution evidence, cumulative cost and recovery. Published versions and stable support records are unchanged; build this checkout for the new contract. Old data is preserved and unsupported, so select a separate explicit TASKBELAY_DATA_DIR.
 
-This Adapter requires Node.js `>=24`, Git and Claude Code `>=2.1.270`. Check the [support matrix](https://github.com/Innocent-children/taskbelay/blob/main/docs/SUPPORT-MATRIX_en.md) for platform verification and remaining limits.
+Install the public manager with npm install -g taskbelay@latest and taskbelay install --host claude. For current source use node scripts/taskbelay-local.mjs install --host claude --yes from the repository. Node.js >=24 is required; source builds additionally need Go >=1.26 and pnpm >=11 <12.
 
-## Install and verify
+Reload the plugin or start a session and review native tool permissions.
 
-Install the published Adapter:
+Invoke the TaskBelay Skill and state the desired outcome and limits. Existing authorization survives ordinary follow-ups. Alternate coding and verification, retain semantic basis/uncertainty and use Core run_check for actual local results. Unsupported shell/remote operations must be described honestly. Resume a saved Task in its bound workspace and read the original run after a lost response.
 
-```sh
-npm install --global taskbelay-claude@latest
-taskbelay-claude setup --json
-taskbelay-claude status --json
-```
+The hook covers Write/Edit/NotebookEdit paths; other changes are observed at checkpoints. Core cannot authenticate conversation or prove semantic judgments. Checks still follow native Host permissions.
 
-For a maintainer-provided local tarball, replace `taskbelay-claude@latest` with its path.
+Status/doctor/upgrade/uninstall use the unified manager with --host claude; ordinary removal retains Task data. Optional workspace preparation reuses actual authorization_ref and yields current repositories. Relocation is unsupported. Done/cancelled does not authorize Git, publication or cleanup.
 
-Installation status should be `ready`. Reload Claude plugins or start a new session, review the permission prompts and complete Claude sign-in. This package provides the Adapter; the general `taskbelay` manager and desktop application are separate.
-
-For installation from the repository, follow the [source installation guide](https://github.com/Innocent-children/taskbelay/blob/main/docs/CLAUDE_en.md#install-from-this-repository).
-
-## Start and resume
-
-In the code repository you want to change, send:
-
-```text
-/taskbelay-claude:taskbelay Add failed-login rate limiting, changing only authentication files.
-```
-
-Review the assessment, choose the workspace and approve the complete plan before implementation. To resume, reopen the original directory and conversation and explicitly ask the same skill to continue the saved task.
-
-## Maintain or remove
-
-The [Host guide](https://github.com/Innocent-children/taskbelay/blob/main/docs/CLAUDE_en.md) covers diagnostics and maintenance, including the separate build steps for source installations.
-
-To remove only this Adapter, end its Claude sessions and stop any WebUI you started, then run:
-
-```sh
-taskbelay-claude remove --json
-npm uninstall --global taskbelay-claude
-```
-
-Ordinary removal retains task data and unrelated Claude configuration. Worktree deletion, branch deletion and data reset are separate operations.
-
-[中文指南](https://github.com/Innocent-children/taskbelay/blob/main/docs/CLAUDE.md) · [English guide](https://github.com/Innocent-children/taskbelay/blob/main/docs/CLAUDE_en.md)
+See [product](../../docs/PRODUCT_en.md), [commands](../../docs/COMMANDS_en.md), [verification boundaries](../../docs/SUPPORT-MATRIX_en.md). Adapter/package tests are distinct from actual Claude Code sessions.

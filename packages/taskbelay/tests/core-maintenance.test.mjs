@@ -121,7 +121,7 @@ test("retained reset paths cannot authorize signalling after package ownership i
   await assert.rejects(stat(recordPath), { code: "ENOENT" });
 });
 
-test("reset rejects invalid or linked private maintenance records before process actions", async t => {
+test("reset rejects invalid or linked private maintenance records before process actions", {skip:process.platform==='win32'?'Windows cannot create unprivileged file symlinks':false}, async t => {
   const f = await fixture(t);
   await stopManagedCores(f.options);
   const recordPath = join(f.options.paths.managerRoot, "reset-core-maintenance.json");

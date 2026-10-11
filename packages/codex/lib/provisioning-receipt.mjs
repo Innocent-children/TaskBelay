@@ -1,4 +1,3 @@
-import { validateLaunchAdmission } from "./task-admission.mjs";
 import { randomBytes } from "node:crypto";
 import { chmod, lstat, mkdir, open, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -22,10 +21,6 @@ export const PROVISIONING_PHASES = Object.freeze([
   "provisioned",
   "failed",
   "uncertain",
-  "handoff_dispatching",
-  "handoff_pending",
-  "handoff_succeeded",
-  "handoff_failed",
   "worktree_removed",
   "branch_removed",
 ]);
@@ -40,20 +35,16 @@ const phaseTransitions = Object.freeze({
   queued: Object.freeze(["queued", "dispatched", "provisioning", "failed", "uncertain"]),
   dispatched: Object.freeze(["dispatched", "provisioning", "failed", "uncertain"]),
   provisioning: Object.freeze(["provisioning", "provisioned", "failed", "uncertain"]),
-  provisioned: Object.freeze(["provisioned", "handoff_dispatching", "worktree_removed"]),
-  uncertain: Object.freeze(["uncertain", "queued", "dispatched", "provisioning", "provisioned", "handoff_pending", "failed"]),
+  provisioned: Object.freeze(["provisioned", "worktree_removed"]),
+  uncertain: Object.freeze(["uncertain", "queued", "dispatched", "provisioning", "provisioned", "failed"]),
   failed: Object.freeze(["failed"]),
-  handoff_dispatching: Object.freeze(["handoff_dispatching", "handoff_pending", "handoff_failed", "uncertain"]),
-  handoff_pending: Object.freeze(["handoff_pending", "handoff_succeeded", "handoff_failed", "uncertain"]),
-  handoff_succeeded: Object.freeze(["handoff_succeeded", "handoff_dispatching", "worktree_removed"]),
-  handoff_failed: Object.freeze(["handoff_failed", "handoff_dispatching", "worktree_removed"]),
   worktree_removed: Object.freeze(["worktree_removed", "branch_removed"]),
   branch_removed: Object.freeze(["branch_removed"]),
 });
 
 export function createProvisioningReceipt({
   launchId,
-  admission,
+  authorizationRef,
   requestDigest,
   handoffDigest,
   sourceRepositoryIdentity,
@@ -70,7 +61,7 @@ export function createProvisioningReceipt({
 } = {}) {
   return validateProvisioningReceipt({
     launch_id: launchId,
-    admission,
+    authorization_ref: authorizationRef,
     host: "codex",
     request_digest: requestDigest,
     handoff_digest: handoffDigest,
@@ -93,9 +84,6 @@ export function createProvisioningReceipt({
       dispatch_recovery_reason: null,
       host_thread_id: null,
       host_client_thread_id: null,
-      host_operation_id: null,
-      host_operation_revision: null,
-      relocation_id: null,
       worktree_cleanup: "not_requested",
       branch_cleanup: "not_requested",
     },
@@ -106,7 +94,7 @@ export function createProvisioningReceipt({
 export function validateProvisioningReceipt(value) {
   assertExactKeys(value, [
     "launch_id",
-    "admission",
+    "authorization_ref",
     "host",
     "request_digest",
     "handoff_digest",
@@ -120,11 +108,7 @@ export function validateProvisioningReceipt(value) {
     "operation_status",
     "created_at",
   ], "provisioning receipt");
-  assertExactKeys(value.admission, ["assessment", "user_choice"], "receipt admission");
-  validateLaunchAdmission(value.admission.assessment, value.admission.user_choice);
-  if (value.admission.assessment.anchor.request_digest !== value.request_digest || !value.admission.assessment.anchor.repositories.some((entry) => entry.repository_key === value.repository_key)) {
-    throw new Error("receipt admission does not match the request and repository");
-  }
+  if (typeof value.authorization_ref !== "string" || value.authorization_ref.trim() === "") throw new Error("receipt requires the actual workspace authorization reference");
   assertLaunchID(value.launch_id);
   if (value.host !== "codex") throw new Error("provisioning receipt host must equal codex");
   if (!digestPattern.test(value.request_digest)) throw new Error("provisioning receipt request_digest is invalid");
@@ -150,7 +134,7 @@ export function validateProvisioningReceipt(value) {
   if (!["confirmed", "resolving", "failed"].includes(value.operation_status.phase) && value.base_commit === null) {
     throw new Error("provisioning receipt phase requires base_commit");
   }
-  if (["provisioning", "provisioned", "handoff_dispatching", "handoff_pending", "handoff_succeeded", "handoff_failed"].includes(value.operation_status.phase) && value.worktree_path === null) {
+  if (["provisioning", "provisioned"].includes(value.operation_status.phase) && value.worktree_path === null) {
     throw new Error("provisioning receipt phase requires worktree_path");
   }
   return structuredClone(value);
@@ -317,7 +301,7 @@ export function updateProvisioningReceipt(receipt, patch) {
   }
   const allowed = new Set([
     "base_commit", "snapshot_commit", "worktree_path", "dispatch_attempt_id", "host_thread_id",
-    "host_client_thread_id", "host_operation_id", "host_operation_revision", "relocation_id",
+    "host_client_thread_id",
     "worktree_cleanup", "branch_cleanup", "host_request", "dispatch_recovery_reason",
   ]);
   for (const key of Object.keys(patch.values)) {
@@ -337,7 +321,7 @@ export function updateProvisioningReceipt(receipt, patch) {
 function validateOperationStatus(value) {
   assertExactKeys(value, [
     "phase", "surface", "dispatch_attempt_id", "host_thread_id", "host_client_thread_id",
-    "host_operation_id", "host_operation_revision", "relocation_id", "worktree_cleanup", "branch_cleanup", "host_request", "dispatch_recovery_reason",
+    "worktree_cleanup", "branch_cleanup", "host_request", "dispatch_recovery_reason",
   ], "provisioning operation_status");
   if (value.host_request !== null) {
     const request = value.host_request;
@@ -365,12 +349,9 @@ function validateOperationStatus(value) {
     throw new Error("provisioning surface is invalid");
   }
   for (const field of [
-    "dispatch_attempt_id", "host_thread_id", "host_client_thread_id", "host_operation_id", "relocation_id",
+    "dispatch_attempt_id", "host_thread_id", "host_client_thread_id",
   ]) {
     if (value[field] !== null) assertIdentifier(value[field], `operation_status.${field}`);
-  }
-  if (value.host_operation_revision !== null && (!Number.isSafeInteger(value.host_operation_revision) || value.host_operation_revision < 0)) {
-    throw new Error("operation_status.host_operation_revision is invalid");
   }
   if (!cleanupStates.includes(value.worktree_cleanup) || !cleanupStates.includes(value.branch_cleanup)) {
     throw new Error("provisioning cleanup state is invalid");

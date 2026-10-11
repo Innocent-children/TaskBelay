@@ -1,114 +1,11 @@
-# TaskBelay 本地 WebUI
+# 本机 WebUI
 
 [中文](WEBUI.md) | [English](WEBUI_en.md)
 
-> TaskBelay 持久 Task、工作目录和恢复状态的本地可视化与诊断入口。
+配置适配器后运行 taskbelay webui start；status 查询当前本机实例，open 打开已运行实例，stop 结束界面进程。源码安装方式见 README。WebUI 不创建第二任务状态。
 
-Control Center 嵌入 Go Core，读取与 Codex、DeepSeek、Claude Code、ZCode 相同的 SQLite Task。浏览器不保存第二份流程
-状态，也不执行 fetch、branch、worktree、handoff 或清理。
+任务列表显示保存摘要。详情展示当前授权目标、进展、证据来源、剩余缺口、未确定执行、必要用户决定和累计成本。“刷新实际状态”观察真实目录与适用性；普通保存状态不宣称结果仍有效。可读取实际运行输出；输出截断明确标记。人工检查按钮只用于用户已经执行且能具体说明结果的 human 检查，不能代表待办或代理检查。
 
-任务列表可按 Codex、DeepSeek、Claude Code 或 ZCode 筛选。选择 Host 后打开已有任务；创建新的开发任务仍需从对应 Host 对话开始。
+用户不填写节点 payload，不选择内部转换，也不自动被要求确认阶段。重要授权或取舍仍向编码代理给出真实决定。取消保留文件，未确定执行先处理。HTTP 清除仅支持明确匹配的终态任务，不删除源码或工作树。桌面宠物读取保存摘要，不表示实时活动或完成百分比。
 
-## 可查看的信息
-
-- 所有 Host 共用的 Task 概览、筛选列表、当前阶段、revision 和合法下一步；
-- 需求、设计、任务计划、实现、测试、理解确认、验证记录和时间线；TASKS 前明确显示验证尚未计划；
-- 每个仓库确认的 source/base/base commit、task branch、worktree path 和 repository group；
-- 当前 HEAD、clean/dirty、identity/history/content 摘要、Task surface 和当前 changed paths；
-- 验证计划中的检查及理由、初始/当前预算、当前计划已用命令、完整套件次数和历次增加原因；
-- 文件范围、验证刹车、历史冲突、relocation、Recovery 和 workspace unavailable 状态；
-- provisioning receipt 身份、当前 Host、已完成验证，以及 keep/review/handoff/cleanup 后续选择；
-- 当前 Core、数据目录和 runtime 状态。
-
-界面支持简体中文和英文。首次跟随浏览器语言；手工选择只保存在浏览器，不进入 Core、Task、receipt
-或账号状态。
-
-验证区块显示是否已完成规划、计划检查、完整套件和测试代码预期、当前计划消耗，以及每次有理由的额度增加。旧计划记录保留在时间线中。WebUI 展示 Core 结果，实际检查由 Host 决定并执行。
-
-## 可执行操作的边界
-
-工作区卡片显示原目录新分支、当前分支或独立工作树。本地模式说明共享目录的修改都会被观察，
-结束后保留目录和分支；只在全部仓库均为独立工作树时展示工作区迁移操作。
-
-新 Task 由 Codex、DeepSeek、Claude Code 或 ZCode 完成只读评估、用户确认、工作位置选择及准备，再从执行 Host 创建；页面负责展示和处理已有任务。
-
-页面可以使用 Core 当前返回的任务和操作标识，提交以下操作：
-
-- 解除文件范围、验证或历史 blocker；
-- 使用当前 TEST Action 的 `verification_budget_increased` 保存有具体原因的预算增加；
-- 为同机 Host relocation 创建 Core blocker，并在 Host 已完成 handoff 后提交目标路径；
-- 在工作树仍可观察时取消 Task；
-- 在原工作树确实丢失时，用精确 revision 和非空原因显式 abandon；
-- 对终态 Task 进行 archive 或明确的不可逆数据清理。
-
-实际 handoff、worktree 删除和 branch 删除属于 Host。worktree 与 branch 是两个独立授权；页面不会
-自动清理 active、dirty、未推送、来源不明或状态不确定的对象。
-
-计划外结构化写入仍由 Host 在写前调用 Core。Bash、外部进程或其他工具的写入可能先发生，Core 在
-下一次 Task 读取或 Action 前从 Git 观察中发现。本地模式和独立工作树都没有“忽略外部改动”的选项。
-
-## 完成条件与操作恢复
-
-进入 TEST 前，当前 Task Plan 的全部工作项必须已经完成。DELIVERY 逐条接收明确的验收结果，每项关联已完成且对应此验收条件的工作项，以及当前 Test 中通过的检查。自动检查、静态检查、Host 观察和明确人工检查均可使用；理解确认仍单独保存，不自动代替验收检查。遗漏、错误或过期引用会使提交被拒绝。
-
-WebUI 与 MCP 共用 Core 的语义提交、操作保存和恢复流程。Core 保存规范化载荷，页面只提交当前 Task revision、Action ID 和语义结果。网络异常先回读 Core；页面重新打开后仍能发现待恢复操作，并按 Action ID 恢复。无效完成结果不会推进任务或保存操作。
-
-## 启动、打开、查看状态和停止
-
-```bash
-taskbelay webui start
-taskbelay webui status
-taskbelay webui open
-taskbelay webui stop
-```
-
-`start` 默认打开浏览器；`--no-open` 只启动进程。所有命令支持 `--plain` 或 `--json`。默认数据目录
-缺失时，只有 `start` 可以创建它：macOS 使用 mode `0700`，Windows 使用当前用户 LocalAppData ACL。
-显式 `TASKBELAY_DATA_DIR` 必须已经存在、可以 canonicalize 且不经过符号链接。
-
-```bash
-export TASKBELAY_DATA_DIR="/absolute/path/to/existing-directory"
-taskbelay webui start
-```
-
-```powershell
-$env:TASKBELAY_DATA_DIR = "C:\absolute\existing-directory"
-taskbelay webui start
-```
-
-## 本机单用户边界
-
-服务只监听系统分配的 `tcp4 127.0.0.1` 端口。页面 mutation 检查精确 Origin、当前进程生成的随机
-session 值和 Task revision；过期页面不能提交旧操作。这些检查防止本机误请求，不是账号认证或
-多用户隔离。同一用户或管理员权限的进程仍在本地信任边界内。
-
-runtime receipt 绑定 PID、进程启动身份、data-root digest 和 loopback URL。停止或卸载只操作 receipt
-精确匹配的进程。它与 Host 的 provisioning receipt、Core Action operation 和 relocation record
-职责不同，互不代替。
-
-## 状态和数据
-
-`status` 返回 `ready`、`read_only`、`incompatible` 或 `unavailable`。默认 Task 数据在 macOS 位于
-`$HOME/.taskbelay/data`，Windows 位于 `%LOCALAPPDATA%\taskbelay\data`。
-Codex、DeepSeek、Claude Code 与 ZCode 共用这份数据。
-
-React、TypeScript 和 Vite 只参与构建；静态资产嵌入 Core binary，运行时不需要 Node server、CDN、
-外部字体或独立 WebUI package。完整命令见[命令参考](COMMANDS.md)，协议见
-[Architecture](ARCHITECTURE.md)，稳定范围见[支持矩阵](SUPPORT-MATRIX.md)。
-
-## 当前不支持
-
-- 远程访问、账号、团队权限或云端同步；
-- 由浏览器执行 shell、文件编辑、Git mutation、Host handoff 或发布；
-- 由浏览器创建共享 checkout Task 或自动补建丢失的工作树；
-- 用户自定义流程图或第二份 Task 状态。
-
-## 桌面入口与文件错误
-
-桌面宠物可以打开所选 Task 的 WebUI。正式 `taskbelay` npm 包提供 macOS arm64 与 Windows 10/11 x64 应用，运行时由已配置的 Adapter 提供 Core。统一入口的安装、升级、修复和重装会更新用户目录中的应用副本，并保留设置与形象素材。安装、操作和形象说明见[桌面宠物指南](DESKTOP-PETS.md)。
-
-提交流程文件漏报时，页面分别展示遗漏的仓库路径和请求字段错误。只有 Core 确认零写入并明确允许时，才能仅纠正列出的 artifact 字段一次。工作树与历史异常继续使用对应恢复规则。集成字段见[文件收集与提交](ARTIFACTS.md)。
-
-任务详情展示已确认的工作树来源及本地内容携带选择。创建与来源选择在 Host 中完成，见[工作树来源](WORKTREE-SOURCES.md)。
-
-原计划中的检查可因补做或重跑增加验证额度。页面保存具体原因和增加量，不因此产生通过结果。
+界面为本机 loopback，修改受 Host/Origin/CSRF 限制。实际工具契约见[命令](COMMANDS.md)，语义与证据边界见[产品](PRODUCT.md)。
