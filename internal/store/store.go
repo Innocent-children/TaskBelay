@@ -18,7 +18,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const DatabaseSchemaVersion = "2.0.0"
+const DatabaseSchemaVersion = "2.1.0"
 const MaxSnapshotBytes = 8 * 1024 * 1024
 
 var schema = []string{
@@ -430,6 +430,33 @@ func (s *Store) Run(ctx context.Context, id string, out any) error {
 	}
 	if len(b) > MaxSnapshotBytes || decodeSnapshot(b, out) != nil {
 		return domain.Fail("STORAGE_CORRUPT", "", "invalid saved execution")
+	}
+	return nil
+}
+
+/**
+ * Record the stopped-at-launch process before allowing the approved command to execute.
+ * The reservation and task revision stay unchanged; only this run's observed identity advances.
+ */
+func (s *Store) RecordStartedRun(ctx context.Context, id string, reserved, started any) error {
+	before, e := json.Marshal(reserved)
+	if e != nil {
+		return e
+	}
+	after, e := json.Marshal(started)
+	if e != nil {
+		return e
+	}
+	result, e := s.db.ExecContext(ctx, "UPDATE runs SET snapshot=? WHERE run_id=? AND status='running' AND snapshot=?", after, id, before)
+	if e != nil {
+		return e
+	}
+	n, e := result.RowsAffected()
+	if e != nil {
+		return e
+	}
+	if n != 1 {
+		return domain.Fail("EXECUTION_UNCERTAIN", "run_id", "execution reservation changed before process activation")
 	}
 	return nil
 }

@@ -38,6 +38,8 @@ Verwende TaskBelay für eine Begrenzung fehlgeschlagener Anmeldungen. Erhalte di
 
 Beschreiben Sie Ergebnis und Grenzen. Vor der Umsetzung legt der Agent sein Verständnis, die Ursache, den vollständigen Plan, Zuständigkeiten, Umfang, Prüfungen und Kostenlimits zur ausdrücklichen Bestätigung vor. Wesentliche Änderungen benötigen eine neue Bestätigung; normaler Fortschritt behält die gültige Freigabe. Prüfungen müssen eine aktuelle Lücke schließen; weiterhin gültige Erfolge werden wiederverwendet. Die WebUI zeigt Plan, Nachweise und Kosten, ermöglicht Bestätigung und Archivierung abgeschlossener Aufgaben und öffnet Aufgaben über direkte Detail-Links. Setzen Sie mit der gespeicherten Task ID im ursprünglichen Arbeitsbereich fort.
 
+Bei jedem neuen Task zeigt der Agent zunächst die aktuellen Verzeichnisse, Branches und nicht committeten Änderungen und fragt nach dem Arbeitsort: aktueller Branch, neuer Branch im selben Verzeichnis oder eigener Worktree. Es gibt keine Standardauswahl. Beim Fortsetzen eines bestehenden Tasks bleibt der ursprüngliche Arbeitsbereich erhalten.
+
 ```sh
 taskbelay webui start
 ```

@@ -38,6 +38,8 @@ Utilise TaskBelay pour limiter les tentatives de connexion échouées. Préserve
 
 Décrivez le résultat et les limites. Avant toute réalisation, l’agent présente sa compréhension, la cause, le plan complet, les responsabilités, le périmètre, les vérifications et les limites de coût pour confirmation explicite. Un changement important exige une nouvelle confirmation ; la progression ordinaire conserve l’accord valide. Chaque vérification doit combler une lacune actuelle et les résultats encore valides sont réutilisés. La WebUI affiche le plan, les preuves et le coût, permet la confirmation et l’archivage des tâches terminées et ouvre une tâche par son lien direct. Reprenez avec le Task ID enregistré dans l’espace initial.
 
+Pour chaque nouveau Task, l’agent présente les répertoires, les branches et les modifications non commitées, puis demande où travailler : branche actuelle, nouvelle branche dans le même répertoire ou worktree distinct. Aucun choix n’est fait par défaut. La reprise d’un Task existant conserve son espace de travail d’origine.
+
 ```sh
 taskbelay webui start
 ```

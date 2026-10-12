@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { core, fixture, check } from './fixtures/engineering.mjs';
 
@@ -57,6 +57,28 @@ test('default evidence covers all repositories while justified independent evide
   assert.ok(f.view.task.attempts.some(a => a.status === 'failed')); f.review(); f.finish(); assert.equal(f.view.task.status, 'done');
 });
 
+test('passing evidence survives execution-setting revisions and a renamed check can establish its own result', t => {
+  const f = fixture(t);
+  f.open([goal()], [check('check', 'check.cjs')]); f.confirm();
+  const passed = f.run('check').run;
+  const checks = structuredClone(f.view.task.checks);
+  checks[0].timeout_ms = 6000; checks[0].rationale = 'Clarified verification rationale.';
+  f.revise(f.view.task.authorization, checks);
+  assert.equal(f.view.task.approval, null);
+  f.run('check', {}, 'PLAN_CONFIRMATION_REQUIRED');
+  f.confirm(); f.inspect();
+  assert.equal(f.view.decision.evidence.find(e => e.evidence_id === passed.run_id).valid, true);
+  f.run('check', {}, 'CHECK_ALREADY_SATISFIED');
+  f.review(); assert.equal(f.view.decision.ready, true);
+  const authorization = structuredClone(f.view.task.authorization);
+  authorization.goals[0].checks = ['renamed']; checks[0].id = 'renamed';
+  f.revise(authorization, checks); f.confirm();
+  assert.ok(f.view.decision.missing_checks.includes('renamed'));
+  assert.equal(f.run('renamed').run.status, 'passed');
+  assert.equal(f.view.task.usage.runs, 2);
+  f.review(); f.finish();
+});
+
 test('unchanged failure retries need information and labels cannot reset their count', t => {
   const f = fixture(t, { primary: { 'check.cjs': 'process.exit(1);\n' } });
   f.open([goal()], [check('check', 'check.cjs', { full_suite: true })]); f.confirm();
@@ -92,11 +114,48 @@ test('interrupted real execution is recovered without a passing claim or cost re
   child.stdin.end(JSON.stringify({ ...f.identity(), check_id: 'check', rationale: 'Verify actual process interruption and recovery.' }));
   const marker = join(f.repositories[0].repository_path, 'started.marker'), deadline = Date.now() + 10000;
   while (!existsSync(marker) && Date.now() < deadline) await new Promise(r => setTimeout(r, 20));
-  assert.ok(existsSync(marker)); const exited = new Promise(r => child.once('exit', r)); child.kill(); await exited;
+  assert.ok(existsSync(marker)); const exited = new Promise(r => child.once('exit', r)); child.kill('SIGKILL'); await exited;
   f.inspect(); const id = f.view.decision.pending_runs[0]; assert.ok(id); f.run('check', {}, 'EXECUTION_PENDING');
+  const pending = f.call('taskbelay_get_run', {run_id:id});
+  assert.ok(pending.process?.pid > 0);
+  if (process.platform === 'darwin') {
+    f.call('taskbelay_recover_run', { ...f.identity(), run_id:id, resolution_basis:'The Core stopped; the command is still alive.', user_ref:'' }, 'EXECUTION_RUNNING');
+    f.call('taskbelay_cancel_task', {...f.identity(),reason:'Cannot release a running process.'}, 'EXECUTION_PENDING');
+    f.finish('ACCEPTANCE_INCOMPLETE');
+    await new Promise(resolve => setTimeout(resolve, 1700));
+  }
   f.call('taskbelay_recover_run', { ...f.identity(), run_id: id, resolution_basis: 'Stopped owner only wrote the ignored fixture marker.', user_ref: '' });
   assert.equal(f.view.task.usage.uncertain_ms, 5000); assert.equal(f.view.task.usage.runs, 1);
   const result = f.run('check', { previous_run_id: id, new_information: 'The stopped execution was inspected and its repeatable operation is safe.' });
   assert.equal(result.run.status, 'passed'); assert.equal(f.view.task.usage.runs, 2); f.review(); f.finish();
   if (process.env.ENGINEERING_REPORT) writeFileSync(process.env.ENGINEERING_REPORT, JSON.stringify({ platform: process.platform, actual_process_interruption: true, cumulative_cost: f.view.task.usage, limitations: ['Scripted authorization and semantic reviews; not a native Host conversation.'] }, null, 2) + '\n');
+});
+
+test('macOS recovery retains descendants after the command leader and Core exit', {skip:process.platform !== 'darwin'}, async t => {
+  const f = fixture(t, {primary:{
+    'parent.cjs': "const {spawn}=require('node:child_process');const fs=require('node:fs');const child=spawn(process.execPath,['descendant.cjs'],{stdio:'ignore'});fs.writeFileSync('child.marker',String(child.pid));setTimeout(()=>process.exit(0),500);\n",
+    'descendant.cjs': "setTimeout(()=>{require('node:fs').writeFileSync('finished.marker','done');process.exit(0)},4000);\n",
+  }});
+  f.open([goal()], [check('check','parent.cjs',{timeout_ms:6000})]); f.confirm();
+  const child = spawn(core,['call','taskbelay_run_check'],{env:f.env,stdio:['pipe','ignore','ignore']});
+  child.stdin.end(JSON.stringify({...f.identity(),check_id:'check',rationale:'Check descendant recovery after forced owner loss.'}));
+  const marker=join(f.repositories[0].repository_path,'child.marker');
+  const deadline=Date.now()+10000;
+  while(!existsSync(marker)&&Date.now()<deadline) await new Promise(r=>setTimeout(r,20));
+  assert.ok(existsSync(marker));
+  const descendant=Number(readFileSync(marker,'utf8'));
+  t.after(()=>{try{process.kill(descendant,'SIGKILL')}catch{}});
+  const exited=new Promise(r=>child.once('exit',r));child.kill('SIGKILL');await exited;
+  f.inspect();const id=f.view.decision.pending_runs[0];assert.ok(id);
+  await new Promise(r=>setTimeout(r,700));
+  const request=()=>({...f.identity(),run_id:id,resolution_basis:'Inspect the retained command group.',user_ref:''});
+  f.call('taskbelay_recover_run',request(),'EXECUTION_RUNNING');
+  assert.deepEqual(f.view.decision.pending_runs,[id]);
+  const finished=join(f.repositories[0].repository_path,'finished.marker');
+  while(!existsSync(finished)&&Date.now()<deadline) await new Promise(r=>setTimeout(r,20));
+  assert.ok(existsSync(finished));
+  await new Promise(r=>setTimeout(r,100));
+  const result=f.call('taskbelay_recover_run',request());
+  assert.equal(result.run.status,'interrupted_unknown');
+  assert.deepEqual(f.view.decision.pending_runs,[]);
 });

@@ -38,6 +38,8 @@ Use TaskBelay to add login failure throttling. Preserve the public authenticatio
 
 State the outcome and limits. Before implementation, the agent shows its understanding, root cause, complete plan, ownership, scope, checks and cost limits for your explicit confirmation. Material revisions need confirmation again; ordinary progress retains valid approval. Checks must address a current gap, and unchanged passing results are reused. The WebUI shows the plan, evidence and cost, supports confirmation and terminal-task archiving, and opens saved task links directly. Resume with the saved Task ID in its original workspace.
 
+For every new Task, the agent first shows the current directories, branches and uncommitted changes, then asks where to work: the current branch, a new branch in the same directory, or a dedicated worktree. There is no default choice. Resuming an existing Task keeps its original workspace.
+
 ```sh
 taskbelay webui start
 ```

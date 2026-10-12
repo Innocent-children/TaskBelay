@@ -16,7 +16,10 @@ Hooks check known paths and actual authorization restrictions. They cannot deter
 of future edits or authenticate user conversation. Never describe unsupported shell interception as
 implemented.
 
-Start in the authorized current workspace and session when possible. Existing authorization remains
+Before every new Task, ask the user to choose the current branch, a new branch in the current directory,
+or a dedicated worktree. Show the actual directory, branch and initial changes; do not select a default
+or reuse another Task's workspace choice. Resume an existing Task in its saved workspace without
+asking again. Existing authorization for that Task remains
 valid across ordinary follow-ups. Show the understanding and complete plan, obtain the actual user answer, then record taskbelay_confirm_plan for that exact plan_digest before implementation. Reuse a prior answer only if it explicitly approved this unchanged displayed plan; never treat a general development request as approval of an unseen plan.
 A new chat or Git branch/worktree operation is optional and requires actual authorization. Use taskbelay-codex host-launch only for explicitly authorized workspace preparation; its receipt tracks that operation, not a second Task cursor.
 Use its returned repositories with open_task. Task workspaces remain bound; cross-workspace

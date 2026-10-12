@@ -18,7 +18,10 @@ import (
 
 func proposedFixture(t *testing.T) (*Service, View, string) {
 	t.Helper()
-	root := t.TempDir()
+	root, e := filepath.EvalSymlinks(t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
 	git := func(args ...string) {
 		c := exec.Command("git", append([]string{"-C", root}, args...)...)
 		if b, e := c.CombinedOutput(); e != nil {

@@ -8,7 +8,7 @@ error.code 是类别，message 说明实际要求，details 给出具体 path/ru
 
 recovery.action 指定 correct_request、read_task、self_correct、recover_run、request_authorization 或 repair_storage。纠正保留真实授权与操作身份，仅依据已有事实修改返回字段；不能补造用户决定、语义通过或执行结果。已提交后清理失败仍可能返回错误，需查保存状态。成本计量写入不等于语义提交；不得从错误反推任务或进程必然没有执行。
 
-操作结果不明先读原 Task/run。执行已持久预留后不可盲目重放。恢复匹配签名收据只保存原结果；执行者停止但缺收据只产生 interrupted_unknown。旧 Schema 保留原数据且拒绝打开。完整 JSON 示例及同工具具体错误在共享 Skill 的 protocol.md，测试比较完整编码并校验输出 Schema；in-memory SDK 测试核对实际传输。见[命令](COMMANDS.md)和[架构](ARCHITECTURE.md)。
+操作结果不明先读原 Task/run。执行已持久预留后不可盲目重放。恢复匹配签名收据只保存原结果；Core 已退出但命令进程组仍存活时返回 EXECUTION_RUNNING 并保留 pending；无法判断进程状态时返回 EXECUTION_UNCERTAIN。全部停止但缺收据只产生 interrupted_unknown。旧 Schema 保留原数据且拒绝打开。完整 JSON 示例及同工具具体错误在共享 Skill 的 protocol.md，测试比较完整编码并校验输出 Schema；in-memory SDK 测试核对实际传输。见[命令](COMMANDS.md)和[架构](ARCHITECTURE.md)。
 
 JSON 未知成员、重复成员及类型错误定位到具体 arguments 路径，包括数组下标，例如 arguments.checks[0].argv[0]；邻接示例使用真实生产者的完整编码。
 

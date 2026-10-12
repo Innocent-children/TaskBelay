@@ -158,8 +158,9 @@ export async function provision(id, options = {}) {
 function origin(r, repo) {
   if (repo.phase !== "provisioned") throw new Error("Every repository must be provisioned");
   return { mode: repo.workspace_mode, source_type: repo.source_type, carry_changes: repo.carry_changes, remote_name: repo.remote_name,
-    base_branch: repo.base_branch, base_commit: repo.base_commit, task_branch: repo.target_branch, provisioning_receipt_id: "claude-" + hash(r.launch_id + "\0" + repo.key) };
+    base_branch: repo.base_branch, base_commit: repo.base_commit, task_branch: repo.target_branch, provisioning_receipt_id: provisioningReceiptID(r.launch_id, repo.key) };
 }
+function provisioningReceiptID(launchID, repositoryKey) { return "claude-" + hash(launchID + "\0" + repositoryKey); }
 export async function scope(id, options = {}) {
   const r = await status(id, options), [primary, ...additional] = r.repositories;
   for (const repo of r.repositories) {
@@ -206,7 +207,7 @@ export async function cleanup(id, operation, input, options = {}) {
     if (input.terminal !== true || input.authorized !== true) throw new Error("Terminal Task and separate deletion authorization required");
     const response = await (options.readTask ?? (taskID => coreJSON(["call","taskbelay_get_task"], {task_id:taskID,refresh:false}, options)))(input.task_id);
     const task = response?.result?.task;
-    if (!task || !["done","cancelled"].includes(task.status) || task.revision !== input.revision || task.task_id !== input.task_id || !task.repositories?.some(entry => entry.key === repo.key && entry.workspace_origin.provisioning_receipt_id === id && entry.workspace_origin.canonical_worktree_root === repo.worktree_path)) throw new Error("Current terminal Core task does not own this workspace");
+    if (!task || !["done","cancelled"].includes(task.status) || task.revision !== input.revision || task.task_id !== input.task_id || !task.repositories?.some(entry => entry.key === repo.key && entry.workspace_origin.provisioning_receipt_id === provisioningReceiptID(id, repo.key) && entry.workspace_origin.canonical_worktree_root === repo.worktree_path)) throw new Error("Current terminal Core task does not own this workspace");
     const key = operation === "cleanup-worktree" ? "worktree_cleanup" : "branch_cleanup";
     if (repo[key] === "completed") return r;
     if (repo[key]) throw new Error("Cleanup has already been requested; inspect its outcome");

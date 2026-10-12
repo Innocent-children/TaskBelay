@@ -38,6 +38,8 @@ Usa TaskBelay para limitar los intentos fallidos de inicio de sesión. Conserva 
 
 Indique el resultado y los límites. Antes de implementar, el agente presenta su comprensión, causa raíz, plan completo, responsabilidades, alcance, comprobaciones y límites de coste para su confirmación explícita. Los cambios importantes requieren otra confirmación; el progreso normal conserva la aprobación válida. Cada comprobación debe cubrir una carencia actual y los resultados válidos se reutilizan. La WebUI muestra el plan, las pruebas y el coste, permite confirmar y archivar tareas terminadas y abre tareas mediante enlaces directos. Reanude con el Task ID guardado en su espacio original.
 
+Al crear cada Task, el agente muestra los directorios, las ramas y los cambios sin confirmar, y pregunta dónde trabajar: en la rama actual, en una nueva rama del mismo directorio o en un worktree independiente. No hay una opción predeterminada. Al reanudar un Task existente se conserva su espacio de trabajo original.
+
 ```sh
 taskbelay webui start
 ```

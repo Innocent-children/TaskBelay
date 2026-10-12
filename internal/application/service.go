@@ -594,10 +594,12 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 	if e != nil {
 		return RunResult{}, e
 	}
-	if found && previous.Status == "passed" {
+	if slices.ContainsFunc(t.Evidence, func(ev domain.Evidence) bool {
+		return ev.CheckID == c.ID && ev.Source == "core_execution" && ev.Status == "passed" && ev.CheckDigest == r.CheckDigest && ev.InputsDigest == f.Inputs && ev.EnvironmentDigest == f.Environment
+	}) {
 		return RunResult{}, domain.Fail("CHECK_ALREADY_SATISFIED", "check_id", "this command already passed for the same inputs and conditions; reuse its evidence")
 	}
-	if found && (q.PreviousRunID != previous.RunID || domain.Text("new_information", q.NewInformation) != nil || q.NewInformation == previous.NewInformation) {
+	if found && previous.Status != "passed" && (q.PreviousRunID != previous.RunID || domain.Text("new_information", q.NewInformation) != nil || q.NewInformation == previous.NewInformation) {
 		return RunResult{}, domain.Fail("RETRY_BASIS_REQUIRED", "new_information", "read the previous run and explain new diagnostic information before repeating unchanged conditions")
 	}
 	count, e := s.Store.Failure(ctx, t.TaskID, r.InputKey())
@@ -615,7 +617,10 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 		return RunResult{}, e
 	}
 	// Reservation is durable before any child process is started.
-	r = execution.Perform(ctx, t, r)
+	reserved := r
+	r = execution.Perform(ctx, t, r, func(ctx context.Context, started execution.Run) error {
+		return s.Store.RecordStartedRun(ctx, r.RunID, reserved, started)
+	})
 	if e = execution.WriteReceipt(s.Store.Directory, r); e != nil {
 		return RunResult{}, domain.Fail("EXECUTION_UNCERTAIN", "run_id", "process returned, but its recovery receipt could not be saved; inspect the reserved run")
 	}
@@ -794,6 +799,13 @@ func (s *Service) Recover(ctx context.Context, q RecoverRequest) (RunResult, err
 	if execution.OwnerAlive(r) {
 		return RunResult{}, domain.Fail("EXECUTION_RUNNING", "run_id", "original execution owner is still alive; wait for its result instead of replaying it")
 	}
+	active, e := execution.ProcessActive(ctx, r.Process)
+	if e != nil {
+		return RunResult{}, domain.Fail("EXECUTION_UNCERTAIN", "run_id", "could not determine whether the recorded command is still running; retain the pending execution")
+	}
+	if active {
+		return RunResult{}, domain.Fail("EXECUTION_RUNNING", "run_id", "the original command or its process group is still running; wait for it to stop before recovering")
+	}
 	if domain.Text("resolution_basis", q.ResolutionBasis) != nil || r.Check.Retry != "repeatable" && domain.Text("user_ref", q.UserRef) != nil {
 		return RunResult{}, domain.Fail("EXECUTION_UNCERTAIN", "resolution_basis", "owner stopped without a receipt; inspect side effects and record a real user decision for a non-repeatable check")
 	}
@@ -949,6 +961,15 @@ func (s *Service) PreWrite(ctx context.Context, root string, paths []string, com
 	}
 	if e := requireExecutionAuthority(t); e != nil {
 		return deny(e.Error()), nil
+	}
+	observed, e := s.observe(ctx, t)
+	if e != nil {
+		return deny("The bound workspace could not be observed before writing."), nil
+	}
+	for _, fact := range observed.Facts {
+		if fact.Kind == "workspace_conflict" {
+			return deny(fact.Detail), nil
+		}
 	}
 	if !complete || len(paths) == 0 {
 		return deny("Target paths were not fully parsed; inspect the tool operation before writing."), nil

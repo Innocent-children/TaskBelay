@@ -8,7 +8,7 @@
 
 | 组件 | 实现范围 | 此次实际验证 |
 | --- | --- | --- |
-| Go Core、CLI、MCP、HTTP | 完整方案批准、路径和验证控制、Git 观察、真实 argv 执行、跨仓库证据与恢复 | Windows x64 本机测试与开发旅程 |
+| Go Core、CLI、MCP、HTTP | 完整方案批准、路径和验证控制、Git 观察、真实 argv 执行、跨仓库证据与恢复 | 此前 Windows x64 记录；本次 macOS arm64 原生回归，Windows 启动修复仅交叉编译 |
 | Codex | 当前工具、Skill、工作位置、apply_patch 路径预检 | 独立包的实际 Core 调用与适配器测试；未运行模型聊天 |
 | Claude Code | 当前工具、Skill、工作位置、Write/Edit/NotebookEdit 预检 | 独立包的实际 Core 调用与适配器测试；未运行模型聊天 |
 | ZCode | 当前工具、Skill、工作位置、已注册结构化写入钩子 | 独立包的实际 Core 调用与适配器测试；未执行 UI 安装与模型聊天 |
@@ -22,8 +22,8 @@
 
 | 精确 runtime pair | 本次范围 |
 | --- | --- |
-| win32-x64 | Windows 10/11 桌面 x64 实现；本机 Windows x64 验证 |
-| darwin-arm64 | macOS arm64 实现；交叉构建，未原生执行 |
+| win32-x64 | Windows 10/11 桌面 x64 实现；保留此前验证记录，新的挂起启动需原生复核 |
+| darwin-arm64 | macOS arm64 实现；Core 定向测试、真实进程恢复及独立 Host 包检查，未运行模型会话 |
 
 Runtime 选择拒绝 win32-ia32、win32-arm64 和 darwin-x64。Linux、Windows Server、Rosetta 和远程 MCP 没有当前支持承诺；可编译或模拟平台分支不扩大支持范围。桌面宠物正式分发签名与公证此次未验证。
 

@@ -22,15 +22,15 @@ Task 保存 authorization、plan、approval、exceptions、archived、checks、r
 
 authorization 明确目标、非目标/接口/数据/依赖/设计约束、预测路径、禁止路径、SHA-256 内容 pin、可变依赖名及累计 limits。user_ref 由宿主按真实用户消息提供。确定性限制由程序检查；预测路径、公开 Go 声明、数据文件和变动量促使绑定当前 content_digest 的语义审查。每条语义结论保留 basis、verdict 和 uncertainty。程序不证明这些判断真实。
 
-check 保存 argv、repository_key、cwd、inputs、input_basis、environment、conditions、constraint_ids、timeout_ms、retry 和 rationale。CheckDigest 包含定义、关联目标和相关约束；输入包括选定文件的内容与 mode、缺失文件和目录成员变化；环境包括当前平台、所选变量的哈希、cwd、conditions 及实际执行文件哈希。缺省全范围输入覆盖全部绑定仓库的 Git 跟踪及非 ignored 新文件；显式输入可包含 ignored 文件/目录。符号链接及无法掌握的输入不会被静默当成有效。缩小依赖范围是宿主判断，缺省保守使用全仓。
+check 保存 argv、repository_key、cwd、inputs、input_basis、environment、conditions、constraint_ids、timeout_ms、retry 和 rationale。CheckDigest 包含检查语义、关联目标和相关约束，排除 timeout_ms、retry、full_suite、rationale 和 input_basis；这些运行设置与说明仍由 PlanDigest 完整绑定。只有当前检查确实有适用通过结果时才拒绝重复执行；输入包括选定文件的内容与 mode、缺失文件和目录成员变化；环境包括当前平台、所选变量的哈希、cwd、conditions 及实际执行文件哈希。缺省全范围输入覆盖全部绑定仓库的 Git 跟踪及非 ignored 新文件；显式输入可包含 ignored 文件/目录。符号链接及无法掌握的输入不会被静默当成有效。缩小依赖范围是宿主判断，缺省保守使用全仓。
 
 Core 实际运行产生 core_execution；claim 永不满足检查；human 只用于明确完成的用户检查。结果新鲜度按上述摘要独立计算。观察无法完成时不能交付。Task 表保存唯一当前状态；runs 保存真实尝试，operations 保存请求身份；结果不由前端或宿主本地缓存改写。
 
 ## 持久化与恢复
 
-当前 Schema 只支持一个布局。已存在数据库先只读验证 Schema，再允许可写打开；不兼容不迁移或删除。任务更新在一个事务内 CAS revision、保存操作身份、费用、运行及 claims。执行前保存 running、实际调用身份及 timeout 预留；输出结果先写带完整性签名的本地收据，再原子保存。签名用于防止意外损坏/伪造提交，不隔离同一操作系统账户的恶意写入者。
+当前 Schema 只支持一个布局。已存在数据库先只读验证 Schema，再允许可写打开；不兼容不迁移或删除。任务更新在一个事务内 CAS revision、保存操作身份、费用、运行及 claims。执行前保存 running、实际调用身份及 timeout 预留。命令激活前以保留运行快照为条件更新 runs.snapshot，写入 process.pid/identity，不改变 Task revision；身份保存失败不放行命令。macOS 启动管道在 Core 退出时关闭，未收到放行信号的进程不会执行命令；Windows 在挂入 Job 并保存身份后恢复挂起进程。输出结果先写带完整性签名的本地收据，再原子保存。签名用于防止意外损坏/伪造提交，不隔离同一操作系统账户的恶意写入者。
 
-响应丢失按原 operation_id/run_id 回读。签名收据恢复不会再次启动进程。无收据的停止执行者只能分类为 interrupted_unknown，不能产生通过结果；按 retry 策略核对副作用和必要用户决定。进程身份包括启动身份，避免 PID 重用。Windows 使用隐藏进程和 Job，macOS 使用进程组；这些属于平台边界，不构成安全沙箱。
+响应丢失按原 operation_id/run_id 回读。签名收据恢复不会再次启动进程。无收据时，恢复同时核对 Core 和已记录命令；macOS 检查整个进程组，包括组长退出后的非僵尸后代。仍在运行或无法观察时保留 pending，不允许新执行、完成或取消。两者均停止后只能分类为 interrupted_unknown，不能产生通过结果；按 retry 策略核对副作用和必要用户决定。进程身份包括启动身份，避免 PID 重用。Windows 使用隐藏进程和 Job，macOS 使用进程组；这些属于平台边界，不构成安全沙箱。
 
 热任务保留当前证据、最多 64 个近期尝试；近期操作保留 256 个修订内记录，open 与未确定运行身份保留。旧身份被压缩后，旧 revision 仍不能启动重放。运行记录保留近期 128 项及有效引用、未确定执行。压缩后的自有收据清理，累计费用不减。当前快照最多 8 MiB，观察和输入集合有明确资源上限。明确清除仅适用于匹配修订的终态任务。
 

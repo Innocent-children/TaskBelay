@@ -22,7 +22,7 @@ export function registerWorkspaceCoordinator(ctx, options) {
   });
   const disposeTool = ctx.tools.register(defineTool({
     name: WORKSPACE_COORDINATOR_TOOL,
-    description: "Prepare a confirmed TaskBelay workspace: default to a new branch in the current directory, or explicitly use the current branch or a dedicated worktree. Local launches return ready for the current session. Reuse actual authorization; ask only for missing workspace or deletion authority.",
+    description: "Prepare the workspace selected for this new Task after asking the user: current branch, new local branch or dedicated worktree; there is no default. Local launches return ready for the current session. Reuse actual authorization; ask only for missing workspace or deletion authority.",
     parameters: {
       operation: { type: "string", required: true, enum: ["provision", "consume", "prepare_cleanup", "cleanup_worktree", "cleanup_branch"] },
       authorization_ref: { type: "string", description: "Actual workspace or deletion authorization reference; retained authorization remains valid." },
@@ -41,7 +41,7 @@ export function registerWorkspaceCoordinator(ctx, options) {
           additionalProperties: false,
           properties: {
             repository_key: { type: "string", required: true },
-            workspace_mode: { type: "string", required: true, enum: ["new_branch", "current_branch", "dedicated_worktree"], default: "new_branch" },
+            workspace_mode: { type: "string", required: true, enum: ["new_branch", "current_branch", "dedicated_worktree"] },
             source_repository_path: { type: "string", required: true },
             source_type: { type: "string", required: true, enum: ["local", "remote"] },
             carry_changes: { type: "boolean", required: true },

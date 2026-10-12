@@ -206,6 +206,8 @@ func (t Task) Repository(key RepositoryKey) (RepositoryScopeEntry, bool) {
 	return RepositoryScopeEntry{}, false
 }
 func (t Task) CheckDigest(c Check) Digest {
+	// Approval still binds the full definition; these fields do not change what a result proves.
+	c.TimeoutMS, c.Rationale, c.InputBasis, c.Retry, c.FullSuite = 0, "", "", "", false
 	goals := []Goal{}
 	constraints := []Constraint{}
 	for _, g := range t.Authorization.Goals {

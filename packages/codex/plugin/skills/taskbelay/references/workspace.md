@@ -1,15 +1,20 @@
-# Optional workspace operations
+<!-- Generated from skills/taskbelay/core/workspace.md; edit the shared source and run node scripts/sync-skill-references.mjs. -->
 
-Use the existing workspace by default. For an explicitly authorized branch or dedicated worktree,
-inspect actual roots and initial changes, then retain the real user message as authorization_ref.
+# Choose the workspace for each new Task
+
+Before every new Task, show the actual directories, current branches and initial changes, and ask
+the user to choose: current branch, a new branch in the current directory, or a dedicated worktree.
+Do not infer a default or reuse a workspace choice from a different Task. Retain the actual answer
+as authorization_ref when preparing a workspace. Resume an existing Task in its saved workspace;
+ordinary follow-ups and recovery do not repeat this question.
+
 Prepare exactly the selected source, branch and carry choice. Reuse saved receipts after interruption;
 never repeat an uncertain Git or Host operation. Helper scope output is the repositories array for
 the current Core open request. No helper changes requirements, acceptance, cost or Task status.
 
-The taskbelay-codex host-launch --help entry describes preparation, status, scope and separately authorized cleanup.
-Deletion requires the exact current terminal Core task, matching receipt workspace and independent
-user authorization. Dirty, unpushed, unknown and uncertain resources are retained. Host-specific
-relaunch or new-chat capabilities must be verified in the real Host; package tests are not proof of
-those sessions.
+Use the packaged codex workspace helper for the selected operation. Deletion requires the exact
+current terminal Core task, the per-repository provisioning_receipt_id returned by scope, the matching
+workspace and independent user authorization. Dirty, unpushed, unknown and uncertain resources are
+retained. Verify Host-specific relaunch or new-chat capabilities in the real Host.
 
-Implementation: `packages/codex/lib/` workspace/launch helpers and `internal/application/service.go`.
+Implementation: the workspace/launch helpers in `packages/codex/lib/` and `internal/application/service.go`.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -94,6 +95,39 @@ func TestExplicitAllowedScopeDiffersFromPredictedPaths(t *testing.T) {
 	if !found {
 		t.Fatal("external write outside allowlist was not detected")
 	}
+}
+
+func TestPreWriteObservesBranchAndHistoryBeforeAllowingChanges(t *testing.T) {
+	s, v, root := fixture(t)
+	ctx := context.Background()
+	git := func(args ...string) {
+		t.Helper()
+		if output, e := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); e != nil {
+			t.Fatalf("git: %v %s", e, output)
+		}
+	}
+	prewrite := func(want string) {
+		t.Helper()
+		result, e := s.PreWrite(ctx, root, []string{filepath.Join(root, "file.txt")}, true)
+		if e != nil || result["decision"] != want {
+			t.Fatal("write decision", result, e)
+		}
+	}
+	git("switch", "-c", "other")
+	prewrite("deny")
+	if _, e := s.Inspect(ctx, v.Task.TaskID, true); e != nil {
+		t.Fatal(e)
+	}
+	prewrite("deny")
+	git("switch", "main")
+	prewrite("allow")
+	git("commit", "--allow-empty", "-m", "linear progress")
+	if _, e := s.Inspect(ctx, v.Task.TaskID, true); e != nil {
+		t.Fatal(e)
+	}
+	prewrite("allow")
+	git("reset", "--hard", "HEAD~1")
+	prewrite("deny")
 }
 func TestTerminalTaskPagesArchiveAndRestore(t *testing.T) {
 	s, v, _ := fixture(t)

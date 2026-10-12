@@ -23,7 +23,9 @@ Before confirmation, do not implement, run checks or submit implementation progr
 changed after proposal, restore only your authorized changes or disclose the difference in a revised
 plan. Do not turn retroactive approval into a claim that work was authorized before it happened.
 
-Use the authorized current workspace. Optional branch/worktree preparation, new chats, installation,
+Before every new Task, ask the user to choose its workspace: current branch, new local branch, or
+dedicated worktree. Show current directories, branches and initial changes. Do not infer a default
+or carry a choice from another Task. Resume an existing Task in its saved workspace. Branch/worktree preparation, new chats, installation,
 Git operations, publication and deletion follow actual user authority and native permissions. Resume
 an existing Task in its original workspace; do not create a replacement to hide cost or uncertainty.
 No historical-data readers, migration or reset are provided; preserve unsupported data.
@@ -68,7 +70,10 @@ Use run_check with a concrete rationale. The Core executes within native Host pe
 real process results. Reuse passing evidence under unchanged actual conditions. Retrying an unchanged
 failure requires previous_run_id and distinct new_information explaining what was learned. Three
 failures under the same method/requirements/conditions stop repetition. Renaming checks or changing
-prose/timeouts cannot reset it. A meaningful input or method change can justify another run.
+prose/timeouts cannot reset the failure count. Execution settings (timeout, retry, full-suite flag) and
+rationale/input_basis text remain bound by plan approval but do not invalidate unchanged passing
+results. Duplicate execution is refused only when this check has an applicable passing result; a
+renamed or substantively changed check can establish its own result. A meaningful input or method change can justify another run.
 
 Claims, completed human observations and Core executions are separate. record_evidence accepts only
 claim or human; claims never satisfy checks. Human evidence needs a human check and actual user_ref.
@@ -87,7 +92,9 @@ Exceptions expire with changed plan/content, and failed evidence remains failed 
 Retain complete tool requests/responses. Check ok before result. Every mutation uses current revision
 and stable operation_id; identical replay reads saved results. After response loss read the Task/run.
 recover_run imports the signed result without execution. A live original owner means wait for it;
-a stopped owner with no receipt requires inspecting effects and recording resolution_basis, plus a
+a stopped Core with a live recorded command/process group remains pending. Process identity is saved
+before command activation; a missing receipt cannot be reconciled until both Core and the command have stopped.
+Then inspect effects and record resolution_basis, plus a
 real user_ref for non-repeatable checks. Unknown interruption never becomes a pass. Never blindly replay.
 
 Finish only when decision.ready: current confirmation and structure review, completed goals, applicable

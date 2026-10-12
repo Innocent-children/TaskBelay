@@ -43,7 +43,7 @@ const contracts = {
     input_schema: object({
       request: text("Same exact request supplied to inspect."), authorization_ref: text("Reference to actual authorization for this workspace operation; retain an existing valid choice."),
       ...identity, repository_path: source,
-      workspace_mode: { enum: ["new_branch", "current_branch", "dedicated_worktree"], default: "new_branch", description: "Default to a new branch in the current directory. Other modes follow the user's explicit choice." },
+      workspace_mode: { enum: ["new_branch", "current_branch", "dedicated_worktree"], description: "Ask for this new Task: current branch, new local branch or dedicated worktree. No default; retain the actual answer." },
       source_type: { enum: ["local", "remote"] }, carry_changes: { type: "boolean", description: "Explicit user choice; only true for local sources." },
       remote_name: { type: "string", description: "Confirmed remote, or empty for local." }, base_branch: text("Confirmed branch name on the selected source."),
       target_branch: text("Confirmed new branch, or the observed current branch for current_branch."),

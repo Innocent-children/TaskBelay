@@ -8,7 +8,7 @@ This record concerns the current engineering-control source and does not change 
 
 | Component | Implementation scope | Verification in this change |
 | --- | --- | --- |
-| Go Core, CLI, MCP, HTTP | Complete plan approval, scope/verification control, Git observation, actual argv execution, cross-repository evidence and recovery | Native Windows x64 tests and development journey |
+| Go Core, CLI, MCP, HTTP | Complete plan approval, scope/verification control, Git observation, actual argv execution, cross-repository evidence and recovery | Earlier Windows x64 record; native macOS arm64 regressions here, Windows launch fix cross-compiled only |
 | Codex | Current tools, Skill, workspace operations and apply_patch path preflight | Actual Core calls from an independent package and adapter tests; no model chat |
 | Claude Code | Current tools, Skill, workspaces, Write/Edit/NotebookEdit preflight | Actual Core calls from an independent package and adapter tests; no model chat |
 | ZCode | Current tools, Skill, workspaces and registered structured write hooks | Actual Core calls from an independent package and adapter tests; no UI installation or model chat |
@@ -22,8 +22,8 @@ Adapter packages require Node.js >=24. Tool and permission coverage must be veri
 
 | Exact runtime pair | Scope in this change |
 | --- | --- |
-| win32-x64 | Windows 10/11 desktop x64 implementation; native Windows x64 verification |
-| darwin-arm64 | macOS arm64 implementation; cross-build only, no native execution |
+| win32-x64 | Windows 10/11 desktop x64 implementation; earlier verification retained, changed suspended launch still needs native checks |
+| darwin-arm64 | macOS arm64 implementation; targeted Core tests, actual process recovery and independent Host-package checks, no model sessions |
 
 Runtime selection rejects win32-ia32, win32-arm64 and darwin-x64. Linux, Windows Server, Rosetta and remote MCP have no current support commitment. Compilation or simulated platform branches do not expand support. Formal desktop signing and notarization were not checked here.
 

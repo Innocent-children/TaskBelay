@@ -20,32 +20,45 @@ import (
 )
 
 type Run struct {
-	RequirementDigest domain.Digest `json:"requirement_digest"`
-	Rationale         string        `json:"rationale"`
-	NewInformation    string        `json:"new_information,omitempty"`
-	FullSuiteBasis    string        `json:"full_suite_basis,omitempty"`
-	RunID             string        `json:"run_id"`
-	TaskID            string        `json:"task_id"`
-	CheckID           string        `json:"check_id"`
-	CheckDigest       domain.Digest `json:"check_digest"`
-	Check             domain.Check  `json:"check"`
-	Before            Fingerprint   `json:"before"`
-	After             *Fingerprint  `json:"after,omitempty"`
-	Status            string        `json:"status"`
-	ExitCode          *int          `json:"exit_code,omitempty"`
-	DurationMS        int64         `json:"duration_ms"`
-	Stdout            string        `json:"stdout"`
-	Stderr            string        `json:"stderr"`
-	StdoutDigest      domain.Digest `json:"stdout_digest"`
-	StderrDigest      domain.Digest `json:"stderr_digest"`
-	OutputBytes       int64         `json:"output_bytes"`
-	Truncated         bool          `json:"truncated"`
-	OwnerPID          int           `json:"owner_pid"`
-	OwnerIdentity     string        `json:"owner_identity"`
-	StartedAt         time.Time     `json:"started_at"`
-	FinishedAt        *time.Time    `json:"finished_at,omitempty"`
-	Reconciliation    string        `json:"reconciliation,omitempty"`
-	ResolutionUserRef string        `json:"resolution_user_ref,omitempty"`
+	RequirementDigest domain.Digest    `json:"requirement_digest"`
+	Rationale         string           `json:"rationale"`
+	NewInformation    string           `json:"new_information,omitempty"`
+	FullSuiteBasis    string           `json:"full_suite_basis,omitempty"`
+	RunID             string           `json:"run_id"`
+	TaskID            string           `json:"task_id"`
+	CheckID           string           `json:"check_id"`
+	CheckDigest       domain.Digest    `json:"check_digest"`
+	Check             domain.Check     `json:"check"`
+	Before            Fingerprint      `json:"before"`
+	After             *Fingerprint     `json:"after,omitempty"`
+	Status            string           `json:"status"`
+	ExitCode          *int             `json:"exit_code,omitempty"`
+	DurationMS        int64            `json:"duration_ms"`
+	Stdout            string           `json:"stdout"`
+	Stderr            string           `json:"stderr"`
+	StdoutDigest      domain.Digest    `json:"stdout_digest"`
+	StderrDigest      domain.Digest    `json:"stderr_digest"`
+	OutputBytes       int64            `json:"output_bytes"`
+	Truncated         bool             `json:"truncated"`
+	OwnerPID          int              `json:"owner_pid"`
+	OwnerIdentity     string           `json:"owner_identity"`
+	Process           *ProcessIdentity `json:"process"`
+	StartedAt         time.Time        `json:"started_at"`
+	FinishedAt        *time.Time       `json:"finished_at,omitempty"`
+	Reconciliation    string           `json:"reconciliation,omitempty"`
+	ResolutionUserRef string           `json:"resolution_user_ref,omitempty"`
+}
+
+type ProcessIdentity struct {
+	PID      int    `json:"pid"`
+	Identity string `json:"identity"`
+}
+
+func ProcessActive(ctx context.Context, process *ProcessIdentity) (bool, error) {
+	if process == nil {
+		return false, nil
+	}
+	return processActive(ctx, *process)
 }
 
 func Owner() (int, string, error) {
@@ -90,7 +103,7 @@ func (w *output) Write(b []byte) (int, error) {
 	}
 	return len(b), nil
 }
-func Perform(ctx context.Context, t domain.Task, r Run) Run {
+func Perform(ctx context.Context, t domain.Task, r Run, recordStarted func(context.Context, Run) error) Run {
 	started := time.Now()
 	timeout, cancel := context.WithTimeout(ctx, time.Duration(r.Check.TimeoutMS)*time.Millisecond)
 	defer cancel()
@@ -106,21 +119,25 @@ func Perform(ctx context.Context, t domain.Task, r Run) Run {
 	c := exec.Command(r.Before.Executable, r.Check.Argv[1:]...)
 	c.Dir = cwd
 	c.Env = os.Environ()
-	configureProcess(c)
 	out, errout := newOutput(cancel), newOutput(cancel)
 	c.Stdout = out
 	c.Stderr = errout
-	if e = c.Start(); e != nil {
-		r.Status = "failed"
-		r.Stderr = "approved process could not start"
-		return finish(r, started)
-	}
-	stop, close, e := bindProcess(c)
+	stop, close, e := startProcess(c, func(process ProcessIdentity) error {
+		started := r
+		started.Process = &process
+		if e := recordStarted(timeout, started); e != nil {
+			return e
+		}
+		r = started
+		return nil
+	})
 	if e != nil {
-		c.Process.Kill()
-		c.Wait()
+		if c.Process != nil {
+			c.Process.Kill()
+			c.Wait()
+		}
 		r.Status = "failed"
-		r.Stderr = "process lifetime control could not be established"
+		r.Stderr = "process identity could not be saved and activated"
 		return finish(r, started)
 	}
 	defer close()
@@ -269,7 +286,7 @@ func ReadReceipt(dir string, pending Run) (Run, error) {
 		return Run{}, e
 	}
 	raw, _ := json.Marshal(v.Run)
-	if !hmac.Equal([]byte(v.Signature), []byte(signature(key, raw))) || v.Run.RunID != pending.RunID || v.Run.TaskID != pending.TaskID || v.Run.CheckDigest != pending.CheckDigest || v.Run.Before != pending.Before || v.Run.FinishedAt == nil || v.Run.Status == "running" {
+	if !hmac.Equal([]byte(v.Signature), []byte(signature(key, raw))) || v.Run.RunID != pending.RunID || v.Run.TaskID != pending.TaskID || v.Run.CheckDigest != pending.CheckDigest || v.Run.Before != pending.Before || domain.Hash(v.Run.Process) != domain.Hash(pending.Process) || v.Run.FinishedAt == nil || v.Run.Status == "running" {
 		return Run{}, domain.Fail("STORAGE_CORRUPT", "", "receipt identity or integrity does not match the reserved execution")
 	}
 	return v.Run, nil

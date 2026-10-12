@@ -297,3 +297,29 @@ test("prepare CLI exposes its saved launch identity after a failed remote fetch"
   assert.ok(result.stderr.includes(join((await paths(options.environment)).productRoot, "provisioning", "zcode", launchID, "receipt.json")));
   assert.equal(await git(["-C", root, "branch", "--list", "task"]), "");
 });
+
+
+test("cleanup verifies the same receipt identity produced by workspace scope", async t => {
+  const { root, options } = await fixture(t);
+  const selection = dedicated(root);
+  const receipt = await prepareSelections([selection], options);
+  await provision(receipt.launch_id, options);
+  const bound = await scope(receipt.launch_id, options);
+  const task = { task_id: "cleanup-task", revision: 3, status: "done", repositories: bound.repositories.map(entry => ({
+    ...entry, workspace_origin: { ...entry.workspace_origin, canonical_worktree_root: entry.repository_path },
+  })) };
+  const input = { repository_key: "primary", task_id: task.task_id, revision: task.revision, terminal: true, authorized: true };
+  const readTask = async () => ({ ok: true, result: { task } });
+  const wrong = structuredClone(task);
+  wrong.repositories[0].workspace_origin.provisioning_receipt_id = receipt.launch_id;
+  await assert.rejects(cleanup(receipt.launch_id, "cleanup-worktree", input, {
+    ...options, readTask: async () => ({ ok: true, result: { task: wrong } }),
+  }), /does not own/);
+  await assert.rejects(cleanup(receipt.launch_id, "cleanup-worktree", { ...input, revision: 2 }, { ...options, readTask }), /does not own/);
+  assert.ok((await stat(selection.worktree_path)).isDirectory());
+  const removed = await cleanup(receipt.launch_id, "cleanup-worktree", input, { ...options, readTask });
+  assert.equal(removed.repositories[0].worktree_cleanup, "completed");
+  await assert.rejects(stat(selection.worktree_path), { code: "ENOENT" });
+  await cleanup(receipt.launch_id, "cleanup-branch", input, { ...options, readTask });
+  assert.equal(await git(["-C", root, "branch", "--list", selection.target_branch]), "");
+});

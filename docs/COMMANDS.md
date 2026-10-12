@@ -47,3 +47,5 @@ checkpoint.assessment 可仅提交新增或受影响的 paths、constraints、fa
 plan 包含 understanding/root_cause/approach/simpler_alternative/verification_basis/completion 以及 work（id、goal_ids、change、owner、necessity）。view 返回 plan_digest；确认绑定该摘要和提案时内容。authorization.allowed_paths 是硬允许范围。checks.purpose 为 acceptance/regression/diagnostic（缺省 acceptance），诊断项需 goal_ids；full_suite 标记完整套件，compares 关联被比较的 regression 项。默认 inputs:["."] 覆盖全部已绑定仓库；缩小范围说明 input_basis，跨仓路径用 key::path。checkpoint 不接受 checks；assessment.paths 需 work_id 和 necessity，最终 assessment.review 需 root_cause/responsibilities/proportionality/verification/would_choose_again/uncertainty，摘要由 Core 生成。
 
 HTTP 列表另支持 lifecycle=active/blocked/done/cancelled，按 Core 保存摘要过滤后分页；status=active 则包含所有活动任务（包括受阻），供不同界面选择。
+
+运行记录的 process 保存命令进程的 pid 和启动 identity；激活前为 null，身份持久化后才允许命令执行。恢复时 Core 和受管命令均停止才可处理缺失收据；macOS 核对整个进程组。
