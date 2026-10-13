@@ -95,10 +95,11 @@ func processActive(_ context.Context, process ProcessIdentity) (bool, error) {
 	return identity == process.Identity, nil
 }
 
-var errProcessEnded = errors.New("process ended")
-
 func processIdentity(pid int) (string, error) {
 	p, e := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if errors.Is(e, windows.ERROR_INVALID_PARAMETER) {
+		return "", errProcessEnded
+	}
 	if e != nil {
 		return "", e
 	}

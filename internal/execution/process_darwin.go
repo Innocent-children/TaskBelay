@@ -4,6 +4,7 @@ package execution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -69,8 +70,21 @@ func processActive(ctx context.Context, process ProcessIdentity) (bool, error) {
 func processIdentity(pid int) (string, error) {
 	c := exec.Command("/bin/ps", "-p", fmt.Sprint(pid), "-o", "lstart=")
 	b, e := c.Output()
-	if e != nil || strings.TrimSpace(string(b)) == "" {
-		return "", fmt.Errorf("process unavailable")
+	return processIdentityResult(b, e)
+}
+func processIdentityResult(b []byte, e error) (string, error) {
+	if e != nil {
+		var exit *exec.ExitError
+		if errors.As(e, &exit) && exit.ExitCode() == 1 && len(exit.Stderr) == 0 && len(b) == 0 {
+			return "", errProcessEnded
+		}
+		if errors.As(e, &exit) {
+			return "", fmt.Errorf("process identity query /bin/ps: %w; %s", e, strings.TrimSpace(string(exit.Stderr)))
+		}
+		return "", fmt.Errorf("process identity query /bin/ps: %w", e)
+	}
+	if strings.TrimSpace(string(b)) == "" {
+		return "", errProcessEnded
 	}
 	return strings.TrimSpace(string(b)), nil
 }

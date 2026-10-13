@@ -16,6 +16,8 @@
 | Host packages | Native permissions, real authorization sources, structured path hooks and optional preparation; no second task cursor |
 | scripts and release | Build, complete install artifacts and standalone publication; no acceptance authority |
 
+Host workspace operations use private atomic receipts for frozen requests, bound worktrees and per-root integration results; they are not another Task. Intent precedes mutation, response loss reads the original identity, and read-only recovery observes current Git while retaining unknown command outcomes without rollback or continuation. Core still only observes Git and verifies immutable source selection. Control metering retains original errors by storage, process-query or other initialization responsibility; query denial is not proof of process death.
+
 ## Current contract and decisions
 
 Task retains authorization, plan, approval, exceptions, archived, checks, repositories, assessment, progress, issue, evidence, attempts, facts, usage, acceptance, revision and timestamps. No fixed development nodes remain. Complete lifecycle edges are active→done (complete acceptance), active→cancelled (explicit cancellation, no unresolved execution), and active→active (checkpoint, revision, execution, observation, recovery). Terminals have no outgoing edges. continue/self_correct/verify/stop/ask_user are derived advice, not another state machine.

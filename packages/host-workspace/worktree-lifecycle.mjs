@@ -348,8 +348,9 @@ export async function defaultRunGit(arguments_, { encoding = "utf8", env = {} } 
     });
     return stdout;
   } catch (cause) {
-    const error = new Error(`Git ${gitOperation(arguments_)} failed${cause?.killed ? " or timed out" : ""}`);
+    const error = new Error(`Git ${gitOperation(arguments_)} failed${cause?.killed ? " or timed out" : ""}`, { cause });
     error.code = cause?.code;
+    error.stderr = String(cause?.stderr ?? "").slice(0, 2048);
     throw error;
   }
 }

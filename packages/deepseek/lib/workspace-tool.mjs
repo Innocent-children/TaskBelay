@@ -27,9 +27,11 @@ export function registerWorkspaceCoordinator(ctx, options) {
     parameters: {
       operation: { type: "string", required: true, enum: ["freshness", "provision", "consume", "prepare_cleanup", "cleanup_worktree", "cleanup_branch"] },
       integration_authorization_ref:{type:"string",description:"Separate actual integration authorization; required for integrate=true."},
+      operation_id:{type:"string",description:"Stable integration receipt identity; required with integrate=true. Reuse it after response loss."},
+      recover:{type:"boolean",description:"Read-only stopped-owner reconciliation of the original integration; never replays fetch or merge."},
       fetch: {type:"boolean",description:"Fetch corresponding upstream refs; default true."},
       integrate: {type:"boolean",description:"Separately authorized clean fast-forward integration; default false."},
-      freshness_repositories: {type:"array",items:{type:"object",additionalProperties:false,properties:{key:{type:"string",required:true},repository_path:{type:"string",required:true},base_branch:{type:"string",description:"Retained workspace source branch; do not assume main."}}}},
+      freshness_repositories: {type:"array",items:{type:"object",additionalProperties:false,properties:{key:{type:"string",required:true},repository_path:{type:"string",required:true},source_type:{type:"string",enum:["local","remote"],description:"Original workspace_origin.source_type."},remote_name:{type:"string",description:"Original workspace_origin.remote_name."},base_branch:{type:"string",description:"Original workspace_origin.base_branch; remote sources do not require a local branch."}}}},
       authorization_ref: { type: "string", description: "Actual workspace or deletion authorization reference; retained authorization remains valid." },
       request: { type: "string", description: "Exact admitted development request for a new provision operation." },
       profile: { type: "string", description: "Current DSH Profile name." },
@@ -66,7 +68,7 @@ export function registerWorkspaceCoordinator(ctx, options) {
     timeoutMs: 10 * 60_000,
     async execute(arguments_, execution) {
       authorizeWorkspaceExecution({ ...execution, name: WORKSPACE_COORDINATOR_TOOL, arguments: arguments_ });
-      if (arguments_.operation === "freshness") return await assessRepositoryFreshness({repositories:arguments_.freshness_repositories,fetch:arguments_.fetch,integrate:arguments_.integrate,authorization_ref:arguments_.authorization_ref,integration_authorization_ref:arguments_.integration_authorization_ref});
+      if (arguments_.operation === "freshness") return await assessRepositoryFreshness({repositories:arguments_.freshness_repositories,fetch:arguments_.fetch,integrate:arguments_.integrate,authorization_ref:arguments_.authorization_ref,integration_authorization_ref:arguments_.integration_authorization_ref,operation_id:arguments_.operation_id,recover:arguments_.recover},{receiptRoot:options?.dataDirectory});
       if (arguments_.operation === "provision") {
         return await coordinator.provision({
           request: arguments_.request,

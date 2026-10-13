@@ -45,7 +45,8 @@
     "skills/taskbelay/references/engineering.md",
     "skills/taskbelay/references/protocol.md",
     "skills/taskbelay/references/workspace.md",
-    "lib/repository-freshness.mjs"
+    "lib/repository-freshness.mjs",
+    "lib/integration-receipt.mjs"
   ],
   "repository": {
     "type": "git",

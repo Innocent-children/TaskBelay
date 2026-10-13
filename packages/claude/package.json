@@ -45,7 +45,8 @@
     "plugin/skills/taskbelay/references/engineering.md",
     "plugin/skills/taskbelay/references/protocol.md",
     "plugin/skills/taskbelay/references/workspace.md",
-    "lib/repository-freshness.mjs"
+    "lib/repository-freshness.mjs",
+    "lib/integration-receipt.mjs"
   ],
   "publishConfig": {
     "access": "public",

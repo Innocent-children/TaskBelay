@@ -16,6 +16,8 @@
 | Host 包 | 原生权限、授权消息来源、结构化路径钩子、可选工作区准备；不保存第二任务游标 |
 | scripts 与 release | 构建、完整安装产物、独立发布；不决定产品验收 |
 
+Host 工作区操作使用私有原子收据记录固定请求、绑定工作树与逐仓整合结果；它不是第二个 Task。修改前保存意图，响应丢失按原身份读取；只读恢复核对当前 Git，保留未知命令结果，不回退已应用仓库或继续剩余动作。Core 仍只观察 Git，并核对不可变来源选择。调用计量按存储、进程查询与其他初始化责任保留原始错误；查询拒绝不证明进程已停止。
+
 ## 当前契约与控制
 
 Task 保存 authorization、plan、approval、exceptions、archived、checks、repositories、assessment、progress、issue、evidence、attempts、facts、usage、acceptance、revision 和时间。没有固定开发节点。生命周期出边只有 active→done（完整验收）、active→cancelled（明确取消且无未确定执行）和 active→active（检查点、修订、执行、观察、恢复）；终态没有回边。控制建议由当前事实推导为 continue/self_correct/verify/stop/ask_user，不是第二状态机。

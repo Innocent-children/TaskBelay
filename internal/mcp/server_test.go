@@ -3,10 +3,12 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/Innocent-children/taskbelay/internal/application"
@@ -267,5 +269,52 @@ func TestCompleteBudgetDecisionRoundTripsActualTransportSchema(t *testing.T) {
 	replay := call("taskbelay_update_budget", q)
 	if !replay.Replayed || replay.Task.Revision != updated.Task.Revision {
 		t.Fatal("replayed budget changed state")
+	}
+}
+
+func TestMeterInitializationClassifiesActualErrorCategoryAndDoesNotDispatch(t *testing.T) {
+	cases := []struct {
+		name, phase  string
+		cause        error
+		code, action string
+	}{
+		{"ps permission", "process_identity", &os.PathError{Op: "fork/exec", Path: "/bin/ps", Err: syscall.EACCES}, "PROCESS_IDENTITY_DENIED", "inspect_process_access"},
+		{"ps unavailable", "process_identity", &os.PathError{Op: "fork/exec", Path: "/bin/ps", Err: syscall.ENOENT}, "PROCESS_IDENTITY_UNAVAILABLE", "inspect_process_access"},
+		{"storage denied", "storage_write", &os.PathError{Op: "open", Path: "taskbelay.db", Err: os.ErrPermission}, "STORAGE_UNAVAILABLE", "repair_storage"},
+		{"storage corrupt", "storage_read", domain.Fail("STORAGE_CORRUPT", "data", "invalid retained timestamp"), "STORAGE_CORRUPT", "repair_storage"},
+		{"entropy failure", "operation_identity", errors.New("secure random source unavailable"), "CONTROL_INITIALIZATION_FAILED", "inspect_initialization"},
+		{"cancelled", "storage_read", context.Canceled, "CONTROL_INITIALIZATION_CANCELLED", "inspect_host_context"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			s := testServer(t)
+			s.measureControl = func(context.Context) (func(), error) {
+				return nil, &application.ControlMeterError{Stage: c.phase, Err: c.cause}
+			}
+			result := s.Dispatch(context.Background(), "taskbelay_open_task", []byte(`{}`))
+			if result.OK || result.Result != nil || result.Error.Code != c.code || result.Recovery.Action != c.action || result.Recovery.RetrySafe {
+				t.Fatal(result)
+			}
+			if len(result.Error.Details) != 1 || result.Error.Details[0].Path != "control_meter."+c.phase || !strings.Contains(result.Error.Details[0].Message, c.cause.Error()) {
+				t.Fatal("phase or original cause lost", result)
+			}
+			result.RequestID = "example-request"
+			validate(t, OutputSchema(application.View{}), result)
+			page, e := s.service.Store.List(context.Background(), store.ListQuery{})
+			if e != nil || len(page.Items) != 0 {
+				t.Fatal("tool executed after failed metering", e, page)
+			}
+		})
+	}
+}
+
+func TestClosedStorageMeteringReportsActualReadFailure(t *testing.T) {
+	s := testServer(t)
+	if e := s.service.Store.Close(); e != nil {
+		t.Fatal(e)
+	}
+	result := s.Dispatch(context.Background(), "taskbelay_server_info", []byte(`{}`))
+	if result.OK || result.Error.Code != "STORAGE_UNAVAILABLE" || result.Recovery.Action != "repair_storage" || !strings.Contains(result.Error.Details[0].Path, "storage_read") {
+		t.Fatal(result)
 	}
 }

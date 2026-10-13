@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/Innocent-children/taskbelay/internal/domain"
+	"github.com/Innocent-children/taskbelay/internal/execution"
 	"github.com/Innocent-children/taskbelay/internal/store"
 	"os"
 	"os/exec"
@@ -274,5 +275,97 @@ func TestAuditRemoteBaselineRetainedAndForgedFreshnessRefused(t *testing.T) {
 	_, e = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "forged-fetch", v.Task.Revision}, RepositoryFreshness: []domain.RepositoryFreshness{{Key: "primary", Observation: f}}})
 	if code(e) != "REMOTE_OBSERVATION_STALE" {
 		t.Fatal("unverified remote commit accepted", e)
+	}
+}
+
+func TestAuditReviewBoundSourceUpstreamAndRemoteOnlyOrigin(t *testing.T) {
+	for _, remoteOnly := range []bool{false, true} {
+		t.Run(fmt.Sprint(remoteOnly), func(t *testing.T) {
+			ctx := context.Background()
+			s, v, root := fixture(t)
+			_, err := s.Cancel(ctx, CancelRequest{Identity: Identity{v.Task.TaskID, "retire-fixture", v.Task.Revision}, Reason: "Prepare the separately selected native fixture workspace"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			git := func(dir string, args ...string) string {
+				t.Helper()
+				out, e := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+				if e != nil {
+					t.Fatal(e, string(out))
+				}
+				return strings.TrimSpace(string(out))
+			}
+			remote := filepath.Join(t.TempDir(), "remote.git")
+			out, e := exec.Command("git", "init", "--bare", "-b", "main", remote).CombinedOutput()
+			if e != nil {
+				t.Fatal(e, string(out))
+			}
+			git(root, "remote", "add", "origin", remote)
+			git(root, "push", "-u", "origin", "main")
+			head := git(root, "rev-parse", "HEAD")
+			branch, work := "main", root
+			origin := &OriginInput{Mode: domain.WorkspaceModeNewBranch, SourceType: "local", CarryChanges: false, BaseBranch: "main", BaseCommit: head, TaskBranch: "repair", ProvisioningReceiptID: "review-fixture-origin"}
+			if remoteOnly {
+				git(root, "push", "origin", "HEAD:refs/heads/release")
+				git(root, "fetch", "origin")
+				work = filepath.Join(t.TempDir(), "repair-worktree")
+				git(root, "worktree", "add", "--detach", work, "origin/release")
+				git(work, "switch", "--no-track", "-c", "repair")
+				branch = "release"
+				origin.Mode = domain.WorkspaceModeDedicatedWorktree
+				origin.SourceType = "remote"
+				origin.RemoteName = "origin"
+				origin.BaseBranch = branch
+				if exec.Command("git", "-C", work, "show-ref", "--verify", "refs/heads/release").Run() == nil {
+					t.Fatal("fixture unexpectedly has local release")
+				}
+			} else {
+				git(root, "switch", "-c", "repair")
+				git(root, "push", "-u", "origin", "repair")
+			}
+			git(work, "fetch", "--no-tags", "origin")
+			fetched := time.Now().UTC()
+			f := domain.RemoteFreshness{Head: head, Upstream: "refs/remotes/origin/" + branch, RemoteName: "origin", RemoteRef: "refs/heads/" + branch, RemoteHead: head, State: "current", Fetched: true, FetchedAt: &fetched, CheckedAt: time.Now().UTC(), Basis: "Actual fetch of the explicitly bound original source"}
+			opened, e := s.Open(ctx, OpenRequest{OperationID: "review-source-open", Host: v.Task.Host, Repositories: []RepositoryInput{{Key: "primary", Path: work, Origin: origin, RemoteFreshness: &f}}, Authorization: v.Task.Authorization, Plan: v.Task.Plan, Checks: v.Task.Checks})
+			if e != nil {
+				t.Fatal("correct bound origin refused", e)
+			}
+			_, e = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{opened.Task.TaskID, "review-source-recheck", opened.Task.Revision}, RepositoryFreshness: []domain.RepositoryFreshness{{Key: "primary", Observation: f}}})
+			if e != nil {
+				t.Fatal("correct source checkpoint refused", e)
+			}
+			wrong := f
+			wrong.Upstream = "refs/remotes/origin/repair"
+			wrong.RemoteRef = "refs/heads/repair"
+			_, e = s.Observer.VerifyRemoteFreshness(ctx, work, opened.Task.Repositories[0].Binding, opened.Task.Repositories[0].Origin, &wrong)
+			if code(e) != "REMOTE_OBSERVATION_STALE" {
+				t.Fatal("task upstream impersonated source", e)
+			}
+			if !remoteOnly {
+				git(work, "branch", "--set-upstream-to=origin/repair", "main")
+				_, e = s.Observer.VerifyRemoteFreshness(ctx, work, opened.Task.Repositories[0].Binding, opened.Task.Repositories[0].Origin, &f)
+				if code(e) != "REMOTE_OBSERVATION_STALE" {
+					t.Fatal("changed bound source upstream accepted", e)
+				}
+			}
+		})
+	}
+}
+
+func TestAuditReviewDeniedOwnerQueryKeepsPendingMetering(t *testing.T) {
+	s, _, _ := fixture(t)
+	ctx := context.Background()
+	if e := s.Store.BeginControlCall(ctx, "owner-query-fixture", os.Getpid(), "retained-owner"); e != nil {
+		t.Fatal(e)
+	}
+	cause := &os.PathError{Op: "fork/exec", Path: "/bin/ps", Err: os.ErrPermission}
+	_, e := s.controlCost(ctx, func(execution.Run) (bool, error) { return false, cause })
+	var meter *ControlMeterError
+	if !errors.As(e, &meter) || meter.Stage != "process_identity" || !errors.Is(e, os.ErrPermission) {
+		t.Fatal(e)
+	}
+	retained, e := s.Store.ControlCost(ctx, nil)
+	if e != nil || retained.Pending != 1 || retained.UnknownMS != 0 {
+		t.Fatal("denial settled an owner as dead", retained, e)
 	}
 }

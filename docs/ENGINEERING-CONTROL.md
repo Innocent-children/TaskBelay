@@ -26,6 +26,8 @@ expected_paths 是预测；allowed_paths 是明确允许范围，缺省为已绑
 
 依赖许可使用具体仓库清单路径与包名。npm 的 dependencies/devDependencies/optionalDependencies/peerDependencies 前缀用于说明真实声明位置，不能当作包名的一部分误拒绝已允许的包。许可不授予其他仓库、禁止文件或安装操作的权限。
 
+Host 和 Core 使用同一不可变来源选择：本地来源读取原 base_branch 的配置上游；远端来源读取指定 remote_name/base_branch 的追踪分支，不要求本地同名分支。任务分支自有上游不替代来源。整合另需真实授权与稳定 operation_id；私有原子收据在修改前保存整批意图与冻结目标，逐仓保存已应用、受阻或未知结果。多仓 Git 不是原子事务，后续漂移时保留已完成仓库并返回部分结果。同一身份只读原收据；恢复只核对停止所有者后的当前 Git 事实，不重放命令、继续剩余仓库或回退用户工作，未知命令结果仍为未知。
+
 远端观察保存实际 fetch 完成时间 fetched_at、配置 remote_name/remote_ref、追踪提交和本地 HEAD；checked_at 是随后比较时间。失败或跳过不填写 fetched_at，不标为最新。Core 只核对本地事实；实际 fetch 仍由 Host 在真实 Git 授权下执行。
 
 ## 验证与防止重复投入

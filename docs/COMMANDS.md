@@ -39,7 +39,9 @@ identity 是 task_id、当前 revision、稳定 operation_id。命令输入拒�
 
 ## 宿主工作区与 HTTP
 
-Codex/Claude/ZCode 使用 taskbelay-<host> host-launch freshness 检查所有仓库；输入 repositories [{key,repository_path}]、可选 fetch（缺省 true）、integrate（缺省 false）、fetch 授权的 authorization_ref，以及 integrate=true 时单独的 integration_authorization_ref。DeepSeek workspace_coordinator 的 freshness 操作使用 freshness_repositories。结果中的 remote_freshness 复制到 open_task.repositories 成员；后续通过 checkpoint.repository_freshness [{key,observation}] 保存。fetch 不修改工作区；整合另需授权并仅允许全部选择已安全核验后的干净快进。无上游、跳过或失败不声称最新。
+Codex/Claude/ZCode 使用 taskbelay-<host> host-launch freshness 检查所有仓库；DeepSeek 使用 workspace_coordinator 的 freshness 操作与 freshness_repositories。已绑定仓库成员为 {key,repository_path,source_type,remote_name,base_branch}，后三项复制原 workspace_origin。fetch 缺省 true，integrate 缺省 false；fetch 需 authorization_ref，整合另需 integration_authorization_ref 与稳定 operation_id。
+
+结果中的 remote_freshness 复制到 open_task.repositories；后续通过 checkpoint.repository_freshness [{key,observation}] 保存。整合在 Git 修改前保存意图，并返回 operation.receipt_path、状态及逐仓 integration 结果。相同身份读取原收据，不重跑；recover:true 使用原请求，只在原所有者停止后核对实际 Git，不重复 fetch/merge 或回退已有整合。partial/uncertain/reconciled 不代表整批成功；结果未知仍保留未知。恢复锁记录 PID、随机 token 与文件身份；只有确认原所有者停止、独占回收声明并核对身份未变时才回收。活跃、PID 重用、权限拒绝或身份不明时保守拒绝，不按超时删锁；回收声明自身结果不明时保留检查。剩余工作先检查原副作用，再按新事实与真实授权建立新操作。无上游、跳过或失败不声称最新。
 
 可选 host-launch prepare 使用已有真实 authorization_ref、request、精确仓库来源/分支/携带选择；不要求再填评估表或重新审批已授权方案。scope 返回当前 repositories 数组，Core 补齐观察身份。恢复读取 receipt/status；不重派不确定操作。清理另需真实删除授权和当前终态 Task；跨工作区迁移不支持。 工作区准备不能代替 Core 的需求理解与完整方案确认。
 
@@ -57,4 +59,4 @@ HTTP 列表另支持 lifecycle=active/blocked/done/cancelled，按 Core 保存�
 
 运行记录的 process 保存命令进程的 pid 和启动 identity；激活前为 null，身份持久化后才允许命令执行。恢复时 Core 和受管命令均停止才可处理缺失收据；macOS 核对整个进程组。
 
-首次核验在冻结来源和创建分支之前进行。新任务分支没有上游时，freshness 的仓库成员可提供已保存 workspace_origin.base_branch 作为 base_branch；Core 按不可变来源分支核对配置上游。不得自行改用 main。
+首次核验在冻结来源和创建分支之前进行。绑定后始终使用原 source_type/remote_name/base_branch：本地来源核对原分支配置上游，远端来源直接核对指定远端追踪分支，不要求本地同名分支。任务分支获得自己的上游不会改变来源；不得自行改用 main。

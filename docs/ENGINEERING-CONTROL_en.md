@@ -26,6 +26,8 @@ Each path judgment cites approved work_id, goal_ids, basis and necessity. Core c
 
 Dependency permission binds the exact repository manifest and package name. npm dependency/dev/optional/peer section prefixes describe declaration location; they must not become part of the package name and reject an approved package. That permission grants no other repository, forbidden path or installation authority.
 
+Host and Core use the same immutable source selection: local sources read the original base_branch upstream configuration; remote sources use the selected remote_name/base_branch tracking ref without requiring a local branch. A task branch own upstream does not replace the source. Integration needs separate actual authority and a stable operation_id. A private atomic receipt saves batch intent and frozen targets before mutation, then per-root applied, blocked or unknown results. Multi-repository Git is not atomic: later drift retains earlier success and returns a partial result. The same identity only reads its receipt; recovery observes current Git after the owner stops without replay, continuation or rollback, and unknown command outcomes remain unknown.
+
 Remote observations retain actual fetch completion time fetched_at, configured remote_name/remote_ref, tracking commit and local HEAD; checked_at is the later comparison time. Failed/skipped fetch has no fetched_at and never means latest. Core verifies local facts; the Host performs the actual fetch under real Git authority.
 
 ## Verification and repeated cost

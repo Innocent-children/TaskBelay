@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"strings"
 	"time"
@@ -77,10 +78,11 @@ type ServerOptions struct {
 	HostPreferences userconfig.Preferences
 }
 type Server struct {
-	service *application.Service
-	sdk     *sdk.Server
-	version string
-	options ServerOptions
+	measureControl func(context.Context) (func(), error)
+	service        *application.Service
+	sdk            *sdk.Server
+	version        string
+	options        ServerOptions
 }
 
 func NewServer(s *application.Service, version string, options *ServerOptions) (*Server, error) {
@@ -91,6 +93,7 @@ func NewServer(s *application.Service, version string, options *ServerOptions) (
 	if options != nil {
 		v.options = *options
 	}
+	v.measureControl = v.service.MeasureControl
 	v.sdk = sdk.NewServer(&sdk.Implementation{Name: "taskbelay", Version: version}, &sdk.ServerOptions{Instructions: v.options.Instructions})
 	for _, d := range Catalog {
 		d := d
@@ -115,9 +118,9 @@ func (s *Server) Run(ctx context.Context, t sdk.Transport) error { return s.sdk.
 func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelope Envelope) {
 	start := time.Now()
 	id := newID()
-	complete, e := s.service.MeasureControl(ctx)
+	complete, e := s.measureControl(ctx)
 	if e != nil {
-		return Envelope{RequestID: id, Tool: name, Error: &domain.Error{Code: "STORAGE_UNAVAILABLE", Message: "control cost reservation failed; tool was not executed"}, Recovery: &Recovery{Action: "repair_storage", Message: "Core was reached, but control-call metering could not write local storage. Inspect data-directory permissions, schema and Host access; preserve data. This does not establish an MCP connection failure."}}
+		return meteringFailure(id, name, e)
 	}
 	defer complete()
 	taskID := ""
@@ -506,4 +509,38 @@ func OutputSchema(v any) map[string]any {
 	failure["error"] = Schema(domain.Error{})
 	failure["recovery"] = Schema(Recovery{})
 	return map[string]any{"type": "object", "oneOf": []any{map[string]any{"properties": success, "required": []string{"ok", "request_id", "tool", "result"}, "additionalProperties": false}, map[string]any{"properties": failure, "required": []string{"ok", "request_id", "tool", "error", "recovery"}, "additionalProperties": false}}}
+}
+
+func meteringFailure(id, name string, err error) Envelope {
+	phase := "initialization"
+	var meter *application.ControlMeterError
+	if errors.As(err, &meter) {
+		phase = meter.Stage
+	}
+	code := "CONTROL_INITIALIZATION_FAILED"
+	action := "inspect_initialization"
+	message := "Core was reached, but control metering initialization failed; the tool was not executed. Inspect the reported phase and original cause; preserve saved state."
+	switch phase {
+	case "process_identity":
+		code = "PROCESS_IDENTITY_UNAVAILABLE"
+		action = "inspect_process_access"
+		message = "Core was reached, but the Host could not query process identity. Inspect the original process-query error and restore required Host access; do not bypass denial or settle unknown executions. The tool was not executed."
+	case "storage_read", "storage_write":
+		code = "STORAGE_UNAVAILABLE"
+		action = "repair_storage"
+		message = "Core was reached, but control metering storage access failed. Inspect the original storage error and data-directory access; preserve data. The tool was not executed."
+		var original *domain.Error
+		if errors.As(err, &original) {
+			code = original.Code
+		}
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		code = "CONTROL_INITIALIZATION_CANCELLED"
+		action = "inspect_host_context"
+		message = "Control metering initialization was cancelled or timed out; the tool was not executed. Inspect the Host context before another authorized call."
+	}
+	if phase == "process_identity" && (errors.Is(err, os.ErrPermission) || strings.Contains(strings.ToLower(err.Error()), "operation not permitted") || strings.Contains(strings.ToLower(err.Error()), "permission denied")) {
+		code = "PROCESS_IDENTITY_DENIED"
+	}
+	return Envelope{RequestID: id, Tool: name, Error: &domain.Error{Code: code, Message: "control metering initialization failed; tool was not executed", Details: []domain.ContractViolation{{Path: "control_meter." + phase, Rule: "initialization", Message: err.Error()}}}, Recovery: &Recovery{Action: action, RetrySafe: false, Message: message}}
 }

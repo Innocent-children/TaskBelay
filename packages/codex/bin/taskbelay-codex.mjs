@@ -383,7 +383,7 @@ async function runHostLaunchCommand(operation, input, paths, dependencies) {
       return JSON.parse(result.stdout);
     }),
   };
-  if (operation === "freshness") return await assessRepositoryFreshness(input,{runGit:dependencies.runGit});
+  if (operation === "freshness") return await assessRepositoryFreshness(input,{runGit:dependencies.runGit,receiptRoot:paths.dataDirectory});
   if (operation === "inspect") {
     assertClosedObject(input, ["request", "repositories"], "host-launch inspect input");
     return await inspectAdmissionAnchor({ ...input, runGit: dependencies.runGit });

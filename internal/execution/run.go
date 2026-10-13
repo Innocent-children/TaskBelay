@@ -66,10 +66,17 @@ func Owner() (int, string, error) {
 	id, e := processIdentity(pid)
 	return pid, id, e
 }
-func OwnerAlive(r Run) bool {
+func OwnerStatus(r Run) (bool, error) {
 	v, e := processIdentity(r.OwnerPID)
-	return e == nil && v == r.OwnerIdentity
+	if errors.Is(e, errProcessEnded) {
+		return false, nil
+	}
+	return v == r.OwnerIdentity, e
 }
+func OwnerAlive(r Run) bool { alive, e := OwnerStatus(r); return e != nil || alive }
+
+var errProcessEnded = errors.New("process ended")
+
 func (r Run) InputKey() domain.Digest {
 	// Names, prose and timeout changes do not turn the same execution into new information.
 	return domain.Hash([]any{r.Check.Argv, r.RequirementDigest, r.Before.Inputs, r.Before.Environment})

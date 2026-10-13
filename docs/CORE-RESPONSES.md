@@ -14,6 +14,6 @@ JSON 未知成员、重复成员及类型错误定位到具体 arguments 路径�
 
 PLAN_CONFIRMATION_REQUIRED、PLAN_CHANGED、AUTHORIZATION_PENDING 要求真实用户决定；UNAPPROVED_CHANGES 要求恢复提案时内容或明确披露后修订。CHECK_ALREADY_SATISFIED 表示复用已有结果，RETRY_BASIS_REQUIRED 要求读取原运行并提供新诊断信息。FAILURE_ACCEPTANCE_NOT_ALLOWED 不允许以例外绕过目标验收。拒绝未启动进程，但调用成本仍记录。
 
-PLAN_BUDGET_INFEASIBLE 要求根据预算报告修正不可预留的配置，不能据此取消验收。REMOTE_OBSERVATION_STALE 表示 HEAD、对应上游或追踪提交与宿主观察不匹配，需重新观察。server_info.startup_diagnostics 说明当前 Core 已到达；不能据 CLI 成功断言当前会话已暴露 MCP。STORAGE_UNAVAILABLE 的恢复信息区分已到达 Core 与调用计量写入失败，要求检查目录权限、Schema 和宿主访问并保留数据。
+PLAN_BUDGET_INFEASIBLE 要求根据预算报告修正不可预留的配置，不能据此取消验收。REMOTE_OBSERVATION_STALE 表示 HEAD、对应上游或追踪提交与宿主观察不匹配，需重新观察。server_info.startup_diagnostics 说明当前 Core 已到达；不能据 CLI 成功断言当前会话已暴露 MCP。调用计量初始化失败不会执行请求。error.details 的 control_meter.<阶段> 保存原始原因：PROCESS_IDENTITY_DENIED/PROCESS_IDENTITY_UNAVAILABLE 要求检查进程查询与宿主权限；拒绝不能作为进程已结束的证明。STORAGE_UNAVAILABLE 仅表示真实存储读取/写入失败；已有 STORAGE_CORRUPT 等原因保留，修复时不删除数据。CONTROL_INITIALIZATION_FAILED 指向其他初始化步骤，CONTROL_INITIALIZATION_CANCELLED 表示取消或超时。恢复提示按实际责任分类，不据此声称 MCP 未连接。
 
 WebUI 启动若子进程提前退出，明确返回进程退出和本次 webui-runtime.log 位置；未就绪超时也保留日志位置。先读原启动记录，不将退出或存储失败统称为连接问题。

@@ -1,4 +1,8 @@
-export { assessRepositoryFreshness as freshness } from "./repository-freshness.mjs";
+import { assessRepositoryFreshness } from "./repository-freshness.mjs";
+export async function freshness(input, options = {}) {
+ const receiptRoot = input?.integrate === true ? (await paths(options.environment)).dataDirectory : undefined;
+ return await assessRepositoryFreshness(input, { ...options, receiptRoot });
+}
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";

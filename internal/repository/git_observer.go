@@ -35,6 +35,7 @@ const (
 	gitIsAncestor
 	gitShowMergeCommits
 	gitShowUpstream
+	gitShowRemotes
 	gitCompareUpstream
 )
 
@@ -527,11 +528,16 @@ func (command gitReadCommand) arguments(repositoryPath, value string) ([]string,
 		return left, right, ok && left != "" && right != ""
 	}
 	switch command {
+	case gitShowRemotes:
+		if value != "" {
+			return nil, false
+		}
+		return append(args, "remote"), true
 	case gitShowUpstream:
 		if value != "" && domain.ScopedPath(value) != nil {
 			return nil, false
 		}
-		return append(args, "for-each-ref", "--format=%(upstream)%00%(upstream:remotename)%00%(upstream:remoteref)", "refs/heads/"+value), true
+		return append(args, "for-each-ref", "--format=%(refname)%00%(upstream)%00%(upstream:remotename)%00%(upstream:remoteref)", "refs/heads/"+value), true
 	case gitCompareUpstream:
 		if !strings.HasPrefix(value, "refs/remotes/") || domain.ScopedPath(value) != nil {
 			return nil, false

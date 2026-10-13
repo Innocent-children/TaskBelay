@@ -115,7 +115,7 @@ func (s *Service) Open(ctx context.Context, q OpenRequest) (View, error) {
 		if e != nil {
 			return View{}, domain.Fail("OBSERVATION_UNAVAILABLE", "repositories", "workspace origin could not be verified: "+e.Error())
 		}
-		f, e := s.Observer.VerifyRemoteFreshness(ctx, origin.CanonicalWorktreeRoot, b, origin.BaseBranch, input.RemoteFreshness)
+		f, e := s.Observer.VerifyRemoteFreshness(ctx, origin.CanonicalWorktreeRoot, b, origin, input.RemoteFreshness)
 		if e != nil {
 			return View{}, e
 		}
@@ -270,9 +270,25 @@ func (s *Service) view(ctx context.Context, t domain.Task, refreshed bool) (View
 }
 
 func (s *Service) ControlCost(ctx context.Context) (store.ControlUsage, error) {
-	return s.Store.ControlCost(ctx, func(pid int, id string) bool {
-		return execution.OwnerAlive(execution.Run{OwnerPID: pid, OwnerIdentity: id})
+	return s.controlCost(ctx, execution.OwnerStatus)
+}
+func (s *Service) controlCost(ctx context.Context, probe func(execution.Run) (bool, error)) (store.ControlUsage, error) {
+	var ownerError error
+	usage, err := s.Store.ControlCost(ctx, func(pid int, id string) bool {
+		alive, queryErr := probe(execution.Run{OwnerPID: pid, OwnerIdentity: id})
+		if queryErr != nil {
+			ownerError = queryErr
+			return true
+		} // Query denial is not proof of death.
+		return alive
 	})
+	if err != nil {
+		return usage, err
+	}
+	if ownerError != nil {
+		return usage, &ControlMeterError{Stage: "process_identity", Err: ownerError}
+	}
+	return usage, nil
 }
 func (s *Service) begin(ctx context.Context, q Identity, kind string, payload any) (domain.Task, store.Operation, bool, error) {
 	if !domain.ID(q.TaskID).IsValid() || !domain.ID(q.OperationID).IsValid() || q.Revision == 0 {
@@ -357,7 +373,7 @@ func (s *Service) Checkpoint(ctx context.Context, q CheckpointRequest) (View, er
 		found := false
 		for i, r := range t.Repositories {
 			if r.Key == reported.Key {
-				f, e := s.Observer.VerifyRemoteFreshness(ctx, r.Origin.CanonicalWorktreeRoot, r.Binding, r.Origin.BaseBranch, &reported.Observation)
+				f, e := s.Observer.VerifyRemoteFreshness(ctx, r.Origin.CanonicalWorktreeRoot, r.Binding, r.Origin, &reported.Observation)
 				if e != nil {
 					return View{}, e
 				}
