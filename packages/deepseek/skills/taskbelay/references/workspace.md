@@ -1,26 +1,34 @@
 <!-- Generated from skills/taskbelay/core/workspace.md; edit the shared source and run node scripts/sync-skill-references.mjs. -->
 
-# Choose the workspace for each new Task
+# Optional workspace operations
 
-Before every new Task, show the actual directories, current branches and initial changes, and ask
-the user to choose: current branch, a new branch in the current directory, or a dedicated worktree.
-Do not infer a default or reuse a workspace choice from a different Task. Retain the actual answer
-as authorization_ref when preparing a workspace. Resume an existing Task in its saved workspace;
-ordinary follow-ups and recovery do not repeat this question.
+Use the user's selected workspace, or the current workspace when the request makes it clear. Show the
+actual directory, branch and existing changes. Do not ask the same workspace question for every Task.
+Resume an existing Task in its saved workspace; cross-workspace relocation is unsupported.
 
-Before editing any selected repository, use the Host freshness operation for all roots with actual Git authorization. Inspect the corresponding upstream rather than assuming main. Fetch changes tracking metadata; it does not authorize integration. Dirty/diverged/failed/no-upstream states preserve work and remain explicit. Supply each report as remote_freshness when opening Core; checkpoint.repository_freshness retains later observations. Recheck before a later commit. Codex/Claude/ZCode use host-launch freshness; DeepSeek uses workspace_coordinator freshness with freshness_repositories. Supply a separate integration_authorization_ref for integrate:true; only separately authorized clean fast-forwards are allowed after assessing every root.
+Read this reference only when branch/worktree preparation, upstream work or cleanup is actually needed.
+Use the packaged deepseek helper and retain the actual authorization_ref. Prepare the requested source,
+branch and carry choice. Its scope result provides repositories for open_task; Core observes identity
+and owns Task progress. A workspace receipt is an operation record, not another Task.
 
-Prepare exactly the selected source, branch and carry choice. Reuse saved receipts after interruption;
-never repeat an uncertain Git or Host operation. Helper scope output is the repositories array for
-the current Core open request. No helper changes requirements, acceptance, cost or Task status.
+Check upstream when the task requires it. Fetch and integration require actual Git authority; neither
+is a universal prerequisite for local edits. Codex/Claude/ZCode use host-launch freshness; DeepSeek uses
+workspace_coordinator freshness with freshness_repositories. Missing checks are not_checked, never
+latest. Copy supplied observations into open_task or checkpoint.repository_freshness.
 
-Use the packaged deepseek workspace helper for the selected operation. Deletion requires the exact
-current terminal Core task, the per-repository provisioning_receipt_id returned by scope, the matching
-workspace and independent user authorization. Dirty, unpushed, unknown and uncertain resources are
-retained. Verify Host-specific relaunch or new-chat capabilities in the real Host.
+Use original workspace_origin.source_type, remote_name and base_branch when bound. Local sources use
+that branch's upstream; remote sources use refs/remotes/<remote_name>/<base_branch>. Do not substitute
+a task branch's new upstream. Integrate only separately authorized clean fast-forwards, with stable
+operation_id and integration_authorization_ref. Inspect each repository result and retain receipt_path.
 
-Implementation: the workspace/launch helpers in `packages/deepseek/lib/` and `internal/application/service.go`.
+After interruption, read the original receipt. recover:true uses the original request and only reconciles
+Git facts; it does not repeat commands, continue remaining roots or undo completed work. Unknown command
+outcomes remain unknown. Preserve dirty, diverged, failed or partial results. Never delete locks or edit
+receipts to bypass an unresolved operation.
 
-Run the first assessment on source checkouts before freezing/creating a workspace. Once bound, pass all original workspace_origin.source_type, remote_name and base_branch fields, including when a task branch has its own upstream. A remote origin uses its remote-tracking source and needs no local source branch. Never substitute main or a task branch upstream implicitly, and never call cached/no-upstream state latest.
+Cleanup needs actual deletion authority, the exact terminal Core task, matching workspace and its
+provisioning_receipt_id. Request get_task detail:true to read details.task when a helper needs complete
+workspace bindings. Dirty or unpushed work is retained. Verify Host-specific new-chat capabilities only
+when the user requests that operation.
 
-For integrate:true, retain the stable operation_id and returned receipt_path. The Host stores a bounded intent and each repository result under its configured data directory/freshness before Git mutation. The full selection is preflighted, but sequential Git integration is not an atomic transaction: later drift can leave an earlier repository applied. Read its saved partial result; preserve all work. Identical requests read the old receipt. recover:true with the original request checks a stopped owner and actual Git facts without fetch/merge, rollback or continuation. Unknown command outcomes remain unknown, even when the frozen target is present. Inspect original effects before any new separately authorized assessment for remaining roots. Recovery locks retain owner PID, a random token and file identity. A stopped owner may be reclaimed only after an exclusive claim and unchanged identity are verified; PID reuse, a live owner, denied liveness query or incomplete identity is a blocker. Receipt writes and lock release are fenced against replacement. A leftover reclaim-claim with unknown outcome remains blocked for inspection; no age-based deletion is provided. Never delete locks or edit receipts to bypass uncertainty.
+Maintainer implementation reference: `internal/application/origin_input.go`.

@@ -27,7 +27,7 @@ export const PLUGIN_SELECTOR = `${PLUGIN_NAME}@${MARKETPLACE_NAME}`;
 const MCP_SCHEMA_URI = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json";
 const IMPLICIT_SKILL_POLICY = "policy:\n  allow_implicit_invocation: true";
 
-export const CODEX_MCP_INSTRUCTIONS = "Use the TaskBelay Skill and current engineering Core. Before implementation, show the understanding and complete plan and obtain actual user confirmation; record taskbelay_confirm_plan for its exact digest. Reuse valid confirmation across turns; material revisions require a newly confirmed plan. Core owns the single Task, actual code observations, evidence applicability and cumulative cost. Implement and verify in any useful order. Record semantic basis and uncertainty; claims cannot prove execution. Execute approved checks through taskbelay_run_check within native Host permissions; inspect taskbelay_get_run after a lost response and never replay an uncertain command. Structured hooks only cover declared paths; shell and external writes are observed at checkpoints. TaskBelay is not a sandbox. Before every new Task, ask the user to choose the current branch, a new local branch or a dedicated worktree; show actual paths, branches and initial changes, and do not infer a default or reuse another Task's workspace choice. Resume an existing Task in its bound workspace. Git, new chat, deletion and publication operations require their own actual authorization. Done/cancelled retains files and grants no Git or publication authority.";
+export const CODEX_MCP_INSTRUCTIONS = "Use TaskBelay for substantial development needing saved progress, verification reuse or recovery. Honor explicit invocation or opt-out; skip small unrelated work. Start from the actual user request in the selected/current workspace without repeat plan approval. Adjust methods within existing authority; ask only for real user-boundary changes. Core owns one Task, actual results and cumulative cost. Native permissions apply. After response loss read the original task/run before repeating effects. Default responses are summaries; get_task detail:true and get_run provide details. Structured hooks cover declared paths, not all shell effects. See the TaskBelay Skill when using these tools.";
 
 const semverPattern = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
 const digestPattern = /^[0-9a-f]{64}$/;
@@ -515,7 +515,6 @@ async function assertPackageResources(paths, packageVersion) {
   if (skillMetadata.replace(/\r\n?/gu, "\n").trim() !== IMPLICIT_SKILL_POLICY) {
     throw new Error("TaskBelay implicit Skill policy must enable implicit invocation");
   }
-  if (!CODEX_MCP_INSTRUCTIONS.includes("taskbelay_run_check") || !CODEX_MCP_INSTRUCTIONS.includes("cumulative cost")) throw new Error("Current engineering instructions are missing");
 }
 
 // Registration checks that routed instructions are readable; contract tests own

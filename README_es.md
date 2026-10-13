@@ -36,9 +36,9 @@ Active el adaptador con su [guía](packages/codex/README.md) y solicite un resul
 Usa TaskBelay para limitar los intentos fallidos de inicio de sesión. Conserva la API pública de autenticación y los datos existentes; no rediseñes la gestión de cuentas. Ejecuta las pruebas existentes pertinentes e informa de los resultados reales.
 ```
 
-Indique el resultado y los límites. Antes de implementar, el agente presenta su comprensión, causa raíz, plan completo, responsabilidades, alcance, comprobaciones y límites de coste para su confirmación explícita. Los cambios importantes requieren otra confirmación; el progreso normal conserva la aprobación válida. Cada comprobación debe cubrir una carencia actual y los resultados válidos se reutilizan. La WebUI muestra el plan, las pruebas y el coste, permite confirmar y archivar tareas terminadas y abre tareas mediante enlaces directos. Reanude con el Task ID guardado en su espacio original.
+Indique el resultado y las restricciones necesarias. El agente explica su enfoque y trabaja con la autorización existente. Los ajustes habituales de implementación y comprobación no requieren otra aprobación; cambiar objetivos o restricciones explícitas sí requiere su decisión real. Los resultados válidos se reutilizan. El consumo se registra continuamente y los límites solo se aplican cuando usted los establece. La WebUI muestra primero los resultados y los problemas pendientes, ofrece detalles bajo demanda y permite archivar tareas. Reanude con el Task ID guardado en el espacio original.
 
-Al crear cada Task, el agente muestra los directorios, las ramas y los cambios sin confirmar, y pregunta dónde trabajar: en la rama actual, en una nueva rama del mismo directorio o en un worktree independiente. No hay una opción predeterminada. Al reanudar un Task existente se conserva su espacio de trabajo original.
+El agente muestra el directorio, la rama y los cambios existentes y utiliza el espacio elegido o claramente indicado por el contexto. Solo pregunta si hay ambigüedad, conflictos o una operación que necesita un nuevo espacio. Crear ramas o worktrees e integrar cambios del repositorio de origen son operaciones opcionales y siguen la autorización real.
 
 ```sh
 taskbelay webui start

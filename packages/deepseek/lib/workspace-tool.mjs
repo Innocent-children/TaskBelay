@@ -117,7 +117,7 @@ async function readCoreTask(ctx, { taskID, signal, execution }) {
     rootCallId: execution.rootCallId ?? execution.callId,
     parent: execution.token,
     name: "mcp__taskbelay__taskbelay_get_task",
-    arguments: { task_id: taskID, refresh:false },
+    arguments: { task_id: taskID, refresh:false, detail:true },
     agent: execution.agent,
     signal,
   });
@@ -125,6 +125,6 @@ async function readCoreTask(ctx, { taskID, signal, execution }) {
   const start = text.indexOf("{");
   if (result.isError || start < 0) throw new Error("terminal Core Task read failed");
   const envelope = JSON.parse(text.slice(start));
-  if (envelope?.ok !== true || envelope.result?.task === undefined) throw new Error("terminal Core Task read failed");
-  return envelope.result.task;
+  if (envelope?.ok !== true || envelope.result?.details?.task === undefined) throw new Error("terminal Core Task read failed");
+  return envelope.result.details.task;
 }

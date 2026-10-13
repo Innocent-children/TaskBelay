@@ -61,10 +61,9 @@ func TestExactHostRejectsAlternateAddress(t *testing.T) {
 
 func TestDesktopLifecycleFilteringPrecedesPagination(t *testing.T) {
 	approved := domain.Task{TaskID: "approved", Status: "active", Repositories: []domain.RepositoryScopeEntry{{Key: "primary"}}}
-	approved.Approval = approved.NewApproval("fixture-user", "Approved fixture plan")
 	blocked := approved
 	blocked.TaskID = "blocked"
-	blocked.Approval = nil
+	blocked.Issue = &domain.Issue{Kind: "authorization", Summary: "User decision needed", Options: []string{"Keep scope", "Expand scope"}}
 	list := func(_ context.Context, q store.ListQuery) (store.TaskPage, error) {
 		if q.Status != "active" || q.PageSize != 100 {
 			t.Fatal("discovery must restrict storage to active tasks", q)

@@ -83,7 +83,7 @@ func TestNestedRequestErrorsIdentifyTheExactMember(t *testing.T) {
 		if actual.OK || actual.Error.Code != "INVALID_ARGUMENT" || len(actual.Error.Details) != 1 || actual.Error.Details[0].Path != c.path || actual.Error.Message != c.message {
 			t.Fatalf("incorrect field error for %s: %+v", c.raw, actual)
 		}
-		validate(t, OutputSchema(application.View{}), actual)
+		validate(t, OutputSchema(TaskResult{}), actual)
 		if tasks, e := s.service.Store.List(context.Background(), store.ListQuery{}); e != nil || len(tasks.Items) != 0 {
 			t.Fatal("invalid input created semantic state", e)
 		}
@@ -182,31 +182,36 @@ func TestPlanBoundaryResponsesAndExecutionValidateAgainstPublishedSchemas(t *tes
 		return v
 	}
 	q := application.OpenRequest{OperationID: "open-contract", Host: "cli", Repositories: []application.RepositoryInput{{Key: "primary", Path: root}}, Authorization: domain.Authorization{UserRef: "fixture-request", Request: "Inspect the committed fixture", Goals: []domain.Goal{{ID: "goal", Statement: "The fixture status command succeeds", Checks: []string{"check"}}}},
-		Plan:   domain.Plan{Understanding: "Inspect the fixture", RootCause: "Status needs verification", Approach: "Use read-only Git status", SimplerAlternative: "No file editing or framework needed", VerificationBasis: "One exact status command suffices", Completion: "Status succeeds and no code changes", Work: []domain.PlannedWork{{ID: "inspect", GoalIDs: []string{"goal"}, Change: "Inspect current status", Owner: "Git observer", Necessity: "Requested fixture check"}}},
+		Plan:   domain.Plan{Approach: "Use read-only Git status", VerificationBasis: "One exact status command suffices"},
 		Checks: []domain.Check{{ID: "check", Kind: "command", Argv: []string{"git", "status", "--porcelain"}, Rationale: "Inspect actual Git state", Conditions: "Local fixture", Retry: "repeatable", TimeoutMS: 3000}}}
 	opened := dispatch("taskbelay_open_task", q)
 	if !opened.OK {
 		t.Fatal(opened)
 	}
-	v := opened.Result.(application.View)
-	run := application.RunRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "unconfirmed-run"}, CheckID: "check", Rationale: "Inspect fixture"}
-	rejected := dispatch("taskbelay_run_check", run)
-	expected := `{"ok":false,"request_id":"unconfirmed-run","tool":"taskbelay_run_check","error":{"code":"PLAN_CONFIRMATION_REQUIRED","message":"show the understanding and complete plan and record actual user confirmation first","details":[{"path":"plan_digest","rule":"requirement","message":"show the understanding and complete plan and record actual user confirmation first"}]},"recovery":{"action":"request_authorization","retry_safe":false,"message":"Show the current plan or required decision and obtain actual user authorization; preserve acceptance requirements."}}`
-	b, _ := json.Marshal(rejected)
-	if string(b) != expected {
-		t.Fatalf("unexpected complete error\n%s", b)
+	v := opened.Result.(TaskResult)
+	if v.Details != nil || v.Decision.Advice != "continue" {
+		t.Fatal("ordinary start returned history or requested unnecessary correction", v)
 	}
-	confirmed := dispatch("taskbelay_confirm_plan", application.ConfirmPlanRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "confirm-contract"}, PlanDigest: v.PlanDigest, UserRef: "fixture-answer", Response: "I understand and approve the displayed plan"})
-	if !confirmed.OK {
-		t.Fatal(confirmed)
+	detailed := dispatch("taskbelay_get_task", GetRequest{TaskID: v.Task.TaskID, Detail: true})
+	if !detailed.OK {
+		t.Fatal(detailed)
 	}
-	v = confirmed.Result.(application.View)
-	run.Identity = application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "approved-run"}
+	full := detailed.Result.(TaskResult).Details
+	if full == nil || full.Task.TaskID != v.Task.TaskID || len(full.Task.Repositories[0].Binding.TaskSurface) != 0 {
+		t.Fatal("detail lost saved task", full)
+	}
+	compactBytes, _ := json.Marshal(v)
+	fullBytes, _ := json.Marshal(full)
+	if len(compactBytes) >= len(fullBytes) || strings.Contains(string(compactBytes), "worktree_instance_digest") {
+		t.Fatal("default result still includes full repository detail")
+	}
+	t.Logf("initial Task response: summary %d bytes; full view %d bytes", len(compactBytes), len(fullBytes))
+	run := application.RunRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "authorized-run"}, CheckID: "check", Rationale: "Inspect fixture under the existing user request"}
 	executed := dispatch("taskbelay_run_check", run)
-	if !executed.OK || executed.Result.(application.RunResult).Run.Status != "passed" {
+	if !executed.OK || executed.Result.(RunResult).Run.Status != "passed" {
 		t.Fatal(executed)
 	}
-	before := executed.Result.(application.RunResult).View.Task.Revision
+	before := executed.Result.(RunResult).View.Task.Revision
 	invalid := dispatch("taskbelay_checkpoint", map[string]any{"task_id": v.Task.TaskID, "revision": before, "operation_id": "weaken-check", "checks": []any{}})
 	if invalid.OK || invalid.Error.Details[0].Path != "arguments.checks" {
 		t.Fatal("checkpoint accepted changed checks", invalid)
@@ -242,28 +247,27 @@ func TestCompleteBudgetDecisionRoundTripsActualTransportSchema(t *testing.T) {
 			t.Fatal(e, string(out))
 		}
 	}
-	call := func(name string, q any) application.View {
+	call := func(name string, q any) TaskResult {
 		t.Helper()
 		raw, _ := json.Marshal(q)
 		actual := s.Dispatch(ctx, name, raw)
 		if !actual.OK {
 			t.Fatal(actual)
 		}
-		validate(t, OutputSchema(application.View{}), actual)
+		validate(t, OutputSchema(TaskResult{}), actual)
 		b, _ := json.Marshal(actual.Result)
-		var v application.View
+		var v TaskResult
 		if e := json.Unmarshal(b, &v); e != nil {
 			t.Fatal(e)
 		}
 		return v
 	}
-	authorization := domain.Authorization{UserRef: "actual-fixture-request", Request: "Verify local clean diff", Goals: []domain.Goal{{ID: "goal", Statement: "No unintended changes", Checks: []string{"check"}}}, Limits: domain.DefaultLimits()}
-	plan := domain.Plan{Understanding: "Verify requested clean diff", RootCause: "Need actual result", Approach: "Use existing local Git check", SimplerAlternative: "No additional tool needed", VerificationBasis: "Actual diff exit", Completion: "Current required check passed", Work: []domain.PlannedWork{{ID: "work", GoalIDs: []string{"goal"}, Change: "Verify requested state", Owner: "Existing repository", Necessity: "Required actual result"}}}
+	authorization := domain.Authorization{UserRef: "actual-fixture-request", Request: "Verify local clean diff", Goals: []domain.Goal{{ID: "goal", Statement: "No unintended changes", Checks: []string{"check"}}}, Limits: domain.Limits{Runs: 20, ExecutionMS: 600000, CoreMS: 600000, HostMS: 3600000, Tokens: 1000000}}
+	plan := domain.Plan{Approach: "Use existing local Git check", VerificationBasis: "Actual diff exit"}
 	v := call("taskbelay_open_task", application.OpenRequest{OperationID: "budget-transport-open", Host: "cli", Repositories: []application.RepositoryInput{{Key: "primary", Path: root}}, Authorization: authorization, Plan: plan, Checks: []domain.Check{{ID: "check", Kind: "command", Argv: []string{"git", "diff", "--quiet"}, TimeoutMS: 3000, Retry: "repeatable", Rationale: "Actual diff", Conditions: "Local fixture"}}})
-	v = call("taskbelay_confirm_plan", application.ConfirmPlanRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "budget-transport-confirm"}, PlanDigest: v.PlanDigest, UserRef: "actual-confirmation", Response: "Approved exact fixture plan"})
-	q := application.BudgetRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "budget-transport-update"}, PlanDigest: v.PlanDigest, Budget: domain.BudgetDecision{Runs: 40, ExecutionMS: 14400000, WorkMS: 14400000, Tokens: 1000000}, UserRef: "actual-complete-budget-decision", Response: "Approve four hours for command and work time and 40 runs"}
+	q := application.BudgetRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "budget-transport-update"}, AuthorizationDigest: v.AuthorizationDigest, Budget: domain.BudgetDecision{Runs: 40, ExecutionMS: 14400000, WorkMS: 14400000, Tokens: 1000000}, UserRef: "actual-complete-budget-decision", Response: "Approve four hours for command and work time and 40 runs"}
 	updated := call("taskbelay_update_budget", q)
-	if updated.Task.Authorization.Limits.CoreMS != 14400000 || updated.Task.Authorization.Limits.HostMS != 14400000 || !updated.Task.PlanApproved() {
+	if updated.Task.Authorization.Limits.CoreMS != 14400000 || updated.Task.Authorization.Limits.HostMS != 14400000 || updated.Task.BudgetDecision.UserRef != q.UserRef {
 		t.Fatal(updated)
 	}
 	replay := call("taskbelay_update_budget", q)
@@ -299,7 +303,7 @@ func TestMeterInitializationClassifiesActualErrorCategoryAndDoesNotDispatch(t *t
 				t.Fatal("phase or original cause lost", result)
 			}
 			result.RequestID = "example-request"
-			validate(t, OutputSchema(application.View{}), result)
+			validate(t, OutputSchema(TaskResult{}), result)
 			page, e := s.service.Store.List(context.Background(), store.ListQuery{})
 			if e != nil || len(page.Items) != 0 {
 				t.Fatal("tool executed after failed metering", e, page)

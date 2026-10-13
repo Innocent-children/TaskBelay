@@ -9,9 +9,9 @@ closed input/output Schemas from the same DTOs used by CLI and HTTP. Use `codex`
 | --- | --- |
 | `taskbelay_server_info` | Empty object: actual tools, coverage and evidence boundaries |
 | `taskbelay_open_task` | operation_id, host, repositories, authorization, plan, checks |
-| `taskbelay_get_task` | task_id, optional refresh (default true; false reads saved state) |
+| `taskbelay_get_task` | task_id, optional refresh (default true; false reads saved state), detail:true for full saved data |
 | `taskbelay_checkpoint` | identity; optional assessment, progress, issue and Host cost deltas |
-| `taskbelay_revise_task` | identity, actual revised authorization, plan, checks, reason |
+| `taskbelay_revise_task` | identity, reason and only the authorization/plan/checks objects to replace |
 | `taskbelay_run_check` | identity, check_id, rationale; previous_run_id/new_information for retries and full_suite_basis for full suites; records reservation before starting a child |
 | `taskbelay_record_evidence` | identity, check_id, source claim/human, status, summary, content_digest, actual user_ref for human |
 | `taskbelay_get_run` | run_id; reads actual output and status without rerunning |
@@ -19,14 +19,20 @@ closed input/output Schemas from the same DTOs used by CLI and HTTP. Use `codex`
 | `taskbelay_finish_task` | identity, summary, per-goal acceptance and risks |
 | `taskbelay_cancel_task` | identity, reason; releases claims and retains files |
 | `taskbelay_list_tasks` | Optional page, page_size, include_archived, status; bounded pagination |
-| `taskbelay_update_budget` | identity, current plan_digest, budget {runs,execution_ms,work_ms,tokens}, actual user_ref and response; all effective caps updated together |
-| `taskbelay_confirm_plan` | identity, plan_digest, actual user_ref and response |
+| `taskbelay_update_budget` | identity, current authorization_digest, budget {runs,execution_ms,work_ms,tokens}, actual user_ref and response; all effective caps updated together |
 | `taskbelay_accept_known_failure` | identity, check_id, failed_evidence_id, comparison_evidence_id, failures, actual user_ref, reason |
 | `taskbelay_archive_task` | identity, archived; terminal tasks only |
 
-Identity means task_id, current revision and a stable operation_id. Typical successful results are
-the task view (`task`, plan_digest, other digests, `decision`); run/recover return `view` and the actual `run`. Read saved
-results and provenance. `refreshed:false` never asserts current applicability.
+Identity means task_id, current revision and a stable operation_id. Reuse the returned identity rather
+than guessing it. Success is ok:true with result; failure has error and recovery. Task results contain
+task (current request, plan, checks, progress, usage and evidence), current digests, decision and budget.
+Repositories contain repository_path, branch and changed_paths. Routine results omit file fingerprints,
+old attempts and full output. get_task detail:true adds details (the complete application view, including
+details.task). run/recover return view plus run {run_id,check_id,status,exit_code,duration_ms,output_bytes,
+truncated}; read get_run for actual output or failure diagnostics. refreshed:false never claims current
+applicability. Inspect decision.advice and missing_checks; continue/review/verify are agent work,
+self_correct identifies corrections, ask_user is an actual saved decision, and stop preserves an unmet
+limit, pending operation or terminal outcome.
 
 Complete read request:
 
@@ -57,14 +63,41 @@ trigger and compare the entire normalized error. Do not add source, user decisio
 results while correcting fields. Budget failures retain counters. Uncertain execution requires
 reading the saved run; storage incompatibility requires preserving data, not resetting it.
 
-The complete plan includes understanding/root_cause/approach/simpler_alternative/verification_basis/completion and work items (id, goal_ids, change, owner, necessity). A confirmation binds its exact digest, including checks, limits, workspaces and proposed content. Changed proposals invalidate approval. Checkpoint never accepts checks.
+## Request fields
 
-Approval retains original grant attribution and budget/timeout ceilings. revise_task reuses confirmation only for configuration proven within that exact authority; semantic or permission expansion invalidates it. update_budget requires a concrete actual complete decision, records its separate attribution and never resets cost. view.budget exposes all effective caps and required reservations. Aggregate timeout estimates warn; a required check that cannot reserve or insufficient required runs prevents confirmation.
+- authorization: user_ref and request from the actual user, goals [{id,statement,checks}], plus explicit
+  constraints and restrictions. expected_paths is only a forecast. Omitted limits or zero fields mean
+  no user-set cap; positive values cap cumulative runs/execution_ms/core_ms/host_ms/tokens.
+- plan: approach and verification_basis. Explain responsibility and proportionality in those fields
+  where relevant; no repeated understanding, completion or work-item form is required.
+- repositories: key and absolute repository_path; omit workspace_origin for the current branch.
+  An optional prepared workspace uses the helper's origin. remote_freshness is optional; omitted
+  observations remain not_checked. See [workspaces](workspace.md) only for actual Git operations.
+- checks: id, kind (command/human), rationale, conditions; commands require argv. Defaults are cwd .,
+  inputs ["."], timeout_ms 60000, retry requires_user, purpose acceptance. Use repeatable only when
+  justified. Narrower inputs require input_basis. Regression checks can have accepted known failures;
+  diagnostic checks need goal_ids. full_suite requires a reason each run; compares names the regression
+  check whose existing failures are being compared.
 
-Host freshness repository items use the original bound source_type, remote_name and base_branch. Local source selection resolves that branch configured upstream; remote source selection resolves refs/remotes/<remote_name>/<base_branch> directly, without a local branch. A task branch upstream never replaces the binding. Integration adds stable operation_id and optional recover:true on the original request; the returned operation and per-root integration result must be inspected. A stored identity never executes again. Recovery is read-only and does not convert unknown commands to passes or continue remaining roots. These Host receipts are operation evidence, not another Core Task.
+revise_task replaces only supplied fields; preserve other definitions. Changed user outcomes or
+restrictions, or expanded/removed explicit limits, require a real new user_ref. Method/forecast/check
+changes within that boundary do not. Do not weaken acceptance to avoid a failure. update_budget takes
+one real budget decision; work_ms updates both overlapping Core and reported-work caps. Zero removes
+an existing cap only with that actual decision. Counters never reset.
 
-Each repository may carry remote_freshness {head,upstream,remote_name,remote_ref,remote_head,state,fetched,fetched_at,checked_at,basis}; Core verifies current local facts and keeps remote_baseline/remote_latest. fetched_at records completion of the actual Host fetch, separately from checked_at; failed/skipped fetch has no fetched_at. Core verifies configured remote/ref and local HEADs. Fetched is Host testimony, not remote-server authentication. Missing observation is explicitly not_checked. checkpoint.repository_freshness contains [{key,observation}] without replacing the initial baseline.
+checkpoint records meaningful progress and review, not every edit. assessment binds current
+authorization_digest and content_digest, plus summary, paths [{path,goal_ids,basis}], constraints/facts
+[{id,verdict,basis,uncertainty}]. Submit only new/affected judgments; Core retains unaffected ones.
+Final review is {summary,uncertainty}; explain the actual diff, resolved cause, responsibilities,
+complexity and verification. Core stamps applicability; it does not prove the reasoning true.
+Clear a saved user issue only with clear_issue and the actual resolution_ref.
 
-Checks default to purpose=acceptance; regression allows an explicit known-failure decision, while diagnostic needs goal_ids. full_suite marks full-suite work; compares identifies an approved regression comparison. Default inputs:["."] includes all bound repositories; explicit key::path scopes need input_basis.
+A failed check remains failed after a known-failure decision. Only applicable regression failures with
+current comparison results and actual user acceptance qualify. Required acceptance checks cannot be
+waived. Related requirement/input changes invalidate results and exceptions; unrelated plan prose does
+not require another user acceptance. Claims never satisfy a check.
 
-assessment.paths contains work_id and necessity. Final assessment.review names root_cause, responsibilities, proportionality, verification, would_choose_again and uncertainty. Core generates review stamps. decision.accepted_failures contains current valid exceptions; evidence.valid still means passed, while applicable reports matching conditions even for failures.
+Implementation: internal/application service and DTOs, internal/domain authorization/plan/control,
+internal/mcp view and Schema. Saved details are for inspection, never an alternative writable Task.
+
+Maintainer implementation reference: `internal/mcp/server.go`.

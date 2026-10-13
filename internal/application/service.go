@@ -30,8 +30,8 @@ func NewService(s *store.Store, o *repository.GitObserver) (*Service, error) {
 
 type Identity struct {
 	TaskID      string `json:"task_id"`
-	OperationID string `json:"operation_id"`
-	Revision    uint64 `json:"revision"`
+	OperationID string `json:"operation_id" description:"Stable unique identity for this logical operation. Keep it after response loss; read saved state before retrying."`
+	Revision    uint64 `json:"revision" description:"Current revision from the last task response."`
 }
 type RepositoryInput struct {
 	Key             domain.RepositoryKey    `json:"key"`
@@ -40,7 +40,7 @@ type RepositoryInput struct {
 	RemoteFreshness *domain.RemoteFreshness `json:"remote_freshness,omitempty"`
 }
 type OpenRequest struct {
-	OperationID   string               `json:"operation_id"`
+	OperationID   string               `json:"operation_id" description:"Stable unique identity for this logical operation. Keep it after response loss; read saved state before retrying."`
 	Host          domain.Host          `json:"host"`
 	Repositories  []RepositoryInput    `json:"repositories"`
 	Authorization domain.Authorization `json:"authorization"`
@@ -88,9 +88,6 @@ func (s *Service) Open(ctx context.Context, q OpenRequest) (View, error) {
 		v.Replayed = true
 		return v, e
 	}
-	if q.Authorization.Limits == (domain.Limits{}) {
-		q.Authorization.Limits = domain.DefaultLimits()
-	}
 	if e := q.Authorization.Validate(); e != nil {
 		return View{}, e
 	}
@@ -121,7 +118,6 @@ func (s *Service) Open(ctx context.Context, q OpenRequest) (View, error) {
 		}
 		t.Repositories = append(t.Repositories, domain.RepositoryScopeEntry{Key: input.Key, Origin: origin, Binding: b, RemoteBaseline: &f, RemoteLatest: &f})
 	}
-	t.ProposedContentDigest = t.ContentDigest()
 	if e := t.Validate(); e != nil {
 		return View{}, e
 	}
@@ -398,7 +394,7 @@ func (s *Service) Checkpoint(ctx context.Context, q CheckpointRequest) (View, er
 		if !ok || !slices.Contains([]string{"planned", "doing", "done"}, p.Status) || domain.Text("progress.summary", p.Summary) != nil {
 			return View{}, domain.Invalid("progress", "must reference an existing goal, status planned/doing/done and a concrete summary")
 		}
-		p.GoalDigest = domain.Hash(g)
+		p.GoalDigest = g.RequirementDigest()
 		found := false
 		for i, old := range t.Progress {
 			if old.GoalID == p.GoalID {
@@ -438,18 +434,12 @@ func validateAssessment(t domain.Task, a domain.Assessment) error {
 		return e
 	}
 	if a.Review != nil {
-		for _, f := range []struct{ name, value string }{{"root_cause", a.Review.RootCause}, {"responsibilities", a.Review.Responsibilities}, {"proportionality", a.Review.Proportionality}, {"verification", a.Review.Verification}} {
-			if e := domain.Text("assessment.review."+f.name, f.value); e != nil {
-				return e
-			}
+		if e := domain.Text("assessment.review.summary", a.Review.Summary); e != nil {
+			return e
 		}
 	}
 	seen := map[string]bool{}
 	for _, p := range a.Paths {
-		work, workOK := t.Work(p.WorkID)
-		if !workOK || domain.Text("assessment.paths.necessity", p.Necessity) != nil {
-			return domain.Invalid("assessment.paths.work_id", "bind the change and its necessity to approved work")
-		}
 		if domain.ScopedPath(p.Path) != nil || seen[p.Path] || len(p.GoalIDs) == 0 || domain.Text("assessment.paths.basis", p.Basis) != nil {
 			return domain.Invalid("assessment.paths", "requires unique changed paths, goal references and concrete reasons")
 		}
@@ -467,8 +457,8 @@ func validateAssessment(t domain.Task, a domain.Assessment) error {
 			return e
 		}
 		for _, id := range p.GoalIDs {
-			if _, ok := t.Goal(id); !ok || !slices.Contains(work.GoalIDs, id) {
-				return domain.Invalid("assessment.paths.goal_ids", "must name goals served by the planned work")
+			if _, ok := t.Goal(id); !ok {
+				return domain.Invalid("assessment.paths.goal_ids", "must name an authorized goal")
 			}
 		}
 	}
@@ -496,10 +486,10 @@ func validateAssessment(t domain.Task, a domain.Assessment) error {
 
 type ReviseRequest struct {
 	Identity
-	Plan          domain.Plan          `json:"plan"`
-	Authorization domain.Authorization `json:"authorization"`
-	Checks        []domain.Check       `json:"checks"`
-	Reason        string               `json:"reason"`
+	Plan          *domain.Plan          `json:"plan,omitempty" description:"Replace the implementation approach and verification basis; omission retains them."`
+	Authorization *domain.Authorization `json:"authorization,omitempty" description:"Replace the user request and boundaries only when needed. Changed outcomes/restrictions or increased caps need an actual new user_ref."`
+	Checks        *[]domain.Check       `json:"checks,omitempty" description:"Replace the check list within the user outcome; omission retains it. Relevant changed methods invalidate their results."`
+	Reason        string                `json:"reason"`
 }
 
 func (s *Service) Revise(ctx context.Context, q ReviseRequest) (View, error) {
@@ -515,26 +505,28 @@ func (s *Service) Revise(ctx context.Context, q ReviseRequest) (View, error) {
 	if e = domain.Text("reason", q.Reason); e != nil {
 		return View{}, e
 	}
-	if e = q.Authorization.Validate(); e != nil {
-		return View{}, e
+	if q.Authorization == nil && q.Plan == nil && q.Checks == nil {
+		return View{}, domain.Invalid("revision", "provide authorization, plan or checks to replace")
 	}
-	previousPlan := t.PlanDigest()
-	t.Authorization = q.Authorization
-	t.Plan = q.Plan
-	t.Checks = normalizeChecks(q.Checks)
-	if t.PlanDigest() != previousPlan {
-		if t.ApprovalCoversConfiguration() {
-			a := *t.Approval
-			a.PlanDigest = t.PlanDigest()
-			t.Approval = &a
-		} else {
-			t.Approval = nil
+	if q.Authorization != nil {
+		if e = q.Authorization.Validate(); e != nil {
+			return View{}, e
 		}
+		if q.Authorization.RequiresDecision(t.Authorization) && q.Authorization.UserRef == t.Authorization.UserRef {
+			return View{}, domain.Fail("AUTHORIZATION_REQUIRED", "authorization.user_ref", "changed outcomes, explicit restrictions or increased limits require the actual new user decision; implementation and check changes can reuse the current request")
+		}
+		t.Authorization = *q.Authorization
+	}
+	if q.Plan != nil {
+		t.Plan = *q.Plan
+	}
+	if q.Checks != nil {
+		t.Checks = normalizeChecks(*q.Checks)
 	}
 	progress := []domain.Progress{}
 	for _, p := range t.Progress {
 		g, ok := t.Goal(p.GoalID)
-		if ok && p.GoalDigest == domain.Hash(g) {
+		if ok && p.GoalDigest == g.RequirementDigest() {
 			progress = append(progress, p)
 		}
 	}
@@ -543,9 +535,6 @@ func (s *Service) Revise(ctx context.Context, q ReviseRequest) (View, error) {
 	t, e = s.observe(ctx, t)
 	if e != nil {
 		return View{}, e
-	}
-	if t.Approval == nil {
-		t.ProposedContentDigest = t.ContentDigest()
 	}
 	return s.save(ctx, t, o, store.Charge{})
 }
@@ -627,7 +616,7 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 	}{
 		{"core_ms", u.CoreMS, l.CoreMS}, {"host_ms", u.HostMS + u.WaitMS, l.HostMS}, {"tokens", u.Tokens, l.Tokens},
 	} {
-		if limit.used >= limit.maximum {
+		if domain.LimitReached(limit.used, limit.maximum) {
 			return RunResult{}, &domain.Error{Code: "COST_LIMIT", Message: "cumulative control or Host cost limit reached; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits." + limit.path, Rule: "quantity", Message: "retain acceptance requirements and obtain a real authorized limit change"}}, Budget: domain.NewBudgetLine(limit.path, limit.used, 0, 0, limit.maximum).Failure(0)}
 		}
 	}

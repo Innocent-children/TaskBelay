@@ -26,6 +26,7 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 		d.Advice = "stop"
 		return d
 	}
+	needsCorrection := slices.ContainsFunc(t.Facts, func(f Fact) bool { return f.Blocking })
 	review := t.Assessment
 	add := func(id, kind, detail string) {
 		d.Findings = append(d.Findings, Fact{ID: id, Kind: kind, Detail: detail, Blocking: true})
@@ -38,7 +39,7 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 				p := t.QualifiedPath(r.Key, e.Path)
 				found := false
 				for _, j := range review.Paths {
-					if j.Path == p && len(j.GoalIDs) > 0 && j.Basis != "" && j.ScopeDigest == t.PathReviewDigest(j.Path, j.GoalIDs, j.WorkID) {
+					if j.Path == p && len(j.GoalIDs) > 0 && j.Basis != "" && j.ScopeDigest == t.PathReviewDigest(j.Path, j.GoalIDs) {
 						found = true
 					}
 				}
@@ -50,6 +51,9 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 		for _, c := range t.Authorization.Constraints {
 			found := false
 			for _, j := range review.Constraints {
+				if j.ID == c.ID && j.Verdict == "violation" && j.ScopeDigest == t.ConstraintReviewDigest(c) {
+					needsCorrection = true
+				}
 				if j.ID == c.ID && j.Verdict == "satisfied" && j.Basis != "" && j.Uncertainty == "" && j.ScopeDigest == t.ConstraintReviewDigest(c) {
 					found = true
 				}
@@ -62,6 +66,9 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 			if !f.Blocking {
 				found := false
 				for _, j := range review.Facts {
+					if j.ID == f.ID && j.Verdict == "violation" && j.ScopeDigest == t.FactReviewDigest(f) {
+						needsCorrection = true
+					}
 					if j.ID == f.ID && j.Verdict == "satisfied" && j.Basis != "" && j.Uncertainty == "" && j.ScopeDigest == t.FactReviewDigest(f) {
 						found = true
 					}
@@ -90,7 +97,7 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 	for _, g := range t.Authorization.Goals {
 		completed := false
 		for _, p := range t.Progress {
-			if p.GoalID == g.ID && p.GoalDigest == Hash(g) && p.Status == "done" {
+			if p.GoalID == g.ID && p.GoalDigest == g.RequirementDigest() && p.Status == "done" {
 				completed = true
 			}
 		}
@@ -108,13 +115,15 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 	for _, f := range d.Findings {
 		blocking = blocking || f.Blocking
 	}
-	if blocking {
+	if needsCorrection {
 		d.Advice = "self_correct"
 	} else if done && len(d.MissingChecks) > 0 {
 		d.Advice = "verify"
+	} else if done && blocking {
+		d.Advice = "review"
 	}
 	l, u := t.Authorization.Limits, t.Usage
-	if u.Runs >= l.Runs || u.ExecutionMS+u.UncertainMS+u.ReservedMS >= l.ExecutionMS || u.CoreMS >= l.CoreMS || u.HostMS+u.WaitMS >= l.HostMS || u.Tokens >= l.Tokens {
+	if LimitReached(u.Runs, l.Runs) || LimitReached(u.ExecutionMS+u.UncertainMS+u.ReservedMS, l.ExecutionMS) || LimitReached(u.CoreMS, l.CoreMS) || LimitReached(u.HostMS+u.WaitMS, l.HostMS) || LimitReached(u.Tokens, l.Tokens) {
 		if len(d.MissingChecks) > 0 {
 			d.Advice = "stop"
 			add("cost-limit", "budget", "Cumulative limit reached. Preserve acceptance requirements; correct the approach or request an authorized limit change.")
@@ -128,14 +137,7 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 		d.Advice = "ask_user"
 		add("user-decision", "authorization", t.Issue.Summary)
 	}
-	if !t.PlanApproved() {
-		d.Advice = "ask_user"
-		if t.ContentDigest() != t.ProposedContentDigest {
-			add("unapproved-changes", "authorization", "Changes were observed before plan confirmation; restore the proposed contents or disclose them in a revised plan.")
-		}
-		add("plan-confirmation", "authorization", "Show the complete understanding and plan, then record the user's confirmation of this exact plan before implementation or checks.")
-	}
-	d.Ready = t.PlanApproved() && done && !blocking && len(d.MissingChecks) == 0 && len(pending) == 0 && t.Issue == nil
+	d.Ready = done && !blocking && len(d.MissingChecks) == 0 && len(pending) == 0 && t.Issue == nil
 	return d
 }
 func (t Task) QualifiedPath(key RepositoryKey, p string) string {

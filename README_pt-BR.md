@@ -36,9 +36,9 @@ Ative o adaptador seguindo seu [guia](packages/codex/README.md) e peça um resul
 Use TaskBelay para limitar tentativas de login com falha. Preserve a API pública de autenticação e os dados existentes; não redesenhe o gerenciamento de contas. Execute os testes existentes relevantes e informe resultados reais.
 ```
 
-Descreva o resultado e os limites. Antes de implementar, o agente apresenta seu entendimento, a causa raiz, o plano completo, responsabilidades, escopo, verificações e limites de custo para confirmação explícita. Mudanças importantes exigem nova confirmação; o progresso normal preserva a aprovação válida. Cada verificação deve cobrir uma lacuna atual e resultados ainda válidos são reutilizados. A WebUI mostra plano, evidências e custo, permite confirmar e arquivar tarefas concluídas e abre tarefas por links diretos. Retome com o Task ID salvo no espaço original.
+Descreva o resultado e as restrições necessárias. O agente explica a abordagem e trabalha dentro da autorização existente. Ajustes comuns de implementação e verificação não exigem nova aprovação; alterar objetivos ou restrições explícitas exige sua decisão real. Resultados ainda válidos são reutilizados. O consumo é registrado continuamente e limites só se aplicam quando você os define. A WebUI apresenta primeiro os resultados e os problemas pendentes, permite expandir os detalhes e arquivar tarefas. Retome com o Task ID salvo no espaço original.
 
-Ao criar cada Task, o agente mostra os diretórios, as branches e as alterações não commitadas e pergunta onde trabalhar: na branch atual, em uma nova branch no mesmo diretório ou em um worktree separado. Não há opção padrão. Ao retomar um Task existente, o espaço de trabalho original é mantido.
+O agente mostra o diretório, a branch e as alterações existentes e usa o espaço escolhido ou claramente indicado pelo contexto. Só pergunta quando há ambiguidade, conflitos ou necessidade de uma nova operação de espaço de trabalho. Criar branches ou worktrees e integrar alterações da origem são operações opcionais que seguem a autorização real.
 
 ```sh
 taskbelay webui start

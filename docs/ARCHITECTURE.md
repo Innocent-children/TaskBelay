@@ -20,7 +20,7 @@ Host 工作区操作使用私有原子收据记录固定请求、绑定工作树
 
 ## 当前契约与控制
 
-Task 保存 authorization、plan、approval、exceptions、archived、checks、repositories、assessment、progress、issue、evidence、attempts、facts、usage、acceptance、revision 和时间。没有固定开发节点。生命周期出边只有 active→done（完整验收）、active→cancelled（明确取消且无未确定执行）和 active→active（检查点、修订、执行、观察、恢复）；终态没有回边。控制建议由当前事实推导为 continue/self_correct/verify/stop/ask_user，不是第二状态机。
+Task 保存 authorization、plan、budget_decision、exceptions、archived、checks、repositories、assessment、progress、issue、evidence、attempts、facts、usage、acceptance、revision 和时间。没有固定开发节点。生命周期出边只有 active→done（完整验收）、active→cancelled（明确取消且无未确定执行）和 active→active（检查点、修订、执行、观察、恢复）；终态没有回边。控制建议由当前事实推导为 continue/review/self_correct/verify/stop/ask_user，不是第二状态机。
 
 authorization 明确目标、非目标/接口/数据/依赖/设计约束、预测路径、禁止路径、SHA-256 内容 pin、可变依赖名及累计 limits。user_ref 由宿主按真实用户消息提供。确定性限制由程序检查；预测路径、公开 Go 声明、数据文件和变动量促使绑定当前 content_digest 的语义审查。每条语义结论保留 basis、verdict 和 uncertainty。程序不证明这些判断真实。
 
@@ -40,14 +40,18 @@ Core 计量调用、墙钟、观察和执行，宿主另报分析、等待与 to
 
 ## 接口与信任
 
-MCP 16 个工具，CLI call 和 HTTP /api/core/{tool} 使用同一 DTO/Schema/服务。对象拒绝未知成员和重复 JSON 成员。成功和失败互斥。HTTP 限于随机端口 loopback、精确 Host、Origin 和会话 CSRF。桌面只读取保存摘要；当前适用性需要明确刷新。宿主路径钩子不涵盖任意 shell、外部服务或未调用 Core 的操作。详细入口见[命令](COMMANDS.md)，错误见[响应规范](CORE-RESPONSES.md)。
+MCP 15 个工具，CLI call 和 HTTP /api/core/{tool} 使用同一 DTO/Schema/服务。对象拒绝未知成员和重复 JSON 成员。成功和失败互斥。HTTP 限于随机端口 loopback、精确 Host、Origin 和会话 CSRF。桌面只读取保存摘要；当前适用性需要明确刷新。宿主路径钩子不涵盖任意 shell、外部服务或未调用 Core 的操作。详细入口见[命令](COMMANDS.md)，错误见[响应规范](CORE-RESPONSES.md)。
 
 每个本地 Core 调用（包括未关联 Task 的查询）均先保留调用身份，再结算墙钟时间。control_cost 保存跨任务 calls、wall_ms、unknown_ms 和 pending；崩溃失去精确结束时间时单列保守未知估算，不冒充实测。运行记录与热调用压缩不改变总额。Task 的 Core 墙钟包含执行和等待，不能与这些分类直接相加。
 
 新提交的 assessment 绑定当前全局摘要，但已有判断按 Core 计算的 scope_digest 分别保留：路径关联绑定相关目标和实际内容；约束绑定自身定义及声明路径；观察事实绑定相关内容。checkpoint 可只补充受影响的判断。需求独立新增不清空已有审查，也不自动解决未回答的用户决定。证据按检查、来源、输入与环境上下文保留；同一上下文的最新失败替代旧通过，不同上下文的失败不会删除另一上下文的通过。最多 192 项热证据，达到上限先保留全部当前适用结果，再保留近期历史。
 
-## 方案批准与验收保护
+## 用户边界与验收
 
-方案包含理解、根因、设计、较简单方案比较、必要工作及责任、验证依据和停止条件。plan_digest 绑定 authorization、plan、checks、仓库来源及 proposed_content_digest；approval 保存用户来源、原答复与确认时间。未确认或存在未解决授权问题时拒绝实施和检查；确认前内容变化会被拒绝。检查定义仅由 revise_task 修改，并使确认失效。工作项映射与 DesignReview 分别约束局部必要性和整体结构。
+实际请求、目标和明确限制与计划的 approach、verification_basis 分开。Authorization.BoundaryDigest 排除检查映射、预测、复核提示和成本字段。用户边界变化或已设正数额度扩大/取消时，Revise 要求实际新 user_ref；普通方法调整沿用授权，实际操作仍遵守宿主权限。PlanApproval 和确认工具已移除；PlanDigest 用于技术复核当前安排，不表示用户批准。
 
-执行保存 rationale/new_information/full_suite_basis；重复判定以实际 argv、需求语义及输入/环境组成，标签和超时不能重置。相同通过上下文拒绝重复运行，相同失败重试需引用原运行和新诊断依据。默认跨全部仓库观察；显式 key::path 允许精确依赖。KnownFailure 仅对 regression 与批准的比较检查生效，绑定当前 plan/content 和实际证据。列表使用有界分页且无全局 200 项截断；归档仅改变终态的可见性。
+Goal.RequirementDigest 排除检查映射，新增检查不会重置已完成实现或独立结果。CheckDigest 仍绑定具体方法、相关目标和约束。路径判断关联目标与实际内容。最终 DesignReview 使用 summary 和 uncertainty，由 Core 绑定当前计划及内容。既有失败例外依赖实际失败/比较结果及当前适用性，不因无关计划文字变化要求重复接受。
+
+未设额度为零；正数额度在预留和执行时检查。BudgetDecision 单独记录实际预算变化；未设上限也持续记录消耗，不通过默认额度制造审批。
+
+internal/mcp/view.go 将应用结果转换为当前摘要，完整 Task 仍由应用和存储保存。get_task detail:true 增加 details，包含完整仓库指纹、复核与历史；run/recover 返回运行摘要，get_run 读取保存的输出。转换层不保存第二份状态。列表保留有界分页，归档仅改变终态可见性。

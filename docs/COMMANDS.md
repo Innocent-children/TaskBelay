@@ -19,23 +19,22 @@ host-check pre-file-write 输入 host、repository_path、tool_name、paths、in
 | taskbelay_server_info | 空对象；实际能力 |
 | taskbelay_list_tasks | 可选 page、page_size（1..100）、include_archived、status（active/done/cancelled）；返回 page 与 has_next |
 | taskbelay_open_task | operation_id, host, repositories, authorization, plan, checks |
-| taskbelay_get_task | task_id, refresh（缺省 true；false 读取保存状态） |
+| taskbelay_get_task | task_id, refresh（缺省 true；false 读取保存状态）, detail（缺省 false） |
 | taskbelay_checkpoint | identity；可选 assessment/progress/issue、host_ms/wait_ms/tokens |
-| taskbelay_revise_task | identity, authorization, plan, checks, reason |
+| taskbelay_revise_task | identity、reason；按需提供 authorization、plan、checks |
 | taskbelay_run_check | identity, check_id, rationale；重试的 previous_run_id/new_information；完整套件的 full_suite_basis |
 | taskbelay_record_evidence | identity, check_id, source claim/human, status, summary, content_digest；human 的 user_ref |
 | taskbelay_get_run | run_id；只读真实结果 |
 | taskbelay_recover_run | identity, run_id, resolution_basis, 必需时 user_ref |
 | taskbelay_finish_task | identity, summary, acceptance [{goal_id,evidence_ids,basis}], risks |
 | taskbelay_cancel_task | identity, reason |
-| taskbelay_confirm_plan | identity, plan_digest, user_ref, response；真实用户确认 |
 | taskbelay_accept_known_failure | identity, check_id, failed_evidence_id, comparison_evidence_id, failures, user_ref, reason |
-| taskbelay_update_budget | identity, plan_digest, budget {runs,execution_ms,work_ms,tokens}, user_ref, response；实际批准的完整投入决定 |
+| taskbelay_update_budget | identity, authorization_digest, budget {runs,execution_ms,work_ms,tokens}, user_ref, response；实际批准的完整投入决定 |
 | taskbelay_archive_task | identity, archived；仅终态 |
 
-identity 是 task_id、当前 revision、稳定 operation_id。命令输入拒绝未知和重复成员。完整字段和数量约束以服务器发布 Schema、internal/application DTO 和 domain 验证为准。authorization 包含 user_ref/request/goals，每个 goal 有 id/statement/checks；checks 至少有 id/kind/rationale/conditions，command 还需 argv，缺省 cwd/inputs 为 .，timeout_ms 为 60000，retry 为 requires_user。累计 limits 缺省 runs=20、execution_ms/core_ms=600000、host_ms=3600000、tokens=1000000。
+identity 是 task_id、当前 revision、稳定 operation_id。命令输入拒绝未知和重复成员。完整字段和数量约束以服务器发布 Schema、internal/application DTO 和 domain 验证为准。authorization 包含 user_ref/request/goals，每个 goal 有 id/statement/checks；checks 至少有 id/kind/rationale/conditions，command 还需 argv，缺省 cwd/inputs 为 .，timeout_ms 为 60000，retry 为 requires_user。limits 的字段缺省为零，表示未设置上限；正数表示实际设置的累计上限。
 
-预算 view.budget 显示每个有效上限的 actual/reserved/uncertain/remaining 和每项检查所需 timeout。PLAN_BUDGET_INFEASIBLE 表示某个必需检查确定无法预留或次数不够；整套最坏耗时与一次重试只作风险提示。taskbelay_update_budget 将 work_ms 同时应用于 core_ms 与 host_ms，保留原始批准和累计消耗；调用必须引用当前方案以及具体投入决定，不能用普通继续消息扩张。
+预算 view.budget 显示 limited、actual、reserved、uncertain、remaining，以及每项检查所需 timeout。未设上限时 limited=false，remaining 不表示可用额度。明确额度不足时拒绝执行，整套超时合计仅作提示。taskbelay_update_budget 引用当前 authorization_digest 和实际预算决定，work_ms 同时更新 core_ms 与 host_ms，保留累计消耗。
 
 ## 宿主工作区与 HTTP
 
@@ -43,20 +42,20 @@ Codex/Claude/ZCode 使用 taskbelay-<host> host-launch freshness 检查所有仓
 
 结果中的 remote_freshness 复制到 open_task.repositories；后续通过 checkpoint.repository_freshness [{key,observation}] 保存。整合在 Git 修改前保存意图，并返回 operation.receipt_path、状态及逐仓 integration 结果。相同身份读取原收据，不重跑；recover:true 使用原请求，只在原所有者停止后核对实际 Git，不重复 fetch/merge 或回退已有整合。partial/uncertain/reconciled 不代表整批成功；结果未知仍保留未知。恢复锁记录 PID、随机 token 与文件身份；只有确认原所有者停止、独占回收声明并核对身份未变时才回收。活跃、PID 重用、权限拒绝或身份不明时保守拒绝，不按超时删锁；回收声明自身结果不明时保留检查。剩余工作先检查原副作用，再按新事实与真实授权建立新操作。无上游、跳过或失败不声称最新。
 
-可选 host-launch prepare 使用已有真实 authorization_ref、request、精确仓库来源/分支/携带选择；不要求再填评估表或重新审批已授权方案。scope 返回当前 repositories 数组，Core 补齐观察身份。恢复读取 receipt/status；不重派不确定操作。清理另需真实删除授权和当前终态 Task；跨工作区迁移不支持。 工作区准备不能代替 Core 的需求理解与完整方案确认。
+可选 host-launch prepare 使用已有真实 authorization_ref、request、精确仓库来源/分支/携带选择；不要求再填评估表或重新审批已授权方案。scope 返回当前 repositories 数组，Core 补齐观察身份。恢复读取 receipt/status；不重派不确定操作。清理另需真实删除授权和当前终态 Task；跨工作区迁移不支持。 工作区准备不增加任务授权；已有请求足够时无需另行确认计划。
 
 HTTP GET /api/tasks?page=1&include_archived=false&status=active（status 可省略）、/api/tasks/{id}、/api/dashboard、/api/system/status；详情 ?refresh=1 核对实际条件。POST /api/core/{tool} 输入 csrf 和 arguments，同一 Core 契约；POST /api/tasks/{id}/purge 输入 csrf、revision、confirm_task_id，仅清除匹配终态本地记录。变更须来自当前 Origin 与 CSRF 会话。
 
 已退休的 submit_*、get_next_action、resolve_blocker、relocation、阶段 artifact 协议没有兼容入口。错误与恢复见[响应规范](CORE-RESPONSES.md)。
 
-control_cost 是本地数据目录跨任务累计成本，server_info、list_tasks 及 Task view 均返回 calls、wall_ms、unknown_ms、pending；unknown_ms 单独表示崩溃遗留调用的保守估算。类别可能重叠，不直接相加。
+control_cost 是本地数据目录跨任务累计成本，server_info、list_tasks 和完整 details 返回 calls、wall_ms、unknown_ms、pending。默认任务结果保留任务自身 usage，不重复附带完整历史或全局计量。get_task 的 detail:true 在 result.details 返回完整应用视图；其 details.task 包含工作区绑定、指纹、复核和历史。run_check/recover_run 返回 view 和运行摘要；get_run 读取实际输出。
 
 checkpoint.assessment 可仅提交新增或受影响的 paths、constraints、facts；全局摘要须当前，Core 生成每项 scope_digest 并合并未受影响判断。revise_task 不自动清除 issue；实际用户决定后使用 checkpoint.clear_issue 与 resolution_ref。
 
-plan 包含 understanding/root_cause/approach/simpler_alternative/verification_basis/completion 以及 work（id、goal_ids、change、owner、necessity）。view 返回 plan_digest；确认绑定该摘要和提案时内容。authorization.allowed_paths 是硬允许范围。checks.purpose 为 acceptance/regression/diagnostic（缺省 acceptance），诊断项需 goal_ids；full_suite 标记完整套件，compares 关联被比较的 regression 项。默认 inputs:["."] 覆盖全部已绑定仓库；缩小范围说明 input_basis，跨仓路径用 key::path。checkpoint 不接受 checks；assessment.paths 需 work_id 和 necessity，最终 assessment.review 需 root_cause/responsibilities/proportionality/verification/would_choose_again/uncertainty，摘要由 Core 生成。
+plan 只包含 approach、verification_basis。authorization.allowed_paths 表达明确允许范围。revise_task 只替换提供的字段；用户目标、明确限制或已有额度扩张需实际新 user_ref，普通方法调整沿用请求。checks.purpose 为 acceptance/regression/diagnostic（缺省 acceptance），诊断项需 goal_ids；full_suite 标记完整套件，compares 关联被比较的 regression 项。默认 inputs:["."] 覆盖全部已绑定仓库；缩小范围说明 input_basis，跨仓路径用 key::path。checkpoint 不接受 checks；assessment.paths 使用 path、goal_ids、basis，最终 assessment.review 使用 summary、uncertainty，适用性摘要由 Core 生成。
 
 HTTP 列表另支持 lifecycle=active/blocked/done/cancelled，按 Core 保存摘要过滤后分页；status=active 则包含所有活动任务（包括受阻），供不同界面选择。
 
 运行记录的 process 保存命令进程的 pid 和启动 identity；激活前为 null，身份持久化后才允许命令执行。恢复时 Core 和受管命令均停止才可处理缺失收据；macOS 核对整个进程组。
 
-首次核验在冻结来源和创建分支之前进行。绑定后始终使用原 source_type/remote_name/base_branch：本地来源核对原分支配置上游，远端来源直接核对指定远端追踪分支，不要求本地同名分支。任务分支获得自己的上游不会改变来源；不得自行改用 main。
+只有任务需要上游核验时才执行；准备新工作区时，在冻结来源和创建分支之前核验。绑定后始终使用原 source_type/remote_name/base_branch：本地来源核对原分支配置上游，远端来源直接核对指定远端追踪分支，不要求本地同名分支。任务分支获得自己的上游不会改变来源；不得自行改用 main。

@@ -6,7 +6,7 @@ Install the public manager with npm install -g taskbelay@latest and taskbelay in
 
 Complete installation/enablement in Settings → Plugins and reload the session; local preparation alone does not prove plugin loading.
 
-Invoke the TaskBelay Skill and state the desired outcome and limits. First show the understanding and complete plan and obtain explicit user confirmation; ordinary follow-ups retain that approval, while material revisions require a new confirmation. Alternate coding and verification, retain semantic basis/uncertainty and use Core run_check for actual local results. Unsupported shell/remote operations must be described honestly. Resume a saved Task in its bound workspace and read the original run after a lost response.
+Invoke the TaskBelay Skill with the outcome and necessary restrictions. The agent continues under existing authority; implementation and check-method changes do not require repeat approval. Actual changes to user outcomes or restrictions need a new user decision. Keep the selected workspace. Tools return current summaries with details on demand. Core execution is distinct from claims and human observations; after interruption read the original run before repeating effects. Optional workspace helpers retain actual authorization_ref and return current repositories; relocation is unsupported.
 
 The hook covers registered native structured writes paths; other changes are observed at checkpoints. Core cannot authenticate conversation or prove semantic judgments. Checks still follow native Host permissions.
 

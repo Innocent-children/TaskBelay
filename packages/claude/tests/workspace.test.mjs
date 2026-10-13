@@ -245,11 +245,11 @@ test("cleanup verifies the same receipt identity produced by workspace scope", a
     ...entry, workspace_origin: { ...entry.workspace_origin, canonical_worktree_root: entry.repository_path },
   })) };
   const input = { repository_key: "primary", task_id: task.task_id, revision: task.revision, terminal: true, authorized: true };
-  const readTask = async () => ({ ok: true, result: { task } });
+  const readTask = async () => ({ ok: true, result: { details: { task } } });
   const wrong = structuredClone(task);
   wrong.repositories[0].workspace_origin.provisioning_receipt_id = receipt.launch_id;
   await assert.rejects(cleanup(receipt.launch_id, "cleanup-worktree", input, {
-    ...options, readTask: async () => ({ ok: true, result: { task: wrong } }),
+    ...options, readTask: async () => ({ ok: true, result: { details: { task: wrong } } }),
   }), /does not own/);
   await assert.rejects(cleanup(receipt.launch_id, "cleanup-worktree", { ...input, revision: 2 }, { ...options, readTask }), /does not own/);
   assert.ok((await stat(selection.worktree_path)).isDirectory());

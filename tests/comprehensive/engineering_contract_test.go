@@ -8,7 +8,7 @@ import (
 )
 
 func TestCurrentContractHasOneLifecycleAndNoClaimExecution(t *testing.T) {
-	if len(mcp.Catalog) != 16 {
+	if len(mcp.Catalog) != 15 {
 		t.Fatal("current tool surface differs")
 	}
 	for _, tool := range mcp.Catalog {
@@ -16,7 +16,7 @@ func TestCurrentContractHasOneLifecycleAndNoClaimExecution(t *testing.T) {
 			t.Fatal("retired cursor retained")
 		}
 	}
-	task := domain.Task{Status: "active", Authorization: domain.Authorization{Goals: []domain.Goal{{ID: "goal", Checks: []string{"check"}}}, Limits: domain.DefaultLimits()}, Evidence: []domain.Evidence{{ID: "claim", CheckID: "check", Source: "claim", Status: "passed"}}}
+	task := domain.Task{Status: "active", Authorization: domain.Authorization{Goals: []domain.Goal{{ID: "goal", Checks: []string{"check"}}}, Limits: domain.Limits{}}, Evidence: []domain.Evidence{{ID: "claim", CheckID: "check", Source: "claim", Status: "passed"}}}
 	d := domain.Decide(task, []domain.Freshness{{EvidenceID: "claim", CheckID: "check", Valid: true}}, nil)
 	if len(d.MissingChecks) != 1 || d.Ready {
 		t.Fatal("claim became acceptance")

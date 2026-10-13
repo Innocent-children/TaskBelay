@@ -126,7 +126,7 @@ Before editing, read the [I18n policy](docs/I18N_en.md), the
 
 ## Implementation principles
 
-Before implementation, show the understanding, complete plan and verification arrangement and obtain explicit confirmation of that exact plan. Material changes need confirmation again. Acceptance also checks root cause, responsibility and complexity; passing tests alone is insufficient.
+Before implementation, explain the request, approach and relevant verification. Continue under existing user authority; obtain a new decision only for changed user outcomes, explicit restrictions or expanded user-set limits. Routine method changes do not require another approval. Acceptance also checks root cause, responsibility and complexity; passing tests alone is insufficient.
 
 - Solve only the problem stated by the pull request; do not add future capabilities, generic
   frameworks, or unrelated refactoring.

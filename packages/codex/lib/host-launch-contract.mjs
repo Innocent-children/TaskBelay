@@ -116,7 +116,7 @@ const contracts = {
     description: "Read and validate the complete set of provisioned records for one Task and build its Core repository arguments.",
     input_schema: object({ launch_id: identity.launch_id, repository_keys: { ...array(key, "Every confirmed repository, including the primary."), minItems: 1, maxItems: 8, uniqueItems: true }, primary_repository_key: key }),
     output_fields: { repository_path: "Primary Task worktree.", workspace_origin: "Primary verified origin.", primary_repository_key: "Present for multiple repositories.", additional_repositories: "Present for multiple repositories; closed {key,repository_path,workspace_origin} entries." },
-    next_step: "Use the complete result as the repository fields of taskbelay_open_task; add host, authorization, plan and checks from the actual request. Show and confirm the complete plan before implementation. Core re-observes every worktree.",
+    next_step: "Use the complete result as the repository fields of taskbelay_open_task; add host, authorization, plan and checks from the actual request. Reuse the actual user request; no separate plan confirmation is required. Core re-observes every worktree.",
   },
 
 

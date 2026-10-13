@@ -36,9 +36,9 @@ Enable the adapter using its [Host guide](packages/codex/README.md), then reques
 Use TaskBelay to add login failure throttling. Preserve the public authentication API and stored user data; do not redesign account management. Run the relevant existing tests and report actual results.
 ```
 
-State the outcome and limits. Before implementation, the agent shows its understanding, root cause, complete plan, ownership, scope, checks and cost limits for your explicit confirmation. Material revisions need confirmation again; ordinary progress retains valid approval. Checks must address a current gap, and unchanged passing results are reused. The WebUI shows the plan, evidence and cost, supports confirmation and terminal-task archiving, and opens saved task links directly. Resume with the saved Task ID in its original workspace.
+State the outcome and necessary restrictions. The agent explains its approach and proceeds under your existing authorization. Routine implementation and check changes do not require another approval; changed outcomes or explicit restrictions need your actual decision. Relevant passing results are reused. Usage is recorded continuously, with limits only when you set them. The WebUI leads with results and remaining gaps, offers details on demand and supports archiving. Resume with the saved Task ID in its original workspace.
 
-For every new Task, the agent first shows the current directories, branches and uncommitted changes, then asks where to work: the current branch, a new branch in the same directory, or a dedicated worktree. There is no default choice. Resuming an existing Task keeps its original workspace.
+The agent shows the directory, branch and existing changes and uses the workspace you selected or made clear in context. It asks only for ambiguity, conflicts or a needed new workspace operation. Branch/worktree preparation and upstream integration are optional and follow actual authorization.
 
 ```sh
 taskbelay webui start

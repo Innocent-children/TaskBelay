@@ -19,23 +19,22 @@ pre-file-write takes host, repository_path, tool_name, paths, intent_digest, pat
 | taskbelay_server_info | Empty object; actual capabilities |
 | taskbelay_list_tasks | Optional page, page_size (1..100), include_archived, status (active/done/cancelled); returns page and has_next |
 | taskbelay_open_task | operation_id, host, repositories, authorization, plan, checks |
-| taskbelay_get_task | task_id, refresh (default true; false reads saved state) |
+| taskbelay_get_task | task_id, refresh (default true; false reads saved state), detail (default false) |
 | taskbelay_checkpoint | identity; optional assessment/progress/issue and host_ms/wait_ms/tokens |
-| taskbelay_revise_task | identity, authorization, plan, checks, reason |
+| taskbelay_revise_task | identity, reason; authorization/plan/checks optional |
 | taskbelay_run_check | identity, check_id, rationale; retry previous_run_id/new_information; full_suite_basis for full suites |
 | taskbelay_record_evidence | identity, check_id, source claim/human, status, summary, content_digest; human user_ref |
 | taskbelay_get_run | run_id; read actual saved result |
 | taskbelay_recover_run | identity, run_id, resolution_basis, user_ref when needed |
 | taskbelay_finish_task | identity, summary, acceptance [{goal_id,evidence_ids,basis}], risks |
 | taskbelay_cancel_task | identity, reason |
-| taskbelay_confirm_plan | identity, plan_digest, user_ref, response; actual user confirmation |
 | taskbelay_accept_known_failure | identity, check_id, failed_evidence_id, comparison_evidence_id, failures, user_ref, reason |
-| taskbelay_update_budget | identity, plan_digest, budget {runs,execution_ms,work_ms,tokens}, user_ref, response; actual complete approved budget decision |
+| taskbelay_update_budget | identity, authorization_digest, budget {runs,execution_ms,work_ms,tokens}, user_ref, response; actual complete approved budget decision |
 | taskbelay_archive_task | identity, archived; terminal tasks only |
 
-Identity is task_id, current revision and stable operation_id. Unknown/duplicate members are rejected. Exact constraints come from published Schemas, application DTOs and domain validation. Authorization requires user_ref/request/goals; goals have id/statement/checks. Checks require id/kind/rationale/conditions; commands also need argv. Default cwd/inputs are ., timeout_ms is 60000 and retry is requires_user. Default lifetime limits: runs=20, execution_ms/core_ms=600000, host_ms=3600000, tokens=1000000.
+Identity is task_id, current revision and stable operation_id. Unknown/duplicate fields are rejected. authorization includes actual user_ref/request and goals {id,statement,checks}. Checks require id/kind/rationale/conditions and argv for commands. Defaults: cwd/inputs ., timeout_ms 60000, retry requires_user, purpose acceptance. Omitted limit fields are zero (unset); positive fields cap cumulative usage.
 
-view.budget reports actual/reserved/uncertain/remaining for every effective limit and the timeout needed for each check. PLAN_BUDGET_INFEASIBLE means a required check cannot reserve or required runs cannot fit; aggregate worst-case time plus one retry is a risk estimate. taskbelay_update_budget applies work_ms to core_ms and host_ms together, preserving original approval and costs; it needs the current plan and concrete budget decision, never generic continuation authority.
+view.budget shows limited, actual, reserved, uncertain, remaining and check timeouts. When limited=false, remaining is not an available allowance. Explicit insufficient caps reject execution; aggregate timeout estimates only warn. update_budget uses the current authorization_digest and actual budget decision; work_ms updates both Core and reported-work caps without resetting usage.
 
 ## Host workspace and HTTP
 
@@ -43,20 +42,20 @@ Codex/Claude/ZCode expose taskbelay-<host> host-launch freshness; DeepSeek uses 
 
 Copy remote_freshness into open_task.repositories; retain later observations via checkpoint.repository_freshness [{key,observation}]. Integration saves intent before Git mutation and returns operation.receipt_path, status and per-root integration results. The same identity reads its receipt without execution. recover:true with the original request only observes actual Git after the original owner stops; it never repeats fetch/merge or rolls back applied work. partial/uncertain/reconciled do not mean whole-batch success; unknown remains unknown. Recovery locks retain PID, a random token and file identity. Reclamation requires a stopped owner, an exclusive reclaim claim and unchanged identity. Live/reused PIDs, denied liveness queries and incomplete identity are conservatively refused; locks are never deleted by age. An uncertain reclaim claim is retained for inspection. Inspect original effects before a fresh separately authorized assessment of remaining work. No upstream, skipped or failed fetch never means latest.
 
-Optional host-launch prepare uses actual existing authorization_ref, request and exact source/branch/carry choices. No assessment form or repeated plan approval is required. scope returns current repositories; Core fills observed identity. Read receipt/status to resume without redispatching uncertainty. Cleanup requires real deletion authority and the current terminal Task. Cross-workspace relocation is unsupported. Workspace preparation does not replace Core confirmation of understanding and the complete plan.
+Optional host-launch prepare uses actual existing authorization_ref, request and exact source/branch/carry choices. No assessment form or repeated plan approval is required. scope returns current repositories; Core fills observed identity. Read receipt/status to resume without redispatching uncertainty. Cleanup requires real deletion authority and the current terminal Task. Cross-workspace relocation is unsupported. Workspace preparation grants no additional Task authority; a sufficient existing request needs no separate plan approval.
 
 GET /api/tasks?page=1&include_archived=false&status=active (status may be omitted), /api/tasks/{id}, /api/dashboard, /api/system/status; detail ?refresh=1 observes current applicability. POST /api/core/{tool} takes csrf and arguments using the shared contract. POST /api/tasks/{id}/purge takes csrf, revision, confirm_task_id, applying only to exact terminal local records. Mutations require current Origin and CSRF session.
 
 Retired submit_*, get_next_action, resolve_blocker, relocation and phase-artifact protocols have no compatibility entrypoints. See [responses](CORE-RESPONSES_en.md).
 
-control_cost is cumulative local-data-directory overhead across Tasks. server_info, list_tasks and Task views return calls, wall_ms, unknown_ms and pending. unknown_ms separately labels conservative crash uncertainty; overlapping categories must not be added.
+control_cost records global calls, wall_ms, unknown_ms and pending in server_info, list_tasks and complete details. Routine Task responses contain Task usage and current summaries, without full history or global metering. get_task detail:true adds result.details, whose details.task contains full workspace bindings, fingerprints, assessment and history. run_check/recover_run return view and a run summary; get_run reads output.
 
 checkpoint.assessment may submit only new or affected paths, constraints and facts. Global digests must be current; Core stamps scope_digest and merges unaffected judgments. revise_task does not clear issue automatically; after an actual user decision use checkpoint.clear_issue and resolution_ref.
 
-plan contains understanding/root_cause/approach/simpler_alternative/verification_basis/completion and work (id, goal_ids, change, owner, necessity). Views return plan_digest; confirmation binds it and the proposed content. authorization.allowed_paths is a hard allowlist. checks.purpose is acceptance/regression/diagnostic (default acceptance); diagnostics need goal_ids. full_suite identifies full suites; compares names a regression check. Default inputs:["."] covers all bound repositories; narrowing needs input_basis, with key::path for cross-repository inputs. checkpoint rejects checks. assessment.paths requires work_id and necessity; final assessment.review contains root_cause/responsibilities/proportionality/verification/would_choose_again/uncertainty, with digests generated by Core.
+plan contains approach and verification_basis. revise_task replaces only supplied fields. Actual changed user outcomes/restrictions or expanded existing caps require a new real user_ref; routine methods retain the request. checks.purpose is acceptance/regression/diagnostic (default acceptance); diagnostic checks need goal_ids, full_suite needs execution justification, and compares names a regression check. Default inputs ["."] cover all repositories; narrow scopes need input_basis and use key::path for cross-repository inputs. checkpoint cannot change checks. assessment.paths uses path/goal_ids/basis; final assessment.review uses summary/uncertainty. Core generates applicability stamps.
 
 HTTP lists also accept lifecycle=active/blocked/done/cancelled, filtering saved Core summaries before paging. status=active includes all active tasks, including blocked ones.
 
 The run record’s process contains the command pid and startup identity. It is null before launch registration; activation requires the identity to be persisted. Missing-receipt recovery requires both Core and its managed command to stop; macOS checks the whole process group.
 
-Assess source checkouts before freezing/creating a workspace. Once bound, always use the original source_type/remote_name/base_branch: a local source resolves its original branch configuration; a remote source resolves the selected remote-tracking branch without a local branch. A task branch gaining its own upstream does not change the source. Never silently substitute main.
+Only assess upstream when needed; for a requested new workspace, assess before freezing its source. Once bound, always use the original source_type/remote_name/base_branch: a local source resolves its original branch configuration; a remote source resolves the selected remote-tracking branch without a local branch. A task branch gaining its own upstream does not change the source. Never silently substitute main.

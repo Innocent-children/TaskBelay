@@ -27,23 +27,23 @@ type DependencyPolicy struct {
 	Allowed []string `json:"allowed"`
 }
 type Limits struct {
-	Runs        int64 `json:"runs"`
-	ExecutionMS int64 `json:"execution_ms"`
-	CoreMS      int64 `json:"core_ms"`
-	HostMS      int64 `json:"host_ms"`
-	Tokens      int64 `json:"tokens"`
+	Runs        int64 `json:"runs,omitempty"`
+	ExecutionMS int64 `json:"execution_ms,omitempty"`
+	CoreMS      int64 `json:"core_ms,omitempty"`
+	HostMS      int64 `json:"host_ms,omitempty"`
+	Tokens      int64 `json:"tokens,omitempty"`
 }
 type Authorization struct {
 	UserRef          string             `json:"user_ref"`
 	Request          string             `json:"request"`
 	Goals            []Goal             `json:"goals"`
 	Constraints      []Constraint       `json:"constraints,omitempty"`
-	ExpectedPaths    []string           `json:"expected_paths,omitempty"`
+	ExpectedPaths    []string           `json:"expected_paths,omitempty" description:"Optional forecast, not a permission restriction."`
 	AllowedPaths     []string           `json:"allowed_paths,omitempty"`
 	ForbiddenPaths   []string           `json:"forbidden_paths,omitempty"`
 	Pins             []Pin              `json:"pins,omitempty"`
-	Dependencies     []DependencyPolicy `json:"dependencies,omitempty"`
-	Limits           Limits             `json:"limits,omitempty"`
+	Dependencies     []DependencyPolicy `json:"dependencies,omitempty" description:"Only explicit user restrictions per manifest. An empty allowed list forbids changes there; omission requires technical review instead."`
+	Limits           Limits             `json:"limits,omitempty" description:"Actual user-set cumulative caps only. Omitted or zero fields mean no cap; usage is still recorded."`
 	ReviewAfterLines int                `json:"review_after_lines,omitempty"`
 }
 type Check struct {
@@ -82,8 +82,6 @@ type PathJudgment struct {
 	GoalIDs     []string `json:"goal_ids"`
 	Basis       string   `json:"basis"`
 	ScopeDigest Digest   `json:"scope_digest,omitempty"`
-	WorkID      string   `json:"work_id"`
-	Necessity   string   `json:"necessity"`
 }
 type Judgment struct {
 	ID          string `json:"id"`
@@ -139,30 +137,29 @@ type Evidence struct {
 	RecordedAt        time.Time `json:"recorded_at"`
 }
 type Task struct {
-	TaskID                string                 `json:"task_id"`
-	Host                  Host                   `json:"host"`
-	Status                string                 `json:"status"`
-	Revision              uint64                 `json:"revision"`
-	Authorization         Authorization          `json:"authorization"`
-	Plan                  Plan                   `json:"plan"`
-	ProposedContentDigest Digest                 `json:"proposed_content_digest"`
-	Approval              *PlanApproval          `json:"approval"`
-	Exceptions            []KnownFailure         `json:"exceptions"`
-	Archived              bool                   `json:"archived"`
-	Checks                []Check                `json:"checks"`
-	Repositories          []RepositoryScopeEntry `json:"repositories"`
-	Assessment            *Assessment            `json:"assessment"`
-	Progress              []Progress             `json:"progress"`
-	Issue                 *Issue                 `json:"issue"`
-	Evidence              []Evidence             `json:"evidence"`
-	Attempts              []Attempt              `json:"attempts"`
-	Facts                 []Fact                 `json:"facts"`
-	Usage                 Usage                  `json:"usage"`
-	Acceptance            []Acceptance           `json:"acceptance"`
-	Summary               string                 `json:"summary"`
-	Risks                 []string               `json:"risks"`
-	CreatedAt             time.Time              `json:"created_at"`
-	UpdatedAt             time.Time              `json:"updated_at"`
+	TaskID         string                 `json:"task_id"`
+	Host           Host                   `json:"host"`
+	Status         string                 `json:"status"`
+	Revision       uint64                 `json:"revision"`
+	Authorization  Authorization          `json:"authorization"`
+	Plan           Plan                   `json:"plan"`
+	BudgetDecision *BudgetApproval        `json:"budget_decision,omitempty"`
+	Exceptions     []KnownFailure         `json:"exceptions"`
+	Archived       bool                   `json:"archived"`
+	Checks         []Check                `json:"checks"`
+	Repositories   []RepositoryScopeEntry `json:"repositories"`
+	Assessment     *Assessment            `json:"assessment"`
+	Progress       []Progress             `json:"progress"`
+	Issue          *Issue                 `json:"issue"`
+	Evidence       []Evidence             `json:"evidence"`
+	Attempts       []Attempt              `json:"attempts"`
+	Facts          []Fact                 `json:"facts"`
+	Usage          Usage                  `json:"usage"`
+	Acceptance     []Acceptance           `json:"acceptance"`
+	Summary        string                 `json:"summary"`
+	Risks          []string               `json:"risks"`
+	CreatedAt      time.Time              `json:"created_at"`
+	UpdatedAt      time.Time              `json:"updated_at"`
 }
 type Acceptance struct {
 	GoalID      string   `json:"goal_id"`
@@ -206,12 +203,13 @@ func (t Task) Repository(key RepositoryKey) (RepositoryScopeEntry, bool) {
 	return RepositoryScopeEntry{}, false
 }
 func (t Task) CheckDigest(c Check) Digest {
-	// Approval still binds the full definition; these fields do not change what a result proves.
+	// Execution settings do not change what an existing result proves.
 	c.TimeoutMS, c.Rationale, c.InputBasis, c.Retry, c.FullSuite = 0, "", "", "", false
 	goals := []Goal{}
 	constraints := []Constraint{}
 	for _, g := range t.Authorization.Goals {
-		if slices.Contains(g.Checks, c.ID) {
+		if slices.Contains(t.CheckGoals(c), g.ID) {
+			g.Checks = nil
 			goals = append(goals, g)
 		}
 	}
@@ -225,9 +223,6 @@ func (t Task) CheckDigest(c Check) Digest {
 		Goals       []Goal
 		Constraints []Constraint
 	}{c, goals, constraints})
-}
-func DefaultLimits() Limits {
-	return Limits{Runs: 20, ExecutionMS: 600000, CoreMS: 600000, HostMS: 3600000, Tokens: 1000000}
 }
 func MatchPath(scope, p string) bool {
 	return scope == "." || scope == p || strings.HasPrefix(p, strings.TrimSuffix(scope, "/")+"/")
@@ -299,8 +294,8 @@ func (a Authorization) Validate() error {
 		}
 	}
 	l := a.Limits
-	if l.Runs < 1 || l.Runs > 10000 || l.ExecutionMS < 1 || l.ExecutionMS > 86400000 || l.CoreMS < 1 || l.HostMS < 1 || l.Tokens < 1 {
-		return Invalid("authorization.limits", "positive cumulative limits required; runs <=10000 and execution_ms <=86400000")
+	if l.Runs < 0 || l.Runs > 10000 || l.ExecutionMS < 0 || l.ExecutionMS > 86400000 || l.CoreMS < 0 || l.HostMS < 0 || l.Tokens < 0 {
+		return Invalid("authorization.limits", "limits must be nonnegative; zero means unset, runs <=10000 and execution_ms <=86400000")
 	}
 	if a.ReviewAfterLines < 0 {
 		return Invalid("authorization.review_after_lines", "must be nonnegative")

@@ -107,7 +107,7 @@ func ScopeFacts(ctx context.Context, t domain.Task) ([]domain.Fact, error) {
 			for _, v := range t.Authorization.ExpectedPaths {
 				expected = expected || domain.MatchPath(v, p)
 			}
-			if !expected {
+			if len(t.Authorization.ExpectedPaths) > 0 && !expected {
 				add("unexpected_path", p, "Path was not predicted; explain its necessity for an authorized goal.", false)
 			}
 			if e.Gitlink {
@@ -165,19 +165,22 @@ func ScopeFacts(ctx context.Context, t domain.Task) ([]domain.Fact, error) {
 							if strings.HasSuffix(e.Path, "package.json") {
 								_, policyName, _ = strings.Cut(name, ":")
 							}
-							allowed := false
+							allowed, restricted := false, false
 							for _, policy := range t.Authorization.Dependencies {
 								if policy.Path == p {
+									restricted = true
 									for _, v := range policy.Allowed {
 										allowed = allowed || policyName == v
 									}
 								}
 							}
-							reason := "approved exact manifest policy permits this dependency"
-							if !allowed {
-								reason = "no approved dependency policy permits this name at this exact repository-qualified manifest path"
+							reason := "review necessity and compatibility against the requested outcome"
+							if restricted && !allowed {
+								reason = "the explicit manifest restriction does not allow this package"
+							} else if restricted {
+								reason = "the explicit manifest restriction allows this package"
 							}
-							add("dependency_change", p, fmt.Sprintf("Dependency %s changed from %q to %q at %s: %s. File write scope and dependency permission are independent.", name, a[name], b[name], p, reason), !allowed)
+							add("dependency_change", p, fmt.Sprintf("Dependency %s changed from %q to %q at %s: %s. File write scope still applies.", name, a[name], b[name], p, reason), restricted && !allowed)
 						}
 					}
 				} else {

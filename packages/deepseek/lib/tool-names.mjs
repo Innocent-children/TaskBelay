@@ -14,7 +14,6 @@ export const TASKBELAY_RAW_TOOL_NAMES = Object.freeze([
   "taskbelay_finish_task",
   "taskbelay_cancel_task",
   "taskbelay_list_tasks",
-  "taskbelay_confirm_plan",
   "taskbelay_accept_known_failure",
   "taskbelay_update_budget",
   "taskbelay_archive_task"

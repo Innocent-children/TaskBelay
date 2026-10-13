@@ -1,35 +1,28 @@
 ---
 name: taskbelay
-description: "Use TaskBelay for authorized development across components or sessions: track actual scope, verification provenance, cumulative cost and recovery. Preserve existing user authorization and ask only for necessary decisions."
+description: "Use TaskBelay for substantial development that benefits from saved progress, verification reuse or interruption recovery, or when explicitly requested. Reuse existing user authority. Skip ordinary questions and small mechanical edits unless requested."
 ---
 
 # TaskBelay for Codex
 
-Follow [engineering work](references/engineering.md), the [current protocol](references/protocol.md) and [optional workspaces](references/workspace.md).
-The agent performs coding and technical judgment; Core owns Task decisions and evidence.
+Read [engineering work](references/engineering.md) when starting or resuming a Task. Consult
+[protocol](references/protocol.md) for tool fields and recovery; read [workspaces](references/workspace.md)
+only for needed workspace operations. Load details as needed instead of reading every reference upfront.
 
-Use actually visible local MCP tools. If unavailable, report it and repair the configured integration
-within authorization; do not silently claim controlled execution. When CLI call taskbelay_server_info succeeds, inspect startup_diagnostics and the actual data/runtime identity. CLI success does not prove this session exposes MCP. A storage-metering error means Core was reached; inspect permissions and schema before diagnosing a connection failure. The packaged MCP launcher exposes the same current Core contract.
+Use tools actually exposed in this session. If unavailable, report the integration problem once and
+continue authorized work using native tools; do not claim TaskBelay recorded it. A CLI success does
+not prove the Host exposes MCP. Preserve data when troubleshooting storage or configuration.
 
-The PreToolUse hook checks apply_patch paths. Calls through exec_command, Bash, other editors or external processes are observed at checkpoints.
-Hooks check known paths and actual authorization restrictions. They cannot determine the semantics
-of future edits or authenticate user conversation. Never describe unsupported shell interception as
-implemented.
+Start from the actual user request in the selected/current workspace. Reuse existing authority without
+an extra plan-confirmation step. Explain the approach; adjust implementation and checks within the same
+outcome and restrictions. Ask only for missing information or a real change to user boundaries.
 
-Before every new Task, ask the user to choose the current branch, a new branch in the current directory,
-or a dedicated worktree. Show the actual directory, branch and initial changes; do not select a default
-or reuse another Task's workspace choice. Resume an existing Task in its saved workspace without
-asking again. Existing authorization for that Task remains
-valid across ordinary follow-ups. Show the understanding and complete plan, obtain the actual user answer, then record taskbelay_confirm_plan for that exact plan_digest before implementation. Reuse a prior answer only if it explicitly approved this unchanged displayed plan; never treat a general development request as approval of an unseen plan.
-A new chat or Git branch/worktree operation is optional and requires actual authorization. Use taskbelay-codex host-launch only for explicitly authorized workspace preparation; its receipt tracks that operation, not a second Task cursor.
-Use its returned repositories with open_task. Task workspaces remain bound; cross-workspace
-relocation is unsupported. Restore the original workspace or cancel without deleting work.
+The structured hook checks apply_patch paths. Other edits are observed at checkpoints. Native permissions
+still apply; hooks cannot authenticate conversation or judge future code semantics. This is not a sandbox.
 
-Native tool permissions apply to Core-executed checks. Avoid passing credentials in argv. Retain
-complete responses and operation identities. After response loss read the saved run; do not rerun
-commands from memory. A real user observation, an agent claim and a Core process result are distinct.
+Default responses summarize current work. Use get_task detail:true for full history and get_run for
+output. Keep operation identities after response loss; inspect saved results before repeating effects.
+Report completed work, actual checks and uncertainty honestly. Git, new chat, publication and deletion
+follow actual user authorization. Normal usage should not require reading plugin source.
 
-When a task is done or cancelled, report the actual result and remaining limitations. Commit, push,
-PR, merge, publish and deletion still need their own authorization.
-
-Implementation: `internal/application/service.go`, `internal/mcp/server.go`, `packages/codex/lib/` and the packaged structured write hook.
+Maintainer implementation reference: `internal/mcp/server.go`.

@@ -14,11 +14,14 @@ func (b BudgetDecision) Limits() Limits {
 	return Limits{Runs: b.Runs, ExecutionMS: b.ExecutionMS, CoreMS: b.WorkMS, HostMS: b.WorkMS, Tokens: b.Tokens}
 }
 func (l Limits) Within(ceiling Limits) bool {
-	return l.Runs <= ceiling.Runs && l.ExecutionMS <= ceiling.ExecutionMS && l.CoreMS <= ceiling.CoreMS && l.HostMS <= ceiling.HostMS && l.Tokens <= ceiling.Tokens
+	within := func(value, bound int64) bool { return bound == 0 || value > 0 && value <= bound }
+	return within(l.Runs, ceiling.Runs) && within(l.ExecutionMS, ceiling.ExecutionMS) && within(l.CoreMS, ceiling.CoreMS) && within(l.HostMS, ceiling.HostMS) && within(l.Tokens, ceiling.Tokens)
 }
+func LimitReached(used, limit int64) bool { return limit > 0 && used >= limit }
 
 type BudgetLine struct {
 	Name      string `json:"name"`
+	Limited   bool   `json:"limited"`
 	Actual    int64  `json:"actual"`
 	Reserved  int64  `json:"reserved"`
 	Uncertain int64  `json:"uncertain"`
@@ -27,7 +30,7 @@ type BudgetLine struct {
 }
 
 func NewBudgetLine(name string, actual, reserved, uncertain, limit int64) BudgetLine {
-	return BudgetLine{name, actual, reserved, uncertain, limit, max(int64(0), limit-actual-reserved-uncertain)}
+	return BudgetLine{Name: name, Limited: limit > 0, Actual: actual, Reserved: reserved, Uncertain: uncertain, Limit: limit, Remaining: max(int64(0), limit-actual-reserved-uncertain)}
 }
 func (b BudgetLine) Failure(requested int64) *BudgetFailure {
 	return &BudgetFailure{Used: b.Actual + b.Reserved + b.Uncertain, Requested: requested, Limit: b.Limit, Actual: b.Actual, Reserved: b.Reserved, Uncertain: b.Uncertain, Remaining: b.Remaining}
@@ -67,7 +70,7 @@ func (t Task) Budget(missing []string) BudgetReport {
 			report.WorstCaseMS += c.TimeoutMS
 			report.RetryReserveMS = max(report.RetryReserveMS, c.TimeoutMS)
 		}
-		if report.Limits[0].Remaining < 1 || c.TimeoutMS > report.Limits[1].Remaining || report.Limits[2].Remaining == 0 || report.Limits[3].Remaining == 0 || report.Limits[4].Remaining == 0 {
+		if LimitReached(u.Runs, l.Runs) || l.ExecutionMS > 0 && c.TimeoutMS > report.Limits[1].Remaining || LimitReached(u.CoreMS, l.CoreMS) || LimitReached(u.HostMS+u.WaitMS, l.HostMS) || LimitReached(u.Tokens, l.Tokens) {
 			item.Startable = false
 			item.Reason = "an effective limit cannot reserve this check; inspect all limits"
 			if required {
@@ -76,14 +79,14 @@ func (t Task) Budget(missing []string) BudgetReport {
 		}
 		report.Checks = append(report.Checks, item)
 	}
-	if report.RequiredRuns > report.Limits[0].Remaining {
+	if l.Runs > 0 && report.RequiredRuns > report.Limits[0].Remaining {
 		report.Feasible = false
 		report.Warnings = append(report.Warnings, "Remaining runs cannot cover the required command checks.")
 	}
-	if report.WorstCaseMS+report.RetryReserveMS > report.Limits[1].Remaining {
+	if l.ExecutionMS > 0 && report.WorstCaseMS+report.RetryReserveMS > report.Limits[1].Remaining {
 		report.Warnings = append(report.Warnings, "Aggregate timeout estimate including one retry exceeds remaining execution time. This is a planning risk, not measured cost or a hard rejection; choose realistic timeouts and bounded retries.")
 	}
-	if l.CoreMS < l.ExecutionMS || l.CoreMS < l.HostMS {
+	if l.CoreMS > 0 && (l.CoreMS < l.ExecutionMS || l.CoreMS < l.HostMS) {
 		report.Warnings = append(report.Warnings, "Core wall time overlaps command and Host work; its lower independent cap may become the bottleneck. Review one complete work-time decision and all effective limits.")
 	}
 	return report

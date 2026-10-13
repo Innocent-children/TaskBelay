@@ -17,7 +17,7 @@ import (
 
 func commandProposal(t *testing.T, n int, timeout int64) (*Service, View, string) {
 	t.Helper()
-	s, v, root := proposedFixture(t)
+	s, v, root := fixture(t)
 	a := v.Task.Authorization
 	a.Goals[0].Checks = nil
 	checks := []domain.Check{}
@@ -26,40 +26,30 @@ func commandProposal(t *testing.T, n int, timeout int64) (*Service, View, string
 		a.Goals[0].Checks = append(a.Goals[0].Checks, id)
 		checks = append(checks, domain.Check{ID: id, Kind: "command", Argv: []string{"git", "diff", "--quiet"}, Conditions: "local fixture", Rationale: "verify no unintended diff", TimeoutMS: timeout, Retry: "repeatable"})
 	}
-	v, e := s.Revise(context.Background(), ReviseRequest{Identity: Identity{v.Task.TaskID, "commands", v.Task.Revision}, Authorization: a, Plan: v.Task.Plan, Checks: checks, Reason: "Actual fixture plan"})
+	v, e := s.Revise(context.Background(), ReviseRequest{Identity: Identity{v.Task.TaskID, "commands", v.Task.Revision}, Authorization: ptr(a), Plan: ptr(v.Task.Plan), Checks: ptr(checks), Reason: "Actual fixture plan"})
 	if e != nil {
 		t.Fatal(e)
 	}
 	return s, v, root
-}
-func approveAudit(t *testing.T, s *Service, v View) View {
-	t.Helper()
-	v, e := s.ConfirmPlan(context.Background(), ConfirmPlanRequest{Identity: Identity{v.Task.TaskID, "audit-confirm", v.Task.Revision}, PlanDigest: v.PlanDigest, UserRef: "actual-fixture-decision", Response: "Approve exact displayed plan"})
-	if e != nil {
-		t.Fatal(e)
-	}
-	return v
 }
 func TestAuditBudgetDistinguishesAggregateRiskFromImpossibleReservation(t *testing.T) {
 	s, v, _ := commandProposal(t, 9, 120000)
 	if !v.Budget.Feasible || len(v.Budget.Warnings) == 0 || v.Budget.WorstCaseMS != 1080000 {
 		t.Fatal("worst timeout estimates became a hard refusal", v.Budget)
 	}
-	approveAudit(t, s, v)
 	s, v, _ = commandProposal(t, 1, 600001)
-	_, e := s.ConfirmPlan(context.Background(), ConfirmPlanRequest{Identity: Identity{v.Task.TaskID, "impossible", v.Task.Revision}, PlanDigest: v.PlanDigest, UserRef: "fixture", Response: "Approve"})
-	if code(e) != "PLAN_BUDGET_INFEASIBLE" {
-		t.Fatal(e)
+	_, e := s.Execute(context.Background(), RunRequest{Identity: Identity{v.Task.TaskID, "impossible", v.Task.Revision}, CheckID: "check-0", Rationale: "Try to reserve more than the actual user limit"})
+	if code(e) != "COST_LIMIT" || v.Budget.Feasible {
+		t.Fatal(e, v.Budget)
 	}
 	saved, _ := s.Store.Get(context.Background(), v.Task.TaskID)
-	if saved.Approval != nil || saved.Usage.Runs != 0 {
-		t.Fatal("infeasible plan was blessed")
+	if saved.Usage.Runs != 0 {
+		t.Fatal("unreservable command was executed")
 	}
 }
 func TestAuditReservationAfterShortRunAndAtomicFourHourBudgetDecision(t *testing.T) {
 	ctx := context.Background()
 	s, v, _ := commandProposal(t, 1, 600000)
-	v = approveAudit(t, s, v)
 	task := v.Task
 	task.Revision++
 	if e := s.Store.Save(ctx, task, v.Task.Revision, store.Operation{ID: "fixture-short-cost", Kind: "checkpoint", Digest: domain.Hash("cost")}, store.Charge{ExecutionMS: 2500}, "", nil, "", ""); e != nil {
@@ -75,13 +65,13 @@ func TestAuditReservationAfterShortRunAndAtomicFourHourBudgetDecision(t *testing
 		t.Fatal(e)
 	}
 	v, _ = s.Inspect(ctx, task.TaskID, false)
-	q := BudgetRequest{Identity: Identity{task.TaskID, "actual-four-hour-decision", v.Task.Revision}, PlanDigest: v.PlanDigest, Budget: domain.BudgetDecision{Runs: 40, ExecutionMS: 14400000, WorkMS: 14400000, Tokens: 1000000}, UserRef: "explicit-four-hour-40-run-answer", Response: "Approve cumulative command and work time four hours and 40 runs"}
+	q := BudgetRequest{Identity: Identity{task.TaskID, "actual-four-hour-decision", v.Task.Revision}, AuthorizationDigest: v.AuthorizationDigest, Budget: domain.BudgetDecision{Runs: 40, ExecutionMS: 14400000, WorkMS: 14400000, Tokens: 1000000}, UserRef: "explicit-four-hour-40-run-answer", Response: "Approve cumulative command and work time four hours and 40 runs"}
 	v, e = s.UpdateBudget(ctx, q)
 	if e != nil {
 		t.Fatal(e)
 	}
-	if !v.Task.PlanApproved() || v.Task.Authorization.Limits.CoreMS != 14400000 || v.Task.Authorization.Limits.HostMS != 14400000 || v.Task.Usage.ExecutionMS != 2500 || v.Task.Usage.CoreMS != 888000 || v.Task.Approval.BudgetDecision.UserRef != q.UserRef {
-		t.Fatal("budget decision lost a limit, approval or cost", v.Task)
+	if v.Task.Authorization.Limits.CoreMS != 14400000 || v.Task.Authorization.Limits.HostMS != 14400000 || v.Task.Usage.ExecutionMS != 2500 || v.Task.Usage.CoreMS != 888000 || v.Task.BudgetDecision.UserRef != q.UserRef {
+		t.Fatal("budget decision lost a limit, source or cost", v.Task)
 	}
 	replay, e := s.UpdateBudget(ctx, q)
 	if e != nil || !replay.Replayed || replay.Task.Revision != v.Task.Revision {
@@ -92,58 +82,71 @@ func TestAuditReservationAfterShortRunAndAtomicFourHourBudgetDecision(t *testing
 		t.Fatal("stale Core cap still blocked", e)
 	}
 }
-func TestAuditApprovalReuseCannotExpandBudgetTimeoutPermissionOrAcceptance(t *testing.T) {
+func TestRoutineCheckRevisionRetainsResultsButCannotExpandUserLimits(t *testing.T) {
 	ctx := context.Background()
 	s, v, _ := commandProposal(t, 1, 5000)
-	v = approveAudit(t, s, v)
-	original := v.Task.Approval.GrantedPlanDigest
-	a := v.Task.Authorization
-	a.Limits.ExecutionMS -= 1000
+	run, e := s.Execute(ctx, RunRequest{Identity: Identity{v.Task.TaskID, "first", v.Task.Revision}, CheckID: "check-0", Rationale: "Verify clean fixture"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	v = run.View
 	checks := append([]domain.Check{}, v.Task.Checks...)
-	checks[0].TimeoutMS = 3000
-	checks[0].Rationale = "Current concrete reason"
-	v, e := s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "narrow-config", v.Task.Revision}, Authorization: a, Plan: v.Task.Plan, Checks: checks, Reason: "Synchronize settings within recorded approval"})
-	if e != nil || !v.Task.PlanApproved() || v.Task.Approval.GrantedPlanDigest != original {
-		t.Fatal("same grant prompted again", e)
+	checks[0].TimeoutMS = 10000
+	checks[0].Rationale = "Allow ordinary environment variance"
+	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "method", v.Task.Revision}, Checks: &checks, Reason: "Adjust method without changing the user outcome"})
+	if e != nil || !v.Decision.Evidence[0].Valid || v.Decision.Advice == "ask_user" {
+		t.Fatal(e, v.Decision)
 	}
-	a = v.Task.Authorization
-	a.Limits.ExecutionMS += 1000
-	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "restore-granted", v.Task.Revision}, Authorization: a, Plan: v.Task.Plan, Checks: v.Task.Checks, Reason: "Restore original approved ceiling"})
-	if e != nil || !v.Task.PlanApproved() {
-		t.Fatal(e)
-	}
-	for _, change := range []string{"budget", "timeout", "path", "dependency", "acceptance", "retry"} {
-		t.Run(change, func(t *testing.T) {
-			candidate := v.Task
-			candidate.Authorization = v.Task.Authorization
-			candidate.Checks = append([]domain.Check{}, v.Task.Checks...)
-			switch change {
-			case "budget":
-				candidate.Authorization.Limits.ExecutionMS++
-			case "timeout":
-				candidate.Checks[0].TimeoutMS = 5001
-			case "path":
-				candidate.Authorization.AllowedPaths = []string{"new-scope"}
-			case "dependency":
-				candidate.Authorization.Dependencies = []domain.DependencyPolicy{{Path: "package.json", Allowed: []string{"lucide-react"}}}
-			case "acceptance":
-				candidate.Checks[0].Argv = []string{"git", "status"}
-			case "retry":
-				candidate.Checks[0].Retry = "requires_user"
-			}
-			if candidate.ApprovalCoversConfiguration() {
-				t.Fatal("old approval expanded authority")
-			}
-		})
-	}
-	a = v.Task.Authorization
+	a := v.Task.Authorization
 	a.Limits.ExecutionMS++
-	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "unapproved-expanded", v.Task.Revision}, Authorization: a, Plan: v.Task.Plan, Checks: v.Task.Checks, Reason: "Expansion has no new decision"})
-	if e != nil || v.Task.Approval != nil {
+	_, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "expand", v.Task.Revision}, Authorization: &a, Reason: "Expansion has no new user decision"})
+	if code(e) != "AUTHORIZATION_REQUIRED" {
 		t.Fatal(e)
 	}
-	_, e = s.Execute(ctx, RunRequest{Identity: Identity{v.Task.TaskID, "generic-continue", v.Task.Revision}, CheckID: "check-0", Rationale: "continue"})
-	if code(e) != "PLAN_CONFIRMATION_REQUIRED" {
+	a.Limits.ExecutionMS = 0
+	_, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "remove-limit", v.Task.Revision}, Authorization: &a, Reason: "Removing an explicit limit also expands it"})
+	if code(e) != "AUTHORIZATION_REQUIRED" {
+		t.Fatal(e)
+	}
+}
+func TestNoImplicitBudgetAndPartialUserLimit(t *testing.T) {
+	s, v, _ := fixture(t)
+	ctx := context.Background()
+	a := v.Task.Authorization
+	a.UserRef = "user-without-budget"
+	a.Limits = domain.Limits{}
+	a.Goals[0].Checks = []string{"command"}
+	checks := []domain.Check{{ID: "command", Kind: "command", Argv: []string{"git", "status", "--porcelain"}, Conditions: "local", Rationale: "Inspect actual fixture", TimeoutMS: 1000}}
+	v, e := s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "no-budget", v.Task.Revision}, Authorization: &a, Checks: &checks, Reason: "This user set no cost limits"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, line := range v.Budget.Limits {
+		if line.Limited {
+			t.Fatal("invented user limit", line)
+		}
+	}
+	if e = s.Store.AddCost(ctx, v.Task.TaskID, 700000, 0); e != nil {
+		t.Fatal(e)
+	}
+	run, e := s.Execute(ctx, RunRequest{Identity: Identity{v.Task.TaskID, "over-old-default", v.Task.Revision}, CheckID: "command", Rationale: "Normal check remains available without a user cap"})
+	if e != nil || run.Run.Status != "passed" {
+		t.Fatal(e)
+	}
+	v = run.View
+	a = v.Task.Authorization
+	a.Limits.Runs = 1
+	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "run-limit", v.Task.Revision}, Authorization: &a, Reason: "Set a single execution limit"})
+	if e != nil || v.Task.Usage.Runs != 1 || v.Task.Usage.CoreMS < 700000 {
+		t.Fatal(e)
+	}
+	checks[0].Argv = []string{"git", "diff", "--quiet"}
+	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "next-check", v.Task.Revision}, Checks: &checks, Reason: "Verify a different condition"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, e = s.Execute(ctx, RunRequest{Identity: Identity{v.Task.TaskID, "capped", v.Task.Revision}, CheckID: "command", Rationale: "The actual user cap must still apply"})
+	if code(e) != "COST_LIMIT" {
 		t.Fatal(e)
 	}
 }
@@ -173,7 +176,7 @@ func TestAuditExactMultiRepositoryDependencyPermissionAndForbiddenWrite(t *testi
 		git(path, "commit", "-m", "manifest baseline")
 	}
 	a := v.Task.Authorization
-	a.Dependencies = []domain.DependencyPolicy{{Path: "web::package.json", Allowed: []string{"lucide-react"}}}
+	a.Dependencies = []domain.DependencyPolicy{{Path: "web::package.json", Allowed: []string{"lucide-react"}}, {Path: "backend::package.json", Allowed: []string{}}}
 	a.ForbiddenPaths = []string{"web::secret.txt"}
 	checks := append([]domain.Check{}, v.Task.Checks...)
 	for i := range checks {
@@ -183,7 +186,6 @@ func TestAuditExactMultiRepositoryDependencyPermissionAndForbiddenWrite(t *testi
 	if e != nil {
 		t.Fatal(e)
 	}
-	v = approveAudit(t, s, v)
 	os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"dependencies":{"lucide-react":"1.0.0"}}`), 0600)
 	v, e = s.Inspect(ctx, v.Task.TaskID, true)
 	if e != nil {
@@ -233,7 +235,7 @@ func TestAuditExactMultiRepositoryDependencyPermissionAndForbiddenWrite(t *testi
 	}
 	found := false
 	for _, f := range v.Task.Facts {
-		if f.Kind == "dependency_change" && f.Blocking && f.Path == "backend::package.json" && strings.Contains(f.Detail, "no approved dependency policy") {
+		if f.Kind == "dependency_change" && f.Blocking && f.Path == "backend::package.json" && strings.Contains(f.Detail, "explicit manifest restriction") {
 			found = true
 		}
 	}

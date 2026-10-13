@@ -8,12 +8,12 @@ This record concerns the current engineering-control source and does not change 
 
 | Component | Implementation scope | Verification in this change |
 | --- | --- | --- |
-| Go Core, CLI, MCP, HTTP | Complete plan approval, scope/verification control, Git observation, actual argv execution, cross-repository evidence and recovery | Earlier Windows x64 record; native macOS arm64 regressions here, Windows launch fix cross-compiled only |
+| Go Core, CLI, MCP, HTTP | Existing user authority, scope/verification control, Git observation, actual argv execution, cross-repository evidence and recovery | Earlier Windows x64 record; native macOS arm64 regressions here, Windows launch fix cross-compiled only |
 | Codex | Current tools, Skill, workspace operations and apply_patch path preflight | Actual Core calls from an independent package and adapter tests; no model chat |
 | Claude Code | Current tools, Skill, workspaces, Write/Edit/NotebookEdit preflight | Actual Core calls from an independent package and adapter tests; no model chat |
 | ZCode | Current tools, Skill, workspaces and registered structured write hooks | Actual Core calls from an independent package and adapter tests; no UI installation or model chat |
 | DeepSeek/DSH | Current catalog, Skill, workspaces, write/edit/str_replace_editor preflight | Actual Core calls from an independent package, catalog and adapter tests; no DSH model chat |
-| WebUI | Local results, evidence, gaps, cumulative cost and user observations | Frontend build and actual HTTP contract checks |
+| WebUI | Local results, evidence, gaps, cumulative cost and user observations | Frontend build, actual HTTP checks and local browser display inspection |
 | Desktop pet | Displays Core activity, blockers, completion and cancellation | Windows display-rule unit checks; macOS Swift checks unavailable here |
 
 Adapter packages require Node.js >=24. Tool and permission coverage must be verified in the actual Host session. Installation or an independent Core handshake does not establish that the model used the plugin. ZCode action_required still requires user UI operations.

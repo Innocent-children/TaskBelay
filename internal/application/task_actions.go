@@ -9,56 +9,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/store"
 )
 
-type ConfirmPlanRequest struct {
-	Identity
-	PlanDigest domain.Digest `json:"plan_digest"`
-	UserRef    string        `json:"user_ref"`
-	Response   string        `json:"response"`
-}
-
-func (s *Service) ConfirmPlan(ctx context.Context, q ConfirmPlanRequest) (View, error) {
-	t, o, replay, e := s.begin(ctx, q.Identity, "confirm_plan", q)
-	if e != nil {
-		return View{}, e
-	}
-	if replay {
-		v, e := s.view(ctx, t, false)
-		v.Replayed = true
-		return v, e
-	}
-	if q.PlanDigest != t.PlanDigest() {
-		return View{}, domain.Fail("PLAN_CHANGED", "plan_digest", "the displayed plan changed; show the current plan and obtain its actual confirmation")
-	}
-	t, e = s.observe(ctx, t)
-	if e != nil {
-		return View{}, e
-	}
-	if t.ContentDigest() != t.ProposedContentDigest {
-		return View{}, domain.Fail("UNAPPROVED_CHANGES", "plan_digest", "contents changed before plan confirmation; restore the proposed state or disclose the changes in a revised plan")
-	}
-	if e = domain.Text("user_ref", q.UserRef); e != nil {
-		return View{}, e
-	}
-	if e = domain.Text("response", q.Response); e != nil {
-		return View{}, e
-	}
-	if t.PlanApproved() {
-		return View{}, domain.Fail("PLAN_ALREADY_CONFIRMED", "plan_digest", "reuse the existing confirmation; do not ask the user again")
-	}
-	v, e := s.view(ctx, t, true)
-	if e != nil {
-		return View{}, e
-	}
-	if !v.Budget.Feasible {
-		return View{}, domain.Fail("PLAN_BUDGET_INFEASIBLE", "authorization.limits", "a required check cannot start under the effective limits; inspect the budget report and correct timeouts or obtain an actual budget decision")
-	}
-	t.Approval = t.NewApproval(q.UserRef, q.Response)
-	return s.save(ctx, t, o, store.Charge{})
-}
 func requireExecutionAuthority(t domain.Task) error {
-	if !t.PlanApproved() {
-		return domain.Fail("PLAN_CONFIRMATION_REQUIRED", "plan_digest", "show the understanding and complete plan and record actual user confirmation first")
-	}
 	if t.Issue != nil && t.Issue.Kind == "authorization" {
 		return domain.Fail("AUTHORIZATION_PENDING", "issue", "resolve the actual user authorization question before further writes or executions")
 	}
@@ -110,10 +61,10 @@ func (s *Service) AcceptFailure(ctx context.Context, q AcceptFailureRequest) (Vi
 	if e != nil {
 		return View{}, e
 	}
-	x := domain.KnownFailure{CheckID: q.CheckID, FailedEvidenceID: q.FailedEvidenceID, ComparisonEvidenceID: q.ComparisonEvidenceID, Failures: q.Failures, UserRef: q.UserRef, Reason: q.Reason, PlanDigest: t.PlanDigest(), ContentDigest: t.ContentDigest(), AcceptedAt: time.Now().UTC()}
+	x := domain.KnownFailure{CheckID: q.CheckID, FailedEvidenceID: q.FailedEvidenceID, ComparisonEvidenceID: q.ComparisonEvidenceID, Failures: q.Failures, UserRef: q.UserRef, Reason: q.Reason, AcceptedAt: time.Now().UTC()}
 	t.Exceptions = []domain.KnownFailure{x}
 	if len(t.AcceptedFailures(v.Decision.Evidence)) != 1 {
-		return View{}, domain.Fail("FAILURE_ACCEPTANCE_NOT_ALLOWED", "failed_evidence_id", "requires a current failed regression execution and a current passed approved comparison; acceptance checks cannot be waived")
+		return View{}, domain.Fail("FAILURE_ACCEPTANCE_NOT_ALLOWED", "failed_evidence_id", "requires a current failed regression execution and a current passed comparison; acceptance checks cannot be waived")
 	}
 	t.Exceptions = slices.DeleteFunc(v.Task.Exceptions, func(old domain.KnownFailure) bool { return old.CheckID == x.CheckID })
 	t.Exceptions = append(t.Exceptions, x)

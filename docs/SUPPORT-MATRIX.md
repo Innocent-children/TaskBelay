@@ -8,12 +8,12 @@
 
 | 组件 | 实现范围 | 此次实际验证 |
 | --- | --- | --- |
-| Go Core、CLI、MCP、HTTP | 完整方案批准、路径和验证控制、Git 观察、真实 argv 执行、跨仓库证据与恢复 | 此前 Windows x64 记录；本次 macOS arm64 原生回归，Windows 启动修复仅交叉编译 |
+| Go Core、CLI、MCP、HTTP | 已有用户授权复用、路径和验证控制、Git 观察、真实 argv 执行、跨仓库证据与恢复 | 此前 Windows x64 记录；本次 macOS arm64 原生回归，Windows 启动修复仅交叉编译 |
 | Codex | 当前工具、Skill、工作位置、apply_patch 路径预检 | 独立包的实际 Core 调用与适配器测试；未运行模型聊天 |
 | Claude Code | 当前工具、Skill、工作位置、Write/Edit/NotebookEdit 预检 | 独立包的实际 Core 调用与适配器测试；未运行模型聊天 |
 | ZCode | 当前工具、Skill、工作位置、已注册结构化写入钩子 | 独立包的实际 Core 调用与适配器测试；未执行 UI 安装与模型聊天 |
 | DeepSeek/DSH | 当前目录、Skill、工作位置、write/edit/str_replace_editor 预检 | 独立包的实际 Core 调用、目录与适配器测试；未运行 DSH 模型聊天 |
-| WebUI | 本地结果、证据、缺口、累计成本和用户观察 | 前端构建、实际 HTTP 契约检查 |
+| WebUI | 本地结果、证据、缺口、累计成本和用户观察 | 前端构建、实际 HTTP 检查及本机浏览器展示核对 |
 | 桌面宠物 | 显示 Core 的活动、阻碍、完成或取消结果 | Windows 显示规则单元检查；macOS Swift 检查此次不可用 |
 
 适配器包要求 Node.js >=24。工具与权限能力必须以实际宿主会话为准；安装成功或独立 Core 握手不代表模型已使用插件。ZCode 的 action_required 仍须用户完成 UI 操作。

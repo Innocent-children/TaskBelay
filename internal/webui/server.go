@@ -61,13 +61,13 @@ func NewAPI(service *application.Service, core *coremcp.Server, status SystemSta
 	})
 	mux.HandleFunc("GET /api/tasks/{task_id}", func(w http.ResponseWriter, r *http.Request) {
 		refresh := r.URL.Query().Get("refresh") == "1"
-		raw, _ := json.Marshal(coremcp.GetRequest{TaskID: r.PathValue("task_id"), Refresh: &refresh})
+		raw, _ := json.Marshal(coremcp.GetRequest{TaskID: r.PathValue("task_id"), Refresh: &refresh, Detail: true})
 		result := core.Dispatch(r.Context(), "taskbelay_get_task", raw)
 		if !result.OK {
 			write(w, result)
 			return
 		}
-		v := result.Result.(application.View)
+		v := *result.Result.(coremcp.TaskResult).Details
 		write(w, map[string]any{"ok": true, "readiness": "ready", "summary": coremcp.Summary(v.Task), "result": v})
 	})
 	mux.HandleFunc("POST /api/core/{tool}", func(w http.ResponseWriter, r *http.Request) {

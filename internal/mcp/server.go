@@ -41,6 +41,7 @@ type Envelope struct {
 type GetRequest struct {
 	TaskID  string `json:"task_id"`
 	Refresh *bool  `json:"refresh,omitempty"`
+	Detail  bool   `json:"detail,omitempty" description:"Default false. True adds result.details with full saved Task, repository fingerprints and history."`
 }
 type GetRunRequest struct {
 	RunID string `json:"run_id"`
@@ -56,21 +57,20 @@ type Tool struct {
 
 var Catalog = []Tool{
 	{"taskbelay_server_info", "Read actual tools, evidence boundary and Host coverage.", Empty{}, map[string]any{}, true},
-	{"taskbelay_open_task", "Save the understanding and complete proposed plan. Implementation and checks require actual user confirmation of its digest.", application.OpenRequest{}, application.View{}, false},
-	{"taskbelay_get_task", "Refresh actual code changes and evidence applicability; recover latest requirements and progress.", GetRequest{}, application.View{}, false},
-	{"taskbelay_checkpoint", "Record current reasoning, necessary changes, progress and cost. This cannot change the approved plan or check definitions.", application.CheckpointRequest{}, application.View{}, false},
-	{"taskbelay_revise_task", "Replace the current user-authorized contract; preserve unaffected work/evidence and cumulative cost.", application.ReviseRequest{}, application.View{}, false},
-	{"taskbelay_run_check", "Execute one approved argv locally with a durable reservation and actual result. Respect native Host permission.", application.RunRequest{}, application.RunResult{}, false},
-	{"taskbelay_record_evidence", "Record an agent claim or a completed human observation; cannot manufacture Core execution.", application.EvidenceRequest{}, application.View{}, false},
+	{"taskbelay_open_task", "Start from the actual user request in the selected workspace. Existing authorization permits work without a separate plan approval.", application.OpenRequest{}, TaskResult{}, false},
+	{"taskbelay_get_task", "Refresh actual code changes and evidence applicability; recover current requirements and progress. Set detail:true only for full repository fingerprints and history.", GetRequest{}, TaskResult{}, false},
+	{"taskbelay_checkpoint", "Record current reasoning, necessary changes, progress and cost. Use revise_task for changes to the approach or check definitions.", application.CheckpointRequest{}, TaskResult{}, false},
+	{"taskbelay_revise_task", "Replace only supplied authorization, plan or checks. Routine method changes reuse authority; changed user boundaries require a new actual user reference. Preserve unaffected results and cost.", application.ReviseRequest{}, TaskResult{}, false},
+	{"taskbelay_run_check", "Execute one task-related argv locally with a durable reservation and result summary. Read get_run for output or failure diagnostics. Respect native Host permission.", application.RunRequest{}, RunResult{}, false},
+	{"taskbelay_record_evidence", "Record an agent claim or a completed human observation; cannot manufacture Core execution.", application.EvidenceRequest{}, TaskResult{}, false},
 	{"taskbelay_get_run", "Read a saved actual execution after response loss; never executes a command.", GetRunRequest{}, execution.Run{}, true},
-	{"taskbelay_recover_run", "Recover a signed result receipt or classify a stopped owner with no receipt; never infer passing or replay execution.", application.RecoverRequest{}, application.RunResult{}, false},
-	{"taskbelay_finish_task", "Conclude only with current scope reasoning and applicable passing evidence for every authorized goal.", application.FinishRequest{}, application.View{}, false},
-	{"taskbelay_cancel_task", "End the task and release claims while retaining files and results; unresolved execution prevents cancellation.", application.CancelRequest{}, application.View{}, false},
+	{"taskbelay_recover_run", "Recover a signed result receipt or classify a stopped owner with no receipt; never infer passing or replay execution.", application.RecoverRequest{}, RunResult{}, false},
+	{"taskbelay_finish_task", "Conclude only with current scope reasoning and applicable passing evidence for every authorized goal.", application.FinishRequest{}, TaskResult{}, false},
+	{"taskbelay_cancel_task", "End the task and release claims while retaining files and results; unresolved execution prevents cancellation.", application.CancelRequest{}, TaskResult{}, false},
 	{"taskbelay_list_tasks", "Read a bounded page of saved task summaries, including archived tasks when requested.", store.ListQuery{}, map[string]any{}, true},
-	{"taskbelay_confirm_plan", "Record the actual user's understanding and approval of the exact displayed plan; never fabricate a confirmation.", application.ConfirmPlanRequest{}, application.View{}, false},
-	{"taskbelay_accept_known_failure", "Record a user's explicit acceptance of named existing regression failures with current actual comparison evidence; never waive acceptance checks.", application.AcceptFailureRequest{}, application.View{}, false},
-	{"taskbelay_update_budget", "Apply one explicitly approved complete budget decision; synchronize Core and Host work-time caps and retain the original plan authority.", application.BudgetRequest{}, application.View{}, false},
-	{"taskbelay_archive_task", "Archive or restore a terminal task without changing its outcome or deleting work.", application.ArchiveRequest{}, application.View{}, false},
+	{"taskbelay_accept_known_failure", "Record a user's explicit acceptance of named existing regression failures with current actual comparison evidence; never waive acceptance checks.", application.AcceptFailureRequest{}, TaskResult{}, false},
+	{"taskbelay_update_budget", "Apply one explicitly approved complete budget decision; synchronize Core and Host work-time caps without resetting cumulative cost.", application.BudgetRequest{}, TaskResult{}, false},
+	{"taskbelay_archive_task", "Archive or restore a terminal task without changing its outcome or deleting work.", application.ArchiveRequest{}, TaskResult{}, false},
 }
 
 type ServerOptions struct {
@@ -153,7 +153,7 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 		}
 		r := Recovery{Action: "read_task", Message: "Read current saved state; do not blindly replay the operation."}
 		switch de.Code {
-		case "INVALID_ARGUMENT", "ASSESSMENT_STALE", "EVIDENCE_STALE":
+		case "INVALID_ARGUMENT", "ASSESSMENT_STALE", "EVIDENCE_STALE", "AUTHORIZATION_CHANGED":
 			r.Action = "correct_request"
 			r.Message = "Correct only the identified fields from existing facts; preserve operation identity and real authorization."
 			for _, d := range de.Details {
@@ -165,10 +165,10 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 		case "STORAGE_CORRUPT", "SCHEMA_UNSUPPORTED":
 			r.Action = "repair_storage"
 			r.Message = "Preserve local data and report the storage problem; do not reset or migrate it."
-		case "COST_LIMIT", "PLAN_CONFIRMATION_REQUIRED", "PLAN_CHANGED", "AUTHORIZATION_PENDING":
+		case "COST_LIMIT", "AUTHORIZATION_REQUIRED", "AUTHORIZATION_PENDING":
 			r.Action = "request_authorization"
-			r.Message = "Show the current plan or required decision and obtain actual user authorization; preserve acceptance requirements."
-		case "PLAN_BUDGET_INFEASIBLE", "BUDGET_UNCHANGED", "SCOPE_VIOLATION", "REPEATED_FAILURE", "ACCEPTANCE_INCOMPLETE", "CHECK_ALREADY_SATISFIED", "RETRY_BASIS_REQUIRED", "UNAPPROVED_CHANGES", "FAILURE_ACCEPTANCE_NOT_ALLOWED":
+			r.Message = "Explain the specific boundary or limit needing a user decision; reuse existing authorization for routine work."
+		case "BUDGET_UNCHANGED", "SCOPE_VIOLATION", "REPEATED_FAILURE", "ACCEPTANCE_INCOMPLETE", "CHECK_ALREADY_SATISFIED", "RETRY_BASIS_REQUIRED", "FAILURE_ACCEPTANCE_NOT_ALLOWED":
 			r.Action = "self_correct"
 			r.Message = "Inspect the current facts and gaps, then correct within existing authorization."
 		}
@@ -182,6 +182,7 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 		return fail(domain.Invalid("tool", "tool is not in the current catalog"))
 	}
 	var result any
+	detail := false
 	e = nil
 	switch name {
 	case "taskbelay_server_info":
@@ -209,17 +210,13 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 		var q GetRequest
 		if e = Decode(raw, &q); e == nil {
 			refresh := q.Refresh == nil || *q.Refresh
+			detail = q.Detail
 			result, e = s.service.Inspect(ctx, q.TaskID, refresh)
 		}
 	case "taskbelay_update_budget":
 		var q application.BudgetRequest
 		if e = Decode(raw, &q); e == nil {
 			result, e = s.service.UpdateBudget(ctx, q)
-		}
-	case "taskbelay_confirm_plan":
-		var q application.ConfirmPlanRequest
-		if e = Decode(raw, &q); e == nil {
-			result, e = s.service.ConfirmPlan(ctx, q)
 		}
 	case "taskbelay_accept_known_failure":
 		var q application.AcceptFailureRequest
@@ -297,6 +294,12 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 	if e != nil {
 		return fail(e)
 	}
+	switch v := result.(type) {
+	case application.View:
+		result = taskResult(v, detail)
+	case application.RunResult:
+		result = runResult(v)
+	}
 	envelope.OK = true
 	envelope.Result = result
 	return envelope
@@ -305,12 +308,6 @@ func Summary(t domain.Task) map[string]any {
 	lifecycle := t.Status
 	node := strings.ToUpper(t.Status)
 	var blocker *string
-	if t.Status == "active" && !t.PlanApproved() {
-		lifecycle = "blocked"
-		node = "BLOCKED"
-		x := "Waiting for confirmation of the displayed plan"
-		blocker = &x
-	}
 	if t.Status == "active" && t.Issue != nil {
 		lifecycle = "blocked"
 		node = "BLOCKED"
@@ -475,7 +472,11 @@ func typeSchema(t reflect.Type) map[string]any {
 			if name == "" {
 				name = f.Name
 			}
-			props[name] = typeSchema(f.Type)
+			fieldSchema := typeSchema(f.Type)
+			if description := f.Tag.Get("description"); description != "" {
+				fieldSchema["description"] = description
+			}
+			props[name] = fieldSchema
 			if !strings.Contains(tag, "omitempty") {
 				required = append(required, name)
 			}

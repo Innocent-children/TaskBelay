@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {BudgetPanel,type BudgetDecision} from '../components/BudgetPanel';
 import { PlanPanel } from '../components/PlanPanel';
-import { call, identity, read, type Summary, type View } from '../lib/api';
+import { call, callTask, identity, read, type Summary, type View } from '../lib/api';
 
 const zh = navigator.language.startsWith('zh');
 const label = (en: string, cn: string) => zh ? cn : en;
@@ -41,24 +41,15 @@ export function App() {
     window.history.pushState(null, '', '/tasks/' + encodeURIComponent(id));
     void detail(id);
   }
-  async function confirmPlan() {
-    if (!view) return;
-    setBusy(true); setError('');
-    try {
-      setView(await call<View>('taskbelay_confirm_plan', {...identity(view), plan_digest:view.plan_digest,
-        user_ref:'local-webui-plan-confirmation', response:label('I understand and approve the displayed complete plan.', '我已理解并确认展示的完整方案。')}));
-      void load();
-    } catch(e) { setError(String(e)); } finally { setBusy(false); }
-  }
   async function updateBudget(budget:BudgetDecision,response:string) {
     if(!view)return;setBusy(true);setError('');
-    try {setView(await call<View>('taskbelay_update_budget',{...identity(view),plan_digest:view.plan_digest,budget,user_ref:'local-webui-budget-decision',response}));void load();}
+    try {setView(await callTask('taskbelay_update_budget',{...identity(view),authorization_digest:view.authorization_digest,budget,user_ref:'local-webui-budget-decision',response}));void load();}
     catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function archive() {
     if (!view) return;
     setBusy(true); setError('');
-    try { setView(await call<View>('taskbelay_archive_task', {...identity(view), archived:!view.task.archived})); void load(); }
+    try { setView(await callTask('taskbelay_archive_task', {...identity(view), archived:!view.task.archived})); void load(); }
     catch(e) { setError(String(e)); } finally { setBusy(false); }
   }
 
@@ -75,7 +66,7 @@ export function App() {
     if (!summary) return;
     setBusy(true); setError('');
     try {
-      setView(await call<View>('taskbelay_record_evidence', {
+      setView(await callTask('taskbelay_record_evidence', {
         ...identity(view), check_id: check, source: 'human', status: passed ? 'passed' : 'failed',
         summary, user_ref: 'local-webui-user-observation', content_digest: view.content_digest,
       }));
@@ -87,7 +78,7 @@ export function App() {
     const reason = window.prompt(label('Reason to cancel this task (files remain).', '取消此任务的原因（保留文件）。'));
     if (!reason) return;
     setBusy(true); setError('');
-    try { setView(await call<View>('taskbelay_cancel_task', {...identity(view), reason})); void load(); }
+    try { setView(await callTask('taskbelay_cancel_task', {...identity(view), reason})); void load(); }
     catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   }
@@ -99,7 +90,7 @@ export function App() {
   }
 
   return <div className="shell">
-    <header><a href="/">TaskBelay</a><span>{label('Engineering evidence, locally', '本地工程证据')}</span>
+    <header><a href="/">TaskBelay</a><span>{label('Development progress and results', '开发进展与检查结果')}</span>
       <button disabled={busy} onClick={() => view ? void detail(view.task.task_id, true) : void load()}>{label('Refresh actual state', '刷新实际状态')}</button>
     </header>
     <main><aside><h2>{label('Your tasks', '你的任务')}</h2>
@@ -114,8 +105,6 @@ export function App() {
       {!view ? <section><h1>{label('See results and remaining gaps', '查看结果与剩余问题')}</h1>
         <p>{label('TaskBelay keeps authorized outcomes, actual changes and execution results together. Choose a saved task to inspect it.', 'TaskBelay 将授权目标、实际改动与执行结果保存在一起。选择已保存的任务查看。')}</p>
       </section> : <>
-        <PlanPanel view={view} busy={busy} confirm={() => void confirmPlan()} />
-        {view.task.approval&&view.task.status==='active'&&<BudgetPanel key={view.plan_digest} view={view} busy={busy} update={(b,r)=>void updateBudget(b,r)}/>}
         <section><div className="row"><span className="badge">{view.task.status}</span>
           <small>{view.refreshed ? label('Actual conditions refreshed', '已刷新实际条件') : label('Saved state · refresh to assess applicability', '保存状态 · 刷新后判断适用性')}</small>
         </div><h1>{view.task.authorization.request}</h1>{view.task.summary && <p>{view.task.summary}</p>}
@@ -133,6 +122,7 @@ export function App() {
           {view.decision.missing_checks.length > 0 && <p>{label('Still required: ', '仍需验证：')}{view.decision.missing_checks.join(', ')}</p>}
           {view.decision.pending_runs.map(id => <p key={id}>{label('Unresolved execution: ', '未确定执行：')}<button onClick={() => void runLog(id)}>{id}</button></p>)}
         </section>
+        <PlanPanel view={view} />
         <section><h2>{label('Evidence and actual executions', '证据与实际执行')}</h2>
           <p>{label('Claims, executions and acceptance conclusions are distinguished. Evidence applies only to its declared inputs and conditions.', '声明、执行和验收结论分别记录。证据仅适用于声明的输入与条件。')}</p>
           {view.decision.accepted_failures.map(x => <div className="finding" key={x.check_id}><strong>{label('Accepted existing failures: ', '明确接受的既有失败：')}{x.check_id}</strong><p>{x.failures.join(', ')}</p><p>{x.reason}</p></div>)}
@@ -148,7 +138,7 @@ export function App() {
           </div>)}{log && <pre>{log}</pre>}
         </section>
         <section><h2>{label('Cumulative cost', '累计投入')}</h2><div className="metrics">
-          <div><strong>{view.task.usage.runs} / {view.task.authorization.limits.runs}</strong><span>{label('command executions', '命令执行')}</span></div>
+          <div><strong>{view.task.usage.runs}{(view.task.authorization.limits.runs ?? 0) > 0 ? ' / '+view.task.authorization.limits.runs : ''}</strong><span>{label('command executions', '命令执行')}</span></div>
           <div><strong>{duration(view.task.usage.execution_ms)}</strong><span>{label('actual execution', '实际执行')}</span></div>
           <div><strong>{view.task.usage.core_calls} · {duration(view.task.usage.core_ms)}</strong><span>{label('Task Core calls / wall time', '任务 Core 调用 / 墙钟时间')}</span></div>
           <div><strong>{duration(view.task.usage.host_reported_ms + view.task.usage.host_reported_wait_ms)} · {view.task.usage.host_reported_tokens} tokens</strong><span>{label('Host reports · may be incomplete', '宿主报告 · 可能不完整')}</span></div>
@@ -158,6 +148,7 @@ export function App() {
             {' · '}{label('unknown estimate: ', '未知成本估算：')}{duration(view.control_cost.unknown_ms)}{' · '}{label('pending calls (including this request): ', '未结算调用（包含本次请求）：')}{view.control_cost.pending}
           </p><p>{label('Core wall time includes execution and waiting; these figures overlap and must not be added. Revisions and history compaction retain cumulative cost.', 'Core 墙钟时间包含执行与等待，各项存在重叠，不能直接相加。修订与历史压缩保留累计消耗。')}</p>
         </section>
+        {view.task.status==='active'&&<BudgetPanel key={view.authorization_digest} view={view} busy={busy} update={(b,r)=>void updateBudget(b,r)}/>}
         <section><h2>{label('Constraints and limits', '约束与边界')}</h2>
           {view.task.authorization.constraints?.map(c => <p key={c.id}>{c.statement}</p>)}{view.task.risks?.map(r => <p key={r}>{r}</p>)}
           <p>{label('Structured write hooks cover known paths. Shell and external edits are observed at checkpoints. Semantic conclusions remain the agent’s reasoning.', '结构化写入钩子检查已知路径；shell 与外部编辑在检查点观察。语义结论仍属于代理判断。')}</p>

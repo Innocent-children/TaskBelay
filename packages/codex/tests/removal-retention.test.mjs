@@ -444,8 +444,8 @@ function productPaths(installedPackage, isolatedHome, dataDirectory) {
 }
 
 function taskIdentity(task) {
-  const {task_id, revision, host, status, authorization, plan, approval, checks, progress, evidence, acceptance} = task;
-  return {task_id, revision, host, status, authorization, plan, approval, checks, progress, evidence, acceptance};
+  const {task_id, revision, host, status, authorization, plan, checks, progress, evidence, acceptance} = task;
+  return {task_id, revision, host, status, authorization, plan, checks, progress, evidence, acceptance};
 }
 
 function fakeEnvironment(installPrefix, statePath, tracePath) {

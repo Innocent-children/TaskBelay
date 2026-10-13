@@ -1,55 +1,43 @@
-# Engineering control design and acceptance
+# Authorization, verification and recovery during development
 
 [中文](ENGINEERING-CONTROL.md) | [English](ENGINEERING-CONTROL_en.md)
 
-## User problem and outcome
+## Scenarios and decisions
 
-Users need necessary, proportionate and verifiable work within confirmed requirements, without speculative design, excessive verification, unrelated fixes, weakened acceptance or unauthorized effects. File or test counts alone do not define excess. Necessary root-cause repairs and responsibility changes must remain possible. Each work item explains its goal, consequence of omission, owner and simpler alternative.
+TaskBelay supports development needing saved progress, current verification or continuation across sessions. The agent works from the user's outcome and restrictions. Small mechanical edits, ordinary questions and work without useful saved state usually need only the native Host.
 
-## Data and responsibility
+The previous flow coupled user authority to a complete plan, every check and an explicit workspace choice. Routine method changes prompted again, and default budgets demanded user decisions. This design separates user decisions from agent arrangements, retaining real requests, restrictions and cumulative usage while removing repeated approvals and plan forms.
 
-Core owns the single Task, authorization, complete plan, exact user confirmation, observations, checks, evidence, cumulative cost and completion. Hosts show the plan, obtain an actual user answer and supply supported semantic reasoning. Message references are Host testimony, not conversation authentication. Repository observation owns Git/file facts; execution owns argv processes and receipts; storage owns atomic updates, deduplication, claims and bounded records. CLI, MCP and HTTP share the service.
+## Authority and workspace
 
-## Confirmation before implementation
+open_task uses the real user_ref, request, outcomes and explicit restrictions. Sufficient existing authority permits work immediately; there is no plan-confirmation tool. The agent explains the approach and verification and chooses methods within the user boundary and native Host permissions. Core cannot authenticate conversation or grant extra Host permissions.
 
-open_task saves a pending plan: understanding, root cause, approach, simpler alternative, necessary work and ownership, verification basis and completion. plan_digest binds goals, constraints, allowed/forbidden paths, dependency policies, checks, limits, workspaces and proposed content. confirm_plan records the actual answer and digest. Before confirmation, implementation writes, checks, progress and human acceptance are denied. Changed content after proposal prevents confirmation; restore it or disclose it in a revised plan. Initial investigation uses already authorized read-only Host operations.
+Use the specified or clearly selected current workspace, showing directory, branch and initial changes. Ask only for genuine ambiguity, conflicts or needed new workspace operations. Upstream checks and integration follow actual need and Git authority, not a mandatory startup step. Unchecked remote state remains unknown.
 
-revise_task replaces authorization, plan and checks. Material changes clear confirmation and need a newly displayed plan and actual answer. Unchanged goal progress and applicable results remain; cost never resets. checkpoint only records progress, semantic review, issues and reported cost; it rejects checks. Reuse a still-valid confirmation across sessions without asking again for ordinary progress.
+revise_task replaces only supplied authorization, plan or checks, with a reason. Approach, method, forecast and review-hint changes reuse the request. Changed outcomes, request or explicit restrictions, and expanded user-set caps, need the actual new user decision. An old reference cannot authorize expansion. Unaffected progress and results remain; relevant requirements, inputs or conditions invalidate affected results. Usage never resets.
 
-Approval retains the original plan digest, an authority digest excluding synchronizable configuration, budget ceilings and per-check timeout ceilings. Timeout/prose synchronization and restoring limits within the recorded grant reuse approval. Goals, plans, paths, dependencies, inputs, argv, retry and full-suite semantics cannot borrow that approval. taskbelay_update_budget requires the current plan digest and the actual complete budget decision; Core/Host work caps update together with separately attributed budget approval and unchanged lifetime cost/acceptance.
+## Scope and necessity
 
-## Scope and design necessity
+The plan contains approach and verification_basis. Goals express requested outcomes; path judgments use goal_ids and basis to connect actual changes, without another work-item table or duplicate necessity field. The delivery review uses one summary to explain cause resolution, ownership, proportionate complexity and validation, and whether the resulting structure is still appropriate; uncertainty records unresolved concerns.
 
-expected_paths predicts work; allowed_paths restricts permission, defaulting to bound repositories; forbidden_paths takes precedence. Qualify paths as key::path in multiple repositories; a dot means the whole scope. Structured writes check confirmation, unresolved authorization, workspace identity, allowed paths, exclusions and pins. Shell and external edits are checked on observation; this is not a global sandbox.
+expected_paths is a forecast. allowed_paths, forbidden_paths, content pins and dependency restrictions express real user boundaries, not guesses about likely edits. Structured hooks check explicit scope and pending authority questions; other writes are observed at checkpoints. TaskBelay is not a sandbox.
 
-Each path judgment cites approved work_id, goal_ids, basis and necessity. Core checks references and current contents, not semantic truth. Delivery additionally needs a current plan/content-bound review of root cause, responsibilities, proportionality, verification and whether the same structure would be chosen again. Uncertainty or a negative conclusion prevents completion. Scores cannot override deterministic restrictions.
+## Verification and cost
 
-Dependency permission binds the exact repository manifest and package name. npm dependency/dev/optional/peer section prefixes describe declaration location; they must not become part of the package name and reject an approved package. That permission grants no other repository, forbidden path or installation authority.
+Checks retain actual argv, inputs, environment, purpose and rationale. The agent can adjust methods under the same outcome without user approval of every command, while obeying native permissions and retaining acceptance quality. A new method needs its own actual result. Claims never satisfy acceptance; human records require actual user observations.
 
-Host and Core use the same immutable source selection: local sources read the original base_branch upstream configuration; remote sources use the selected remote_name/base_branch tracking ref without requiring a local branch. A task branch own upstream does not replace the source. Integration needs separate actual authority and a stable operation_id. A private atomic receipt saves batch intent and frozen targets before mutation, then per-root applied, blocked or unknown results. Multi-repository Git is not atomic: later drift retains earlier success and returns a partial result. The same identity only reads its receipt; recovery observes current Git after the owner stops without replay, continuation or rollback, and unknown command outcomes remain unknown.
+Reuse passes under unchanged conditions. Relevant changes invalidate them; unrelated outcomes or new independent checks do not. Unchanged failures require new diagnostic information to retry; three unchanged failures require different code, conditions or methods. Full suites need current justification, not mechanical repetition.
 
-Remote observations retain actual fetch completion time fetched_at, configured remote_name/remote_ref, tracking commit and local HEAD; checked_at is the later comparison time. Failed/skipped fetch has no fetched_at and never means latest. Core verifies local facts; the Host performs the actual fetch under real Git authority.
+Unset limits use zero and continue recording usage. Explicit positive caps are enforced; increasing or removing them needs a real decision. Insufficient budget does not lower acceptance. Actual, reserved and uncertain usage are separate; Core and Host times overlap and must not be summed.
 
-## Verification and repeated cost
+## Interruption and delivery
 
-The confirmed plan defines checks. purpose distinguishes acceptance, regression and diagnostic; diagnostics must also serve goals. Each run supplies rationale, and a full suite also supplies full_suite_basis explaining the current gap targeted checks cannot cover. Reuse an applicable passing result for the current check. Timeout, retry policy, full-suite flag and explanation changes preserve passing results; a renamed or otherwise changed check whose old result is inapplicable may establish its own result. Retrying unchanged failures requires previous_run_id and distinct new_information. Three failures require changed actual inputs, requirements or method. Renaming a check, changing prose or timeout does not reset the same execution's failure count.
+Save operation identity before running, and save results before returning. After response loss read the original Task/run; receipt recovery does not execute again. Wait for live processes. If execution stopped without a result, inspect side effects and retain uncertainty instead of claiming success.
 
-Default inputs cover Git-visible content in every bound repository. Narrowing needs input_basis; key::path can include other repositories and explicit ignored inputs. Applicability binds check, relevant goals/constraints, inputs, environment and executable. Unknown conditions are not verified. Failed results retain their status, and claims cannot replace execution. Limits are ceilings: spare budget does not justify another check and exhaustion does not waive acceptance.
+Completion requires goal conclusions, applicable required results, current diff review and no unresolved execution or decision. Existing regression failures need real comparisons and explicit user acceptance; failures remain failed, and related changed conditions invalidate the exception. Cancellation, completion and archiving retain files and grant no commit, push, merge or publication authority.
 
-## Known failures, recovery and delivery
+## Validation and scope
 
-accept_known_failure is restricted to checks approved as regression. It needs a current actual failure, an applicable pass from an approved comparison command, named existing failures and the user's decision. The comparison declares compares; its adequacy still needs technical review. Acceptance checks cannot be waived. Exceptions bind plan/content, expire on changes and leave evidence failed. Delivery cites current evidence and exceptions without claiming all checks passed.
+Use temporary Git repositories and isolated storage to verify immediate authorized start, method revisions without repeat approval, new references for actual authority changes, unset and explicit limits, selective result invalidation after changed requirements or external edits, response-loss/interruption recovery, and refusal to finish without required checks. Verify tool Schemas, installed Host packages and the interface together.
 
-Reserve identity and cost before process start and persist the managed process identity before command activation. Read the original result after response loss; receipt recovery does not rerun. A stopped Core with a live command/process group remains pending. After both stop, a missing receipt leaves the result unknown, never passed. Unresolved runs prevent new execution, completion and cancellation. Execution, Core and reported Host cost survive revisions and compaction. Lifecycle remains active/done/cancelled. Completion requires current approval, necessity review, all goals/checks and resolved executions. Cancellation retains files and releases claims. Terminal tasks can be archived/restored; pagination reaches beyond the first 200 tasks and detail links select the correct task.
-
-## Risks and non-goals
-
-No historical-data compatibility, migration or automatic deletion; no general workflow engine, coding model, sandbox, automatic Git publication or workspace relocation. Host semantic claims cannot be authenticated and actions outside integration cannot be intercepted. Actual success does not prove adequate tests or lower net cost. Control has overhead and must not demand a form or poll after every mechanical edit.
-
-## Acceptance and proposal assessment
-
-Use isolated Windows Git repositories and SQLite to verify: no execution before confirmation; old confirmation cannot approve a changed plan; checkpoint cannot replace failing acceptance; unauthorized writes are denied or observed as blockers; cross-repository changes invalidate dependent evidence while independent results survive; unjustified retry and renaming bypass fail; exceptions retain failures and expire; actual interruption does not replay; pagination, archive and detail links work.
-
-Also check false positives: necessary approved repairs proceed, implementation and verification can alternate, unchanged verified content reuses real results and explicit existing regression exceptions remain truthful. Core, protocol, storage, adapter and journey checks have separate provenance. Fixtures do not establish native Host chats or other-platform operation.
-
-The design restores actual approval and results across sessions using Git and execution facts, with one necessary pre-development confirmation and one Core Task. It adds no development-phase forms. Benefits require real-task comparisons, not field completeness or passing tests. See [project status](PROJECT-STATUS_en.md).
+Cover normal paths, common failures and relevant known regressions; do not add mechanisms for speculative combinations of rare conditions. Actual Core execution, scripted user/semantic input, adapter tests and real model sessions remain distinct. Task quality, user interventions, elapsed time and usage need controlled comparisons; passing tests do not establish product benefit. Preserve unsupported databases without migration or deletion.

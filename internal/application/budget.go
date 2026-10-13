@@ -7,13 +7,12 @@ import (
 	"time"
 )
 
-// UpdateBudget applies the complete approved decision once; it never infers approval from progress.
 type BudgetRequest struct {
 	Identity
-	PlanDigest domain.Digest         `json:"plan_digest"`
-	Budget     domain.BudgetDecision `json:"budget"`
-	UserRef    string                `json:"user_ref"`
-	Response   string                `json:"response"`
+	AuthorizationDigest domain.Digest         `json:"authorization_digest"`
+	Budget              domain.BudgetDecision `json:"budget"`
+	UserRef             string                `json:"user_ref"`
+	Response            string                `json:"response"`
 }
 
 func (s *Service) UpdateBudget(ctx context.Context, q BudgetRequest) (View, error) {
@@ -29,8 +28,8 @@ func (s *Service) UpdateBudget(ctx context.Context, q BudgetRequest) (View, erro
 	if e = requireExecutionAuthority(t); e != nil {
 		return View{}, e
 	}
-	if q.PlanDigest != t.PlanDigest() {
-		return View{}, domain.Fail("PLAN_CHANGED", "plan_digest", "read the current proposal before recording its budget decision")
+	if q.AuthorizationDigest != t.Authorization.Digest() {
+		return View{}, domain.Fail("AUTHORIZATION_CHANGED", "authorization_digest", "read the current task before recording its budget decision")
 	}
 	if e = domain.Text("user_ref", q.UserRef); e != nil {
 		return View{}, e
@@ -38,7 +37,7 @@ func (s *Service) UpdateBudget(ctx context.Context, q BudgetRequest) (View, erro
 	if e = domain.Text("response", q.Response); e != nil {
 		return View{}, e
 	}
-	previous := t.PlanDigest()
+	previous := t.Authorization.Digest()
 	a := t.Authorization
 	a.Limits = q.Budget.Limits()
 	if e = a.Validate(); e != nil {
@@ -48,11 +47,6 @@ func (s *Service) UpdateBudget(ctx context.Context, q BudgetRequest) (View, erro
 		return View{}, domain.Fail("BUDGET_UNCHANGED", "budget", "reuse the existing budget decision")
 	}
 	t.Authorization = a
-	// The original plan decision remains attributable; only the complete budget ceiling changes.
-	approval := *t.Approval
-	approval.Limits = a.Limits
-	approval.PlanDigest = t.PlanDigest()
-	approval.BudgetDecision = &domain.BudgetApproval{DecisionDigest: domain.Hash([]any{previous, q.Budget}), UserRef: q.UserRef, Response: q.Response, ConfirmedAt: time.Now().UTC()}
-	t.Approval = &approval
+	t.BudgetDecision = &domain.BudgetApproval{DecisionDigest: domain.Hash([]any{previous, q.Budget}), UserRef: q.UserRef, Response: q.Response, ConfirmedAt: time.Now().UTC()}
 	return s.save(ctx, t, o, store.Charge{})
 }

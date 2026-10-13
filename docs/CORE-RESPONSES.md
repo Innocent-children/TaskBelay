@@ -12,8 +12,10 @@ recovery.action 指定 correct_request、read_task、self_correct、recover_run�
 
 JSON 未知成员、重复成员及类型错误定位到具体 arguments 路径，包括数组下标，例如 arguments.checks[0].argv[0]；邻接示例使用真实生产者的完整编码。
 
-PLAN_CONFIRMATION_REQUIRED、PLAN_CHANGED、AUTHORIZATION_PENDING 要求真实用户决定；UNAPPROVED_CHANGES 要求恢复提案时内容或明确披露后修订。CHECK_ALREADY_SATISFIED 表示复用已有结果，RETRY_BASIS_REQUIRED 要求读取原运行并提供新诊断信息。FAILURE_ACCEPTANCE_NOT_ALLOWED 不允许以例外绕过目标验收。拒绝未启动进程，但调用成本仍记录。
+AUTHORIZATION_REQUIRED 表示用户目标、明确限制或已设上限发生变化，需要实际新用户引用；AUTHORIZATION_PENDING 表示已有问题尚未得到决定。AUTHORIZATION_CHANGED 要求读取当前任务后再提交预算决定。CHECK_ALREADY_SATISFIED 表示复用已有结果；RETRY_BASIS_REQUIRED 要求读取原运行并补充新诊断信息。FAILURE_ACCEPTANCE_NOT_ALLOWED 禁止用例外豁免验收。
 
-PLAN_BUDGET_INFEASIBLE 要求根据预算报告修正不可预留的配置，不能据此取消验收。REMOTE_OBSERVATION_STALE 表示 HEAD、对应上游或追踪提交与宿主观察不匹配，需重新观察。server_info.startup_diagnostics 说明当前 Core 已到达；不能据 CLI 成功断言当前会话已暴露 MCP。调用计量初始化失败不会执行请求。error.details 的 control_meter.<阶段> 保存原始原因：PROCESS_IDENTITY_DENIED/PROCESS_IDENTITY_UNAVAILABLE 要求检查进程查询与宿主权限；拒绝不能作为进程已结束的证明。STORAGE_UNAVAILABLE 仅表示真实存储读取/写入失败；已有 STORAGE_CORRUPT 等原因保留，修复时不删除数据。CONTROL_INITIALIZATION_FAILED 指向其他初始化步骤，CONTROL_INITIALIZATION_CANCELLED 表示取消或超时。恢复提示按实际责任分类，不据此声称 MCP 未连接。
+REMOTE_OBSERVATION_STALE 表示 HEAD、对应上游或追踪提交与宿主观察不匹配，需重新观察。server_info.startup_diagnostics 说明当前 Core 已到达；不能据 CLI 成功断言当前会话已暴露 MCP。调用计量初始化失败不会执行请求。error.details 的 control_meter.<阶段> 保存原始原因：PROCESS_IDENTITY_DENIED/PROCESS_IDENTITY_UNAVAILABLE 要求检查进程查询与宿主权限；拒绝不能作为进程已结束的证明。STORAGE_UNAVAILABLE 仅表示真实存储读取/写入失败；已有 STORAGE_CORRUPT 等原因保留，修复时不删除数据。CONTROL_INITIALIZATION_FAILED 指向其他初始化步骤，CONTROL_INITIALIZATION_CANCELLED 表示取消或超时。恢复提示按实际责任分类，不据此声称 MCP 未连接。
 
 WebUI 启动若子进程提前退出，明确返回进程退出和本次 webui-runtime.log 位置；未就绪超时也保留日志位置。先读原启动记录，不将退出或存储失败统称为连接问题。
+
+默认任务返回当前摘要，不包含完整文件指纹和尝试历史。taskbelay_get_task 的 detail:true 将完整视图放入 result.details；run_check/recover_run 的 run 是状态摘要，通过 get_run 读取真实输出。未设成本上限时 budget.limits[].limited=false；remaining=0 不能解释为额度耗尽。

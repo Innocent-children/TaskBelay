@@ -24,20 +24,17 @@ func (t Task) semanticSurface(scopes []string) Digest {
 	}
 	return Hash(entries)
 }
-func (t Task) PathReviewDigest(p string, ids []string, workID string) Digest {
+func (t Task) PathReviewDigest(p string, ids []string) Digest {
 	goals := []Goal{}
 	for _, id := range ids {
 		g, ok := t.Goal(id)
 		if !ok {
 			return ""
 		}
+		g.Checks = nil
 		goals = append(goals, g)
 	}
-	work, ok := t.Work(workID)
-	if !ok {
-		return ""
-	}
-	return Hash([]any{p, goals, work, t.semanticSurface([]string{p})})
+	return Hash([]any{p, goals, t.semanticSurface([]string{p})})
 }
 func (t Task) ConstraintReviewDigest(c Constraint) Digest {
 	return Hash([]any{c, t.semanticSurface(c.Paths)})
@@ -70,14 +67,14 @@ func (t Task) MergeAssessment(a Assessment) *Assessment {
 		for _, e := range r.Binding.TaskSurface {
 			p := t.QualifiedPath(r.Key, e.Path)
 			for _, j := range old.Paths {
-				if j.Path == p && j.ScopeDigest == t.PathReviewDigest(j.Path, j.GoalIDs, j.WorkID) {
+				if j.Path == p && j.ScopeDigest == t.PathReviewDigest(j.Path, j.GoalIDs) {
 					paths = append(paths, j)
 				}
 			}
 		}
 	}
 	for _, j := range a.Paths {
-		j.ScopeDigest = t.PathReviewDigest(j.Path, j.GoalIDs, j.WorkID)
+		j.ScopeDigest = t.PathReviewDigest(j.Path, j.GoalIDs)
 		paths = slices.DeleteFunc(paths, func(v PathJudgment) bool { return v.Path == j.Path })
 		paths = append(paths, j)
 	}

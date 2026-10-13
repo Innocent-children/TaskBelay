@@ -210,8 +210,8 @@ export async function cleanup(id, operation, input, options = {}) {
     const repo = r.repositories.find(v => v.key === input.repository_key);
     if (!repo || repo.workspace_mode !== "dedicated_worktree") throw new Error("Only receipt-owned dedicated worktrees can be cleaned");
     if (input.terminal !== true || input.authorized !== true) throw new Error("Terminal Task and separate deletion authorization required");
-    const response = await (options.readTask ?? (taskID => coreJSON(["call","taskbelay_get_task"], {task_id:taskID,refresh:false}, options)))(input.task_id);
-    const task = response?.result?.task;
+    const response = await (options.readTask ?? (taskID => coreJSON(["call","taskbelay_get_task"], {task_id:taskID,refresh:false,detail:true}, options)))(input.task_id);
+    const task = response?.result?.details?.task;
     if (!task || !["done","cancelled"].includes(task.status) || task.revision !== input.revision || task.task_id !== input.task_id || !task.repositories?.some(entry => entry.key === repo.key && entry.workspace_origin.provisioning_receipt_id === provisioningReceiptID(id, repo.key) && entry.workspace_origin.canonical_worktree_root === repo.worktree_path)) throw new Error("Current terminal Core task does not own this workspace");
     const key = operation === "cleanup-worktree" ? "worktree_cleanup" : "branch_cleanup";
     if (repo[key] === "completed") return r;

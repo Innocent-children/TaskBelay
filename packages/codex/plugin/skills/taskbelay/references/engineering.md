@@ -1,112 +1,76 @@
 <!-- Generated from skills/taskbelay/core/engineering.md; edit the shared source and run node scripts/sync-skill-references.mjs. -->
 
-# Engineering work with TaskBelay
+# Development with TaskBelay
 
-The coding agent makes technical decisions and authorized edits. Core owns one Task, the displayed
-plan and its approval, actual scope, evidence, cumulative cost, recovery and acceptance.
+Use TaskBelay when saved progress, current verification or interruption recovery helps the actual
+request. Small mechanical edits and ordinary questions usually need only the native agent. Honor an
+explicit invocation or opt-out. The agent understands and edits; Core records one Task and checks
+actual scope, result applicability, cost and completion.
 
-## Understand, propose and confirm before implementation
+## Start from existing authority
 
-Read the actual request and repository rules. Investigate the cause and responsibility before
-choosing a solution. Explain the outcome, non-goals, root cause, approach, simpler alternative,
-necessary work and owners, allowed scope, verification and cost limits, and completion conditions.
-A large necessary repair is not automatically overdesign; a small unrelated change is not justified
-by its size. Do not add frameworks, speculative compatibility or unrelated fixes. Report independent
-problems without editing them. Initial investigation uses already authorized read-only Host tools.
+Read the request and repository rules, locate the cause and the responsible code, and explain a
+proportionate approach. Reuse the user's actual authorization. Open the Task in the selected/current
+workspace with the real user_ref, requested outcomes, explicit restrictions, checks and a short plan
+(approach and verification_basis). No separate plan confirmation is required. Do not invent limits
+or turn predicted files into a user allowlist. Unset cost limits remain unset; actual usage accumulates.
 
-Before edits, assess every repository with the Host freshness operation. Bound callers copy workspace_origin.source_type, remote_name and base_branch into every repository item. Local sources use the original source branch configuration even when the task branch gains an upstream; remote sources use refs/remotes/<remote_name>/<base_branch> without requiring a local branch. Before binding, an omitted selection means the observed current local branch. Fetch within actual Git authority and record no upstream, skipped/failed fetch, dirty work and divergence explicitly. Fetch and integration are distinct. Integrate only separately authorized clean fast-forwards; supply a stable operation_id and retain operation.receipt_path and every repository result. Durable intent precedes fetch/merge. An identical identity reads the retained receipt; never repeat it after response loss. recover:true uses the original complete request and only reconciles current Git facts after the recorded owner stops. Reconciled does not mean the original command passed: unknown remains unknown, remaining roots are not executed, and applied roots are never rolled back. Inspect unresolved command/hook effects before any fresh separately authorized assessment of remaining work. Copy remote_freshness into open_task and later observations into checkpoint.repository_freshness; retain the initial baseline. Recheck before committing during a long task. Core never fetches or integrates Git.
+Show the directory, branch and initial changes. Ask only when the workspace is unclear or a real
+conflict needs a choice. Read [workspace](workspace.md) only for requested branch/worktree preparation,
+upstream integration or cleanup. These are optional operations with their own actual authority.
 
-Use taskbelay_open_task to save authorization, plan and checks. Show that complete proposal to the
-user and obtain an explicit answer approving both understanding and plan. Then call
-taskbelay_confirm_plan with the returned plan_digest, actual user_ref and response. Never infer
-approval of an unseen plan or invent a user answer. Reuse an earlier answer only when it explicitly
-approved this exact unchanged proposal. Core cannot authenticate Host testimony. The local WebUI
-can display the complete plan and accept a direct user confirmation.
+## Continue and adjust
 
-Review view.budget together with the plan: actual, reserved, uncertain, remaining and next-check timeouts. Required unreservable checks and insufficient run counts need correction; aggregate timeout plus retry estimates are risks, not hard failures. Choose proportionate timeouts and bounded retry headroom, not uniformly huge defaults. Record a concrete complete budget decision with taskbelay_update_budget; work_ms updates both overlapping Core/Host caps. Check all remaining limits and preserve acceptance.
+Implement and run relevant checks in any useful order within the request and native Host permissions.
+Record progress at meaningful points: a completed piece of work, a relevant scope change, an actual
+verification result, a decision that needs the user, or a handoff. Do not checkpoint every edit or poll
+unchanged state. Review real changes against goals and constraints, correcting within scope first.
 
-Before confirmation, do not implement, run checks or submit implementation progress. If contents
-changed after proposal, restore only your authorized changes or disclose the difference in a revised
-plan. Do not turn retroactive approval into a claim that work was authorized before it happened.
+Use revise_task with only the fields that need replacing. Routine approach, forecast and check changes
+reuse the original request. Changed user outcomes or explicit restrictions, and increased/removed
+user-set limits, need the actual new user decision. Never invent its user_ref. Changing the verification
+method must still establish the same requested outcome; replacing a failing assertion with a passing
+placeholder is not verification. Core checks applicability, not the truth of the agent's reasoning.
 
-Before every new Task, ask the user to choose its workspace: current branch, new local branch, or
-dedicated worktree. Show current directories, branches and initial changes. Do not infer a default
-or carry a choice from another Task. Resume an existing Task in its saved workspace. Branch/worktree preparation, new chats, installation,
-Git operations, publication and deletion follow actual user authority and native permissions. Resume
-an existing Task in its original workspace; do not create a replacement to hide cost or uncertainty.
-No historical-data readers, migration or reset are provided; preserve unsupported data.
+Preserve unaffected progress and passing results. Explicit allowed_paths, forbidden_paths, pins and
+manifest dependency restrictions still apply. Dependencies without an explicit policy need a reasoned
+necessity/compatibility review, not automatic permission escalation. Native installation permissions
+remain in force. Structured hooks cover supported paths; shell and external edits are observed at
+checkpoints. TaskBelay is not a sandbox.
 
-## Work within the approved plan
+## Verify the remaining gap
 
-Confirmation binds authorization, plan, checks, limits, repository origins and proposed contents.
-Implementation and targeted verification can alternate after confirmation. A material change uses
-revise_task and a freshly displayed/confirmed plan. Unchanged ordinary progress needs no new approval.
-checkpoint cannot replace checks. Changes to acceptance or verification coverage must not be disguised
-as harmless metadata or progress. Existing checks may not be replaced with a command that always passes.
+Each check names its purpose, exact argv, actual conditions and rationale. Default inputs ["."] cover
+Git-visible inputs across all bound repositories. Narrow inputs only with a concrete input_basis that
+includes relevant helpers, configuration and dependencies; key::path selects another repository.
+Undeclared external services are not verified. Use repeatable only for checks whose uncertain effects
+can safely be inspected and repeated; otherwise retain requires_user.
 
-Predicted paths do not grant permission. Explicit allowed_paths, forbidden_paths, pins and dependency
-policies are deterministic restrictions. Show actual per-repository manifest policies before confirmation; use package names (lucide-react, not dependencies:lucide-react) for npm grants. Conditional plan permission must be represented in the same actual authorization, not left only in prose. Dependency permission grants no separate file-write or install authority. The structured write hook checks supported operations before
-writes. Other editors, shell commands and external effects are observed at checkpoints, not intercepted.
-Respect the current Host's actual coverage; this is not a sandbox or an additional permission grant.
+Run only necessary checks and reuse applicable passing results. Read get_run for output and failure
+diagnostics. An unchanged failure retry needs previous_run_id and new_information; after three
+unchanged failures, change the implementation, conditions or method. A full suite needs a current
+full_suite_basis. Extra budget is not a reason for extra testing, and exhausted budget never waives
+acceptance. Set or change explicit cost limits only from the actual user decision.
 
-Map each real changed path to its approved work_id and goal_ids, with concrete basis and necessity.
-Review observed interfaces, dependencies, data contracts and unexpected paths. Correct within current
-authority first. Save an authorization issue only for a real unresolved decision; clear it only with
-its actual response. Semantic conclusions cannot override deterministic restrictions.
+## Resume and deliver
 
-Before delivery submit assessment.review: root_cause, responsibilities, proportionality, verification,
-would_choose_again and uncertainty. Read the actual diff and current needs, not just the agent's summary.
-Explain whether the original cause is resolved and whether this structure would be chosen again.
-Core binds review digests; it cannot prove the reasoning true. Do not submit a score as proof.
+Keep operation_id and returned run_id. After a lost response, read the saved Task/run before taking
+another action. Recover signed results without re-execution. Wait while an original process is alive;
+when it has stopped without a result, inspect effects and record what remains unknown. Obtain a real
+user decision before repeating a non-repeatable operation. Do not replace a Task to erase costs or
+unresolved work. Preserve unsupported historical data.
 
-## Verify only an actual gap
+Before delivery, review the actual diff. assessment.paths ties each changed path to goal_ids and a
+concrete basis. assessment.review.summary explains whether the cause is resolved, responsibility is
+correct, complexity and validation are proportionate, and the resulting structure is still the one
+you would choose; uncertainty names unresolved concerns. Do not fill separate ceremonial work tables.
 
-Each check describes exact argv, cwd, purpose, rationale, conditions and inputs. acceptance checks
-establish the requested result; regression checks detect unintended changes; diagnostic checks need
-a declared goal_ids relationship. A full_suite check requires full_suite_basis on every execution:
-explain why targeted verification is insufficient now. Extra budget never justifies extra tests.
-Test-code changes also need a necessity explanation; do not mirror implementation or add unrelated cases.
+Finish only when decision.ready. Report actual changes, passed/failed/unrun checks, accepted existing
+regression failures and remaining limits. Claims never prove execution; human records require actual
+completed user observations. Existing regression failures require real comparison results and explicit
+user acceptance, and remain failures in delivery. Stop at the requested outcome. Completion grants no
+Git, publication or deletion authority.
 
-Default inputs:["."] covers Git-visible inputs in every bound repository. Narrowing requires concrete
-input_basis and must include helpers, manifests, configuration and cross-repository dependencies.
-Use key::path to select another repository. Explicit scopes can include ignored files. Undeclared
-services or environment are not verified. Selected environment values are hashed, not exposed.
+Tool fields and recovery: [protocol](protocol.md). Normal use should not require reading plugin source.
 
-Use run_check with a concrete rationale. The Core executes within native Host permissions and records
-real process results. Reuse passing evidence under unchanged actual conditions. Retrying an unchanged
-failure requires previous_run_id and distinct new_information explaining what was learned. Three
-failures under the same method/requirements/conditions stop repetition. Renaming checks or changing
-prose/timeouts cannot reset the failure count. Execution settings and rationale/input_basis text do not invalidate unchanged passing results. Timeout reductions/restoration and prose synchronization within recorded approval ceilings reuse the existing actual decision. Retry/full-suite policy, argv/input/permission changes and larger ceilings require an actual new decision; configuration synchronization never expands authority. Duplicate execution is refused only when this check has an applicable passing result; a
-renamed or substantively changed check can establish its own result. A meaningful input or method change can justify another run.
-
-Claims, completed human observations and Core executions are separate. record_evidence accepts only
-claim or human; claims never satisfy checks. Human evidence needs a human check and actual user_ref.
-A pending human check is not a completed result. Cumulative cost survives revision and compaction.
-Core measures execution and control; reported Host time/tokens may be incomplete. Overlapping times
-must not be added. Limits cannot lower acceptance quality.
-
-## Existing failures, recovery and delivery
-
-An explicitly approved regression check may have a known-failure exception. Run the approved comparison
-whose compares names that check. It must actually establish no new/changed failures; a zero exit alone
-is not a semantic proof. Supply current failed/comparison evidence, concrete failure names, reason
-and the actual user's acceptance via accept_known_failure. Acceptance checks cannot be waived.
-Exceptions expire with changed plan/content, and failed evidence remains failed in the handoff.
-
-Retain complete tool requests/responses. Check ok before result. Every mutation uses current revision
-and stable operation_id; identical replay reads saved results. After response loss read the Task/run.
-recover_run imports the signed result without execution. A live original owner means wait for it;
-a stopped Core with a live recorded command/process group remains pending. Process identity is saved
-before command activation; a missing receipt cannot be reconciled until both Core and the command have stopped.
-Then inspect effects and record resolution_basis, plus a
-real user_ref for non-repeatable checks. Unknown interruption never becomes a pass. Never blindly replay.
-
-Finish only when decision.ready: current confirmation and structure review, completed goals, applicable
-passing evidence or valid regression exceptions, and no unresolved execution or user decision. Report
-actual results, exceptions, remaining limits and unexecuted work. Stop when the approved outcome is
-satisfied; do not add polish or broader tests without a new reason. Done/cancelled keeps files and
-grants no Git or publication authority. Terminal tasks may be archived/restored without changing outcome.
-
-Implementation: `internal/domain/plan.go`, `internal/domain/control.go`,
-`internal/application/plan.go`, `internal/application/service.go`,
-`internal/execution/fingerprint.go` and `internal/mcp/server.go`. See [protocol](protocol.md).
+Maintainer implementation reference: `internal/application/service.go`.

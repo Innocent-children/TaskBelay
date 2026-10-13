@@ -13,67 +13,50 @@ import (
 )
 
 func testPlan() domain.Plan {
-	return domain.Plan{
-		Understanding: "Change only the requested text.", RootCause: "The current text does not express the requested behavior.",
-		Approach: "Edit the existing file directly.", SimplerAlternative: "A separate abstraction or configuration has no current consumer.",
-		VerificationBasis: "A user observation checks the current text without an unrelated test suite.", Completion: "The requested text is present with no unrelated changes.",
-		Work: []domain.PlannedWork{{ID: "edit", GoalIDs: []string{"goal"}, Change: "Update requested text", Owner: "Existing text file", Necessity: "The goal cannot be delivered without this edit"}},
-	}
+	return domain.Plan{Approach: "Edit the existing text file directly; no new abstraction is needed.", VerificationBasis: "Read the requested text and review the actual diff."}
 }
-func fixture(t *testing.T) (*Service, View, string) {
-	t.Helper()
-	s, v, root := proposedFixture(t)
-	v, e := s.ConfirmPlan(context.Background(), ConfirmPlanRequest{Identity: Identity{v.Task.TaskID, "confirm", v.Task.Revision}, PlanDigest: v.PlanDigest, UserRef: "fixture-user-answer", Response: "I understand and approve this exact plan"})
-	if e != nil {
-		t.Fatal(e)
-	}
-	return s, v, root
-}
-func TestPlanConfirmationGuardsImplementationAndIsInvalidatedByRevision(t *testing.T) {
-	s, v, root := proposedFixture(t)
+func ptr[T any](v T) *T { return &v }
+func TestUserRequestStartsWorkAndMethodChangesDoNotAskAgain(t *testing.T) {
+	s, v, root := fixture(t)
 	ctx := context.Background()
 	before, e := s.PreWrite(ctx, root, []string{filepath.Join(root, "file.txt")}, true)
-	if e != nil || before["decision"] != "deny" {
-		t.Fatal("unconfirmed write allowed", before, e)
+	if e != nil || before["decision"] != "allow" {
+		t.Fatal("existing request did not authorize work", before, e)
 	}
-	_, e = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "start-too-soon", v.Task.Revision}, Progress: []domain.Progress{{GoalID: "goal", Status: "doing", Summary: "editing"}}})
-	if code(e) != "PLAN_CONFIRMATION_REQUIRED" {
-		t.Fatal(e)
-	}
-	v, e = s.ConfirmPlan(ctx, ConfirmPlanRequest{Identity: Identity{v.Task.TaskID, "confirm", v.Task.Revision}, PlanDigest: v.PlanDigest, UserRef: "fixture-real-answer", Response: "Approved understanding and plan"})
+	v, e = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "start", v.Task.Revision}, Progress: []domain.Progress{{GoalID: "goal", Status: "doing", Summary: "Editing the requested text"}}})
 	if e != nil {
 		t.Fatal(e)
-	}
-	old := v.PlanDigest
-	after, e := s.PreWrite(ctx, root, []string{filepath.Join(root, "file.txt")}, true)
-	if e != nil || after["decision"] != "allow" {
-		t.Fatal(after, e)
 	}
 	plan := v.Task.Plan
-	plan.Approach = "A different approved approach must first be shown"
-	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "revise", v.Task.Revision}, Authorization: v.Task.Authorization, Checks: v.Task.Checks, Plan: plan, Reason: "Actual material design change"})
-	if e != nil {
+	plan.Approach = "Update the existing formatter after locating the cause"
+	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "revise-method", v.Task.Revision}, Plan: &plan, Reason: "Investigation found the responsible formatter"})
+	if e != nil || v.Decision.Advice == "ask_user" || len(v.Task.Progress) != 1 {
+		t.Fatal("method revision lost authority or progress", e)
+	}
+	before, e = s.PreWrite(ctx, root, []string{filepath.Join(root, "file.txt")}, true)
+	if e != nil || before["decision"] != "allow" {
+		t.Fatal(before, e)
+	}
+	a := v.Task.Authorization
+	a.Request = "Also change the public API"
+	_, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "expand", v.Task.Revision}, Authorization: &a, Reason: "New request needs an actual user decision"})
+	if code(e) != "AUTHORIZATION_REQUIRED" {
 		t.Fatal(e)
 	}
-	if v.Task.Approval != nil || v.Decision.Advice != "ask_user" {
-		t.Fatal("revision retained old approval")
-	}
-	_, e = s.ConfirmPlan(ctx, ConfirmPlanRequest{Identity: Identity{v.Task.TaskID, "stale-confirm", v.Task.Revision}, PlanDigest: old, UserRef: "old-answer", Response: "Old answer"})
-	if code(e) != "PLAN_CHANGED" {
-		t.Fatal("stale confirmation accepted", e)
+	a.UserRef = "actual-user-followup"
+	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "user-expands", v.Task.Revision}, Authorization: &a, Reason: "The user requested the additional API work"})
+	if e != nil || v.Task.Authorization.UserRef != a.UserRef {
+		t.Fatal(e)
 	}
 }
 func TestExplicitAllowedScopeDiffersFromPredictedPaths(t *testing.T) {
 	s, v, root := fixture(t)
 	ctx := context.Background()
 	a := v.Task.Authorization
+	a.UserRef = "user-restricts-paths"
 	a.AllowedPaths = []string{"file.txt"}
 	a.ExpectedPaths = []string{"different-prediction.txt"}
-	v, e := s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "scope", v.Task.Revision}, Authorization: a, Plan: v.Task.Plan, Checks: v.Task.Checks, Reason: "User explicitly restricts edits to file.txt"})
-	if e != nil {
-		t.Fatal(e)
-	}
-	v, e = s.ConfirmPlan(ctx, ConfirmPlanRequest{Identity: Identity{v.Task.TaskID, "scope-confirm", v.Task.Revision}, PlanDigest: v.PlanDigest, UserRef: "scope-answer", Response: "Only file.txt may change"})
+	v, e := s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "scope", v.Task.Revision}, Authorization: ptr(a), Plan: ptr(v.Task.Plan), Checks: ptr(v.Task.Checks), Reason: "User explicitly restricts edits to file.txt"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -171,5 +154,31 @@ func TestTerminalTaskPagesArchiveAndRestore(t *testing.T) {
 	v, e = s.Archive(ctx, ArchiveRequest{Identity: Identity{v.Task.TaskID, "restore", v.Task.Revision}, Archived: false})
 	if e != nil || v.Task.Status != "cancelled" {
 		t.Fatal("archive changed outcome", e)
+	}
+}
+
+func TestDependencyChangesWithoutAnExplicitPolicyRequireReviewInsteadOfApproval(t *testing.T) {
+	s, v, root := fixture(t)
+	if e := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"dependencies":{"example-library":"1.0.0"}}`), 0600); e != nil {
+		t.Fatal(e)
+	}
+	v, e := s.Inspect(context.Background(), v.Task.TaskID, true)
+	if e != nil {
+		t.Fatal(e)
+	}
+	found := false
+	for _, fact := range v.Task.Facts {
+		if fact.Kind == "dependency_change" {
+			found = true
+			if fact.Blocking {
+				t.Fatal("an unstated dependency restriction was invented", fact)
+			}
+		}
+		if fact.Kind == "unexpected_path" {
+			t.Fatal("an empty forecast flagged every edit", fact)
+		}
+	}
+	if !found || v.Decision.Advice == "ask_user" || v.Decision.Ready {
+		t.Fatal("dependency change must still be reviewed", v.Decision)
 	}
 }
