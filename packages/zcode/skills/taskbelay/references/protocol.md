@@ -19,6 +19,7 @@ closed input/output Schemas from the same DTOs used by CLI and HTTP. Use `zcode`
 | `taskbelay_finish_task` | identity, summary, per-goal acceptance and risks |
 | `taskbelay_cancel_task` | identity, reason; releases claims and retains files |
 | `taskbelay_list_tasks` | Optional page, page_size, include_archived, status; bounded pagination |
+| `taskbelay_update_budget` | identity, current plan_digest, budget {runs,execution_ms,work_ms,tokens}, actual user_ref and response; all effective caps updated together |
 | `taskbelay_confirm_plan` | identity, plan_digest, actual user_ref and response |
 | `taskbelay_accept_known_failure` | identity, check_id, failed_evidence_id, comparison_evidence_id, failures, actual user_ref, reason |
 | `taskbelay_archive_task` | identity, archived; terminal tasks only |
@@ -57,6 +58,10 @@ results while correcting fields. Budget failures retain counters. Uncertain exec
 reading the saved run; storage incompatibility requires preserving data, not resetting it.
 
 The complete plan includes understanding/root_cause/approach/simpler_alternative/verification_basis/completion and work items (id, goal_ids, change, owner, necessity). A confirmation binds its exact digest, including checks, limits, workspaces and proposed content. Changed proposals invalidate approval. Checkpoint never accepts checks.
+
+Approval retains original grant attribution and budget/timeout ceilings. revise_task reuses confirmation only for configuration proven within that exact authority; semantic or permission expansion invalidates it. update_budget requires a concrete actual complete decision, records its separate attribution and never resets cost. view.budget exposes all effective caps and required reservations. Aggregate timeout estimates warn; a required check that cannot reserve or insufficient required runs prevents confirmation.
+
+Each repository may carry remote_freshness {head,upstream,remote_name,remote_ref,remote_head,state,fetched,fetched_at,checked_at,basis}; Core verifies current local facts and keeps remote_baseline/remote_latest. fetched_at records completion of the actual Host fetch, separately from checked_at; failed/skipped fetch has no fetched_at. Core verifies configured remote/ref and local HEADs. Fetched is Host testimony, not remote-server authentication. Missing observation is explicitly not_checked. checkpoint.repository_freshness contains [{key,observation}] without replacing the initial baseline.
 
 Checks default to purpose=acceptance; regression allows an explicit known-failure decision, while diagnostic needs goal_ids. full_suite marks full-suite work; compares identifies an approved regression comparison. Default inputs:["."] includes all bound repositories; explicit key::path scopes need input_basis.
 

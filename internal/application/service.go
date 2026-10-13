@@ -34,9 +34,10 @@ type Identity struct {
 	Revision    uint64 `json:"revision"`
 }
 type RepositoryInput struct {
-	Key    domain.RepositoryKey `json:"key"`
-	Path   string               `json:"repository_path"`
-	Origin *OriginInput         `json:"workspace_origin,omitempty"`
+	Key             domain.RepositoryKey    `json:"key"`
+	Path            string                  `json:"repository_path"`
+	Origin          *OriginInput            `json:"workspace_origin,omitempty"`
+	RemoteFreshness *domain.RemoteFreshness `json:"remote_freshness,omitempty"`
 }
 type OpenRequest struct {
 	OperationID   string               `json:"operation_id"`
@@ -47,14 +48,15 @@ type OpenRequest struct {
 	Plan          domain.Plan          `json:"plan"`
 }
 type View struct {
-	Task                domain.Task        `json:"task"`
-	PlanDigest          domain.Digest      `json:"plan_digest"`
-	AuthorizationDigest domain.Digest      `json:"authorization_digest"`
-	ContentDigest       domain.Digest      `json:"content_digest"`
-	Decision            domain.Decision    `json:"decision"`
-	Refreshed           bool               `json:"refreshed"`
-	Replayed            bool               `json:"replayed"`
-	ControlCost         store.ControlUsage `json:"control_cost"`
+	Task                domain.Task         `json:"task"`
+	PlanDigest          domain.Digest       `json:"plan_digest"`
+	AuthorizationDigest domain.Digest       `json:"authorization_digest"`
+	ContentDigest       domain.Digest       `json:"content_digest"`
+	Decision            domain.Decision     `json:"decision"`
+	Refreshed           bool                `json:"refreshed"`
+	Replayed            bool                `json:"replayed"`
+	ControlCost         store.ControlUsage  `json:"control_cost"`
+	Budget              domain.BudgetReport `json:"budget"`
 }
 
 func selection(o domain.WorkspaceOrigin) repository.WorkspaceOriginSelection {
@@ -113,7 +115,11 @@ func (s *Service) Open(ctx context.Context, q OpenRequest) (View, error) {
 		if e != nil {
 			return View{}, domain.Fail("OBSERVATION_UNAVAILABLE", "repositories", "workspace origin could not be verified: "+e.Error())
 		}
-		t.Repositories = append(t.Repositories, domain.RepositoryScopeEntry{Key: input.Key, Origin: origin, Binding: b})
+		f, e := s.Observer.VerifyRemoteFreshness(ctx, origin.CanonicalWorktreeRoot, b, origin.BaseBranch, input.RemoteFreshness)
+		if e != nil {
+			return View{}, e
+		}
+		t.Repositories = append(t.Repositories, domain.RepositoryScopeEntry{Key: input.Key, Origin: origin, Binding: b, RemoteBaseline: &f, RemoteLatest: &f})
 	}
 	t.ProposedContentDigest = t.ContentDigest()
 	if e := t.Validate(); e != nil {
@@ -259,7 +265,8 @@ func (s *Service) view(ctx context.Context, t domain.Task, refreshed bool) (View
 	if e != nil {
 		return View{}, e
 	}
-	return View{Task: t, PlanDigest: t.PlanDigest(), AuthorizationDigest: t.Authorization.Digest(), ContentDigest: t.ContentDigest(), Decision: domain.Decide(t, fresh, pending), Refreshed: refreshed, ControlCost: cost}, nil
+	decision := domain.Decide(t, fresh, pending)
+	return View{Budget: t.Budget(decision.MissingChecks), Task: t, PlanDigest: t.PlanDigest(), AuthorizationDigest: t.Authorization.Digest(), ContentDigest: t.ContentDigest(), Decision: decision, Refreshed: refreshed, ControlCost: cost}, nil
 }
 
 func (s *Service) ControlCost(ctx context.Context) (store.ControlUsage, error) {
@@ -316,14 +323,15 @@ func (s *Service) save(ctx context.Context, t domain.Task, o store.Operation, c 
 
 type CheckpointRequest struct {
 	Identity
-	Assessment    *domain.Assessment `json:"assessment,omitempty"`
-	Progress      []domain.Progress  `json:"progress,omitempty"`
-	Issue         *domain.Issue      `json:"issue,omitempty"`
-	ClearIssue    bool               `json:"clear_issue,omitempty"`
-	ResolutionRef string             `json:"resolution_ref,omitempty"`
-	HostMS        int64              `json:"host_ms,omitempty"`
-	WaitMS        int64              `json:"wait_ms,omitempty"`
-	Tokens        int64              `json:"tokens,omitempty"`
+	RepositoryFreshness []domain.RepositoryFreshness `json:"repository_freshness,omitempty"`
+	Assessment          *domain.Assessment           `json:"assessment,omitempty"`
+	Progress            []domain.Progress            `json:"progress,omitempty"`
+	Issue               *domain.Issue                `json:"issue,omitempty"`
+	ClearIssue          bool                         `json:"clear_issue,omitempty"`
+	ResolutionRef       string                       `json:"resolution_ref,omitempty"`
+	HostMS              int64                        `json:"host_ms,omitempty"`
+	WaitMS              int64                        `json:"wait_ms,omitempty"`
+	Tokens              int64                        `json:"tokens,omitempty"`
 }
 
 func (s *Service) Checkpoint(ctx context.Context, q CheckpointRequest) (View, error) {
@@ -339,6 +347,27 @@ func (s *Service) Checkpoint(ctx context.Context, q CheckpointRequest) (View, er
 	t, e = s.observe(ctx, t)
 	if e != nil {
 		return View{}, e
+	}
+	seenFreshness := map[domain.RepositoryKey]bool{}
+	for _, reported := range q.RepositoryFreshness {
+		if seenFreshness[reported.Key] {
+			return View{}, domain.Invalid("repository_freshness", "duplicate repository key")
+		}
+		seenFreshness[reported.Key] = true
+		found := false
+		for i, r := range t.Repositories {
+			if r.Key == reported.Key {
+				f, e := s.Observer.VerifyRemoteFreshness(ctx, r.Origin.CanonicalWorktreeRoot, r.Binding, r.Origin.BaseBranch, &reported.Observation)
+				if e != nil {
+					return View{}, e
+				}
+				t.Repositories[i].RemoteLatest = &f
+				found = true
+			}
+		}
+		if !found {
+			return View{}, domain.Invalid("repository_freshness.key", "repository must be bound to this Task")
+		}
 	}
 	if q.HostMS < 0 || q.WaitMS < 0 || q.Tokens < 0 {
 		return View{}, domain.Invalid("cost", "reported cost deltas must be nonnegative")
@@ -478,7 +507,13 @@ func (s *Service) Revise(ctx context.Context, q ReviseRequest) (View, error) {
 	t.Plan = q.Plan
 	t.Checks = normalizeChecks(q.Checks)
 	if t.PlanDigest() != previousPlan {
-		t.Approval = nil
+		if t.ApprovalCoversConfiguration() {
+			a := *t.Approval
+			a.PlanDigest = t.PlanDigest()
+			t.Approval = &a
+		} else {
+			t.Approval = nil
+		}
 	}
 	progress := []domain.Progress{}
 	for _, p := range t.Progress {
@@ -549,7 +584,7 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 	}
 	for _, f := range t.Facts {
 		if f.Blocking {
-			return RunResult{}, domain.Fail("SCOPE_VIOLATION", "scope", f.Detail)
+			return RunResult{}, domain.Fail("SCOPE_VIOLATION", f.Path, f.Detail)
 		}
 	}
 	pending, e := s.Store.Pending(ctx, t.TaskID)
@@ -577,7 +612,7 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 		{"core_ms", u.CoreMS, l.CoreMS}, {"host_ms", u.HostMS + u.WaitMS, l.HostMS}, {"tokens", u.Tokens, l.Tokens},
 	} {
 		if limit.used >= limit.maximum {
-			return RunResult{}, &domain.Error{Code: "COST_LIMIT", Message: "cumulative control or Host cost limit reached; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits." + limit.path, Rule: "quantity", Message: "retain acceptance requirements and obtain a real authorized limit change"}}, Budget: &domain.BudgetFailure{Used: limit.used, Requested: 0, Limit: limit.maximum}}
+			return RunResult{}, &domain.Error{Code: "COST_LIMIT", Message: "cumulative control or Host cost limit reached; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits." + limit.path, Rule: "quantity", Message: "retain acceptance requirements and obtain a real authorized limit change"}}, Budget: domain.NewBudgetLine(limit.path, limit.used, 0, 0, limit.maximum).Failure(0)}
 		}
 	}
 	f, e := execution.Observe(ctx, t, c)

@@ -12,12 +12,16 @@ A large necessary repair is not automatically overdesign; a small unrelated chan
 by its size. Do not add frameworks, speculative compatibility or unrelated fixes. Report independent
 problems without editing them. Initial investigation uses already authorized read-only Host tools.
 
+Before edits, assess every repository with the Host freshness operation. Fetch its configured task upstream within actual Git authority; record no upstream, skipped/failed fetch, dirty work and divergence explicitly. Fetch and integration are distinct. Integrate only separately authorized clean fast-forwards; preserve all other work. Copy remote_freshness into open_task and later observations into checkpoint.repository_freshness; retain the initial baseline. Recheck before committing during a long task. Core never fetches or integrates Git.
+
 Use taskbelay_open_task to save authorization, plan and checks. Show that complete proposal to the
 user and obtain an explicit answer approving both understanding and plan. Then call
 taskbelay_confirm_plan with the returned plan_digest, actual user_ref and response. Never infer
 approval of an unseen plan or invent a user answer. Reuse an earlier answer only when it explicitly
 approved this exact unchanged proposal. Core cannot authenticate Host testimony. The local WebUI
 can display the complete plan and accept a direct user confirmation.
+
+Review view.budget together with the plan: actual, reserved, uncertain, remaining and next-check timeouts. Required unreservable checks and insufficient run counts need correction; aggregate timeout plus retry estimates are risks, not hard failures. Choose proportionate timeouts and bounded retry headroom, not uniformly huge defaults. Record a concrete complete budget decision with taskbelay_update_budget; work_ms updates both overlapping Core/Host caps. Check all remaining limits and preserve acceptance.
 
 Before confirmation, do not implement, run checks or submit implementation progress. If contents
 changed after proposal, restore only your authorized changes or disclose the difference in a revised
@@ -39,7 +43,7 @@ checkpoint cannot replace checks. Changes to acceptance or verification coverage
 as harmless metadata or progress. Existing checks may not be replaced with a command that always passes.
 
 Predicted paths do not grant permission. Explicit allowed_paths, forbidden_paths, pins and dependency
-policies are deterministic restrictions. The structured write hook checks supported operations before
+policies are deterministic restrictions. Show actual per-repository manifest policies before confirmation; use package names (lucide-react, not dependencies:lucide-react) for npm grants. Conditional plan permission must be represented in the same actual authorization, not left only in prose. Dependency permission grants no separate file-write or install authority. The structured write hook checks supported operations before
 writes. Other editors, shell commands and external effects are observed at checkpoints, not intercepted.
 Respect the current Host's actual coverage; this is not a sandbox or an additional permission grant.
 
@@ -70,9 +74,7 @@ Use run_check with a concrete rationale. The Core executes within native Host pe
 real process results. Reuse passing evidence under unchanged actual conditions. Retrying an unchanged
 failure requires previous_run_id and distinct new_information explaining what was learned. Three
 failures under the same method/requirements/conditions stop repetition. Renaming checks or changing
-prose/timeouts cannot reset the failure count. Execution settings (timeout, retry, full-suite flag) and
-rationale/input_basis text remain bound by plan approval but do not invalidate unchanged passing
-results. Duplicate execution is refused only when this check has an applicable passing result; a
+prose/timeouts cannot reset the failure count. Execution settings and rationale/input_basis text do not invalidate unchanged passing results. Timeout reductions/restoration and prose synchronization within recorded approval ceilings reuse the existing actual decision. Retry/full-suite policy, argv/input/permission changes and larger ceilings require an actual new decision; configuration synchronization never expands authority. Duplicate execution is refused only when this check has an applicable passing result; a
 renamed or substantively changed check can establish its own result. A meaningful input or method change can justify another run.
 
 Claims, completed human observations and Core executions are separate. record_evidence accepts only

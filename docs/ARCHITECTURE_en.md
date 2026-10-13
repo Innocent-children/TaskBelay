@@ -38,7 +38,7 @@ Core measures calls, wall, observation and execution time; Hosts separately repo
 
 ## Interfaces and trust
 
-Fifteen MCP tools, CLI call and HTTP /api/core/{tool} share DTOs, Schemas and service. Unknown and duplicate JSON members are rejected; success/failure envelopes are exclusive. HTTP uses random-port loopback, exact Host, Origin and session CSRF. Desktop summaries are saved observations; current applicability requires explicit refresh. Path hooks do not cover arbitrary shell, external services or bypassed Core calls. See [commands](COMMANDS_en.md) and [responses](CORE-RESPONSES_en.md).
+Sixteen MCP tools, CLI call and HTTP /api/core/{tool} share DTOs, Schemas and service. Unknown and duplicate JSON members are rejected; success/failure envelopes are exclusive. HTTP uses random-port loopback, exact Host, Origin and session CSRF. Desktop summaries are saved observations; current applicability requires explicit refresh. Path hooks do not cover arbitrary shell, external services or bypassed Core calls. See [commands](COMMANDS_en.md) and [responses](CORE-RESPONSES_en.md).
 
 Every local Core call, including queries without a Task, reserves its identity before work and settles wall time afterwards. control_cost retains global calls, wall_ms, unknown_ms and pending. A crash without an exact end time retains a separately labeled conservative unknown amount, not measured time. Compaction preserves totals. Task Core wall time includes execution and waiting and cannot be added to those categories.
 

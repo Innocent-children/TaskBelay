@@ -6,7 +6,7 @@ import * as lifecycle from "../lib/lifecycle.mjs";
 import * as workspace from "../lib/workspace.mjs";
 import { runHook } from "../plugin/hooks/pre-tool-use.mjs";
 import { assertNoDuplicateJSONMembers } from "../lib/json.mjs";
-const operations = ["inspect", "prepare", "provision", "status", "scope", "bind-task", "launch", "retry-launch", "resume", "record-session", "cleanup-worktree", "cleanup-branch"];
+const operations = ["freshness", "inspect", "prepare", "provision", "status", "scope", "bind-task", "launch", "retry-launch", "resume", "record-session", "cleanup-worktree", "cleanup-branch"];
 async function input() {
   const chunks = []; let size = 0;
   for (;;) {
@@ -46,7 +46,7 @@ export async function runCLI(args) {
   if (args.length === 2 && args[0] === "host-launch" && operations.includes(args[1])) {
     const value = await input(), operation = args[1];
     let result;
-    if (["inspect", "prepare"].includes(operation)) result = await workspace[operation](value);
+    if (["freshness", "inspect", "prepare"].includes(operation)) result = await workspace[operation](value);
     else {
       const { launch_id, ...rest } = value;
       if (["status", "scope", "provision"].includes(operation)) {

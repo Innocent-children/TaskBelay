@@ -186,12 +186,21 @@ type RepositoryBinding struct {
 }
 
 type RepositoryScopeEntry struct {
-	Key     RepositoryKey     `json:"key"`
-	Origin  WorkspaceOrigin   `json:"workspace_origin"`
-	Binding RepositoryBinding `json:"binding"`
+	Key            RepositoryKey     `json:"key"`
+	Origin         WorkspaceOrigin   `json:"workspace_origin"`
+	Binding        RepositoryBinding `json:"binding"`
+	RemoteBaseline *RemoteFreshness  `json:"remote_baseline,omitempty"`
+	RemoteLatest   *RemoteFreshness  `json:"remote_latest,omitempty"`
 }
 
 func (e RepositoryScopeEntry) Validate() error {
+	for _, f := range []*RemoteFreshness{e.RemoteBaseline, e.RemoteLatest} {
+		if f != nil {
+			if err := f.Validate(); err != nil {
+				return err
+			}
+		}
+	}
 	if !e.Key.IsValid() || e.Origin.Validate() != nil || e.Binding.Validate() != nil {
 		return ErrInvalidArgument
 	}

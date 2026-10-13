@@ -32,6 +32,7 @@ const hostResult = { description: "Complete original Host tool result, including
 const cleanup = object({ ...identity, source_repository_path: source, terminal: { const: true }, authorized: { const: true } });
 
 const contracts = {
+ freshness: {description:"Fetch each configured task upstream; integration is separately authorized and only clean fast-forwards are allowed.",input_schema:object({repositories:array(object({key,repository_path:source,base_branch:text("Retained workspace_origin.base_branch when a new task branch has no upstream")},["base_branch"]),"All task repositories"),fetch:{type:"boolean"},integrate:{type:"boolean"},authorization_ref:text("Actual authorization for fetching refs"),integration_authorization_ref:text("Separate actual authority to integrate worktree changes")},["fetch","integrate","authorization_ref","integration_authorization_ref"]),output_fields:{repositories:"Per-root remote_freshness to retain with open_task/checkpoint; no_upstream, not_fetched and fetch_failed never assert latest.",integration_blocked:"Unsafe selection preserved."},next_step:"Review upstream divergence and initial work. Copy remote_freshness with each repository into Core; recheck before a later commit."},
   inspect: {
     description: "Read source repositories and return the workspace observation without writing Git or a receipt.",
     input_schema: object({ request: text("Exact current request; retain the same string for prepare."), repositories: { ...array(object({ key, repository_path: source }), "All proposed repositories."), minItems: 1, maxItems: 8 } }),
@@ -49,7 +50,7 @@ const contracts = {
       target_branch: text("Confirmed new branch, or the observed current branch for current_branch."),
       surface: { enum: ["current_session", "managed_worktree", "cli_worktree"] },
       worktree_path: nullablePath("The current canonical repository_path for current_session; null for managed_worktree; destination for cli_worktree."),
-      handoff_file: nullablePath("Null for current_session. Dedicated worktrees require complete JSON material from references/task-handoff.md."),
+      handoff_file: nullablePath("Null for current_session. Dedicated worktrees require complete retained requirements JSON matching the packaged lib/task-handoff.mjs contract."),
     }, ["launch_id"]),
     output_fields: { ...receiptOutput, resumed: "Whether a retained preparation was found.", fetch_performed: "Whether this invocation fetched the base." },
     next_step: "Retain receipt.launch_id before preparing another repository. Phase=prepared proceeds to local-provision for current_session, dispatch-start for managed_worktree, or cli-provision. Inspect status after uncertainty.",

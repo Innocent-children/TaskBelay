@@ -30,11 +30,16 @@ host-check pre-file-write 输入 host、repository_path、tool_name、paths、in
 | taskbelay_cancel_task | identity, reason |
 | taskbelay_confirm_plan | identity, plan_digest, user_ref, response；真实用户确认 |
 | taskbelay_accept_known_failure | identity, check_id, failed_evidence_id, comparison_evidence_id, failures, user_ref, reason |
+| taskbelay_update_budget | identity, plan_digest, budget {runs,execution_ms,work_ms,tokens}, user_ref, response；实际批准的完整投入决定 |
 | taskbelay_archive_task | identity, archived；仅终态 |
 
 identity 是 task_id、当前 revision、稳定 operation_id。命令输入拒绝未知和重复成员。完整字段和数量约束以服务器发布 Schema、internal/application DTO 和 domain 验证为准。authorization 包含 user_ref/request/goals，每个 goal 有 id/statement/checks；checks 至少有 id/kind/rationale/conditions，command 还需 argv，缺省 cwd/inputs 为 .，timeout_ms 为 60000，retry 为 requires_user。累计 limits 缺省 runs=20、execution_ms/core_ms=600000、host_ms=3600000、tokens=1000000。
 
+预算 view.budget 显示每个有效上限的 actual/reserved/uncertain/remaining 和每项检查所需 timeout。PLAN_BUDGET_INFEASIBLE 表示某个必需检查确定无法预留或次数不够；整套最坏耗时与一次重试只作风险提示。taskbelay_update_budget 将 work_ms 同时应用于 core_ms 与 host_ms，保留原始批准和累计消耗；调用必须引用当前方案以及具体投入决定，不能用普通继续消息扩张。
+
 ## 宿主工作区与 HTTP
+
+Codex/Claude/ZCode 使用 taskbelay-<host> host-launch freshness 检查所有仓库；输入 repositories [{key,repository_path}]、可选 fetch（缺省 true）、integrate（缺省 false）、fetch 授权的 authorization_ref，以及 integrate=true 时单独的 integration_authorization_ref。DeepSeek workspace_coordinator 的 freshness 操作使用 freshness_repositories。结果中的 remote_freshness 复制到 open_task.repositories 成员；后续通过 checkpoint.repository_freshness [{key,observation}] 保存。fetch 不修改工作区；整合另需授权并仅允许全部选择已安全核验后的干净快进。无上游、跳过或失败不声称最新。
 
 可选 host-launch prepare 使用已有真实 authorization_ref、request、精确仓库来源/分支/携带选择；不要求再填评估表或重新审批已授权方案。scope 返回当前 repositories 数组，Core 补齐观察身份。恢复读取 receipt/status；不重派不确定操作。清理另需真实删除授权和当前终态 Task；跨工作区迁移不支持。 工作区准备不能代替 Core 的需求理解与完整方案确认。
 
@@ -51,3 +56,5 @@ plan 包含 understanding/root_cause/approach/simpler_alternative/verification_b
 HTTP 列表另支持 lifecycle=active/blocked/done/cancelled，按 Core 保存摘要过滤后分页；status=active 则包含所有活动任务（包括受阻），供不同界面选择。
 
 运行记录的 process 保存命令进程的 pid 和启动 identity；激活前为 null，身份持久化后才允许命令执行。恢复时 Core 和受管命令均停止才可处理缺失收据；macOS 核对整个进程组。
+
+首次核验在冻结来源和创建分支之前进行。新任务分支没有上游时，freshness 的仓库成员可提供已保存 workspace_origin.base_branch 作为 base_branch；Core 按不可变来源分支核对配置上游。不得自行改用 main。

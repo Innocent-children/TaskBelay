@@ -38,7 +38,7 @@ Core 计量调用、墙钟、观察和执行，宿主另报分析、等待与 to
 
 ## 接口与信任
 
-MCP 15 个工具，CLI call 和 HTTP /api/core/{tool} 使用同一 DTO/Schema/服务。对象拒绝未知成员和重复 JSON 成员。成功和失败互斥。HTTP 限于随机端口 loopback、精确 Host、Origin 和会话 CSRF。桌面只读取保存摘要；当前适用性需要明确刷新。宿主路径钩子不涵盖任意 shell、外部服务或未调用 Core 的操作。详细入口见[命令](COMMANDS.md)，错误见[响应规范](CORE-RESPONSES.md)。
+MCP 16 个工具，CLI call 和 HTTP /api/core/{tool} 使用同一 DTO/Schema/服务。对象拒绝未知成员和重复 JSON 成员。成功和失败互斥。HTTP 限于随机端口 loopback、精确 Host、Origin 和会话 CSRF。桌面只读取保存摘要；当前适用性需要明确刷新。宿主路径钩子不涵盖任意 shell、外部服务或未调用 Core 的操作。详细入口见[命令](COMMANDS.md)，错误见[响应规范](CORE-RESPONSES.md)。
 
 每个本地 Core 调用（包括未关联 Task 的查询）均先保留调用身份，再结算墙钟时间。control_cost 保存跨任务 calls、wall_ms、unknown_ms 和 pending；崩溃失去精确结束时间时单列保守未知估算，不冒充实测。运行记录与热调用压缩不改变总额。Task 的 Core 墙钟包含执行和等待，不能与这些分类直接相加。
 

@@ -62,6 +62,8 @@ func Start(ctx context.Context, dataDirectory, coreIdentity string, noOpen bool)
 		return RuntimeState{}, err
 	}
 	_ = logFile.Close()
+	exited := make(chan error, 1)
+	go func() { exited <- command.Wait() }()
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
 		state, _ = Status(ctx, dataDirectory, coreIdentity)
@@ -77,12 +79,14 @@ func Start(ctx context.Context, dataDirectory, coreIdentity string, noOpen bool)
 			return state, fmt.Errorf("WebUI is %s", state.Readiness)
 		}
 		select {
+		case exitError := <-exited:
+			return RuntimeState{}, fmt.Errorf("WebUI process exited before readiness (%v); inspect %s", exitError, logPath)
 		case <-ctx.Done():
 			return RuntimeState{}, ctx.Err()
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-	return RuntimeState{}, fmt.Errorf("WebUI did not become ready")
+	return RuntimeState{}, fmt.Errorf("WebUI did not become ready; inspect %s before retrying the original startup", logPath)
 }
 
 func Status(ctx context.Context, dataDirectory, coreIdentity string) (RuntimeState, error) {

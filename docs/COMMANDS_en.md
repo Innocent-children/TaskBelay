@@ -30,11 +30,16 @@ pre-file-write takes host, repository_path, tool_name, paths, intent_digest, pat
 | taskbelay_cancel_task | identity, reason |
 | taskbelay_confirm_plan | identity, plan_digest, user_ref, response; actual user confirmation |
 | taskbelay_accept_known_failure | identity, check_id, failed_evidence_id, comparison_evidence_id, failures, user_ref, reason |
+| taskbelay_update_budget | identity, plan_digest, budget {runs,execution_ms,work_ms,tokens}, user_ref, response; actual complete approved budget decision |
 | taskbelay_archive_task | identity, archived; terminal tasks only |
 
 Identity is task_id, current revision and stable operation_id. Unknown/duplicate members are rejected. Exact constraints come from published Schemas, application DTOs and domain validation. Authorization requires user_ref/request/goals; goals have id/statement/checks. Checks require id/kind/rationale/conditions; commands also need argv. Default cwd/inputs are ., timeout_ms is 60000 and retry is requires_user. Default lifetime limits: runs=20, execution_ms/core_ms=600000, host_ms=3600000, tokens=1000000.
 
+view.budget reports actual/reserved/uncertain/remaining for every effective limit and the timeout needed for each check. PLAN_BUDGET_INFEASIBLE means a required check cannot reserve or required runs cannot fit; aggregate worst-case time plus one retry is a risk estimate. taskbelay_update_budget applies work_ms to core_ms and host_ms together, preserving original approval and costs; it needs the current plan and concrete budget decision, never generic continuation authority.
+
 ## Host workspace and HTTP
+
+Codex/Claude/ZCode expose taskbelay-<host> host-launch freshness for all repositories: repositories [{key,repository_path}], optional fetch (default true), integrate (default false), and authorization_ref for fetching and a separate integration_authorization_ref when integrate=true. DeepSeek exposes workspace_coordinator operation freshness with freshness_repositories. Copy each remote_freshness into open_task.repositories; retain later observations via checkpoint.repository_freshness [{key,observation}]. Fetch leaves the worktree intact; integration needs separate authority and only clean fast-forwards after the entire selection is assessed. No upstream, skipped or failed fetch never means latest.
 
 Optional host-launch prepare uses actual existing authorization_ref, request and exact source/branch/carry choices. No assessment form or repeated plan approval is required. scope returns current repositories; Core fills observed identity. Read receipt/status to resume without redispatching uncertainty. Cleanup requires real deletion authority and the current terminal Task. Cross-workspace relocation is unsupported. Workspace preparation does not replace Core confirmation of understanding and the complete plan.
 
@@ -51,3 +56,5 @@ plan contains understanding/root_cause/approach/simpler_alternative/verification
 HTTP lists also accept lifecycle=active/blocked/done/cancelled, filtering saved Core summaries before paging. status=active includes all active tasks, including blocked ones.
 
 The run record’s process contains the command pid and startup identity. It is null before launch registration; activation requires the identity to be persisted. Missing-receipt recovery requires both Core and its managed command to stop; macOS checks the whole process group.
+
+Assess source checkouts before freezing/creating a workspace. When a task branch has no upstream, freshness repository entries may supply retained workspace_origin.base_branch as base_branch. Core verifies that immutable source branch upstream; never silently substitute main.

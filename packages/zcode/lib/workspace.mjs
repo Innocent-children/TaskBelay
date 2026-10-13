@@ -1,3 +1,4 @@
+export { assessRepositoryFreshness as freshness } from "./repository-freshness.mjs";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";

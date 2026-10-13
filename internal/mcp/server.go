@@ -68,6 +68,7 @@ var Catalog = []Tool{
 	{"taskbelay_list_tasks", "Read a bounded page of saved task summaries, including archived tasks when requested.", store.ListQuery{}, map[string]any{}, true},
 	{"taskbelay_confirm_plan", "Record the actual user's understanding and approval of the exact displayed plan; never fabricate a confirmation.", application.ConfirmPlanRequest{}, application.View{}, false},
 	{"taskbelay_accept_known_failure", "Record a user's explicit acceptance of named existing regression failures with current actual comparison evidence; never waive acceptance checks.", application.AcceptFailureRequest{}, application.View{}, false},
+	{"taskbelay_update_budget", "Apply one explicitly approved complete budget decision; synchronize Core and Host work-time caps and retain the original plan authority.", application.BudgetRequest{}, application.View{}, false},
 	{"taskbelay_archive_task", "Archive or restore a terminal task without changing its outcome or deleting work.", application.ArchiveRequest{}, application.View{}, false},
 }
 
@@ -116,7 +117,7 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 	id := newID()
 	complete, e := s.service.MeasureControl(ctx)
 	if e != nil {
-		return Envelope{RequestID: id, Tool: name, Error: &domain.Error{Code: "STORAGE_UNAVAILABLE", Message: "control cost reservation failed; tool was not executed"}, Recovery: &Recovery{Action: "repair_storage", Message: "Inspect local storage before continuing."}}
+		return Envelope{RequestID: id, Tool: name, Error: &domain.Error{Code: "STORAGE_UNAVAILABLE", Message: "control cost reservation failed; tool was not executed"}, Recovery: &Recovery{Action: "repair_storage", Message: "Core was reached, but control-call metering could not write local storage. Inspect data-directory permissions, schema and Host access; preserve data. This does not establish an MCP connection failure."}}
 	}
 	defer complete()
 	taskID := ""
@@ -164,7 +165,7 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 		case "COST_LIMIT", "PLAN_CONFIRMATION_REQUIRED", "PLAN_CHANGED", "AUTHORIZATION_PENDING":
 			r.Action = "request_authorization"
 			r.Message = "Show the current plan or required decision and obtain actual user authorization; preserve acceptance requirements."
-		case "SCOPE_VIOLATION", "REPEATED_FAILURE", "ACCEPTANCE_INCOMPLETE", "CHECK_ALREADY_SATISFIED", "RETRY_BASIS_REQUIRED", "UNAPPROVED_CHANGES", "FAILURE_ACCEPTANCE_NOT_ALLOWED":
+		case "PLAN_BUDGET_INFEASIBLE", "BUDGET_UNCHANGED", "SCOPE_VIOLATION", "REPEATED_FAILURE", "ACCEPTANCE_INCOMPLETE", "CHECK_ALREADY_SATISFIED", "RETRY_BASIS_REQUIRED", "UNAPPROVED_CHANGES", "FAILURE_ACCEPTANCE_NOT_ALLOWED":
 			r.Action = "self_correct"
 			r.Message = "Inspect the current facts and gaps, then correct within existing authorization."
 		}
@@ -188,7 +189,7 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 			for _, d := range Catalog {
 				names = append(names, d.Name)
 			}
-			result = map[string]any{"product": "taskbelay", "version": s.version, "schema": store.DatabaseSchemaVersion, "tools": names, "host_preferences": s.options.HostPreferences, "coverage": map[string]any{"core_execution": "local argv only; not a sandbox", "codex": "apply_patch path preflight; other writes observed at checkpoints", "claude": "Write/Edit/NotebookEdit path preflight; other writes observed at checkpoints", "zcode": "registered structured writes only; Host capability must be verified", "deepseek": "write/edit/str_replace_editor path preflight; other writes observed at checkpoints"}, "semantic_evidence": "Host judgment with cited basis and uncertainty; not a correctness proof", "cost": "Core wall/observation/execution measured; Host analysis, tokens and wait are reported, potentially incomplete"}
+			result = map[string]any{"startup_diagnostics": map[string]any{"core_reached": true, "shared_contract": "CLI, MCP and HTTP use the same service", "host_mcp_visibility": "check tools visible in the current Host; CLI success does not establish MCP availability"}, "product": "taskbelay", "version": s.version, "schema": store.DatabaseSchemaVersion, "tools": names, "host_preferences": s.options.HostPreferences, "coverage": map[string]any{"core_execution": "local argv only; not a sandbox", "codex": "apply_patch path preflight; other writes observed at checkpoints", "claude": "Write/Edit/NotebookEdit path preflight; other writes observed at checkpoints", "zcode": "registered structured writes only; Host capability must be verified", "deepseek": "write/edit/str_replace_editor path preflight; other writes observed at checkpoints"}, "semantic_evidence": "Host judgment with cited basis and uncertainty; not a correctness proof", "cost": "Core wall/observation/execution measured; Host analysis, tokens and wait are reported, potentially incomplete"}
 			cost, err := s.service.ControlCost(ctx)
 			e = err
 			result.(map[string]any)["control_cost"] = cost
@@ -206,6 +207,11 @@ func (s *Server) Dispatch(ctx context.Context, name string, raw []byte) (envelop
 		if e = Decode(raw, &q); e == nil {
 			refresh := q.Refresh == nil || *q.Refresh
 			result, e = s.service.Inspect(ctx, q.TaskID, refresh)
+		}
+	case "taskbelay_update_budget":
+		var q application.BudgetRequest
+		if e = Decode(raw, &q); e == nil {
+			result, e = s.service.UpdateBudget(ctx, q)
 		}
 	case "taskbelay_confirm_plan":
 		var q application.ConfirmPlanRequest

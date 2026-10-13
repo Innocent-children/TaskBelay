@@ -215,8 +215,8 @@ test("local package builder stages one exact non-final artifact in a temporary d
   }
 
   const handoff = await import(pathToFileURL(join(extractDirectory, "package", "lib", "task-handoff.mjs")));
-  const reference = await readFile(join(extractDirectory, "package", "plugin", "skills", "taskbelay", "references", "task-handoff.md"), "utf8");
-  const example = JSON.parse(reference.match(/<!-- task-handoff-example:start -->\n```json\n([\s\S]*?)\n```/u)[1]);
+  const {handoffFixture}=await import("./fixtures/task-handoff.mjs");
+  const example=handoffFixture("Retain complete authorized requirements in the standalone package");
   assert.deepEqual(handoff.validateTaskHandoff(example), example);
 
   if (process.platform === "darwin" && process.arch === "arm64") {
@@ -228,9 +228,7 @@ test("local package builder stages one exact non-final artifact in a temporary d
     });
     assert.equal(versionLine, `taskbelay ${currentVersion}\n`);
     const { stdout: help } = await execFile(runtime, ["help"], { cwd: extractDirectory, encoding: "utf8" });
-    for (const command of ["webui start", "webui open", "webui status", "webui stop"]) {
-      assert.match(help, new RegExp(command, "u"));
-    }
+    assert.match(help, /taskbelay webui start\|open\|status\|stop \[--no-open\] \[--json\|--plain\]/u);
   }
 });
 

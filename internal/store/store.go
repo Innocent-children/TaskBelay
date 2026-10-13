@@ -18,7 +18,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const DatabaseSchemaVersion = "2.1.0"
+const DatabaseSchemaVersion = "2.2.0"
 const MaxSnapshotBytes = 8 * 1024 * 1024
 
 var schema = []string{
@@ -257,10 +257,10 @@ func (s *Store) Save(ctx context.Context, t domain.Task, expected uint64, o Oper
 		return e
 	}
 	if c.Runs > 0 && used+c.Runs > t.Authorization.Limits.Runs {
-		return &domain.Error{Code: "COST_LIMIT", Message: "cumulative run limit cannot reserve this check; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits.runs", Rule: "quantity", Message: "lifetime runs cannot exceed the authorized limit"}}, Budget: &domain.BudgetFailure{Used: used, Requested: c.Runs, Limit: t.Authorization.Limits.Runs}}
+		return &domain.Error{Code: "COST_LIMIT", Message: "cumulative run limit cannot reserve this check; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits.runs", Rule: "quantity", Message: "lifetime runs cannot exceed the authorized limit"}}, Budget: domain.NewBudgetLine("runs", used, 0, 0, t.Authorization.Limits.Runs).Failure(c.Runs)}
 	}
 	if c.ReserveMS > 0 && spent+uncertain+reserved+c.ReserveMS > t.Authorization.Limits.ExecutionMS {
-		return &domain.Error{Code: "COST_LIMIT", Message: "cumulative execution time cannot reserve this check; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits.execution_ms", Rule: "quantity", Message: "reserve the command timeout without lowering acceptance quality"}}, Budget: &domain.BudgetFailure{Used: spent + uncertain + reserved, Requested: c.ReserveMS, Limit: t.Authorization.Limits.ExecutionMS}}
+		return &domain.Error{Code: "COST_LIMIT", Message: "cumulative execution time cannot reserve this check; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits.execution_ms", Rule: "quantity", Message: "reserve the command timeout without lowering acceptance quality"}}, Budget: domain.NewBudgetLine("execution_ms", spent, reserved, uncertain, t.Authorization.Limits.ExecutionMS).Failure(c.ReserveMS)}
 	}
 	r, e := tx.ExecContext(ctx, `UPDATE tasks SET revision=?,status=?,snapshot=?,runs=runs+?,reserved_ms=reserved_ms+?-?,execution_ms=execution_ms+?,uncertain_ms=uncertain_ms+?,host_ms=host_ms+?,wait_ms=wait_ms+?,tokens=tokens+? WHERE task_id=? AND revision=?`, t.Revision, t.Status, b, c.Runs, c.ReserveMS, c.ReleaseMS, c.ExecutionMS, c.UncertainMS, c.HostMS, c.WaitMS, c.Tokens, t.TaskID, expected)
 	if e != nil {

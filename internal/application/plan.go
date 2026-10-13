@@ -45,7 +45,14 @@ func (s *Service) ConfirmPlan(ctx context.Context, q ConfirmPlanRequest) (View, 
 	if t.PlanApproved() {
 		return View{}, domain.Fail("PLAN_ALREADY_CONFIRMED", "plan_digest", "reuse the existing confirmation; do not ask the user again")
 	}
-	t.Approval = &domain.PlanApproval{PlanDigest: q.PlanDigest, UserRef: q.UserRef, Response: q.Response, ConfirmedAt: time.Now().UTC()}
+	v, e := s.view(ctx, t, true)
+	if e != nil {
+		return View{}, e
+	}
+	if !v.Budget.Feasible {
+		return View{}, domain.Fail("PLAN_BUDGET_INFEASIBLE", "authorization.limits", "a required check cannot start under the effective limits; inspect the budget report and correct timeouts or obtain an actual budget decision")
+	}
+	t.Approval = t.NewApproval(q.UserRef, q.Response)
 	return s.save(ctx, t, o, store.Charge{})
 }
 func requireExecutionAuthority(t domain.Task) error {

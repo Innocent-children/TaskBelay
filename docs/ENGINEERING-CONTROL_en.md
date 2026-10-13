@@ -16,11 +16,17 @@ open_task saves a pending plan: understanding, root cause, approach, simpler alt
 
 revise_task replaces authorization, plan and checks. Material changes clear confirmation and need a newly displayed plan and actual answer. Unchanged goal progress and applicable results remain; cost never resets. checkpoint only records progress, semantic review, issues and reported cost; it rejects checks. Reuse a still-valid confirmation across sessions without asking again for ordinary progress.
 
+Approval retains the original plan digest, an authority digest excluding synchronizable configuration, budget ceilings and per-check timeout ceilings. Timeout/prose synchronization and restoring limits within the recorded grant reuse approval. Goals, plans, paths, dependencies, inputs, argv, retry and full-suite semantics cannot borrow that approval. taskbelay_update_budget requires the current plan digest and the actual complete budget decision; Core/Host work caps update together with separately attributed budget approval and unchanged lifetime cost/acceptance.
+
 ## Scope and design necessity
 
 expected_paths predicts work; allowed_paths restricts permission, defaulting to bound repositories; forbidden_paths takes precedence. Qualify paths as key::path in multiple repositories; a dot means the whole scope. Structured writes check confirmation, unresolved authorization, workspace identity, allowed paths, exclusions and pins. Shell and external edits are checked on observation; this is not a global sandbox.
 
 Each path judgment cites approved work_id, goal_ids, basis and necessity. Core checks references and current contents, not semantic truth. Delivery additionally needs a current plan/content-bound review of root cause, responsibilities, proportionality, verification and whether the same structure would be chosen again. Uncertainty or a negative conclusion prevents completion. Scores cannot override deterministic restrictions.
+
+Dependency permission binds the exact repository manifest and package name. npm dependency/dev/optional/peer section prefixes describe declaration location; they must not become part of the package name and reject an approved package. That permission grants no other repository, forbidden path or installation authority.
+
+Remote observations retain actual fetch completion time fetched_at, configured remote_name/remote_ref, tracking commit and local HEAD; checked_at is the later comparison time. Failed/skipped fetch has no fetched_at and never means latest. Core verifies local facts; the Host performs the actual fetch under real Git authority.
 
 ## Verification and repeated cost
 

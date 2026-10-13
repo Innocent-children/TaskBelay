@@ -18,7 +18,7 @@ Products evolve independently. Releasing one product changes only its version fi
 the copies that must match it. Host Adapters may package a different Core version; build and release checks
 read it from the actual Core executable.
 
-SQLite additionally has one Core-owned database Schema version, currently `2.1.0`. It identifies
+SQLite additionally has one Core-owned database Schema version, currently `2.2.0`. It identifies
 the one supported persisted layout and changes with that current layout.
 
 Internal protocols, limits, snapshots, process definitions, payload contracts,

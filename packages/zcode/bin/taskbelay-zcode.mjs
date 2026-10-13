@@ -8,7 +8,7 @@ import { runHook } from "../hooks/pre-tool-use.mjs";
 import { assertNoDuplicateJSONMembers } from "../lib/json.mjs";
 
 export const operations = Object.freeze([
-  "inspect", "prepare", "provision", "status", "scope", "bind-task", "open", "resume", "cleanup-worktree", "cleanup-branch",
+  "freshness", "inspect", "prepare", "provision", "status", "scope", "bind-task", "open", "resume", "cleanup-worktree", "cleanup-branch",
 ]);
 
 function input() {
@@ -78,7 +78,7 @@ export async function runCLI(args) {
   if (args.length === 2 && args[0] === "host-launch" && operations.includes(args[1])) {
     const value = input(), operation = args[1];
     let result;
-    if (["inspect", "prepare"].includes(operation)) result = await workspace[operation](value);
+    if (["freshness", "inspect", "prepare"].includes(operation)) result = await workspace[operation](value);
     else {
       const { launch_id, ...rest } = value;
       if (["status", "scope", "provision", "open", "resume"].includes(operation)) {

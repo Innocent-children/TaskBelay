@@ -34,6 +34,8 @@ const (
 	gitShowIndexEntries
 	gitIsAncestor
 	gitShowMergeCommits
+	gitShowUpstream
+	gitCompareUpstream
 )
 
 type GitObserver struct{ runner gitCommandRunner }
@@ -525,6 +527,16 @@ func (command gitReadCommand) arguments(repositoryPath, value string) ([]string,
 		return left, right, ok && left != "" && right != ""
 	}
 	switch command {
+	case gitShowUpstream:
+		if value != "" && domain.ScopedPath(value) != nil {
+			return nil, false
+		}
+		return append(args, "for-each-ref", "--format=%(upstream)%00%(upstream:remotename)%00%(upstream:remoteref)", "refs/heads/"+value), true
+	case gitCompareUpstream:
+		if !strings.HasPrefix(value, "refs/remotes/") || domain.ScopedPath(value) != nil {
+			return nil, false
+		}
+		return append(args, "rev-list", "--left-right", "--count", "HEAD..."+value), true
 	case gitShowWorktreeRoot:
 		if value != "" {
 			return nil, false

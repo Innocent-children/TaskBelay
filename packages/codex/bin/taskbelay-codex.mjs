@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { assessRepositoryFreshness } from "../lib/repository-freshness.mjs";
 
 import { execFile as execFileCallback, spawn } from "node:child_process";
 import { constants as fsConstants, realpathSync } from "node:fs";
@@ -382,6 +383,7 @@ async function runHostLaunchCommand(operation, input, paths, dependencies) {
       return JSON.parse(result.stdout);
     }),
   };
+  if (operation === "freshness") return await assessRepositoryFreshness(input,{runGit:dependencies.runGit});
   if (operation === "inspect") {
     assertClosedObject(input, ["request", "repositories"], "host-launch inspect input");
     return await inspectAdmissionAnchor({ ...input, runGit: dependencies.runGit });

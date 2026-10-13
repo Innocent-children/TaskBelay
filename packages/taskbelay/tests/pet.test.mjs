@@ -184,7 +184,7 @@ test("start consumes actual Core status and starts its service before handing of
   const native = nativePlatform();
   const states = [];
   const stderr = output();
-  const environment = { ...process.env, TASKBELAY_DATA_DIR: dataDirectory };
+  const environment = { ...process.env, HOME:fixture.home, USERPROFILE:fixture.home, TASKBELAY_DATA_DIR: dataDirectory };
   try {
     const result = await runPet(["pet", "start"], {
       ...fixture.dependencies,
@@ -197,7 +197,8 @@ test("start consumes actual Core status and starts its service before handing of
         return response;
       },
     });
-    assert.equal(result.code, 0, stderr.text());
+    let diagnostic=stderr.text();if(result.code!==0){try{diagnostic+="\n"+(await readFile(join(dataDirectory,"webui-runtime.log"),"utf8")).slice(-2000)}catch{}}
+    assert.equal(result.code, 0, diagnostic);
     assert.equal(states[0].readiness, "unavailable");
     assert.equal(Object.hasOwn(states[0], "pid"), false);
     assert.equal(Object.hasOwn(states[0], "operation"), false);

@@ -61,7 +61,7 @@ func TestExactHostRejectsAlternateAddress(t *testing.T) {
 
 func TestDesktopLifecycleFilteringPrecedesPagination(t *testing.T) {
 	approved := domain.Task{TaskID: "approved", Status: "active", Repositories: []domain.RepositoryScopeEntry{{Key: "primary"}}}
-	approved.Approval = &domain.PlanApproval{PlanDigest: approved.PlanDigest()}
+	approved.Approval = approved.NewApproval("fixture-user", "Approved fixture plan")
 	blocked := approved
 	blocked.TaskID = "blocked"
 	blocked.Approval = nil

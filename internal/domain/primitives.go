@@ -71,6 +71,10 @@ type BudgetFailure struct {
 	Used      int64 `json:"used"`
 	Requested int64 `json:"requested"`
 	Limit     int64 `json:"limit"`
+	Actual    int64 `json:"actual"`
+	Reserved  int64 `json:"reserved"`
+	Uncertain int64 `json:"uncertain"`
+	Remaining int64 `json:"remaining"`
 }
 type Error struct {
 	Code    string              `json:"code"`

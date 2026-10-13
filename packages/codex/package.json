@@ -60,7 +60,8 @@
     "lib/worktree-snapshot.mjs",
     "plugin/skills/taskbelay/references/engineering.md",
     "plugin/skills/taskbelay/references/protocol.md",
-    "plugin/skills/taskbelay/references/workspace.md"
+    "plugin/skills/taskbelay/references/workspace.md",
+    "lib/repository-freshness.mjs"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",

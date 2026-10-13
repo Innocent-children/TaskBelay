@@ -86,7 +86,7 @@ try {
   await rpc("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "zcode-package-verification", version: "1.0" } });
   child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const info = await tool("taskbelay_server_info", {});
-  assert.equal(info.ok, true); assert.equal(info.result.tools.length, 15);
+  assert.equal(info.ok, true); assert.equal(info.result.tools.length, 16);
   const openRequest = { plan:planFor([{id:"package"}]), operation_id: "zcode-package-open", host: "zcode", ...scope,
     authorization: {user_ref: "isolated-fixture-user", request,
       goals: [{id: "package", statement: "The packaged Core runs the real local assertion", checks: ["readme"]}],

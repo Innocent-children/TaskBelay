@@ -22,11 +22,26 @@ type PlannedWork struct {
 	Owner     string   `json:"owner"`
 	Necessity string   `json:"necessity"`
 }
+type CheckAllowance struct {
+	CheckID   string `json:"check_id"`
+	TimeoutMS int64  `json:"timeout_ms"`
+}
+type BudgetApproval struct {
+	DecisionDigest Digest    `json:"decision_digest"`
+	UserRef        string    `json:"user_ref"`
+	Response       string    `json:"response"`
+	ConfirmedAt    time.Time `json:"confirmed_at"`
+}
 type PlanApproval struct {
-	PlanDigest  Digest    `json:"plan_digest"`
-	UserRef     string    `json:"user_ref"`
-	Response    string    `json:"response"`
-	ConfirmedAt time.Time `json:"confirmed_at"`
+	GrantedPlanDigest Digest           `json:"granted_plan_digest"`
+	AuthorityDigest   Digest           `json:"authority_digest"`
+	Limits            Limits           `json:"limits"`
+	Checks            []CheckAllowance `json:"checks"`
+	BudgetDecision    *BudgetApproval  `json:"budget_decision,omitempty"`
+	PlanDigest        Digest           `json:"plan_digest"`
+	UserRef           string           `json:"user_ref"`
+	Response          string           `json:"response"`
+	ConfirmedAt       time.Time        `json:"confirmed_at"`
 }
 type DesignReview struct {
 	RootCause        string `json:"root_cause"`
@@ -63,8 +78,50 @@ func (t Task) PlanDigest() Digest {
 		ProposedContent Digest
 	}{t.Authorization, t.Plan, t.Checks, repositories, t.ProposedContentDigest})
 }
+
+// AuthorityDigest excludes only configuration that may be synchronized within recorded ceilings.
+func (t Task) AuthorityDigest() Digest {
+	a := t.Authorization
+	a.Limits = Limits{}
+	cs := slices.Clone(t.Checks)
+	for i := range cs {
+		cs[i].TimeoutMS = 0
+		cs[i].Rationale = ""
+		cs[i].InputBasis = ""
+	}
+	origins := []any{}
+	for _, r := range t.Repositories {
+		origins = append(origins, []any{r.Key, r.Origin})
+	}
+	return Hash([]any{a, t.Plan, cs, origins, t.ProposedContentDigest})
+}
+func (t Task) ApprovalCoversConfiguration() bool {
+	a := t.Approval
+	if a == nil || a.AuthorityDigest != t.AuthorityDigest() || !a.GrantedPlanDigest.IsValid() || !t.Authorization.Limits.Within(a.Limits) || len(a.Checks) != len(t.Checks) {
+		return false
+	}
+	for _, c := range t.Checks {
+		found := false
+		for _, granted := range a.Checks {
+			if granted.CheckID == c.ID && c.TimeoutMS <= granted.TimeoutMS {
+				found = true
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
 func (t Task) PlanApproved() bool {
-	return t.Approval != nil && t.Approval.PlanDigest == t.PlanDigest()
+	return t.Approval != nil && t.Approval.PlanDigest == t.PlanDigest() && t.ApprovalCoversConfiguration()
+}
+func (t Task) NewApproval(userRef, response string) *PlanApproval {
+	cs := []CheckAllowance{}
+	for _, c := range t.Checks {
+		cs = append(cs, CheckAllowance{c.ID, c.TimeoutMS})
+	}
+	return &PlanApproval{PlanDigest: t.PlanDigest(), GrantedPlanDigest: t.PlanDigest(), AuthorityDigest: t.AuthorityDigest(), Limits: t.Authorization.Limits, Checks: cs, UserRef: userRef, Response: response, ConfirmedAt: time.Now().UTC()}
 }
 func (t Task) Work(id string) (PlannedWork, bool) {
 	for _, w := range t.Plan.Work {
@@ -143,6 +200,12 @@ func (t Task) ValidatePlan() error {
 		}
 	}
 	if t.Approval != nil {
+		if t.Approval.BudgetDecision != nil {
+			b := t.Approval.BudgetDecision
+			if !b.DecisionDigest.IsValid() || Text("approval.budget_decision.user_ref", b.UserRef) != nil || Text("approval.budget_decision.response", b.Response) != nil || validateUTC(b.ConfirmedAt) != nil {
+				return Invalid("approval.budget_decision", "requires the actual budget decision and reference")
+			}
+		}
 		if !t.PlanApproved() || Text("approval.user_ref", t.Approval.UserRef) != nil || Text("approval.response", t.Approval.Response) != nil || validateUTC(t.Approval.ConfirmedAt) != nil {
 			return Invalid("approval", "requires actual user confirmation of the exact current plan")
 		}

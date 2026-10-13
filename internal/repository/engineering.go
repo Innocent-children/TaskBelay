@@ -160,15 +160,24 @@ func ScopeFacts(ctx context.Context, t domain.Task) ([]domain.Fact, error) {
 						}
 						sort.Strings(names)
 						for _, name := range names {
+							// npm facts retain the declaration section; manifest policy grants name the package.
+							policyName := name
+							if strings.HasSuffix(e.Path, "package.json") {
+								_, policyName, _ = strings.Cut(name, ":")
+							}
 							allowed := false
 							for _, policy := range t.Authorization.Dependencies {
 								if policy.Path == p {
 									for _, v := range policy.Allowed {
-										allowed = allowed || name == v
+										allowed = allowed || policyName == v
 									}
 								}
 							}
-							add("dependency_change", p, fmt.Sprintf("Dependency %s changed from %q to %q.", name, a[name], b[name]), !allowed)
+							reason := "approved exact manifest policy permits this dependency"
+							if !allowed {
+								reason = "no approved dependency policy permits this name at this exact repository-qualified manifest path"
+							}
+							add("dependency_change", p, fmt.Sprintf("Dependency %s changed from %q to %q at %s: %s. File write scope and dependency permission are independent.", name, a[name], b[name], p, reason), !allowed)
 						}
 					}
 				} else {

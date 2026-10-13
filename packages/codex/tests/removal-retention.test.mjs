@@ -101,6 +101,7 @@ test("packaged Core task data survives deregistration, npm uninstall, and same-a
     ...admissionFixture(assessmentAnchor),
     repository_key: "primary",
     repository_path: targetRepository,
+    workspace_mode: "dedicated_worktree",
     source_type: "remote", carry_changes: false, remote_name: "origin",
     base_branch: "main",
     target_branch: "codex/retention-task",

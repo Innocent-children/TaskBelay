@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import {BudgetPanel,type BudgetDecision} from '../components/BudgetPanel';
 import { PlanPanel } from '../components/PlanPanel';
 import { call, identity, read, type Summary, type View } from '../lib/api';
 
@@ -48,6 +49,11 @@ export function App() {
         user_ref:'local-webui-plan-confirmation', response:label('I understand and approve the displayed complete plan.', '我已理解并确认展示的完整方案。')}));
       void load();
     } catch(e) { setError(String(e)); } finally { setBusy(false); }
+  }
+  async function updateBudget(budget:BudgetDecision,response:string) {
+    if(!view)return;setBusy(true);setError('');
+    try {setView(await call<View>('taskbelay_update_budget',{...identity(view),plan_digest:view.plan_digest,budget,user_ref:'local-webui-budget-decision',response}));void load();}
+    catch(e){setError(String(e));}finally{setBusy(false);}
   }
   async function archive() {
     if (!view) return;
@@ -109,6 +115,7 @@ export function App() {
         <p>{label('TaskBelay keeps authorized outcomes, actual changes and execution results together. Choose a saved task to inspect it.', 'TaskBelay 将授权目标、实际改动与执行结果保存在一起。选择已保存的任务查看。')}</p>
       </section> : <>
         <PlanPanel view={view} busy={busy} confirm={() => void confirmPlan()} />
+        {view.task.approval&&view.task.status==='active'&&<BudgetPanel key={view.plan_digest} view={view} busy={busy} update={(b,r)=>void updateBudget(b,r)}/>}
         <section><div className="row"><span className="badge">{view.task.status}</span>
           <small>{view.refreshed ? label('Actual conditions refreshed', '已刷新实际条件') : label('Saved state · refresh to assess applicability', '保存状态 · 刷新后判断适用性')}</small>
         </div><h1>{view.task.authorization.request}</h1>{view.task.summary && <p>{view.task.summary}</p>}

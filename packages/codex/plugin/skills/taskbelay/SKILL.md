@@ -9,7 +9,7 @@ Follow [engineering work](references/engineering.md), the [current protocol](ref
 The agent performs coding and technical judgment; Core owns Task decisions and evidence.
 
 Use actually visible local MCP tools. If unavailable, report it and repair the configured integration
-within authorization; do not silently claim controlled execution. The packaged MCP launcher exposes the same current Core contract.
+within authorization; do not silently claim controlled execution. When CLI call taskbelay_server_info succeeds, inspect startup_diagnostics and the actual data/runtime identity. CLI success does not prove this session exposes MCP. A storage-metering error means Core was reached; inspect permissions and schema before diagnosing a connection failure. The packaged MCP launcher exposes the same current Core contract.
 
 The PreToolUse hook checks apply_patch paths. Calls through exec_command, Bash, other editors or external processes are observed at checkpoints.
 Hooks check known paths and actual authorization restrictions. They cannot determine the semantics

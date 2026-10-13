@@ -1,3 +1,4 @@
+import { assessRepositoryFreshness } from "./repository-freshness.mjs";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
 import {
@@ -24,7 +25,11 @@ export function registerWorkspaceCoordinator(ctx, options) {
     name: WORKSPACE_COORDINATOR_TOOL,
     description: "Prepare the workspace selected for this new Task after asking the user: current branch, new local branch or dedicated worktree; there is no default. Local launches return ready for the current session. Reuse actual authorization; ask only for missing workspace or deletion authority.",
     parameters: {
-      operation: { type: "string", required: true, enum: ["provision", "consume", "prepare_cleanup", "cleanup_worktree", "cleanup_branch"] },
+      operation: { type: "string", required: true, enum: ["freshness", "provision", "consume", "prepare_cleanup", "cleanup_worktree", "cleanup_branch"] },
+      integration_authorization_ref:{type:"string",description:"Separate actual integration authorization; required for integrate=true."},
+      fetch: {type:"boolean",description:"Fetch corresponding upstream refs; default true."},
+      integrate: {type:"boolean",description:"Separately authorized clean fast-forward integration; default false."},
+      freshness_repositories: {type:"array",items:{type:"object",additionalProperties:false,properties:{key:{type:"string",required:true},repository_path:{type:"string",required:true},base_branch:{type:"string",description:"Retained workspace source branch; do not assume main."}}}},
       authorization_ref: { type: "string", description: "Actual workspace or deletion authorization reference; retained authorization remains valid." },
       request: { type: "string", description: "Exact admitted development request for a new provision operation." },
       profile: { type: "string", description: "Current DSH Profile name." },
@@ -61,6 +66,7 @@ export function registerWorkspaceCoordinator(ctx, options) {
     timeoutMs: 10 * 60_000,
     async execute(arguments_, execution) {
       authorizeWorkspaceExecution({ ...execution, name: WORKSPACE_COORDINATOR_TOOL, arguments: arguments_ });
+      if (arguments_.operation === "freshness") return await assessRepositoryFreshness({repositories:arguments_.freshness_repositories,fetch:arguments_.fetch,integrate:arguments_.integrate,authorization_ref:arguments_.authorization_ref,integration_authorization_ref:arguments_.integration_authorization_ref});
       if (arguments_.operation === "provision") {
         return await coordinator.provision({
           request: arguments_.request,

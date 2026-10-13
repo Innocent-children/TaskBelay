@@ -25,7 +25,7 @@ export function authorizeWorkspaceExecution(execution) {
     if (typeof execution.arguments?.authorization_ref !== "string" || !execution.arguments.authorization_ref.trim()) throw new Error("TASKBELAY_AUTHORIZATION_REQUIRED: retain an actual authorization reference for this operation");
     return;
   }
-  if (operation === "consume") return;
+  if (["consume","freshness"].includes(operation)) return;
   throw new Error("TASKBELAY_WORKSPACE_OPERATION_INVALID: operation is not supported");
 }
 

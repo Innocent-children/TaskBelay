@@ -214,3 +214,58 @@ func TestPlanBoundaryResponsesAndExecutionValidateAgainstPublishedSchemas(t *tes
 		t.Fatal("rejection changed semantic state", e)
 	}
 }
+
+func TestStartupDiagnosesReachableCoreWithoutClaimingHostMCPVisibility(t *testing.T) {
+	s := testServer(t)
+	actual := s.Dispatch(context.Background(), "taskbelay_server_info", []byte(`{}`))
+	if !actual.OK {
+		t.Fatal(actual)
+	}
+	raw, _ := json.Marshal(actual.Result)
+	if !strings.Contains(string(raw), `"core_reached":true`) || !strings.Contains(string(raw), "CLI success does not establish MCP availability") {
+		t.Fatal(string(raw))
+	}
+	validate(t, OutputSchema(map[string]any{}), actual)
+}
+
+func TestCompleteBudgetDecisionRoundTripsActualTransportSchema(t *testing.T) {
+	s := testServer(t)
+	ctx := context.Background()
+	root, e := filepath.EvalSymlinks(t.TempDir())
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, args := range [][]string{{"init", "-b", "main"}, {"config", "user.name", "test"}, {"config", "user.email", "test@localhost"}, {"commit", "--allow-empty", "-m", "baseline"}} {
+		if out, e := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); e != nil {
+			t.Fatal(e, string(out))
+		}
+	}
+	call := func(name string, q any) application.View {
+		t.Helper()
+		raw, _ := json.Marshal(q)
+		actual := s.Dispatch(ctx, name, raw)
+		if !actual.OK {
+			t.Fatal(actual)
+		}
+		validate(t, OutputSchema(application.View{}), actual)
+		b, _ := json.Marshal(actual.Result)
+		var v application.View
+		if e := json.Unmarshal(b, &v); e != nil {
+			t.Fatal(e)
+		}
+		return v
+	}
+	authorization := domain.Authorization{UserRef: "actual-fixture-request", Request: "Verify local clean diff", Goals: []domain.Goal{{ID: "goal", Statement: "No unintended changes", Checks: []string{"check"}}}, Limits: domain.DefaultLimits()}
+	plan := domain.Plan{Understanding: "Verify requested clean diff", RootCause: "Need actual result", Approach: "Use existing local Git check", SimplerAlternative: "No additional tool needed", VerificationBasis: "Actual diff exit", Completion: "Current required check passed", Work: []domain.PlannedWork{{ID: "work", GoalIDs: []string{"goal"}, Change: "Verify requested state", Owner: "Existing repository", Necessity: "Required actual result"}}}
+	v := call("taskbelay_open_task", application.OpenRequest{OperationID: "budget-transport-open", Host: "cli", Repositories: []application.RepositoryInput{{Key: "primary", Path: root}}, Authorization: authorization, Plan: plan, Checks: []domain.Check{{ID: "check", Kind: "command", Argv: []string{"git", "diff", "--quiet"}, TimeoutMS: 3000, Retry: "repeatable", Rationale: "Actual diff", Conditions: "Local fixture"}}})
+	v = call("taskbelay_confirm_plan", application.ConfirmPlanRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "budget-transport-confirm"}, PlanDigest: v.PlanDigest, UserRef: "actual-confirmation", Response: "Approved exact fixture plan"})
+	q := application.BudgetRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "budget-transport-update"}, PlanDigest: v.PlanDigest, Budget: domain.BudgetDecision{Runs: 40, ExecutionMS: 14400000, WorkMS: 14400000, Tokens: 1000000}, UserRef: "actual-complete-budget-decision", Response: "Approve four hours for command and work time and 40 runs"}
+	updated := call("taskbelay_update_budget", q)
+	if updated.Task.Authorization.Limits.CoreMS != 14400000 || updated.Task.Authorization.Limits.HostMS != 14400000 || !updated.Task.PlanApproved() {
+		t.Fatal(updated)
+	}
+	replay := call("taskbelay_update_budget", q)
+	if !replay.Replayed || replay.Task.Revision != updated.Task.Revision {
+		t.Fatal("replayed budget changed state")
+	}
+}
