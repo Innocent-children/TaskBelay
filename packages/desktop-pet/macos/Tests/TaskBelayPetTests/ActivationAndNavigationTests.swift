@@ -132,7 +132,7 @@ final class ActivationAndNavigationTests: XCTestCase {
 
     func testStartServiceUsesTheNonOpeningForm() async {
         let runner = RecordingProcessRunner(outcomes: [
-            ProcessOutcome(exitCode: 0, stdout: TestFixtures.coreRuntimeStatus(operation: "start"), stderr: "", timedOut: false),
+            ProcessOutcome(exitCode: 0, stdout: TestFixtures.coreRuntimeStatus(), stderr: "", timedOut: false),
         ])
         let client = CoreRuntimeClient(corePath: "/runtime/taskbelay", dataDirectory: "/data", runner: runner)
         _ = await client.startService()

@@ -10,6 +10,8 @@ Core：taskbelay version；config validate（stdin 配置）；mcp --stdio；cal
 
 host-check pre-file-write 输入 host、repository_path、tool_name、paths、intent_digest、path_parse_complete；返回 decision allow/deny 和明确 coverage，不判断未来修改语义。workspace-available 输入 repository_path 或 repositories [{key,repository_path}]，只读返回 available 与已存在的 task_id。检查失败不按无 Task 放行。普通 artifact 阶段命令已移除。
 
+`webui start/open/status/stop --json` 在顶层返回 `readiness`、`core_identity`、`data_root_digest` 和 `url`。`core_identity` 是 Core 版本号，不带产品名前缀；未记录服务进程时省略 `pid`，存在时它是非负整数。响应不包含 `operation`，调用方已知所执行的命令。桌面启动器核对这些字段后，仍须读取 `/api/system/status`，确认版本身份、数据目录摘要和本机地址与实际服务一致。
+
 ## MCP 工具
 
 | 工具 | 当前输入 |

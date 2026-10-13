@@ -51,6 +51,8 @@ taskbelay pet start
 
 本地包与正式制备复用同一平台应用装配。macOS 构建机器需要 Node.js >=24、Xcode >=27 和 macOS SDK >=27；`xcrun swift` 使用当前选中的 Xcode。构建前会检查工具链并输出版本，失败日志包含标准输出和标准错误。
 
+验证本地安装时，已有用户目录应用副本须先按“更新程序与素材”更新，再依次执行 `taskbelay pet start`、`taskbelay pet stop`、`taskbelay pet start`。最后一次启动应显示宠物，并能继续读取任务；仅编译成功不代表应用已连接 Core。启动器和原生应用按[命令参考](COMMANDS.md#安装与本机入口)读取当前运行状态，并核对实际本机服务。
+
 ## Windows 本地构建与安装
 
 Windows 本地开发包的构建需要 Go、Node.js 与 pnpm 位于 PATH，并使用仓库规定的工具链版本。Windows 10/11 x64 使用独立桌面实现，功能包含任务选择、状态气泡、托盘、九类动作、形象导入、缩放、拖动、隐藏恢复与独立启停。运行已构建的应用无需 Electron 或编译器开发环境；本地包携带运行时，仍需已配置的 Adapter 提供 Core。
@@ -375,6 +377,8 @@ TaskBelay 导入成功不表示原图集能被 Codex 识别。需要同时在 Co
 | --- | --- |
 | `swift test --package-path packages/desktop-pet/macos --filter 'PetMotionTests\|PetAnimationTimelineTests\|AnimationAndBubbleTests\|PetTaskCollectionTests\|PetActivityTests'` | macOS；原生窗口的动画反向、中断、屏幕约束、滚动与按钮命中，以及逐帧时间线与活动规则；窗口检查使用构造的任务数据 |
 | `swift test --package-path packages/desktop-pet/macos --filter TaskObserverTests` | macOS；使用模拟 Core/HTTP 检查多任务发现、固定关注、自动交接与迟到响应处理 |
+| `node --test packages/taskbelay/tests/pet.test.mjs` | 使用源码编译的真实 Core 检查无服务时的状态输出、服务启动与启动器读取；原生窗口交接使用模拟入口。需要 Go。 |
+| `swift test --package-path packages/desktop-pet/macos --filter WebUIModelTests` | macOS；除模型测试外，编译并调用真实 Core，检查状态解码及原生启动参数。需要 Go；最终应用的显示与启停另行验证。 |
 | `swift test --package-path packages/desktop-pet/macos --filter PetAppearanceTests` | macOS；静态、原生和 Codex 素材导入保留支持的帧与时长，失败时保留已安装形象 |
 | `node --test packages/desktop-pet/windows/tests/contracts.test.cjs` | Node.js；检查 Windows 素材加载与导入的帧数和时长限制，超限重导入保留已安装形象；不运行 Windows 原生窗口 |
 | `node --test packages/desktop-pet/windows/tests/task-selection.test.cjs` | 模拟 Electron、偏好与 HTTP，检查任务发现和选择规则 |

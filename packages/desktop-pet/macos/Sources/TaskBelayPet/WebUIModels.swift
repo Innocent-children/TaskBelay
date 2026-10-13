@@ -195,7 +195,6 @@ enum WebUIDecoding {
 /// The Core writes these members at the top level of a single JSON object. `pid`
 /// is absent or zero when no service process is recorded, so it stays optional.
 struct CoreRuntimeStatus: Equatable {
-    let operation: String
     let readiness: Readiness
     let coreIdentity: String
     let dataRootDigest: String
@@ -203,7 +202,6 @@ struct CoreRuntimeStatus: Equatable {
     let pid: Int?
 
     private struct Payload: Decodable {
-        let operation: String
         let readiness: Readiness
         let coreIdentity: String
         let dataRootDigest: String
@@ -211,7 +209,6 @@ struct CoreRuntimeStatus: Equatable {
         let pid: Int?
 
         enum CodingKeys: String, CodingKey {
-            case operation
             case readiness
             case coreIdentity = "core_identity"
             case dataRootDigest = "data_root_digest"
@@ -228,7 +225,6 @@ struct CoreRuntimeStatus: Equatable {
             )
         }
         return CoreRuntimeStatus(
-            operation: payload.operation,
             readiness: payload.readiness,
             coreIdentity: payload.coreIdentity,
             dataRootDigest: payload.dataRootDigest,

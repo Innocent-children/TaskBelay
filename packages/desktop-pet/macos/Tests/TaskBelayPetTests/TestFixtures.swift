@@ -5,8 +5,8 @@ import Foundation
 /// desktop displays are asserted; the real responses carry more fields, which
 /// the models deliberately ignore.
 enum TestFixtures {
-    static let coreIdentity = "taskbelay/0.4.1"
-    static let otherCoreIdentity = "taskbelay/0.4.2"
+    static let coreIdentity = "0.4.1"
+    static let otherCoreIdentity = "0.4.2"
     static let dataRootDigest = String(repeating: "ab", count: 32)
     static let otherDataRootDigest = String(repeating: "cd", count: 32)
     static let origin = "http://127.0.0.1:51234"
@@ -70,17 +70,16 @@ enum TestFixtures {
     }
 
     static func coreRuntimeStatus(
-        operation: String = "status",
         readiness: String = "ready",
         coreIdentity: String = TestFixtures.coreIdentity,
         dataRootDigest: String = TestFixtures.dataRootDigest,
         url: String = TestFixtures.origin,
         pid: Int? = 4242
     ) -> Data {
-        let pidValue = pid.map(String.init) ?? "null"
+        let pidMember = pid.map { ",\"pid\":\($0)" } ?? ""
         return json("""
-        {"operation":"\(operation)","readiness":"\(readiness)","core_identity":"\(coreIdentity)",\
-        "data_root_digest":"\(dataRootDigest)","url":"\(url)","pid":\(pidValue)}
+        {"readiness":"\(readiness)","core_identity":"\(coreIdentity)",\
+        "data_root_digest":"\(dataRootDigest)","url":"\(url)"\(pidMember)}
         """)
     }
 

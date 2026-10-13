@@ -51,6 +51,8 @@ taskbelay pet start
 
 Local packages use the same platform application assembly as formal preparation. macOS build machines require Node.js >=24, Xcode >=27 and macOS SDK >=27; `xcrun swift` uses the selected Xcode. Builds check and report toolchain versions before compilation and include stdout and stderr in failure diagnostics.
 
+To verify a local installation, first update any existing user-directory application as described under “Updating the application and artwork,” then run `taskbelay pet start`, `taskbelay pet stop`, and `taskbelay pet start` in order. The last start should show the pet and continue reading tasks; compilation alone does not establish a connection to Core. The launcher and native application read the current runtime state described in the [command reference](COMMANDS_en.md#installation-and-local-entrypoints) and verify the live loopback service.
+
 ## Windows local build and installation
 
 Building the Windows development package requires Go, Node.js and pnpm on PATH at the repository toolchain versions. Windows 10/11 x64 has a separate desktop implementation with task selection, status bubbles, tray menus, nine actions, appearance import, scaling, dragging, hide/restore and independent start/stop. A built app carries its runtime and needs no Electron development tools or compiler; a configured Adapter still supplies Core.
@@ -386,6 +388,8 @@ Use checks matching the affected component and environment, and retain the artif
 | --- | --- |
 | `swift test --package-path packages/desktop-pet/macos --filter 'PetMotionTests\|PetAnimationTimelineTests\|AnimationAndBubbleTests\|PetTaskCollectionTests\|PetActivityTests'` | macOS; native-window retargeting, interruption, screen constraints, scrolling and button hit testing, plus frame timing and activity rules; window checks use constructed task data |
 | `swift test --package-path packages/desktop-pet/macos --filter TaskObserverTests` | macOS; simulated Core/HTTP checks multi-task discovery, pinning, automatic handoff and late-response handling |
+| `node --test packages/taskbelay/tests/pet.test.mjs` | Builds a real Core from source and checks stopped-service output, service startup, and launcher decoding; the native window handoff uses a simulated entry. Requires Go. |
+| `swift test --package-path packages/desktop-pet/macos --filter WebUIModelTests` | macOS; includes building and calling a real Core to check status decoding and native launch arguments. Requires Go; final application visibility and start/stop behavior are verified separately. |
 | `swift test --package-path packages/desktop-pet/macos --filter PetAppearanceTests` | macOS; static/native/Codex import preserves supported frames and timing, and failed imports preserve the installed appearance |
 | `node --test packages/desktop-pet/windows/tests/contracts.test.cjs` | Node.js; check Windows artwork loading and import limits for frame counts and timing, and preservation of installed appearances after rejected reimports; does not exercise native Windows UI |
 | `node --test packages/desktop-pet/windows/tests/task-selection.test.cjs` | Simulated Electron, preferences and HTTP; verify discovery and selection rules |

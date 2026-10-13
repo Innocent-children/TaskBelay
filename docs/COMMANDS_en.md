@@ -10,6 +10,8 @@ Core: taskbelay version; config validate (stdin); mcp --stdio; call <tool_name> 
 
 pre-file-write takes host, repository_path, tool_name, paths, intent_digest, path_parse_complete and returns allow/deny with actual coverage, not future edit semantics. workspace-available takes repository_path or repositories [{key,repository_path}], returning available and an existing task_id read-only. Observation failure never means no Task. Phase artifact commands have been removed.
 
+`webui start/open/status/stop --json` returns top-level `readiness`, `core_identity`, `data_root_digest`, and `url`. `core_identity` is the Core version without a product-name prefix. `pid` is omitted when no service process is recorded; when present, it is a non-negative integer. The response has no `operation` member because the caller already knows the command it issued. After reading these fields, the desktop launcher must still query `/api/system/status` and match the version identity, data directory digest, and loopback address against the live service.
+
 ## MCP tools
 
 | Tool | Current input |

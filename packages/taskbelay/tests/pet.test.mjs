@@ -3,10 +3,11 @@ import { Readable } from "node:stream";
 import { EventEmitter } from "node:events";
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 
 import { runMain } from "../lib/lifecycle.mjs";
+import { execPortableCommand } from "../lib/command.mjs";
 import { resolveManagerPaths } from "../lib/ownership.mjs";
 import { runPet, stopPetForCore } from "../lib/pet.mjs";
 import { loadPetPlatform } from "../lib/platform.mjs";
@@ -38,7 +39,7 @@ test("macOS application replacement preserves the installed copy when source sta
   assert.equal(await readFile(join(petDirectory, "TaskBelayPet.app/Contents/MacOS/TaskBelayPet"), "utf8"), "original");
 });
 
-const CORE_IDENTITY = "taskbelay/0.6.2";
+const CORE_IDENTITY = "0.6.2";
 const DATA_ROOT_DIGEST = "3f8a1c9d".repeat(8);
 const ORIGIN = "http://127.0.0.1:41731";
 const messages = messagesForLanguage("en").pet;
@@ -148,8 +149,8 @@ test("start brings the service up once when Core reports it unavailable and rest
   const fixture = await petFixture(t);
   const native = nativePlatform({ confirmation: "restored" });
   const core = coreRuntime([
-    runtimeState({ readiness: "unavailable", url: "", pid: 0 }),
-    runtimeState({ operation: "start" }),
+    runtimeState({ readiness: "unavailable", url: "", pid: undefined }),
+    runtimeState(),
   ]);
   const service_ = service();
   const stdout = output();
@@ -170,6 +171,48 @@ test("start brings the service up once when Core reports it unavailable and rest
     ["webui", "start", "--no-open", "--json"],
   ]);
   assert.equal(native.calls.launch.length, 1);
+});
+
+test("start consumes actual Core status and starts its service before handing off to the native app", async (t) => {
+  const fixture = await petFixture(t);
+  const { runtimePath, dataDirectory } = fixture.selection;
+  await mkdir(dirname(runtimePath), { recursive: true });
+  await mkdir(dataDirectory, { recursive: true });
+  await execPortableCommand("go", ["build", "-o", runtimePath, "./cmd/taskbelay"], {
+    cwd: resolve(import.meta.dirname, "../../.."), encoding: "utf8", timeout: 120_000,
+  });
+  const native = nativePlatform();
+  const states = [];
+  const stderr = output();
+  const environment = { ...process.env, TASKBELAY_DATA_DIR: dataDirectory };
+  try {
+    const result = await runPet(["pet", "start"], {
+      ...fixture.dependencies,
+      environment,
+      stderr,
+      platformModule: native.module,
+      exec: async (executable, args, options) => {
+        const response = await execPortableCommand(executable, args, options);
+        states.push(JSON.parse(response.stdout));
+        return response;
+      },
+    });
+    assert.equal(result.code, 0, stderr.text());
+    assert.equal(states[0].readiness, "unavailable");
+    assert.equal(Object.hasOwn(states[0], "pid"), false);
+    assert.equal(Object.hasOwn(states[0], "operation"), false);
+    assert.equal(states[1].readiness, "ready");
+    const { stdout } = await execPortableCommand(runtimePath, ["version"], { encoding: "utf8" });
+    const version = stdout.trim().replace(/^taskbelay /u, "");
+    assert.equal(states[0].core_identity, version);
+    assert.equal(native.calls.launch.length, 1);
+    assert.equal(native.calls.launch[0].request.coreIdentity, version);
+    assert.equal(native.calls.launch[0].request.dataRootDigest, states[1].data_root_digest);
+  } finally {
+    await execPortableCommand(runtimePath, ["webui", "stop", "--json"], {
+      env: environment, encoding: "utf8", timeout: 15_000,
+    });
+  }
 });
 
 test("start refuses an unusable service, address, identity, or data directory", async (t) => {
@@ -200,10 +243,22 @@ test("start refuses an unusable service, address, identity, or data directory", 
     },
     {
       name: "a runtime state outside the documented contract",
-      states: [runtimeState({ core_identity: "taskbelay/0.6" })],
+      states: [runtimeState({ core_identity: "0.6" })],
       live: null,
       expected: `${messages.coreCommandFailed}: the Core identity is invalid`,
     },
+    {
+      name: "the retired product-prefixed identity",
+      states: [runtimeState({ core_identity: "taskbelay/0.6.2" })],
+      live: null,
+      expected: `${messages.coreCommandFailed}: the Core identity is invalid`,
+    },
+    ...[null, "4242", -1, 1.5].map(pid => ({
+      name: `an invalid process field: ${JSON.stringify(pid)}`,
+      states: [runtimeState({ pid })],
+      live: null,
+      expected: `${messages.coreCommandFailed}: the Core reported an invalid service process`,
+    })),
   ];
   const fixture = await petFixture(t);
   for (const current of cases) {
@@ -738,7 +793,6 @@ function launchRequest() {
 
 function runtimeState(overrides = {}) {
   return {
-    operation: "status",
     readiness: "ready",
     core_identity: CORE_IDENTITY,
     data_root_digest: DATA_ROOT_DIGEST,

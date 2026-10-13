@@ -20,7 +20,7 @@ const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 
 const CORE_INVOCATION_TIMEOUT_MILLISECONDS = 10_000;
 const SERVICE_TIMEOUT_MILLISECONDS = 3_000;
-const CORE_IDENTITY_PATTERN = /^taskbelay\/(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
+const CORE_IDENTITY_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const DATA_ROOT_DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const LOOPBACK_ORIGIN_PATTERN = /^http:\/\/127\.0\.0\.1:(\d{1,5})$/u;
 const READINESS_VALUES = Object.freeze(["ready", "read_only", "incompatible", "unavailable"]);
@@ -279,7 +279,9 @@ function validatedRuntimeState(output, messages) {
     throw invalid("the data directory digest is invalid");
   }
   if (typeof state.url !== "string") throw invalid("the Core reported an invalid service address");
-  if (!Number.isInteger(state.pid) || state.pid < 0) throw invalid("the Core reported an invalid service process");
+  if (state.pid !== undefined && (!Number.isInteger(state.pid) || state.pid < 0)) {
+    throw invalid("the Core reported an invalid service process");
+  }
   return Object.freeze({
     readiness: state.readiness,
     core_identity: state.core_identity,
