@@ -72,8 +72,8 @@ test("official DSH add/remove/reinstall preserves Core data, repository, and Cod
   const serverInfo = firstMount.serverInfo;
   const opened = await firstMount.call("mcp__taskbelay__taskbelay_open_task", {
     operation_id:"lifecycle-open",host:"deepseek",repositories:[{key:"primary",repository_path:taskRepository}],
-    authorization:{user_ref:"fixture-lifecycle-request",request:"Lifecycle acceptance task",goals:[{id:"retention",statement:"Reinstall preserves this current task",checks:["human"]}]},
-    plan:planFor([{id:"retention"}]),checks:[{id:"human",kind:"human",rationale:"Inspect retained identity",conditions:"Same current artifact and workspace"}],
+    authorization:{user_ref:"fixture-lifecycle-request",request:"Lifecycle acceptance task",goals:[{id:"retention",statement:"Reinstall preserves this current task"}]},
+    plan:planFor([{goal_ids:["retention"],id:"human",kind:"human",rationale:"Inspect retained identity",conditions:"Same current artifact and workspace"}]),
   });
   const task = opened.result.task;
   assert.equal(opened.ok, true);

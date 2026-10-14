@@ -32,3 +32,5 @@ Runtime selection rejects win32-ia32, win32-arm64 and darwin-x64. Linux, Windows
 Supported structured write hooks can preflight forbidden paths. Shell, external edits and operations outside hook coverage are observed at checkpoints; they are not continuously intercepted. Semantic scope needs Host reasoning with cited basis. Go exported declarations and dependency changes are program observations, not general semantic proofs. Services, files and conditions outside declared inputs and environment are not treated as verified.
 
 Current internal protocols are incompatible with historical data; Core preserves and rejects it. Use an independent data directory for source evaluation. See [Project status](PROJECT-STATUS_en.md) and [Commands](COMMANDS_en.md) for records, installation and permissions.
+
+The current native execution entrypoint is check run; MCP/HTTP provide task records and queries only. See [project status](PROJECT-STATUS_en.md) for 2026-10-14 acceptance, reads, UI and recovery checks and unexecuted environments. No public Host or platform support is added.

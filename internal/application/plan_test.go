@@ -13,7 +13,7 @@ import (
 )
 
 func testPlan() domain.Plan {
-	return domain.Plan{Approach: "Edit the existing text file directly; no new abstraction is needed.", VerificationBasis: "Read the requested text and review the actual diff."}
+	return domain.Plan{Approach: "Edit the existing text file directly; no new abstraction is needed.", VerificationBasis: "Read the requested text and review the actual diff.", Checks: []domain.Check{{ID: "human", Kind: "human", GoalIDs: []string{"goal"}, Rationale: "User checks requested text", Conditions: "Read current file"}}}
 }
 func ptr[T any](v T) *T { return &v }
 func TestUserRequestStartsWorkAndMethodChangesDoNotAskAgain(t *testing.T) {
@@ -55,8 +55,8 @@ func TestExplicitAllowedScopeDiffersFromPredictedPaths(t *testing.T) {
 	a := v.Task.Authorization
 	a.UserRef = "user-restricts-paths"
 	a.AllowedPaths = []string{"file.txt"}
-	a.ExpectedPaths = []string{"different-prediction.txt"}
-	v, e := s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "scope", v.Task.Revision}, Authorization: ptr(a), Plan: ptr(v.Task.Plan), Checks: ptr(v.Task.Checks), Reason: "User explicitly restricts edits to file.txt"})
+	v.Task.Plan.ExpectedPaths = []string{"different-prediction.txt"}
+	v, e := s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "scope", v.Task.Revision}, Authorization: ptr(a), Plan: ptr(v.Task.Plan), Reason: "User explicitly restricts edits to file.txt"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -180,5 +180,37 @@ func TestDependencyChangesWithoutAnExplicitPolicyRequireReviewInsteadOfApproval(
 	}
 	if !found || v.Decision.Advice == "ask_user" || v.Decision.Ready {
 		t.Fatal("dependency change must still be reviewed", v.Decision)
+	}
+}
+
+func planWithChecks(p domain.Plan, checks []domain.Check) domain.Plan { p.Checks = checks; return p }
+
+func TestTaskSearchAndHostFilterBeforePagination(t *testing.T) {
+	s, v, root := fixture(t)
+	ctx := context.Background()
+	for i, host := range []domain.Host{"codex", "cli", "codex"} {
+		var err error
+		v, err = s.Cancel(ctx, CancelRequest{Identity: Identity{v.Task.TaskID, fmt.Sprintf("cancel-filter-%d", i), v.Task.Revision}, Reason: "Prepare isolated filter fixture"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		authorization := v.Task.Authorization
+		authorization.Request = fmt.Sprintf("Needle_%% fixture %d", i)
+		v, err = s.Open(ctx, OpenRequest{OperationID: fmt.Sprintf("filter-open-%d", i), Host: host, Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: authorization, Plan: v.Task.Plan})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := s.Store.List(ctx, store.ListQuery{Search: "needle_%", Host: "codex", PageSize: 1})
+	if err != nil || len(page.Items) != 1 || !page.HasNext || page.Items[0].Authorization.Request != "Needle_% fixture 2" {
+		t.Fatal(page, err)
+	}
+	page, err = s.Store.List(ctx, store.ListQuery{Search: "needle_%", Host: "codex", PageSize: 1, Page: 2})
+	if err != nil || len(page.Items) != 1 || page.HasNext || page.Items[0].Authorization.Request != "Needle_% fixture 0" {
+		t.Fatal(page, err)
+	}
+	page, err = s.Store.List(ctx, store.ListQuery{Search: "needleZZ", Host: "codex"})
+	if err != nil || len(page.Items) != 0 {
+		t.Fatal("search treated literal characters as SQL wildcards", page, err)
 	}
 }

@@ -12,6 +12,8 @@ TaskBelay accompagne Codex, DeepSeek Harness, Claude Code et ZCode. Il conserve 
 - Exécuter les vérifications locales autorisées et conserver les codes de sortie réels, les entrées, les conditions et les résultats. Déclarations, exécution et conclusions d’acceptation sont distinctes. Les changements pertinents périment les preuves ; des vérifications indépendantes au périmètre justifié peuvent rester valides. Replanifier ne remet pas le coût cumulé à zéro.
 - Alterner réalisation et vérification, réviser les besoins et reprendre les résultats, les tentatives échouées et les exécutions incertaines. L’historique récent est borné ; les résultats valides et les coûts cumulés sont conservés.
 
+Les vérifications de commandes utilisent `taskbelay check run` depuis l’outil natif de processus de l’hôte, avec ses permissions et son environnement. La WebUI propose la recherche, les filtres par hôte et état, le choix de langue, les réponses de l’utilisateur et la récupération des exécutions. Chaque objectif exige une vérification d’acceptation réussie ; accepter une régression existante ne la remplace pas. Lire l’état enregistré n’écrit pas de données de consommation.
+
 ## Commencer
 
 Node.js >=24 et un agent installé sont requis. Le développement depuis les sources nécessite aussi Go >=1.26 et pnpm >=11 <12. Ces sources contiennent une évolution incompatible du contrat d’ingénierie ; les paquets publiés et le support stable restent inchangés. Compilez les sources pour utiliser le nouveau contrat. Conservez les anciennes données et choisissez explicitement un autre répertoire. Aucune migration ni réinitialisation automatique n’est prévue.

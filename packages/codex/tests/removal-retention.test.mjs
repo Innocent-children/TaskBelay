@@ -167,9 +167,8 @@ test("packaged Core task data survives deregistration, npm uninstall, and same-a
   const opened = await firstCore.callTool("taskbelay_open_task", {
     operation_id: "retention-open", host: "codex",
     repositories: [{key:"primary",repository_path:taskRepository}],
-    authorization: {user_ref:"fixture-retention-request",request:taskRequest,goals:[{id:"retention",statement:"The same task is readable after deregistration",checks:["human"]}]},
-    plan:planFor([{id:"retention"}]),
-    checks:[{id:"human",kind:"human",rationale:"Inspect retained task identity",conditions:"Same current artifact and original workspace"}],
+    authorization: {user_ref:"fixture-retention-request",request:taskRequest,goals:[{id:"retention",statement:"The same task is readable after deregistration"}]},
+    plan:planFor([{goal_ids:["retention"],id:"human",kind:"human",rationale:"Inspect retained task identity",conditions:"Same current artifact and original workspace"}]),
   });
   assert.equal(opened.ok, true);
   const taskBefore = taskIdentity(opened.result.task);

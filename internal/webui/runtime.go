@@ -14,9 +14,10 @@ import (
 
 	"github.com/Innocent-children/taskbelay/internal/application"
 	"github.com/Innocent-children/taskbelay/internal/domain"
-	coremcp "github.com/Innocent-children/taskbelay/internal/mcp"
+	coreprotocol "github.com/Innocent-children/taskbelay/internal/protocol"
 	"github.com/Innocent-children/taskbelay/internal/repository"
 	"github.com/Innocent-children/taskbelay/internal/store"
+	"github.com/Innocent-children/taskbelay/internal/userconfig"
 )
 
 const databaseFileName = "taskbelay.db"
@@ -245,10 +246,7 @@ func Serve(ctx context.Context, dataDirectory, coreIdentity string) error {
 		}
 		return SystemStatusResponse{Readiness: ReadinessReady, CoreIdentity: coreIdentity, DataRootDigest: digest, URL: url}
 	}
-	core, err := coremcp.NewServer(service, coreIdentity, nil)
-	if err != nil {
-		return err
-	}
+	core := coreprotocol.NewHandler(service, coreIdentity, userconfig.Preferences{})
 	api, err := NewAPI(service, core, status)
 	if err != nil {
 		return err

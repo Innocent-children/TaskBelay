@@ -1,4 +1,4 @@
-package mcp
+package protocol
 
 import (
 	"github.com/Innocent-children/taskbelay/internal/application"
@@ -20,12 +20,12 @@ type TaskSnapshot struct {
 	Revision       uint64                 `json:"revision"`
 	Authorization  domain.Authorization   `json:"authorization"`
 	Plan           domain.Plan            `json:"plan"`
-	Checks         []domain.Check         `json:"checks"`
 	Repositories   []RepositorySummary    `json:"repositories"`
 	Progress       []domain.Progress      `json:"progress"`
 	Issue          *domain.Issue          `json:"issue"`
 	Evidence       []domain.Evidence      `json:"evidence"`
 	Usage          domain.Usage           `json:"usage"`
+	Exceptions     []domain.KnownFailure  `json:"exceptions"`
 	Acceptance     []domain.Acceptance    `json:"acceptance"`
 	Summary        string                 `json:"summary"`
 	Risks          []string               `json:"risks"`
@@ -39,6 +39,7 @@ type TaskResult struct {
 	AuthorizationDigest domain.Digest       `json:"authorization_digest"`
 	ContentDigest       domain.Digest       `json:"content_digest"`
 	Decision            domain.Decision     `json:"decision"`
+	IssueDigest         domain.Digest       `json:"issue_digest,omitempty"`
 	Refreshed           bool                `json:"refreshed"`
 	Replayed            bool                `json:"replayed"`
 	Budget              domain.BudgetReport `json:"budget"`
@@ -101,8 +102,8 @@ func taskResult(v application.View, detail bool) TaskResult {
 		}
 	}
 	result := TaskResult{
-		Task:       TaskSnapshot{TaskID: t.TaskID, Host: t.Host, Status: t.Status, Revision: t.Revision, Authorization: t.Authorization, Plan: t.Plan, Checks: t.Checks, Repositories: repositories, Progress: t.Progress, Issue: t.Issue, Evidence: evidence, Usage: t.Usage, Acceptance: t.Acceptance, Summary: t.Summary, Risks: t.Risks, Archived: t.Archived, BudgetDecision: t.BudgetDecision},
-		PlanDigest: v.PlanDigest, AuthorizationDigest: v.AuthorizationDigest, ContentDigest: v.ContentDigest, Decision: decision, Refreshed: v.Refreshed, Replayed: v.Replayed, Budget: v.Budget,
+		Task:        TaskSnapshot{TaskID: t.TaskID, Host: t.Host, Status: t.Status, Revision: t.Revision, Authorization: t.Authorization, Plan: t.Plan, Repositories: repositories, Progress: t.Progress, Issue: t.Issue, Evidence: evidence, Usage: t.Usage, Exceptions: t.Exceptions, Acceptance: t.Acceptance, Summary: t.Summary, Risks: t.Risks, Archived: t.Archived, BudgetDecision: t.BudgetDecision},
+		IssueDigest: v.IssueDigest, PlanDigest: v.PlanDigest, AuthorizationDigest: v.AuthorizationDigest, ContentDigest: v.ContentDigest, Decision: decision, Refreshed: v.Refreshed, Replayed: v.Replayed, Budget: v.Budget,
 	}
 	if detail {
 		result.Details = &v

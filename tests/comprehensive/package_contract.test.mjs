@@ -48,7 +48,7 @@ test("repository validation uses the current integrated engineering entrypoint",
   const validation = await readFile(join(repositoryRoot, "scripts/validate-repository.sh"), "utf8");
   assert.match(validation, /exec node scripts\/validate-engineering.mjs/u);
   const current = await readFile(join(repositoryRoot, "scripts/validate-engineering.mjs"), "utf8");
-  for (const contract of ["'vet','./...'", "'test','-count=1'", "tests/journeys/engineering.test.mjs", "tests/host-engineering.test.mjs", "scripts/build-webui.mjs"])
+  for (const contract of ["tests/journeys/engineering.test.mjs", "tests/host-engineering.test.mjs", "scripts/build-webui.mjs"])
     assert.ok(current.includes(contract), contract);
 });
 

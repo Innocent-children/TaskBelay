@@ -40,7 +40,7 @@ func fixture(t *testing.T) (*Service, View, string) {
 	}
 	t.Cleanup(func() { db.Close() })
 	s, _ := NewService(db, repository.NewGitObserver())
-	v, e := s.Open(context.Background(), OpenRequest{Plan: testPlan(), OperationID: "open", Host: "cli", Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: domain.Authorization{UserRef: "actual-test-user", Request: "Change file text", Goals: []domain.Goal{{ID: "goal", Statement: "Change the text", Checks: []string{"human"}}}, Limits: domain.Limits{Runs: 20, ExecutionMS: 600000, CoreMS: 600000, HostMS: 3600000, Tokens: 1000000}}, Checks: []domain.Check{{ID: "human", Kind: "human", Rationale: "User checks requested text", Conditions: "Read current file"}}})
+	v, e := s.Open(context.Background(), OpenRequest{Plan: testPlan(), OperationID: "open", Host: "cli", Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: domain.Authorization{UserRef: "actual-test-user", Request: "Change file text", Goals: []domain.Goal{{ID: "goal", Statement: "Change the text"}}, Limits: domain.Limits{Runs: 20, ExecutionMS: 600000, CoreMS: 600000, HostMS: 3600000, Tokens: 1000000}}})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -140,7 +140,7 @@ func TestHumanObservationInvalidatesOnInputChange(t *testing.T) {
 func TestWorkspaceClaimIsAtomicAndHistoryConflictCannotBeBlessed(t *testing.T) {
 	s, v, root := fixture(t)
 	ctx := context.Background()
-	_, e := s.Open(ctx, OpenRequest{OperationID: "second", Host: "cli", Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: v.Task.Authorization, Plan: v.Task.Plan, Checks: v.Task.Checks})
+	_, e := s.Open(ctx, OpenRequest{OperationID: "second", Host: "cli", Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: v.Task.Authorization, Plan: v.Task.Plan})
 	if code(e) != "WORKSPACE_CLAIMED" {
 		t.Fatal("duplicate claim allowed", e)
 	}
@@ -160,7 +160,7 @@ func TestWorkspaceClaimIsAtomicAndHistoryConflictCannotBeBlessed(t *testing.T) {
 func TestEvidenceCompactionKeepsApplicableResultAndCost(t *testing.T) {
 	s, v, _ := fixture(t)
 	ctx := context.Background()
-	c := v.Task.Checks[0]
+	c := v.Task.Plan.Checks[0]
 	f, e := execution.Observe(ctx, v.Task, c)
 	if e != nil {
 		t.Fatal(e)
@@ -204,7 +204,7 @@ func TestIndependentRevisionRetainsAnUnresolvedUserDecision(t *testing.T) {
 	authorization := v.Task.Authorization
 	authorization.UserRef = "fixture-user-independent-revision"
 	authorization.Request += "; also describe the result"
-	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "independent-revision", v.Task.Revision}, Authorization: ptr(authorization), Plan: ptr(v.Task.Plan), Checks: ptr(v.Task.Checks), Reason: "This request does not answer the saved API question"})
+	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "independent-revision", v.Task.Revision}, Authorization: ptr(authorization), Plan: ptr(v.Task.Plan), Reason: "This request does not answer the saved API question"})
 	if e != nil || v.Task.Issue == nil || v.Decision.Advice != "ask_user" {
 		t.Fatal("revision fabricated a user decision", e)
 	}

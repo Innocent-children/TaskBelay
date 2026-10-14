@@ -12,6 +12,8 @@ TaskBelay ergänzt Codex, DeepSeek Harness, Claude Code und ZCode. Es hält das 
 - Autorisierte lokale Prüfungen ausführen und tatsächliche Exit-Codes, Eingaben, Umgebungsbedingungen und Ergebnisse speichern. Behauptung, Ausführung und Abnahmeurteil bleiben getrennt. Relevante Änderungen lassen Nachweise veralten; unabhängige Prüfungen mit begründetem Eingabebereich können gültig bleiben. Neue Planung setzt kumulierte Kosten nicht zurück.
 - Implementierung und Prüfung abwechseln, Anforderungen ändern und mit Ergebnissen, fehlgeschlagenen Versuchen und unklaren Ausführungen fortsetzen. Die jüngste Historie ist begrenzt; gültige Ergebnisse und kumulierte Kosten bleiben erhalten.
 
+Befehlsprüfungen verwenden `taskbelay check run` über das native Prozesswerkzeug des Hosts mit dessen Berechtigungen und Umgebung. Die WebUI bietet Aufgabensuche, Host- und Statusfilter, Sprachauswahl, Benutzerentscheidungen und die Wiederherstellung von Ausführungen. Jedes Ziel benötigt eine erfolgreiche Abnahmeprüfung; akzeptierte bestehende Regressionen ersetzen sie nicht. Das Lesen gespeicherter Zustände schreibt keine Verbrauchsdaten.
+
 ## Start
 
 Node.js >=24 und ein installierter Coding-Host sind erforderlich. Entwicklung aus den Quellen benötigt außerdem Go >=1.26 und pnpm >=11 <12. Diese Quellen enthalten eine inkompatible Weiterentwicklung des technischen Vertrags. Veröffentlichte Pakete und stabile Supportnachweise sind unverändert. Für den neuen Vertrag müssen die Quellen gebaut werden. Alte Daten erhalten und ein separates Datenverzeichnis ausdrücklich wählen; es gibt keine Migration oder automatische Rücksetzung.

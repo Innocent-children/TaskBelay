@@ -1,43 +1,43 @@
-# Authorization, verification and recovery during development
+# Authorization, acceptance and recovery during development
 
 [中文](ENGINEERING-CONTROL.md) | [English](ENGINEERING-CONTROL_en.md)
 
-## Scenarios and decisions
+## Problem addressed
 
-TaskBelay supports development needing saved progress, current verification or continuation across sessions. The agent works from the user's outcome and restrictions. Small mechanical edits, ordinary questions and work without useful saved state usually need only the native Host.
+Long tasks must continue from actual results without repeat approval for ordinary method changes or rerunning independent completed checks. Accepting existing regressions cannot replace acceptance of the requested outcome, and response loss cannot replay uncertain commands. Core retains one Task; the agent owns requirement understanding and technical judgment. There are no fixed development nodes or general workflow.
 
-The previous flow coupled user authority to a complete plan, every check and an explicit workspace choice. Routine method changes prompted again, and default budgets demanded user decisions. This design separates user decisions from agent arrangements, retaining real requests, restrictions and cumulative usage while removing repeated approvals and plan forms.
+## Request and implementation arrangements
 
-## Authority and workspace
+Authorization stores the actual user_ref, request, goals, explicit restrictions and user-set limits. Plan owns approach, verification_basis, checks, expected_paths and review_after_lines. Forecasts grant no permission; Core checks allowed/forbidden paths, content pins and dependency restrictions.
 
-open_task uses the real user_ref, request, outcomes and explicit restrictions. Sufficient existing authority permits work immediately; there is no plan-confirmation tool. The agent explains the approach and verification and chooses methods within the user boundary and native Host permissions. Core cannot authenticate conversation or grant extra Host permissions.
+revise_task replaces supplied authorization or plan objects. Methods, checks, forecasts and review hints can change within the request; changed goals/restrictions and expansion/removal of existing positive limits need the actual new decision. Unaffected progress/results remain, usage never resets, and revisions do not answer pending questions. Progress.NextStep preserves the next action; changes retains up to 64 recent decision and adjustment reasons.
 
-Use the specified or clearly selected current workspace, showing directory, branch and initial changes. Ask only for genuine ambiguity, conflicts or needed new workspace operations. Upstream checks and integration follow actual need and Git authority, not a mandatory startup step. Unchecked remote state remains unknown.
+## Checks and acceptance
 
-revise_task replaces only supplied authorization, plan or checks, with a reason. Approach, method, forecast and review-hint changes reuse the request. Changed outcomes, request or explicit restrictions, and expanded user-set caps, need the actual new user decision. An old reference cannot authorize expansion. Unaffected progress and results remain; relevant requirements, inputs or conditions invalidate affected results. Usage never resets.
+Check.GoalIDs is the only association from checks to outcomes. Every goal needs an acceptance check. Acceptance and regression checks must be resolved; diagnostics inform reasoning only. Checks retain exact commands, inputs, conditions and rationale. Narrow input scopes must explain actual dependencies; undeclared files, databases and services are not verified.
 
-## Scope and necessity
+Reuse passes under unchanged conditions; related inputs, requirements or environment changes invalidate affected results. Unchanged failures need new diagnostic information to retry; after three, change code, conditions or method. Full suites need a current gap. Core verifies actual execution and applicability, not check sufficiency or semantic truth.
 
-The plan contains approach and verification_basis. Goals express requested outcomes; path judgments use goal_ids and basis to connect actual changes, without another work-item table or duplicate necessity field. The delivery review uses one summary to explain cause resolution, ownership, proportionate complexity and validation, and whether the resulting structure is still appropriate; uncertainty records unresolved concerns.
+Known-failure exceptions apply only to regression checks and require an actual failure, a passed comparison, explicit user acceptance and current applicability. Delivery acceptance cites passed acceptance results only. Completion requires completed goals, resolved required checks, reviewed changes and no uncertain execution or unresolved decision. Claims never satisfy checks; human results represent actual user observations.
 
-expected_paths is a forecast. allowed_paths, forbidden_paths, content pins and dependency restrictions express real user boundaries, not guesses about likely edits. Structured hooks check explicit scope and pending authority questions; other writes are observed at checkpoints. TaskBelay is not a sandbox.
+## Native execution and recovery
 
-## Verification and cost
+The Host native process tool invokes Core check run using JSON stdin. Native tools own permissions, environment, asynchronous waiting and signals; Core owns durable reservation, processes and receipts. MCP/HTTP never start commands. Long checks retain their native session and run identity rather than extending MCP requests or adding a scheduler.
 
-Checks retain actual argv, inputs, environment, purpose and rationale. The agent can adjust methods under the same outcome without user approval of every command, while obeying native permissions and retaining acceptance quality. A new method needs its own actual result. Claims never satisfy acceptance; human records require actual user observations.
+Read the original Task/run after response loss. Recovering a receipt does not execute a command; live or unobservable processes stay pending. If all stopped without a receipt, inspect effects and record a real decision where required, retaining interrupted_unknown. Recovery never invents a pass. Completion, cancellation and archive neither delete workspaces nor authorize Git publication.
 
-Reuse passes under unchanged conditions. Relevant changes invalidate them; unrelated outcomes or new independent checks do not. Unchanged failures require new diagnostic information to retry; three unchanged failures require different code, conditions or methods. Full suites need current justification, not mechanical repetition.
+## Metering and limits
 
-Unset limits use zero and continue recording usage. Explicit positive caps are enforced; increasing or removing them needs a real decision. Insufficient budget does not lower acceptance. Actual, reserved and uncertain usage are separate; Core and Host times overlap and must not be summed.
+Zero means no user-set cap; usage from mutations and actual execution remains cumulative. Positive caps apply at execution/reservation, and shortages cannot lower acceptance requirements. Actual, reserved and unknown quantities are separate. Core and Host times overlap and must not be added.
 
-## Interruption and delivery
+Mutations require successful metering preparation before work. Saved-state reads neither write metering nor query process identity, keeping recovery information accessible; cumulative Core time excludes these reads. Host-reported analysis, waiting and tokens may be incomplete and do not measure all Host activity.
 
-Save operation identity before running, and save results before returning. After response loss read the original Task/run; receipt recovery does not execute again. Wait for live processes. If execution stopped without a result, inspect side effects and retain uncertainty instead of claiming success.
+## User interface
 
-Completion requires goal conclusions, applicable required results, current diff review and no unresolved execution or decision. Existing regression failures need real comparisons and explicit user acceptance; failures remain failed, and related changed conditions invalidate the exception. Cancellation, completion and archiving retain files and grant no commit, push, merge or publication authority.
+WebUI offers search, Host/status filters, language selection, actual user answers, regression exceptions and execution recovery. Answers bind issue_digest and retain their reason without changing restrictions. Mutations are never replayed automatically. Response loss requires refresh; saved changes followed by display failure are distinguished, and late responses cannot replace another task.
 
-## Validation and scope
+## Verification
 
-Use temporary Git repositories and isolated storage to verify immediate authorized start, method revisions without repeat approval, new references for actual authority changes, unset and explicit limits, selective result invalidation after changed requirements or external edits, response-loss/interruption recovery, and refusal to finish without required checks. Verify tool Schemas, installed Host packages and the interface together.
+Use temporary Git repositories and isolated SQLite to verify rejection of goals without acceptance, exceptions separate from acceptance, retained independent results, user answers preserving restrictions, saved reads under denied process queries without metering writes, no MCP/HTTP process execution, durable native interruption recovery, and filtering before paging. Browser checks cover decision/budget writes and unknown-run recovery; simulated response loss and stale selection requests check UI behavior.
 
-Cover normal paths, common failures and relevant known regressions; do not add mechanisms for speculative combinations of rare conditions. Actual Core execution, scripted user/semantic input, adapter tests and real model sessions remain distinct. Task quality, user interventions, elapsed time and usage need controlled comparisons; passing tests do not establish product benefit. Preserve unsupported databases without migration or deletion.
+The integrated entrypoint covers Go, frontend, real execution journeys, four independent Host packages and retained publisher/desktop build checks. Tests use isolated resources and perform no publication. Real model sessions, native execution on other platforms and product benefits are reported separately; scripted semantic input is not real user validation. Historical data is preserved and refused without migration or reset.

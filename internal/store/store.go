@@ -18,7 +18,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const DatabaseSchemaVersion = "2.3.0"
+const DatabaseSchemaVersion = "2.4.0"
 const MaxSnapshotBytes = 8 * 1024 * 1024
 
 var schema = []string{
@@ -347,10 +347,12 @@ func (s *Store) Claim(ctx context.Context, root string) (string, error) {
 }
 
 type ListQuery struct {
-	Page            int    `json:"page,omitempty"`
-	PageSize        int    `json:"page_size,omitempty"`
-	IncludeArchived bool   `json:"include_archived,omitempty"`
-	Status          string `json:"status,omitempty"`
+	Search          string      `json:"search,omitempty"`
+	Host            domain.Host `json:"host,omitempty"`
+	Page            int         `json:"page,omitempty"`
+	PageSize        int         `json:"page_size,omitempty"`
+	IncludeArchived bool        `json:"include_archived,omitempty"`
+	Status          string      `json:"status,omitempty"`
 }
 type TaskPage struct {
 	Items   []domain.Task
@@ -359,6 +361,10 @@ type TaskPage struct {
 }
 
 func (s *Store) List(ctx context.Context, q ListQuery) (TaskPage, error) {
+	q.Search = strings.TrimSpace(q.Search)
+	if len(q.Search) > 512 || q.Host != "" && !q.Host.IsValid() {
+		return TaskPage{}, domain.Invalid("filter", "search must be at most 512 bytes and host must be supported")
+	}
 	if q.Page == 0 {
 		q.Page = 1
 	}
@@ -371,7 +377,11 @@ func (s *Store) List(ctx context.Context, q ListQuery) (TaskPage, error) {
 	if q.Status != "" && q.Status != "active" && q.Status != "done" && q.Status != "cancelled" {
 		return TaskPage{}, domain.Invalid("status", "requires active, done or cancelled")
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT task_id FROM tasks WHERE (? OR json_extract(snapshot,'$.archived')=0) AND (?='' OR status=?) ORDER BY rowid DESC LIMIT ? OFFSET ?`, q.IncludeArchived, q.Status, q.Status, q.PageSize+1, (q.Page-1)*q.PageSize)
+	rows, e := s.db.QueryContext(ctx, `SELECT task_id FROM tasks
+	 WHERE (? OR json_extract(snapshot,'$.archived')=0) AND (?='' OR status=?)
+	 AND (?='' OR json_extract(snapshot,'$.host')=?)
+	 AND (?='' OR instr(lower(task_id || ' ' || json_extract(snapshot,'$.authorization.request')),lower(?))>0)
+	 ORDER BY rowid DESC LIMIT ? OFFSET ?`, q.IncludeArchived, q.Status, q.Status, q.Host, q.Host, q.Search, q.Search, q.PageSize+1, (q.Page-1)*q.PageSize)
 	if e != nil {
 		return TaskPage{}, e
 	}

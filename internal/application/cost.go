@@ -9,10 +9,13 @@ import (
 	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/execution"
+	"github.com/Innocent-children/taskbelay/internal/store"
 )
 
-// MeasureControl reserves every control entry, including untasked Host/API reads.
-// The returned completion records measured time; crashes leave durable uncertainty.
+/**
+ * Reserve mutating calls before work. Saved-state reads remain independent of
+ * process inspection and metering writes so recovery information stays accessible.
+ */
 func (s *Service) MeasureControl(ctx context.Context) (func(), error) {
 	start := time.Now()
 	if _, e := s.ControlCost(ctx); e != nil {
@@ -37,7 +40,9 @@ func (s *Service) MeasureControl(ctx context.Context) (func(), error) {
 	return func() { _ = s.Store.EndControlCall(context.WithoutCancel(ctx), id, time.Since(start).Milliseconds()) }, nil
 }
 
-// The phase belongs to the failing owner; transports preserve the actual cause.
+/**
+ * The phase belongs to the failing owner; transports preserve the actual cause.
+ */
 type ControlMeterError struct {
 	Stage string
 	Err   error
@@ -47,3 +52,30 @@ func (e *ControlMeterError) Error() string {
 	return fmt.Sprintf("control meter %s: %v", e.Stage, e.Err)
 }
 func (e *ControlMeterError) Unwrap() error { return e.Err }
+
+func (s *Service) SavedControlCost(ctx context.Context) (store.ControlUsage, error) {
+	return s.Store.ControlCost(ctx, nil)
+}
+
+func (s *Service) ControlCost(ctx context.Context) (store.ControlUsage, error) {
+	return s.controlCost(ctx, execution.OwnerStatus)
+}
+
+func (s *Service) controlCost(ctx context.Context, probe func(execution.Run) (bool, error)) (store.ControlUsage, error) {
+	var ownerError error
+	usage, err := s.Store.ControlCost(ctx, func(pid int, id string) bool {
+		alive, queryErr := probe(execution.Run{OwnerPID: pid, OwnerIdentity: id})
+		if queryErr != nil {
+			ownerError = queryErr
+			return true
+		} // Query denial is not proof of death.
+		return alive
+	})
+	if err != nil {
+		return usage, err
+	}
+	if ownerError != nil {
+		return usage, &ControlMeterError{Stage: "process_identity", Err: ownerError}
+	}
+	return usage, nil
+}

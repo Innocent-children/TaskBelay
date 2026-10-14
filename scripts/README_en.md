@@ -21,7 +21,7 @@ install real Host products or create npm, Tag, or GitHub Release state.
 | `pnpm --dir packages/codex test` | Run Codex package-local tests |
 | `pnpm --dir packages/deepseek test` | Run DeepSeek package-local tests |
 
-`validate-repository.sh` wraps the portable Node entry. `node scripts/validate-engineering.mjs` checks versions/generated copies, whitespace, Go vet/test, WebUI build, native engineering journeys, independent Host packages and current package-local tests. Install locked dependencies first. It neither publishes nor runs authenticated Host model sessions.
+`validate-repository.sh` wraps the portable Node entry. `node scripts/validate-engineering.mjs` checks versions/generated copies, whitespace, Go vet/test, WebUI build, native engineering journeys, independent Host packages and current package-local tests plus publisher, release preparation and desktop build checks; WebUI also tests response loss and stale selection handling. Install locked dependencies first. It neither publishes nor runs authenticated Host model sessions.
 
 Windows CI runs the Codex, DeepSeek, ZCode and lifecycle manager package suites in separate PowerShell steps, each explicitly returning its own exit code. A failed suite fails its step and prevents later default steps from running.
 

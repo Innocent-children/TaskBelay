@@ -11,6 +11,7 @@ import (
 
 	"github.com/Innocent-children/taskbelay/internal/application"
 	"github.com/Innocent-children/taskbelay/internal/mcp"
+	"github.com/Innocent-children/taskbelay/internal/protocol"
 	"github.com/Innocent-children/taskbelay/internal/repository"
 	"github.com/Innocent-children/taskbelay/internal/store"
 	"github.com/Innocent-children/taskbelay/internal/userconfig"
@@ -23,6 +24,7 @@ const helpText = `TaskBelay observes authorized changes and actual verification 
 Usage:
   taskbelay help|version
   taskbelay mcp --stdio
+  taskbelay check run                  Native execution; JSON request on stdin
   taskbelay call <tool_name>             JSON request on stdin
   taskbelay host-check pre-file-write|workspace-available
   taskbelay config validate
@@ -112,7 +114,7 @@ func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string)
 		}
 		return 0
 	}
-	valid := len(args) == 2 && (args[0] == "call" || args[0] == "host-check" && (args[1] == "pre-file-write" || args[1] == "workspace-available") || args[0] == "mcp" && args[1] == "--stdio")
+	valid := len(args) == 2 && (args[0] == "call" || args[0] == "check" && args[1] == "run" || args[0] == "host-check" && (args[1] == "pre-file-write" || args[1] == "workspace-available") || args[0] == "mcp" && args[1] == "--stdio")
 	if !valid {
 		fmt.Fprintln(errout, "invalid arguments; use taskbelay help")
 		return 2
@@ -149,12 +151,6 @@ func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string)
 		return 1
 	}
 	if args[0] == "host-check" {
-		complete, e := s.MeasureControl(ctx)
-		if e != nil {
-			fmt.Fprintln(errout, "control cost reservation failed; check was not performed")
-			return 1
-		}
-		defer complete()
 		var q struct {
 			Host           string `json:"host"`
 			RepositoryPath string `json:"repository_path"`
@@ -167,7 +163,7 @@ func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string)
 			Intent   string   `json:"intent_digest"`
 			Complete bool     `json:"path_parse_complete"`
 		}
-		if e = mcp.Decode(raw, &q); e != nil {
+		if e = protocol.Decode(raw, &q); e != nil {
 			fmt.Fprintln(errout, e)
 			return 1
 		}
@@ -206,12 +202,13 @@ func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string)
 		json.NewEncoder(out).Encode(map[string]any{"available": true, "repository_path": q.RepositoryPath})
 		return 0
 	}
-	server, e := mcp.NewServer(s, v, nil)
-	if e != nil {
-		fmt.Fprintln(errout, e)
-		return 1
+	handler := protocol.NewHandler(s, v, userconfig.Preferences{})
+	var result protocol.Envelope
+	if args[0] == "check" {
+		result = handler.RunCheck(ctx, raw)
+	} else {
+		result = handler.Dispatch(ctx, args[1], raw)
 	}
-	result := server.Dispatch(ctx, args[1], raw)
 	if e = json.NewEncoder(out).Encode(result); e != nil {
 		return 1
 	}
@@ -221,9 +218,6 @@ func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string)
 	return 0
 }
 func serveStandardIO(ctx context.Context, s *application.Service, v, instructions string, p userconfig.Preferences) error {
-	server, e := mcp.NewServer(s, v, &mcp.ServerOptions{Instructions: instructions, HostPreferences: p})
-	if e != nil {
-		return e
-	}
-	return server.Run(ctx, &sdk.StdioTransport{})
+	handler := protocol.NewHandler(s, v, p)
+	return mcp.NewServer(handler, v, instructions).Run(ctx, &sdk.StdioTransport{})
 }

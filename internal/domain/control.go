@@ -19,10 +19,15 @@ type Decision struct {
 	AcceptedFailures []KnownFailure `json:"accepted_failures"`
 }
 
-// Decide uses observations and provenance; it never grades semantic truth.
+/**
+ * Decide uses observations and provenance; it never grades semantic truth.
+ */
 func Decide(t Task, evidence []Freshness, pending []string) Decision {
 	d := Decision{Advice: "continue", Findings: append([]Fact{}, t.Facts...), MissingChecks: []string{}, Evidence: evidence, PendingRuns: pending, AcceptedFailures: []KnownFailure{}}
 	if t.Status != "active" {
+		if t.Status == "done" {
+			d.AcceptedFailures = slices.Clone(t.Exceptions)
+		}
 		d.Advice = "stop"
 		return d
 	}
@@ -102,9 +107,9 @@ func Decide(t Task, evidence []Freshness, pending []string) Decision {
 			}
 		}
 		done = done && completed
-		for _, c := range g.Checks {
-			if !valid[c] && !slices.Contains(d.MissingChecks, c) {
-				d.MissingChecks = append(d.MissingChecks, c)
+		for _, c := range t.RequiredChecks(g.ID) {
+			if !valid[c.ID] && !slices.Contains(d.MissingChecks, c.ID) {
+				d.MissingChecks = append(d.MissingChecks, c.ID)
 			}
 		}
 	}

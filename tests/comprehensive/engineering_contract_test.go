@@ -3,20 +3,20 @@ package comprehensive_test
 import (
 	"github.com/Innocent-children/taskbelay/internal/domain"
 	"github.com/Innocent-children/taskbelay/internal/execution"
-	"github.com/Innocent-children/taskbelay/internal/mcp"
+	"github.com/Innocent-children/taskbelay/internal/protocol"
 	"testing"
 )
 
 func TestCurrentContractHasOneLifecycleAndNoClaimExecution(t *testing.T) {
-	if len(mcp.Catalog) != 15 {
+	if len(protocol.Catalog) != 15 {
 		t.Fatal("current tool surface differs")
 	}
-	for _, tool := range mcp.Catalog {
+	for _, tool := range protocol.Catalog {
 		if tool.Name == "taskbelay_submit_test" || tool.Name == "taskbelay_get_next_action" {
 			t.Fatal("retired cursor retained")
 		}
 	}
-	task := domain.Task{Status: "active", Authorization: domain.Authorization{Goals: []domain.Goal{{ID: "goal", Checks: []string{"check"}}}, Limits: domain.Limits{}}, Evidence: []domain.Evidence{{ID: "claim", CheckID: "check", Source: "claim", Status: "passed"}}}
+	task := domain.Task{Status: "active", Plan: domain.Plan{Checks: []domain.Check{{ID: "check", GoalIDs: []string{"goal"}, Purpose: "acceptance"}}}, Authorization: domain.Authorization{Goals: []domain.Goal{{ID: "goal"}}, Limits: domain.Limits{}}, Evidence: []domain.Evidence{{ID: "claim", CheckID: "check", Source: "claim", Status: "passed"}}}
 	d := domain.Decide(task, []domain.Freshness{{EvidenceID: "claim", CheckID: "check", Valid: true}}, nil)
 	if len(d.MissingChecks) != 1 || d.Ready {
 		t.Fatal("claim became acceptance")

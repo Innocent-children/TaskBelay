@@ -1,9 +1,6 @@
 package domain
 
-import "slices"
-
 func (g Goal) RequirementDigest() Digest {
-	g.Checks = nil
 	return Hash(g)
 }
 
@@ -13,16 +10,26 @@ func (g Goal) RequirementDigest() Digest {
  */
 func (a Authorization) BoundaryDigest() Digest {
 	a.UserRef = ""
-	a.ExpectedPaths = nil
-	a.ReviewAfterLines = 0
 	a.Limits = Limits{}
-	a.Goals = slices.Clone(a.Goals)
-	for i := range a.Goals {
-		a.Goals[i].Checks = nil
-	}
 	return Hash(a)
 }
 
 func (a Authorization) RequiresDecision(previous Authorization) bool {
 	return a.BoundaryDigest() != previous.BoundaryDigest() || !a.Limits.Within(previous.Limits)
+}
+
+/**
+ * A forecast never grants permission. Explicit allowed paths and exclusions do.
+ */
+func (a Authorization) AllowsPath(path string) bool {
+	allowed := len(a.AllowedPaths) == 0
+	for _, scope := range a.AllowedPaths {
+		allowed = allowed || MatchPath(scope, path)
+	}
+	for _, scope := range a.ForbiddenPaths {
+		if MatchPath(scope, path) {
+			return false
+		}
+	}
+	return allowed
 }

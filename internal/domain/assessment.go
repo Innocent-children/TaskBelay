@@ -2,7 +2,9 @@ package domain
 
 import "slices"
 
-// semanticSurface binds reasoning to relevant current content, not a global epoch.
+/**
+ * semanticSurface binds reasoning to relevant current content, not a global epoch.
+ */
 func (t Task) semanticSurface(scopes []string) Digest {
 	entries := []any{}
 	for _, r := range t.Repositories {
@@ -31,7 +33,6 @@ func (t Task) PathReviewDigest(p string, ids []string) Digest {
 		if !ok {
 			return ""
 		}
-		g.Checks = nil
 		goals = append(goals, g)
 	}
 	return Hash([]any{p, goals, t.semanticSurface([]string{p})})
@@ -47,8 +48,10 @@ func (t Task) FactReviewDigest(f Fact) Digest {
 	return Hash([]any{f, t.semanticSurface(scopes)})
 }
 
-// MergeAssessment stamps submitted fragments from observed facts. Host-provided
-// scope digests cannot bless retained reasoning or override deterministic rules.
+/**
+ * MergeAssessment stamps submitted fragments from observed facts. Host-provided
+ * scope digests cannot bless retained reasoning or override deterministic rules.
+ */
 func (t Task) MergeAssessment(a Assessment) *Assessment {
 	if a.Review != nil {
 		r := *a.Review

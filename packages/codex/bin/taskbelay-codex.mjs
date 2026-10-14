@@ -69,7 +69,7 @@ export async function runCLI(arguments_, dependencies = {}) {
   let setupAttempted = false;
 
   if (Array.isArray(arguments_) && arguments_.length === 1 && arguments_[0] === "--help") {
-    stdout.write("Usage: taskbelay-codex status|setup|remove [--json]\n       taskbelay-codex --version\n       taskbelay-codex mcp\n       taskbelay-codex call <tool_name>\n       taskbelay-codex hook pre-tool-use\n       taskbelay-codex host-check pre-file-write\n       taskbelay-codex host-check workspace-available\n\n" + hostLaunchHelp());
+    stdout.write("Usage: taskbelay-codex status|setup|remove [--json]\n       taskbelay-codex --version\n       taskbelay-codex mcp\ntaskbelay-codex check run\n       taskbelay-codex call <tool_name>\n       taskbelay-codex hook pre-tool-use\n       taskbelay-codex host-check pre-file-write\n       taskbelay-codex host-check workspace-available\n\n" + hostLaunchHelp());
     return { code: 0, signal: null };
   }
   if (Array.isArray(arguments_) && arguments_[0] === "host-launch" && (
@@ -103,7 +103,7 @@ export async function runCLI(arguments_, dependencies = {}) {
         signalSource: dependencies.signalSource ?? process,
       });
     }
-    if (arguments_.length === 2 && ["host-check","call"].includes(arguments_[0])) {
+    if (arguments_.length === 2 && (["host-check","call"].includes(arguments_[0]) || arguments_[0] === "check" && arguments_[1] === "run")) {
       return await launchPackagedCore(paths, arguments_, {
         environment,
         spawnImpl: dependencies.spawnImpl ?? spawn,
@@ -356,7 +356,7 @@ function writeSetupSuccess(stdout, result, json, { environment, renderSetupResul
 
 function isProductionCommand(arguments_) {
   if (!Array.isArray(arguments_)) return false;
-  if (arguments_.length === 2 && arguments_[0] === "call" && arguments_[1].startsWith("taskbelay_")) return true;
+  if (arguments_.length === 2 && (arguments_[0] === "call" && arguments_[1].startsWith("taskbelay_") || arguments_[0] === "check" && arguments_[1] === "run")) return true;
   if (arguments_.length === 1 && ["mcp", "--version"].includes(arguments_[0])) return true;
   if (arguments_.length === 2 && arguments_[0] === "hook" && arguments_[1] === "pre-tool-use") return true;
   if (arguments_.length === 2 && arguments_[0] === "host-check" && ["pre-file-write", "workspace-available"].includes(arguments_[1])) return true;

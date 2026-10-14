@@ -8,9 +8,8 @@ import (
 )
 
 type Goal struct {
-	ID        string   `json:"id"`
-	Statement string   `json:"statement"`
-	Checks    []string `json:"checks"`
+	ID        string `json:"id"`
+	Statement string `json:"statement"`
 }
 type Constraint struct {
 	ID        string   `json:"id"`
@@ -34,21 +33,19 @@ type Limits struct {
 	Tokens      int64 `json:"tokens,omitempty"`
 }
 type Authorization struct {
-	UserRef          string             `json:"user_ref"`
-	Request          string             `json:"request"`
-	Goals            []Goal             `json:"goals"`
-	Constraints      []Constraint       `json:"constraints,omitempty"`
-	ExpectedPaths    []string           `json:"expected_paths,omitempty" description:"Optional forecast, not a permission restriction."`
-	AllowedPaths     []string           `json:"allowed_paths,omitempty"`
-	ForbiddenPaths   []string           `json:"forbidden_paths,omitempty"`
-	Pins             []Pin              `json:"pins,omitempty"`
-	Dependencies     []DependencyPolicy `json:"dependencies,omitempty" description:"Only explicit user restrictions per manifest. An empty allowed list forbids changes there; omission requires technical review instead."`
-	Limits           Limits             `json:"limits,omitempty" description:"Actual user-set cumulative caps only. Omitted or zero fields mean no cap; usage is still recorded."`
-	ReviewAfterLines int                `json:"review_after_lines,omitempty"`
+	UserRef        string             `json:"user_ref"`
+	Request        string             `json:"request"`
+	Goals          []Goal             `json:"goals"`
+	Constraints    []Constraint       `json:"constraints,omitempty"`
+	AllowedPaths   []string           `json:"allowed_paths,omitempty"`
+	ForbiddenPaths []string           `json:"forbidden_paths,omitempty"`
+	Pins           []Pin              `json:"pins,omitempty"`
+	Dependencies   []DependencyPolicy `json:"dependencies,omitempty" description:"Only explicit user restrictions per manifest. An empty allowed list forbids changes there; omission requires technical review instead."`
+	Limits         Limits             `json:"limits,omitempty" description:"Actual user-set cumulative caps only. Omitted or zero fields mean no cap; usage is still recorded."`
 }
 type Check struct {
 	ID            string        `json:"id"`
-	Kind          string        `json:"kind"`
+	Kind          string        `json:"kind" enum:"command,human"`
 	Argv          []string      `json:"argv,omitempty"`
 	RepositoryKey RepositoryKey `json:"repository_key,omitempty"`
 	Cwd           string        `json:"cwd,omitempty"`
@@ -58,10 +55,10 @@ type Check struct {
 	Conditions    string        `json:"conditions"`
 	ConstraintIDs []string      `json:"constraint_ids,omitempty"`
 	TimeoutMS     int64         `json:"timeout_ms,omitempty"`
-	Retry         string        `json:"retry,omitempty"`
+	Retry         string        `json:"retry,omitempty" enum:"repeatable,requires_user"`
 	Rationale     string        `json:"rationale"`
-	GoalIDs       []string      `json:"goal_ids,omitempty"`
-	Purpose       string        `json:"purpose,omitempty"`
+	GoalIDs       []string      `json:"goal_ids"`
+	Purpose       string        `json:"purpose,omitempty" enum:"acceptance,regression,diagnostic"`
 	FullSuite     bool          `json:"full_suite,omitempty"`
 	Compares      string        `json:"compares,omitempty"`
 }
@@ -103,6 +100,7 @@ type Progress struct {
 	GoalID     string `json:"goal_id"`
 	Status     string `json:"status"`
 	Summary    string `json:"summary"`
+	NextStep   string `json:"next_step,omitempty"`
 	GoalDigest Digest `json:"goal_digest,omitempty"`
 }
 type Issue struct {
@@ -146,7 +144,6 @@ type Task struct {
 	BudgetDecision *BudgetApproval        `json:"budget_decision,omitempty"`
 	Exceptions     []KnownFailure         `json:"exceptions"`
 	Archived       bool                   `json:"archived"`
-	Checks         []Check                `json:"checks"`
 	Repositories   []RepositoryScopeEntry `json:"repositories"`
 	Assessment     *Assessment            `json:"assessment"`
 	Progress       []Progress             `json:"progress"`
@@ -157,6 +154,7 @@ type Task struct {
 	Usage          Usage                  `json:"usage"`
 	Acceptance     []Acceptance           `json:"acceptance"`
 	Summary        string                 `json:"summary"`
+	Changes        []Change               `json:"changes"`
 	Risks          []string               `json:"risks"`
 	CreatedAt      time.Time              `json:"created_at"`
 	UpdatedAt      time.Time              `json:"updated_at"`
@@ -184,7 +182,7 @@ func (t Task) Goal(id string) (Goal, bool) {
 	return Goal{}, false
 }
 func (t Task) Check(id string) (Check, bool) {
-	for _, c := range t.Checks {
+	for _, c := range t.Plan.Checks {
 		if c.ID == id {
 			return c, true
 		}
@@ -208,8 +206,7 @@ func (t Task) CheckDigest(c Check) Digest {
 	goals := []Goal{}
 	constraints := []Constraint{}
 	for _, g := range t.Authorization.Goals {
-		if slices.Contains(t.CheckGoals(c), g.ID) {
-			g.Checks = nil
+		if slices.Contains(c.GoalIDs, g.ID) {
 			goals = append(goals, g)
 		}
 	}
@@ -244,12 +241,6 @@ func (a Authorization) Validate() error {
 		if e := Text(p+".statement", g.Statement); e != nil {
 			return e
 		}
-		if len(g.Checks) == 0 {
-			return Invalid(p+".checks", "every goal requires at least one check")
-		}
-		if e := IDs(p+".checks", g.Checks); e != nil {
-			return e
-		}
 	}
 	if e := IDs("authorization.goals.id", ids); e != nil {
 		return e
@@ -269,9 +260,6 @@ func (a Authorization) Validate() error {
 		}
 	}
 	if e := IDs("authorization.constraints.id", ids); e != nil {
-		return e
-	}
-	if e := Paths("authorization.expected_paths", a.ExpectedPaths); e != nil {
 		return e
 	}
 	if e := Paths("authorization.allowed_paths", a.AllowedPaths); e != nil {
@@ -296,9 +284,6 @@ func (a Authorization) Validate() error {
 	l := a.Limits
 	if l.Runs < 0 || l.Runs > 10000 || l.ExecutionMS < 0 || l.ExecutionMS > 86400000 || l.CoreMS < 0 || l.HostMS < 0 || l.Tokens < 0 {
 		return Invalid("authorization.limits", "limits must be nonnegative; zero means unset, runs <=10000 and execution_ms <=86400000")
-	}
-	if a.ReviewAfterLines < 0 {
-		return Invalid("authorization.review_after_lines", "must be nonnegative")
 	}
 	return nil
 }
@@ -334,19 +319,19 @@ func (t Task) Validate() error {
 	if e := t.ValidatePlan(); e != nil {
 		return e
 	}
-	if len(t.Checks) == 0 || len(t.Checks) > 64 || len(t.Repositories) == 0 || len(t.Repositories) > 8 || len(t.Evidence) > 192 || len(t.Attempts) > 64 || len(t.Progress) > 64 {
+	if len(t.Plan.Checks) == 0 || len(t.Plan.Checks) > 64 || len(t.Repositories) == 0 || len(t.Repositories) > 8 || len(t.Evidence) > 192 || len(t.Attempts) > 64 || len(t.Progress) > 64 {
 		return Invalid("task", "current snapshot exceeds its bounded collections")
 	}
 	ids := []string{}
-	for i, c := range t.Checks {
+	for i, c := range t.Plan.Checks {
 		if c.Kind == "command" && c.Retry != "repeatable" && c.Retry != "requires_user" {
-			return Invalid(fmt.Sprintf("checks[%d].retry", i), "must be repeatable or requires_user")
+			return Invalid(fmt.Sprintf("plan.checks[%d].retry", i), "must be repeatable or requires_user")
 		}
-		p := fmt.Sprintf("checks[%d]", i)
+		p := fmt.Sprintf("plan.checks[%d]", i)
 		if !slices.Contains([]string{"acceptance", "regression", "diagnostic"}, c.Purpose) {
 			return Invalid(p+".purpose", "requires acceptance, regression or diagnostic")
 		}
-		if len(t.CheckGoals(c)) == 0 {
+		if len(c.GoalIDs) == 0 {
 			return Invalid(p+".goal_ids", "every check must serve an authorized goal")
 		}
 		if e := IDs(p+".goal_ids", c.GoalIDs); e != nil {
@@ -423,14 +408,12 @@ func (t Task) Validate() error {
 			}
 		}
 	}
-	if e := IDs("checks.id", ids); e != nil {
+	if e := IDs("plan.checks.id", ids); e != nil {
 		return e
 	}
 	for _, g := range t.Authorization.Goals {
-		for _, id := range g.Checks {
-			if _, ok := t.Check(id); !ok {
-				return Invalid("authorization.goals.checks", "references an unknown check")
-			}
+		if len(t.AcceptanceChecks(g.ID)) == 0 {
+			return Invalid("plan.checks", "every goal requires at least one non-waivable acceptance check")
 		}
 	}
 	keys := []string{}

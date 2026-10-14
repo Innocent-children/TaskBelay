@@ -25,4 +25,6 @@ output. Keep operation identities after response loss; inspect saved results bef
 Report completed work, actual checks and uncertainty honestly. Git, new chat, publication and deletion
 follow actual user authorization. Normal usage should not require reading plugin source.
 
-Maintainer implementation reference: `internal/mcp/server.go`.
+Maintainer implementation reference: `internal/protocol/handler.go`.
+
+Run command checks with the native process tool using the bundled Core and TASKBELAY_DATA_DIR supplied at activation. Pass the RunRequest JSON on stdin and retain the native session for long commands. MCP reads and records results; it does not start commands.

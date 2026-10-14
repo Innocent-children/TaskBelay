@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"github.com/Innocent-children/taskbelay/internal/application"
 	"github.com/Innocent-children/taskbelay/internal/domain"
-	core "github.com/Innocent-children/taskbelay/internal/mcp"
+	core "github.com/Innocent-children/taskbelay/internal/protocol"
 	"github.com/Innocent-children/taskbelay/internal/repository"
 	"github.com/Innocent-children/taskbelay/internal/store"
+	"github.com/Innocent-children/taskbelay/internal/userconfig"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -22,7 +23,7 @@ func TestLocalSessionAndCoreProjection(t *testing.T) {
 	}
 	defer db.Close()
 	service, _ := application.NewService(db, repository.NewGitObserver())
-	m, _ := core.NewServer(service, "0.20.0", nil)
+	m := core.NewHandler(service, "0.25.0", userconfig.Preferences{})
 	api, _ := NewAPI(service, m, func() SystemStatusResponse {
 		return SystemStatusResponse{Readiness: ReadinessReady, CoreIdentity: "current"}
 	})

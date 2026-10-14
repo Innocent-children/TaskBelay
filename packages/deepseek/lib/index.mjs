@@ -56,7 +56,7 @@ export async function activateDeepSeekIntegration(ctx, {
     source: "bundled",
     provider: name,
     resourceBase: Object.freeze({ kind: "directory", path: skillDirectory }),
-    content: skillContent,
+    content: skillContent + "\nNative check invocation (use the Host native process tool, JSON stdin):\n" + JSON.stringify({ executable: runtime.runtimePath, args: ["check", "run"], environment: { TASKBELAY_DATA_DIR: dataSelection.dataDirectory } }),
     path: skillPath,
   }));
   registerTaskBelayGuard(ctx, { workspaceRoot });
@@ -101,8 +101,8 @@ export async function activateDeepSeekIntegration(ctx, {
     args: ["mcp", "--stdio"],
     env: { TASKBELAY_DATA_DIR: dataSelection.dataDirectory },
     cwd: runtime.packageRoot,
-    toolCallTimeoutMs: 3_660_000,
-    failOnStartupError: true,
+    toolCallTimeoutMs: 60_000,
+    failOnStartupError: false,
     reconnect: {
       enabled: true,
       initialDelayMs: 500,

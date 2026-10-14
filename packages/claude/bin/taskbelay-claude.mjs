@@ -26,11 +26,11 @@ async function input() {
 }
 export async function runCLI(args) {
   if (args.length === 0 || args.includes("--help")) {
-    process.stdout.write("taskbelay-claude status|setup|remove [--json]\ntaskbelay-claude --version\ntaskbelay-claude mcp\ntaskbelay-claude host-check pre-file-write|workspace-available\ntaskbelay-claude hook pre-tool-use\ntaskbelay-claude host-launch " + operations.join("|") + "\nHost-launch input: one JSON object on closed stdin. inspect: {request,repositories:[{key,repository_path}]}; prepare: {request,authorization_ref,repositories:[{key,repository_path,workspace_mode,source_type,remote_name,base_branch,target_branch,carry_changes,worktree_path}],handoff}. Other operations: {launch_id,...operation inputs}. Read the Skill for exact operation contracts.\n");
+    process.stdout.write("taskbelay-claude status|setup|remove [--json]\ntaskbelay-claude --version\ntaskbelay-claude mcp\ntaskbelay-claude check run\ntaskbelay-claude host-check pre-file-write|workspace-available\ntaskbelay-claude hook pre-tool-use\ntaskbelay-claude host-launch " + operations.join("|") + "\nHost-launch input: one JSON object on closed stdin. inspect: {request,repositories:[{key,repository_path}]}; prepare: {request,authorization_ref,repositories:[{key,repository_path,workspace_mode,source_type,remote_name,base_branch,target_branch,carry_changes,worktree_path}],handoff}. Other operations: {launch_id,...operation inputs}. Read the Skill for exact operation contracts.\n");
     return 0;
   }
   if (args.length === 1 && args[0] === "--version") { process.stdout.write((await core(["version"])).stdout); return 0; }
-  if (args.length === 2 && args[0] === "call") { const result = await core(["call",args[1]], {stream:true}); return result?.code ?? 0; }
+  if (args.length === 2 && (args[0] === "call" || args[0] === "check" && args[1] === "run")) { const result = await core(args, {stream:true}); return result?.code ?? 0; }
   if (args.length === 1 && args[0] === "mcp") { await core(["mcp", "--stdio"], { stream: true }); return 0; }
   if (["status", "setup", "remove"].includes(args[0]) && (args.length === 1 || args.length === 2 && args[1] === "--json")) {
     process.stdout.write(JSON.stringify(await lifecycle[args[0]]()) + "\n"); return 0;

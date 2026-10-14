@@ -2,9 +2,10 @@ package application
 
 import (
 	"context"
+	"time"
+
 	"github.com/Innocent-children/taskbelay/internal/domain"
 	"github.com/Innocent-children/taskbelay/internal/store"
-	"time"
 )
 
 type BudgetRequest struct {
@@ -47,6 +48,7 @@ func (s *Service) UpdateBudget(ctx context.Context, q BudgetRequest) (View, erro
 		return View{}, domain.Fail("BUDGET_UNCHANGED", "budget", "reuse the existing budget decision")
 	}
 	t.Authorization = a
+	t.RecordChange("budget", q.Response, q.UserRef)
 	t.BudgetDecision = &domain.BudgetApproval{DecisionDigest: domain.Hash([]any{previous, q.Budget}), UserRef: q.UserRef, Response: q.Response, ConfirmedAt: time.Now().UTC()}
 	return s.save(ctx, t, o, store.Charge{})
 }

@@ -20,7 +20,7 @@ if (isMainModule()) {
   const arguments_ = process.argv.slice(2);
   const result = arguments_[0] === "pet"
     ? await runPet(arguments_)
-    : ["webui","call"].includes(arguments_[0]) || ["help", "--help", "-h", "version", "--version"].includes(arguments_[0])
+    : ["webui","call","check"].includes(arguments_[0]) || ["help", "--help", "-h", "version", "--version"].includes(arguments_[0])
       ? await runTaskBelay(arguments_)
       : await runMain(arguments_);
   process.exitCode = result.code;

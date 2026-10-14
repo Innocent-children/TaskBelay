@@ -104,10 +104,10 @@ func ScopeFacts(ctx context.Context, t domain.Task) ([]domain.Fact, error) {
 				add("unauthorized_path", p, "Change is outside the approved allowed paths or touches a forbidden path.", true)
 			}
 			expected := false
-			for _, v := range t.Authorization.ExpectedPaths {
+			for _, v := range t.Plan.ExpectedPaths {
 				expected = expected || domain.MatchPath(v, p)
 			}
-			if len(t.Authorization.ExpectedPaths) > 0 && !expected {
+			if len(t.Plan.ExpectedPaths) > 0 && !expected {
 				add("unexpected_path", p, "Path was not predicted; explain its necessity for an authorized goal.", false)
 			}
 			if e.Gitlink {
@@ -226,7 +226,7 @@ func ScopeFacts(ctx context.Context, t domain.Task) ([]domain.Fact, error) {
 				lines += strings.Count(string(b), "\n")
 			}
 		}
-		threshold := t.Authorization.ReviewAfterLines
+		threshold := t.Plan.ReviewAfterLines
 		if threshold == 0 {
 			threshold = 500
 		}

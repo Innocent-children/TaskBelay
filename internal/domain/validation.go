@@ -3,6 +3,24 @@ package domain
 import "slices"
 
 func (t Task) ValidateRecords() error {
+	if b := t.BudgetDecision; b != nil {
+		if !b.DecisionDigest.IsValid() || Text("budget_decision.user_ref", b.UserRef) != nil || Text("budget_decision.response", b.Response) != nil || validateUTC(b.ConfirmedAt) != nil {
+			return Invalid("budget_decision", "requires the actual budget decision and reference")
+		}
+	}
+	if t.Archived && t.Status == "active" {
+		return Invalid("archived", "only terminal tasks may be archived")
+	}
+
+	if len(t.Changes) > 64 {
+		return Invalid("changes", "at most 64 recent decisions")
+	}
+	for _, c := range t.Changes {
+		if c.Revision == 0 || c.Revision > t.Revision || Text("changes.summary", c.Summary) != nil || validateUTC(c.At) != nil || !slices.Contains([]string{"authorization", "plan", "budget", "user_decision", "accepted_failure"}, c.Kind) {
+			return Invalid("changes", "invalid saved change")
+		}
+	}
+
 	if len(t.Exceptions) > 64 {
 		return Invalid("exceptions", "at most 64 current known-failure decisions")
 	}

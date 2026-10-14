@@ -11,7 +11,8 @@
 | internal/repository | 保留的只读 Git 观察、工作区身份与历史、index/worktree 内容、文件内事实 |
 | internal/execution | 输入/环境/执行文件指纹、真实进程、输出、平台进程寿命和结果收据 |
 | internal/store | 当前 SQLite 布局、CAS、目录占用、操作去重、成本及记录压缩 |
-| internal/mcp 与 cmd/taskbelay | 同一 DTO 和应用服务的 MCP/CLI 投影 |
+| internal/protocol | 共享 DTO、Schema、结果与错误；不保存任务状态 |
+| internal/mcp 与 cmd/taskbelay | MCP 仅提供任务操作；原生命令由 CLI check run 执行 |
 | internal/webui 与 packages/webui | 受限本机 HTTP、结果展示和用户明确检查 |
 | Host 包 | 原生权限、授权消息来源、结构化路径钩子、可选工作区准备；不保存第二任务游标 |
 | scripts 与 release | 构建、完整安装产物、独立发布；不决定产品验收 |
@@ -20,9 +21,9 @@ Host 工作区操作使用私有原子收据记录固定请求、绑定工作树
 
 ## 当前契约与控制
 
-Task 保存 authorization、plan、budget_decision、exceptions、archived、checks、repositories、assessment、progress、issue、evidence、attempts、facts、usage、acceptance、revision 和时间。没有固定开发节点。生命周期出边只有 active→done（完整验收）、active→cancelled（明确取消且无未确定执行）和 active→active（检查点、修订、执行、观察、恢复）；终态没有回边。控制建议由当前事实推导为 continue/review/self_correct/verify/stop/ask_user，不是第二状态机。
+Task 保存 authorization、plan、budget_decision、exceptions、archived、changes、repositories、assessment、progress、issue、evidence、attempts、facts、usage、acceptance、revision 和时间。没有固定开发节点。生命周期出边只有 active→done（完整验收）、active→cancelled（明确取消且无未确定执行）和 active→active（检查点、修订、执行、观察、恢复）；终态没有回边。控制建议由当前事实推导为 continue/review/self_correct/verify/stop/ask_user，不是第二状态机。
 
-authorization 明确目标、非目标/接口/数据/依赖/设计约束、预测路径、禁止路径、SHA-256 内容 pin、可变依赖名及累计 limits。user_ref 由宿主按真实用户消息提供。确定性限制由程序检查；预测路径、公开 Go 声明、数据文件和变动量促使绑定当前 content_digest 的语义审查。每条语义结论保留 basis、verdict 和 uncertainty。程序不证明这些判断真实。
+authorization 保存用户目标、非目标/接口/数据/依赖/设计约束、允许/禁止路径、SHA-256 内容 pin、可变依赖名及累计 limits。user_ref 由宿主按真实用户消息提供。确定性限制由程序检查；预测路径、公开 Go 声明、数据文件和变动量促使绑定当前 content_digest 的语义审查。每条语义结论保留 basis、verdict 和 uncertainty。程序不证明这些判断真实。
 
 check 保存 argv、repository_key、cwd、inputs、input_basis、environment、conditions、constraint_ids、timeout_ms、retry 和 rationale。CheckDigest 包含检查语义、关联目标和相关约束，排除 timeout_ms、retry、full_suite、rationale 和 input_basis；这些运行设置与说明仍由 PlanDigest 完整绑定。只有当前检查确实有适用通过结果时才拒绝重复执行；输入包括选定文件的内容与 mode、缺失文件和目录成员变化；环境包括当前平台、所选变量的哈希、cwd、conditions 及实际执行文件哈希。缺省全范围输入覆盖全部绑定仓库的 Git 跟踪及非 ignored 新文件；显式输入可包含 ignored 文件/目录。符号链接及无法掌握的输入不会被静默当成有效。缩小依赖范围是宿主判断，缺省保守使用全仓。
 
@@ -36,22 +37,30 @@ Core 实际运行产生 core_execution；claim 永不满足检查；human 只用
 
 热任务保留当前证据、最多 64 个近期尝试；近期操作保留 256 个修订内记录，open 与未确定运行身份保留。旧身份被压缩后，旧 revision 仍不能启动重放。运行记录保留近期 128 项及有效引用、未确定执行。压缩后的自有收据清理，累计费用不减。当前快照最多 8 MiB，观察和输入集合有明确资源上限。明确清除仅适用于匹配修订的终态任务。
 
-Core 计量调用、墙钟、观察和执行，宿主另报分析、等待与 token。类别有重叠；未确定耗时保守记录，不伪称精确值。Core 不能测量不经过它的宿主活动。历史压缩、需求修订和检查重建均不能重置用量。
+Core 计量变更调用、墙钟、观察和执行，宿主另报分析、等待与 token。类别有重叠；未确定耗时保守记录，不伪称精确值。Core 不能测量不经过它的宿主活动。历史压缩、需求修订和检查重建均不能重置用量。
 
 ## 接口与信任
 
 MCP 15 个工具，CLI call 和 HTTP /api/core/{tool} 使用同一 DTO/Schema/服务。对象拒绝未知成员和重复 JSON 成员。成功和失败互斥。HTTP 限于随机端口 loopback、精确 Host、Origin 和会话 CSRF。桌面只读取保存摘要；当前适用性需要明确刷新。宿主路径钩子不涵盖任意 shell、外部服务或未调用 Core 的操作。详细入口见[命令](COMMANDS.md)，错误见[响应规范](CORE-RESPONSES.md)。
 
-每个本地 Core 调用（包括未关联 Task 的查询）均先保留调用身份，再结算墙钟时间。control_cost 保存跨任务 calls、wall_ms、unknown_ms 和 pending；崩溃失去精确结束时间时单列保守未知估算，不冒充实测。运行记录与热调用压缩不改变总额。Task 的 Core 墙钟包含执行和等待，不能与这些分类直接相加。
+变更调用先保留调用身份，再结算墙钟时间。保存状态查询不写计量、不检查进程身份；Service.SavedControlCost 仅返回已保存总额和未结算记录。control_cost 保存跨任务 calls、wall_ms、unknown_ms 和 pending；崩溃失去精确结束时间时单列保守未知估算，不冒充实测。运行记录与热调用压缩不改变总额。Task 的 Core 墙钟包含执行和等待，不能与这些分类直接相加。
 
 新提交的 assessment 绑定当前全局摘要，但已有判断按 Core 计算的 scope_digest 分别保留：路径关联绑定相关目标和实际内容；约束绑定自身定义及声明路径；观察事实绑定相关内容。checkpoint 可只补充受影响的判断。需求独立新增不清空已有审查，也不自动解决未回答的用户决定。证据按检查、来源、输入与环境上下文保留；同一上下文的最新失败替代旧通过，不同上下文的失败不会删除另一上下文的通过。最多 192 项热证据，达到上限先保留全部当前适用结果，再保留近期历史。
 
 ## 用户边界与验收
 
-实际请求、目标和明确限制与计划的 approach、verification_basis 分开。Authorization.BoundaryDigest 排除检查映射、预测、复核提示和成本字段。用户边界变化或已设正数额度扩大/取消时，Revise 要求实际新 user_ref；普通方法调整沿用授权，实际操作仍遵守宿主权限。PlanApproval 和确认工具已移除；PlanDigest 用于技术复核当前安排，不表示用户批准。
+实际请求、目标和明确限制与计划的 approach、verification_basis 分开。Authorization.BoundaryDigest 只排除引用和另行比较的成本字段；检查映射、预测和复核提示已经归入 Plan。用户边界变化或已设正数额度扩大/取消时，Revise 要求实际新 user_ref；普通方法调整沿用授权，实际操作仍遵守宿主权限。PlanApproval 和确认工具已移除；PlanDigest 用于技术复核当前安排，不表示用户批准。
 
-Goal.RequirementDigest 排除检查映射，新增检查不会重置已完成实现或独立结果。CheckDigest 仍绑定具体方法、相关目标和约束。路径判断关联目标与实际内容。最终 DesignReview 使用 summary 和 uncertainty，由 Core 绑定当前计划及内容。既有失败例外依赖实际失败/比较结果及当前适用性，不因无关计划文字变化要求重复接受。
+Goal.RequirementDigest 只关联用户目标；新增检查不会重置已完成实现或独立结果。CheckDigest 仍绑定具体方法、相关目标和约束。路径判断关联目标与实际内容。最终 DesignReview 使用 summary 和 uncertainty，由 Core 绑定当前计划及内容。既有失败例外依赖实际失败/比较结果及当前适用性，不因无关计划文字变化要求重复接受。
 
 未设额度为零；正数额度在预留和执行时检查。BudgetDecision 单独记录实际预算变化；未设上限也持续记录消耗，不通过默认额度制造审批。
 
-internal/mcp/view.go 将应用结果转换为当前摘要，完整 Task 仍由应用和存储保存。get_task detail:true 增加 details，包含完整仓库指纹、复核与历史；run/recover 返回运行摘要，get_run 读取保存的输出。转换层不保存第二份状态。列表保留有界分页，归档仅改变终态可见性。
+internal/protocol/view.go 将应用结果转换为当前摘要，完整 Task 仍由应用和存储保存。get_task detail:true 增加 details，包含完整仓库指纹、复核与历史；run/recover 返回运行摘要，get_run 读取保存的输出。转换层不保存第二份状态。列表保留有界分页，归档仅改变终态可见性。
+
+## 实施计划、原生执行与验收
+
+Plan 保存 approach、verification_basis、expected_paths、review_after_lines 和 checks。Check.GoalIDs 是唯一目标关联，所有目标至少一个 acceptance 检查。acceptance 和 regression 均需解决，diagnostic 不作为交付要求。Decide 可以认可 regression 例外，但 Finish 的 acceptance 只允许引用实际通过的 acceptance 检查。changes 保存最多 64 条近期授权、计划、预算、用户答复及失败例外的原因；它不是状态机或完整快照历史。Progress.NextStep 保存恢复所需的下一步。
+
+internal/protocol.Handler 提供共享解码、结果摘要和错误。MCP/HTTP 只调用 Catalog；NativeCheck 仅通过 CLI check run 进入 Service.Execute。宿主原生工具负责权限、环境和等待，Core 的执行实现继续保存真实输入、进程身份和运行收据。长命令使用原生会话，不延长 MCP 请求或创建调度服务。Service.ResolveIssue 使用 issue_digest 防止过期答复，记录决定但不自动扩大授权。
+
+完成时只保留实际用于本次交付且仍适用的回归例外；读取终态返回这些交付时记录，既不丢失已接受失败，也不重新认证当前工作区。

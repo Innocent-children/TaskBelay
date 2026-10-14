@@ -87,19 +87,19 @@ try {
   child.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
   const info = await tool("taskbelay_server_info", {});
   assert.equal(info.ok, true); assert.equal(info.result.tools.length, 15);
-  const openRequest = { plan:planFor([{id:"package"}]), operation_id: "zcode-package-open", host: "zcode", ...scope,
+  const openRequest = { operation_id: "zcode-package-open", host: "zcode", ...scope,
     authorization: {user_ref: "isolated-fixture-user", request,
-      goals: [{id: "package", statement: "The packaged Core runs the real local assertion", checks: ["readme"]}],
-      expected_paths: ["README.md"], forbidden_paths: ["unexpected.txt"]},
-    checks: [{id: "readme", kind: "command", argv: [process.execPath, "-e", "require('node:assert/strict').ok(require('node:fs').readFileSync('README.md','utf8').includes('package verification'))"],
-      inputs: ["README.md"], input_basis: "Only this file and Node built-ins affect the assertion", conditions: "Local Node and README", rationale: "Execute an actual package check", timeout_ms: 3000, retry: "repeatable"}]};
+      goals: [{id: "package", statement: "The packaged Core runs the real local assertion"}],
+      forbidden_paths: ["unexpected.txt"]},
+    plan: {...planFor(), expected_paths:["README.md"], checks: [{goal_ids:["package"],id: "readme", kind: "command", argv: [process.execPath, "-e", "require('node:assert/strict').ok(require('node:fs').readFileSync('README.md','utf8').includes('package verification'))"],
+      inputs: ["README.md"], input_basis: "Only this file and Node built-ins affect the assertion", conditions: "Local Node and README", rationale: "Execute an actual package check", timeout_ms: 3000, retry: "repeatable"}]}};
   const opened = await tool("taskbelay_open_task", openRequest);
   assert.equal(opened.ok, true, JSON.stringify(opened));
   let view = opened.result;
   await command(["host-launch", "bind-task"], { launch_id: prepared.launch_id, task_id: view.task.task_id });
   const resumed = await tool("taskbelay_open_task", openRequest);
   assert.equal(resumed.ok, true); assert.equal(resumed.result.task.task_id, view.task.task_id); assert.equal(resumed.result.replayed, true);
-  const executed = await tool("taskbelay_run_check", {task_id: view.task.task_id, revision: view.task.revision, operation_id: "zcode-package-run", check_id: "readme", rationale:"Validate the exact current packaged assertion"});
+  const executed = await command(["check", "run"], {task_id: view.task.task_id, revision: view.task.revision, operation_id: "zcode-package-run", check_id: "readme", rationale:"Validate the exact current packaged assertion"});
   assert.equal(executed.ok, true, JSON.stringify(executed)); assert.equal(executed.result.run.status, "passed"); assert.equal(executed.result.run.exit_code, 0); view = executed.result.view;
   report.checks.push("packaged native stdio MCP, current catalog, Task creation, identical-open replay and actual local check");
   assert.equal(await command(["hook", "pre-tool-use"], { hook_event_name: "PreToolUse", cwd: repository,

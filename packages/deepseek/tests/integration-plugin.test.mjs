@@ -32,7 +32,7 @@ test("plugin identity and injection surface are fixed", () => {
   assert.equal(typeof apply, "function");
   assert.equal(TASKBELAY_TOOL_NAMESPACE_PREFIX, "mcp__taskbelay__");
   assert.equal(TASKBELAY_QUALIFIED_TOOL_NAMES.length,15);
-  assert.ok(TASKBELAY_QUALIFIED_TOOL_NAMES.includes("mcp__taskbelay__taskbelay_run_check"));
+  assert.ok(TASKBELAY_QUALIFIED_TOOL_NAMES.includes("mcp__taskbelay__taskbelay_resolve_issue"));
 });
 
 test("registers one model-visible engineering Skill, guarded workspace coordinator, and the official MCP child config", async (t) => {
@@ -66,8 +66,8 @@ test("registers one model-visible engineering Skill, guarded workspace coordinat
     args: ["mcp", "--stdio"],
     env: { TASKBELAY_DATA_DIR: dataDirectory },
     cwd: fake.packageRoot,
-    toolCallTimeoutMs: 3_660_000,
-    failOnStartupError: true,
+    toolCallTimeoutMs: 60_000,
+    failOnStartupError: false,
     reconnect: {
       enabled: true,
       initialDelayMs: 500,

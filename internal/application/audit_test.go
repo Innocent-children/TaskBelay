@@ -4,29 +4,28 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Innocent-children/taskbelay/internal/domain"
-	"github.com/Innocent-children/taskbelay/internal/execution"
-	"github.com/Innocent-children/taskbelay/internal/store"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Innocent-children/taskbelay/internal/domain"
+	"github.com/Innocent-children/taskbelay/internal/execution"
+	"github.com/Innocent-children/taskbelay/internal/store"
 )
 
 func commandProposal(t *testing.T, n int, timeout int64) (*Service, View, string) {
 	t.Helper()
 	s, v, root := fixture(t)
 	a := v.Task.Authorization
-	a.Goals[0].Checks = nil
 	checks := []domain.Check{}
 	for i := 0; i < n; i++ {
 		id := fmt.Sprintf("check-%d", i)
-		a.Goals[0].Checks = append(a.Goals[0].Checks, id)
-		checks = append(checks, domain.Check{ID: id, Kind: "command", Argv: []string{"git", "diff", "--quiet"}, Conditions: "local fixture", Rationale: "verify no unintended diff", TimeoutMS: timeout, Retry: "repeatable"})
+		checks = append(checks, domain.Check{GoalIDs: []string{"goal"}, ID: id, Kind: "command", Argv: []string{"git", "diff", "--quiet"}, Conditions: "local fixture", Rationale: "verify no unintended diff", TimeoutMS: timeout, Retry: "repeatable"})
 	}
-	v, e := s.Revise(context.Background(), ReviseRequest{Identity: Identity{v.Task.TaskID, "commands", v.Task.Revision}, Authorization: ptr(a), Plan: ptr(v.Task.Plan), Checks: ptr(checks), Reason: "Actual fixture plan"})
+	v, e := s.Revise(context.Background(), ReviseRequest{Identity: Identity{v.Task.TaskID, "commands", v.Task.Revision}, Authorization: ptr(a), Plan: ptr(planWithChecks(v.Task.Plan, checks)), Reason: "Actual fixture plan"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -90,10 +89,10 @@ func TestRoutineCheckRevisionRetainsResultsButCannotExpandUserLimits(t *testing.
 		t.Fatal(e)
 	}
 	v = run.View
-	checks := append([]domain.Check{}, v.Task.Checks...)
+	checks := append([]domain.Check{}, v.Task.Plan.Checks...)
 	checks[0].TimeoutMS = 10000
 	checks[0].Rationale = "Allow ordinary environment variance"
-	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "method", v.Task.Revision}, Checks: &checks, Reason: "Adjust method without changing the user outcome"})
+	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "method", v.Task.Revision}, Plan: ptr(planWithChecks(v.Task.Plan, checks)), Reason: "Adjust method without changing the user outcome"})
 	if e != nil || !v.Decision.Evidence[0].Valid || v.Decision.Advice == "ask_user" {
 		t.Fatal(e, v.Decision)
 	}
@@ -115,9 +114,8 @@ func TestNoImplicitBudgetAndPartialUserLimit(t *testing.T) {
 	a := v.Task.Authorization
 	a.UserRef = "user-without-budget"
 	a.Limits = domain.Limits{}
-	a.Goals[0].Checks = []string{"command"}
-	checks := []domain.Check{{ID: "command", Kind: "command", Argv: []string{"git", "status", "--porcelain"}, Conditions: "local", Rationale: "Inspect actual fixture", TimeoutMS: 1000}}
-	v, e := s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "no-budget", v.Task.Revision}, Authorization: &a, Checks: &checks, Reason: "This user set no cost limits"})
+	checks := []domain.Check{{GoalIDs: []string{"goal"}, ID: "command", Kind: "command", Argv: []string{"git", "status", "--porcelain"}, Conditions: "local", Rationale: "Inspect actual fixture", TimeoutMS: 1000}}
+	v, e := s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "no-budget", v.Task.Revision}, Authorization: &a, Plan: ptr(planWithChecks(v.Task.Plan, checks)), Reason: "This user set no cost limits"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -141,7 +139,7 @@ func TestNoImplicitBudgetAndPartialUserLimit(t *testing.T) {
 		t.Fatal(e)
 	}
 	checks[0].Argv = []string{"git", "diff", "--quiet"}
-	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "next-check", v.Task.Revision}, Checks: &checks, Reason: "Verify a different condition"})
+	v, e = s.Revise(ctx, ReviseRequest{Identity: Identity{v.Task.TaskID, "next-check", v.Task.Revision}, Plan: ptr(planWithChecks(v.Task.Plan, checks)), Reason: "Verify a different condition"})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -178,11 +176,11 @@ func TestAuditExactMultiRepositoryDependencyPermissionAndForbiddenWrite(t *testi
 	a := v.Task.Authorization
 	a.Dependencies = []domain.DependencyPolicy{{Path: "web::package.json", Allowed: []string{"lucide-react"}}, {Path: "backend::package.json", Allowed: []string{}}}
 	a.ForbiddenPaths = []string{"web::secret.txt"}
-	checks := append([]domain.Check{}, v.Task.Checks...)
+	checks := append([]domain.Check{}, v.Task.Plan.Checks...)
 	for i := range checks {
 		checks[i].RepositoryKey = "web"
 	}
-	v, e = s.Open(ctx, OpenRequest{OperationID: "multi-dependency", Host: "cli", Repositories: []RepositoryInput{{Key: "web", Path: root}, {Key: "backend", Path: second}}, Authorization: a, Plan: v.Task.Plan, Checks: checks})
+	v, e = s.Open(ctx, OpenRequest{OperationID: "multi-dependency", Host: "cli", Repositories: []RepositoryInput{{Key: "web", Path: root}, {Key: "backend", Path: second}}, Authorization: a, Plan: planWithChecks(v.Task.Plan, checks)})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -328,7 +326,7 @@ func TestAuditReviewBoundSourceUpstreamAndRemoteOnlyOrigin(t *testing.T) {
 			git(work, "fetch", "--no-tags", "origin")
 			fetched := time.Now().UTC()
 			f := domain.RemoteFreshness{Head: head, Upstream: "refs/remotes/origin/" + branch, RemoteName: "origin", RemoteRef: "refs/heads/" + branch, RemoteHead: head, State: "current", Fetched: true, FetchedAt: &fetched, CheckedAt: time.Now().UTC(), Basis: "Actual fetch of the explicitly bound original source"}
-			opened, e := s.Open(ctx, OpenRequest{OperationID: "review-source-open", Host: v.Task.Host, Repositories: []RepositoryInput{{Key: "primary", Path: work, Origin: origin, RemoteFreshness: &f}}, Authorization: v.Task.Authorization, Plan: v.Task.Plan, Checks: v.Task.Checks})
+			opened, e := s.Open(ctx, OpenRequest{OperationID: "review-source-open", Host: v.Task.Host, Repositories: []RepositoryInput{{Key: "primary", Path: work, Origin: origin, RemoteFreshness: &f}}, Authorization: v.Task.Authorization, Plan: v.Task.Plan})
 			if e != nil {
 				t.Fatal("correct bound origin refused", e)
 			}

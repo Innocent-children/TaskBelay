@@ -9,8 +9,8 @@ actual scope, result applicability, cost and completion.
 
 Read the request and repository rules, locate the cause and the responsible code, and explain a
 proportionate approach. Reuse the user's actual authorization. Open the Task in the selected/current
-workspace with the real user_ref, requested outcomes, explicit restrictions, checks and a short plan
-(approach and verification_basis). No separate plan confirmation is required. Do not invent limits
+workspace with the real user_ref, requested outcomes, explicit restrictions and an implementation plan
+(approach, verification_basis, checks and optional forecasts). No separate plan confirmation is required. Do not invent limits
 or turn predicted files into a user allowlist. Unset cost limits remain unset; actual usage accumulates.
 
 Show the directory, branch and initial changes. Ask only when the workspace is unclear or a real
@@ -38,12 +38,15 @@ checkpoints. TaskBelay is not a sandbox.
 
 ## Verify the remaining gap
 
-Each check names its purpose, exact argv, actual conditions and rationale. Default inputs ["."] cover
+Each plan.check names its goal_ids, purpose, exact argv, actual conditions and rationale. Every goal
+requires an acceptance check; regression failures can be accepted separately but never replace it. Default inputs ["."] cover
 Git-visible inputs across all bound repositories. Narrow inputs only with a concrete input_basis that
 includes relevant helpers, configuration and dependencies; key::path selects another repository.
 Undeclared external services are not verified. Use repeatable only for checks whose uncertain effects
 can safely be inspected and repeated; otherwise retain requires_user.
 
+Invoke check run through the Host native process tool with its actual permissions and environment.
+MCP/HTTP do not execute commands. Retain native sessions for long checks and query their saved run.
 Run only necessary checks and reuse applicable passing results. Read get_run for output and failure
 diagnostics. An unchanged failure retry needs previous_run_id and new_information; after three
 unchanged failures, change the implementation, conditions or method. A full suite needs a current
@@ -71,4 +74,4 @@ Git, publication or deletion authority.
 
 Tool fields and recovery: [protocol](protocol.md). Normal use should not require reading plugin source.
 
-Maintainer implementation reference: `internal/application/service.go`.
+Maintainer implementation reference: `internal/application/completion.go`.

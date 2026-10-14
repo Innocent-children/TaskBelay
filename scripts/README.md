@@ -20,7 +20,7 @@
 | `pnpm --dir packages/codex test` | 运行 Codex package-local tests |
 | `pnpm --dir packages/deepseek test` | 运行 DeepSeek package-local tests |
 
-`validate-repository.sh` 是 Node 验证入口的 Unix 包装层；`node scripts/validate-engineering.mjs` 检查版本/生成副本、空白、Go vet/test、WebUI 构建、真实工程旅程、独立宿主包和当前 package-local tests。先按锁文件安装依赖。此入口不发布，也不运行真实宿主模型会话。
+`validate-repository.sh` 是 Node 验证入口的 Unix 包装层；`node scripts/validate-engineering.mjs` 检查版本/生成副本、空白、Go vet/test、WebUI 构建、真实工程旅程、独立宿主包、当前 package-local tests，以及发布器、发布准备和桌面构建检查；WebUI 另运行响应丢失与过期选择检查。先按锁文件安装依赖。此入口不发布，也不运行真实宿主模型会话。
 
 Windows CI 将 Codex、DeepSeek、ZCode 和统一管理器的包测试分别放在独立 PowerShell 步骤中，并显式返回各自的退出码。任一套件失败都会使对应步骤失败，阻止后续默认步骤继续执行。
 

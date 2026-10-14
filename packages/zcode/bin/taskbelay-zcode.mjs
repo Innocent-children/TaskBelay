@@ -42,7 +42,7 @@ export async function runCLI(args) {
   if (args.length === 0 || args.length === 1 && args[0] === "--help") {
     process.stdout.write("taskbelay-zcode status|setup|remove [--json]\n" +
       "taskbelay-zcode remove --confirm-host-removed [--json]\n" +
-      "taskbelay-zcode --version\ntaskbelay-zcode mcp\n" +
+      "taskbelay-zcode --version\ntaskbelay-zcode mcp\ntaskbelay-zcode check run\n" +
       "" +
       "taskbelay-zcode host-check pre-file-write|workspace-available\n" +
       "taskbelay-zcode hook pre-tool-use\n" +
@@ -54,7 +54,7 @@ export async function runCLI(args) {
   if (args.length === 1 && args[0] === "--version") {
     process.stdout.write((await core(["version"])).stdout); return 0;
   }
-  if (args.length === 2 && args[0] === "call") { const result = await core(["call",args[1]], {stream:true}); return result?.code ?? 0; }
+  if (args.length === 2 && (args[0] === "call" || args[0] === "check" && args[1] === "run")) { const result = await core(args, {stream:true}); return result?.code ?? 0; }
   if (args.length === 1 && args[0] === "mcp") { await core(["mcp", "--stdio"], { stream: true }); return 0; }
   const settings = lifecycleOptions(args);
   if (settings) { process.stdout.write(JSON.stringify(await lifecycle[args[0]](settings)) + "\n"); return 0; }

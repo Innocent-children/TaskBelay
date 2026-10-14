@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve, relative, isAbsolute } from 'node:path';
 
 export const core = process.env.ENGINEERING_CORE ?? resolve('.evaluation', process.platform === 'win32' ? 'taskbelay.exe' : 'taskbelay');
-export function planFor() {
-  return { approach: 'Change the existing implementation where the requested outcome requires it.', verification_basis: 'Use relevant local assertions and review the actual diff.' };
+export function planFor(checks = []) {
+  return { approach: 'Change the existing implementation where the requested outcome requires it.', verification_basis: 'Use relevant local assertions and review the actual diff.', checks };
 }
 export function check(id, script, extra = {}) {
-  return { id, kind: 'command', argv: [process.execPath, script], rationale: 'Exercise the requested behavior.', conditions: 'Local Node and fixture inputs; no external services.', retry: 'repeatable', timeout_ms: 3000, ...extra };
+  return { id, goal_ids: ['goal'], kind: 'command', argv: [process.execPath, script], rationale: 'Exercise the requested behavior.', conditions: 'Local Node and fixture inputs; no external services.', retry: 'repeatable', timeout_ms: 3000, ...extra };
 }
 export function fixture(t, files = { primary: { 'check.cjs': 'process.exit(0);\n' } }) {
   const root = mkdtempSync(join(tmpdir(), 'taskbelay-approved-'));
@@ -34,7 +34,7 @@ export function fixture(t, files = { primary: { 'check.cjs': 'process.exit(0);\n
   });
   let view, sequence = 0;
   function call(tool, args, error) {
-    const r = spawnSync(core, ['call', tool], { input: JSON.stringify(args), env, encoding: 'utf8', windowsHide: true, timeout: 30000, maxBuffer: 16 * 1024 * 1024 });
+    const r = spawnSync(core, tool === 'check.run' ? ['check','run'] : ['call', tool], { input: JSON.stringify(args), env, encoding: 'utf8', windowsHide: true, timeout: 30000, maxBuffer: 16 * 1024 * 1024 });
     assert.ok(r.stdout, `${tool}: ${r.stderr}`);
     const envelope = JSON.parse(r.stdout);
     if (error) { assert.equal(envelope.ok, false); assert.equal(envelope.error.code, error, JSON.stringify(envelope)); return envelope; }
@@ -46,13 +46,13 @@ export function fixture(t, files = { primary: { 'check.cjs': 'process.exit(0);\n
   const identity = () => ({ task_id: view.task.task_id, revision: view.task.revision, operation_id: `fixture-${++sequence}` });
   const inspect = () => call('taskbelay_get_task', { task_id: view.task.task_id });
   function open(goals, checks, authorization = {}) {
-    return call('taskbelay_open_task', { operation_id: 'fixture-open', host: 'cli', repositories, authorization: { user_ref: 'fixture-user-request', request: 'Deliver the listed fixture outcomes.', goals, ...authorization }, checks, plan: planFor(goals) });
+    return call('taskbelay_open_task', { operation_id: 'fixture-open', host: 'cli', repositories, authorization: { user_ref: 'fixture-user-request', request: 'Deliver the listed fixture outcomes.', goals, ...authorization }, plan: planFor(checks) });
   }
   const checkpoint = (data, error) => call('taskbelay_checkpoint', { ...identity(), ...data }, error);
-  function revise(authorization = view.task.authorization, checks = view.task.checks, plan = planFor(authorization.goals)) {
-    return call('taskbelay_revise_task', { ...identity(), authorization, checks, plan, reason: 'Fixture user changes this requirement or verification plan.' });
+  function revise(authorization = view.task.authorization, checks = view.task.plan.checks, plan = {...view.task.plan, checks}) {
+    return call('taskbelay_revise_task', { ...identity(), authorization, plan, reason: 'Fixture user changes this requirement or verification plan.' });
   }
-  const run = (id, extra = {}, error) => call('taskbelay_run_check', { ...identity(), check_id: id, rationale: 'Establish the unmet fixture check after relevant inputs or approved requirements changed.', ...extra }, error);
+  const run = (id, extra = {}, error) => call('check.run', { ...identity(), check_id: id, rationale: 'Establish the unmet fixture check after relevant inputs or approved requirements changed.', ...extra }, error);
   function review(verdict = 'satisfied') {
     inspect();
     return checkpoint({ progress: view.task.authorization.goals.map(g => ({ goal_id: g.id, status: 'done', summary: 'Fixture submits completion for guard verification.' })), assessment: {
@@ -65,8 +65,7 @@ export function fixture(t, files = { primary: { 'check.cjs': 'process.exit(0);\n
     } });
   }
   function finish(error) {
-    const accepted = view.decision.accepted_failures ?? [];
-    return call('taskbelay_finish_task', { ...identity(), summary: 'Fixture delivered with current evidence.', risks: ['Scripted user and semantic inputs.'], acceptance: view.task.authorization.goals.map(g => ({ goal_id: g.id, evidence_ids: view.task.evidence.filter(e => g.checks.includes(e.check_id) && (view.decision.evidence.some(f => f.evidence_id === e.id && f.valid) || accepted.some(x => x.failed_evidence_id === e.id))).map(e => e.id), basis: 'Current executions or explicitly accepted regression results establish this outcome.' })) }, error);
+    return call('taskbelay_finish_task', { ...identity(), summary: 'Fixture delivered with current evidence.', risks: ['Scripted user and semantic inputs.'], acceptance: view.task.authorization.goals.map(g => ({ goal_id: g.id, evidence_ids: view.task.evidence.filter(e => view.task.plan.checks.some(c => c.id === e.check_id && c.purpose === 'acceptance' && c.goal_ids.includes(g.id)) && view.decision.evidence.some(f => f.evidence_id === e.id && f.valid)).map(e => e.id), basis: 'Applicable passing acceptance checks establish this outcome.' })) }, error);
   }
   function write(path, value, key = repositories[0].key) { writeFileSync(join(repositories.find(r => r.key === key).repository_path, path), value); }
   return { root, env, repositories, call, identity, inspect, open, checkpoint, revise, run, review, finish, write, get view() { return view; } };

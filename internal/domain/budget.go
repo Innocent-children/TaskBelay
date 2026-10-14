@@ -1,8 +1,13 @@
 package domain
 
-import "slices"
+import (
+	"slices"
+	"time"
+)
 
-// BudgetDecision expresses one actual decision, synchronizing overlapping work caps.
+/**
+ * BudgetDecision expresses one actual decision, synchronizing overlapping work caps.
+ */
 type BudgetDecision struct {
 	Runs        int64 `json:"runs"`
 	ExecutionMS int64 `json:"execution_ms"`
@@ -59,7 +64,7 @@ func (t Task) Budget(missing []string) BudgetReport {
 		NewBudgetLine("runs", u.Runs, 0, 0, l.Runs), NewBudgetLine("execution_ms", u.ExecutionMS, u.ReservedMS, u.UncertainMS, l.ExecutionMS),
 		NewBudgetLine("core_ms", u.CoreMS, 0, 0, l.CoreMS), NewBudgetLine("host_ms", u.HostMS+u.WaitMS, 0, 0, l.HostMS), NewBudgetLine("tokens", u.Tokens, 0, 0, l.Tokens),
 	}}
-	for _, c := range t.Checks {
+	for _, c := range t.Plan.Checks {
 		if c.Kind != "command" {
 			continue
 		}
@@ -90,4 +95,11 @@ func (t Task) Budget(missing []string) BudgetReport {
 		report.Warnings = append(report.Warnings, "Core wall time overlaps command and Host work; its lower independent cap may become the bottleneck. Review one complete work-time decision and all effective limits.")
 	}
 	return report
+}
+
+type BudgetApproval struct {
+	DecisionDigest Digest    `json:"decision_digest"`
+	UserRef        string    `json:"user_ref"`
+	Response       string    `json:"response"`
+	ConfirmedAt    time.Time `json:"confirmed_at"`
 }

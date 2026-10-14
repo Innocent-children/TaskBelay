@@ -13,13 +13,13 @@ import (
 
 	"github.com/Innocent-children/taskbelay/internal/application"
 	"github.com/Innocent-children/taskbelay/internal/domain"
-	coremcp "github.com/Innocent-children/taskbelay/internal/mcp"
+	coreprotocol "github.com/Innocent-children/taskbelay/internal/protocol"
 	"github.com/Innocent-children/taskbelay/internal/store"
 )
 
 type SystemStatusProvider func() SystemStatusResponse
 
-func NewAPI(service *application.Service, core *coremcp.Server, status SystemStatusProvider) (http.Handler, error) {
+func NewAPI(service *application.Service, core *coreprotocol.Handler, status SystemStatusProvider) (http.Handler, error) {
 	if service == nil || core == nil || status == nil {
 		return nil, ErrSessionUnavailable
 	}
@@ -32,7 +32,7 @@ func NewAPI(service *application.Service, core *coremcp.Server, status SystemSta
 	mux.HandleFunc("GET /api/system/status", func(w http.ResponseWriter, r *http.Request) { s := status(); s.OK = true; write(w, s) })
 	mux.HandleFunc("GET /api/tasks", func(w http.ResponseWriter, r *http.Request) {
 		pageNumber, _ := strconv.Atoi(r.URL.Query().Get("page"))
-		page, e := taskSummaryPage(r.Context(), service.Store.List, store.ListQuery{Page: pageNumber, IncludeArchived: r.URL.Query().Get("include_archived") == "true", Status: r.URL.Query().Get("status")}, r.URL.Query().Get("lifecycle"))
+		page, e := taskSummaryPage(r.Context(), service.Store.List, store.ListQuery{Page: pageNumber, IncludeArchived: r.URL.Query().Get("include_archived") == "true", Status: r.URL.Query().Get("status"), Search: r.URL.Query().Get("search"), Host: domain.Host(r.URL.Query().Get("host"))}, r.URL.Query().Get("lifecycle"))
 		if e != nil {
 			http.Error(w, "invalid task page or unavailable store", 400)
 			return
@@ -52,7 +52,7 @@ func NewAPI(service *application.Service, core *coremcp.Server, status SystemSta
 		}
 		recent := []map[string]any{}
 		for _, t := range page.Items {
-			s := coremcp.Summary(t)
+			s := coreprotocol.Summary(t)
 			if len(recent) < 20 {
 				recent = append(recent, s)
 			}
@@ -61,14 +61,14 @@ func NewAPI(service *application.Service, core *coremcp.Server, status SystemSta
 	})
 	mux.HandleFunc("GET /api/tasks/{task_id}", func(w http.ResponseWriter, r *http.Request) {
 		refresh := r.URL.Query().Get("refresh") == "1"
-		raw, _ := json.Marshal(coremcp.GetRequest{TaskID: r.PathValue("task_id"), Refresh: &refresh, Detail: true})
+		raw, _ := json.Marshal(coreprotocol.GetRequest{TaskID: r.PathValue("task_id"), Refresh: &refresh, Detail: true})
 		result := core.Dispatch(r.Context(), "taskbelay_get_task", raw)
 		if !result.OK {
 			write(w, result)
 			return
 		}
-		v := *result.Result.(coremcp.TaskResult).Details
-		write(w, map[string]any{"ok": true, "readiness": "ready", "summary": coremcp.Summary(v.Task), "result": v})
+		v := *result.Result.(coreprotocol.TaskResult).Details
+		write(w, map[string]any{"ok": true, "readiness": "ready", "summary": coreprotocol.Summary(v.Task), "result": v})
 	})
 	mux.HandleFunc("POST /api/core/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -76,7 +76,7 @@ func NewAPI(service *application.Service, core *coremcp.Server, status SystemSta
 			Arguments json.RawMessage `json:"arguments"`
 		}
 		raw, e := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes+1))
-		if e != nil || coremcp.Decode(raw, &body) != nil {
+		if e != nil || coreprotocol.Decode(raw, &body) != nil {
 			http.Error(w, "invalid request", 400)
 			return
 		}
@@ -89,7 +89,7 @@ func NewAPI(service *application.Service, core *coremcp.Server, status SystemSta
 			ConfirmTaskID string `json:"confirm_task_id"`
 		}
 		raw, _ := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes+1))
-		if coremcp.Decode(raw, &body) != nil || body.ConfirmTaskID != r.PathValue("task_id") {
+		if coreprotocol.Decode(raw, &body) != nil || body.ConfirmTaskID != r.PathValue("task_id") {
 			http.Error(w, "exact terminal task confirmation is required", 400)
 			return
 		}
@@ -102,7 +102,7 @@ func NewAPI(service *application.Service, core *coremcp.Server, status SystemSta
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Task views and tool endpoints already reserve their call in Dispatch.
 		dispatched := strings.HasPrefix(r.URL.Path, "/api/core/") || r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/tasks/")
-		if !dispatched {
+		if !dispatched && r.Method != http.MethodGet {
 			complete, e := service.MeasureControl(r.Context())
 			if e != nil {
 				http.Error(w, "control cost reservation unavailable", 503)
@@ -134,7 +134,7 @@ func taskSummaryPage(ctx context.Context, list func(context.Context, store.ListQ
 			return nil, e
 		}
 		for _, t := range page.Items {
-			items = append(items, coremcp.Summary(t))
+			items = append(items, coreprotocol.Summary(t))
 		}
 		return result(page.HasNext), nil
 	}
@@ -158,7 +158,7 @@ func taskSummaryPage(ctx context.Context, list func(context.Context, store.ListQ
 			return nil, e
 		}
 		for _, t := range page.Items {
-			summary := coremcp.Summary(t)
+			summary := coreprotocol.Summary(t)
 			if summary["lifecycle"] != lifecycle {
 				continue
 			}
