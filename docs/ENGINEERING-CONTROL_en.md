@@ -20,6 +20,12 @@ Reuse passes under unchanged conditions; related inputs, requirements or environ
 
 Known-failure exceptions apply only to regression checks and require an actual failure, a passed comparison, explicit user acceptance and current applicability. Delivery acceptance cites passed acceptance results only. Completion requires completed goals, resolved required checks, reviewed changes and no uncertain execution or unresolved decision. Claims never satisfy checks; human results represent actual user observations.
 
+## Engineering questions and verification coverage
+
+Hosts use existing goal_ids, rationale, conditions and verification_basis to explain checked behavior, principal failure paths and omitted coverage. Conditions are not executable assertions. Signature/interface/data changes require inspecting actual callers and whether affected tests build. Core verifies goal relationships, actual results and applicability; it neither grades semantic adequacy nor adds a fixed verification ceremony.
+
+Actual unresolved questions live in assessment.concerns with stable IDs, original descriptions and relevant goals/checks/paths. Omission and empty arrays preserve them. verified cites applicable actual passing results; not_blocking explains why the current outcome remains satisfied and derives a delivery limitation; scope_changed references a saved real user-boundary change. Relevant dependency changes require a new resolution. None can waive required checks, deterministic violations or uncertain runs. The final review submits summary only, so clearing uncertainty prose cannot hide the original question.
+
 ## Native execution and recovery
 
 The Host native process tool invokes Core check run using JSON stdin. Native tools own permissions, environment, asynchronous waiting and signals; Core owns durable reservation, processes and receipts. MCP/HTTP never start commands. Long checks retain their native session and run identity rather than extending MCP requests or adding a scheduler.
@@ -41,3 +47,5 @@ WebUI offers search, Host/status filters, language selection, actual user answer
 Use temporary Git repositories and isolated SQLite to verify rejection of goals without acceptance, exceptions separate from acceptance, retained independent results, user answers preserving restrictions, saved reads under denied process queries without metering writes, no MCP/HTTP process execution, durable native interruption recovery, and filtering before paging. Browser checks cover decision/budget writes and unknown-run recovery; simulated response loss and stale selection requests check UI behavior.
 
 The integrated entrypoint covers Go, frontend, real execution journeys, four independent Host packages and retained publisher/desktop build checks. Tests use isolated resources and perform no publication. Real model sessions, native execution on other platforms and product benefits are reported separately; scripted semantic input is not real user validation. Historical data is preserved and refused without migration or reset.
+
+Host reports use cumulative host_usage per non-overlapping Task source_id, with observed_through and coverage. Duplicate samples are counted once; unknown is null and measured zero is 0. Missing report coverage blocks new commands only when an explicit Host cap needs it, while saved reads and recovery remain usable.

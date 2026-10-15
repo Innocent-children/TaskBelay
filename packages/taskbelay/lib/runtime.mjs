@@ -1,3 +1,5 @@
+import { installedPackageRoot } from "./local-packages.mjs";
+import { describeInterface, interfaceHelpRequest } from "./interface-reference.mjs";
 import { spawn } from "node:child_process";
 import { execFile as execFileCallback } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -22,6 +24,11 @@ export async function runTaskBelay(arguments_, dependencies = {}) {
     return { code: 0, signal: null };
   }
   try {
+    const help = interfaceHelpRequest(arguments_);
+    if (help?.name) {
+      stdout.write(JSON.stringify(await describeInterface(installedPackageRoot,help.name),null,2)+"\n");
+      return {code:0,signal:null};
+    }
     if (arguments_[0] === "webui") assertWebUIArguments(arguments_);
     if (["version", "--version"].includes(arguments_[0])) {
       let selection;

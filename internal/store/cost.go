@@ -8,10 +8,10 @@ import (
 )
 
 type ControlUsage struct {
-	Calls     int64 `json:"calls"`
-	WallMS    int64 `json:"wall_ms"`
-	UnknownMS int64 `json:"unknown_ms"`
-	Pending   int64 `json:"pending"`
+	Calls     int64 `json:"calls" description:"跨Task累计Core变更调用次数。"`
+	WallMS    int64 `json:"wall_ms" description:"跨TaskCore墙钟毫秒。"`
+	UnknownMS int64 `json:"unknown_ms" description:"缺少精确结束信息的保守未知计量。"`
+	Pending   int64 `json:"pending" description:"未结算的Core计量记录数量，不是pending_runs的替代。"`
 }
 
 func (s *Store) BeginControlCall(ctx context.Context, id string, pid int, owner string) error {

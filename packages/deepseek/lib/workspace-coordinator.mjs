@@ -66,9 +66,9 @@ export function createWorkspaceCoordinator({
             cwd: root, signal, env: { TASKBELAY_DATA_DIR: dataDirectory },
             input: `${JSON.stringify({ repository_path: root })}\n`,
           });
-          result = JSON.parse(output.stdout);
+          result = JSON.parse(output.stdout).result;
         }
-        if (result?.available !== true || result.repository_path !== root) throw new Error("workspace already has an active TaskBelay Task or could not be checked; resolve it before changing branches");
+        if (result?.available !== true || result.repositories?.length !== 1 || result.repositories[0].repository_path !== root) throw new Error("workspace already has an active TaskBelay Task or could not be checked; resolve it before changing branches");
       };
       for (const repository of requested) {
         const source = await observeSourceRepository(repository.source_repository_path, { command, signal });
@@ -139,7 +139,7 @@ export function createWorkspaceCoordinator({
           if (repository.workspace_mode === "dedicated_worktree") {
             await ensureTargetStillAvailable(source, repository, { command, signal });
             await git(source, [
-              "worktree", "add", "-b", repository.target_branch, repository.worktree_path, repository.base_commit,
+              "worktree", "add", "--no-track", "-b", repository.target_branch, repository.worktree_path, repository.base_commit,
             ], { command, signal, mutating: true });
             await verifyProvisionedRepository({ ...repository, carry_changes: false }, { command, signal, sourceRepositoryPath: source });
             await applyWorkspaceChanges(repository.worktree_path, repository.snapshot_commit, snapshotRunner(command, signal));
@@ -148,7 +148,7 @@ export function createWorkspaceCoordinator({
             await validateBranchSelection(source, repository, { command, signal });
             const before = await observeLocalBranch(source, { command, signal });
             if (before.head !== repository.base_commit || before.identity !== repository.source_repository_identity) throw new Error("local workspace changed after preparation");
-            if (repository.workspace_mode === "new_branch") await git(source, ["switch", "-c", repository.target_branch, repository.base_commit], { command, signal, mutating: true });
+            if (repository.workspace_mode === "new_branch") await git(source, ["switch", "--no-track", "-c", repository.target_branch, repository.base_commit], { command, signal, mutating: true });
             await verifyProvisionedRepository(repository, { command, signal });
             const after = await observeSourceRepository(source, { command, signal });
             if (after.gitDir !== before.gitDir || after.statusDigest !== before.statusDigest) throw new Error("local branch preparation changed workspace state; inspect the retained directory");
@@ -397,11 +397,11 @@ async function cleanupState({ dataDirectory, launchID, repositoryKey, taskID, re
   if (!repository) throw new Error("cleanup repository is not owned by the receipt");
   if (repository.workspace_mode !== "dedicated_worktree") throw new Error("local Task directories and branches are retained; workspace cleanup does not apply");
   const task = await readTask({ taskID, signal, execution });
-  if (task === null || typeof task !== "object" || !new Set(["DONE", "CANCELLED"]).has(task.status.toUpperCase())) {
+  if (task === null || typeof task !== "object" || !new Set(["done", "cancelled"]).has(task.status)) {
     throw new Error("Core Task is not terminal");
   }
-  if (task.task_id !== taskID || task.revision !== revision) throw new Error("terminal Core Task identity or revision changed");
-  const entry = task.repositories?.find(entry => entry.key === repositoryKey);
+  if (task.identity?.task_id !== taskID || task.identity?.revision !== revision) throw new Error("terminal Core Task identity or revision changed");
+  const entry = task.details?.repositories?.find(entry => entry.key === repositoryKey);
   const taskRepository = entry ? {origin:entry.workspace_origin,binding:entry.binding} : undefined;
   if (!taskRepository || taskRepository.origin?.provisioning_receipt_id !== launchID ||
       taskRepository.origin?.canonical_worktree_root !== repository.worktree_path ||

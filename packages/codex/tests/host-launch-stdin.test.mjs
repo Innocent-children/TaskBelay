@@ -94,7 +94,7 @@ test("production host-launch rejects invalid input before Git or receipt writes"
 
 test("production host-launch accepts exactly 1 MiB", { skip: !supported, timeout: 15000 }, async (t) => {
   const f = await fixture(t);
-  const input = JSON.stringify({ lifecycle: "DONE", surface: "cli_worktree", clean: true, pushed: true, stateCertain: true });
+  const input = JSON.stringify({ lifecycle: "done", surface: "cli_worktree", clean: true, pushed: true, stateCertain: true });
   const result = await run(f, "cleanup-decision", [input, " ".repeat(1024 * 1024 - Buffer.byteLength(input))]);
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stderr, "");

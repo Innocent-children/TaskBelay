@@ -92,7 +92,7 @@ export function App() {
         status: passed ? "passed" : "failed",
         summary,
         user_ref: "webui-observation-" + crypto.randomUUID(),
-        content_digest: view.content_digest,
+        content_digest: view.digests.content,
       });
   }
   async function cancel() {
@@ -124,7 +124,7 @@ export function App() {
           disabled={busy}
           onClick={() => {
             refreshList((value) => value + 1);
-            if (view) void task.select(view.task.task_id, true);
+            if (view) void task.select(view.identity.task_id, true);
           }}
         >
           {label("Refresh actual state", "刷新实际状态")}
@@ -197,14 +197,14 @@ export function App() {
               disabled={busy}
               className={
                 "task " +
-                (view?.task.task_id === item.task_id ? "selected" : "")
+                (view?.identity.task_id === item.task_id ? "selected" : "")
               }
               key={item.task_id}
               onClick={() => select(item.task_id)}
             >
               <strong>{item.request_summary}</strong>
               <span>{statusLabel(item.lifecycle)}</span>
-              <small>{item.worktree_path}</small>
+              <small>{item.repositories.map((r) => r.repository_path).join(" · ")}</small>
             </button>
           ))}
           {!tasks.length && (
@@ -247,9 +247,9 @@ export function App() {
             <>
               <section>
                 <div className="row">
-                  <span className="badge">{statusLabel(view.task.status)}</span>
+                  <span className="badge">{statusLabel(view.status)}</span>
                   <small>
-                    {view.task.status !== "active" ? label("Results saved at completion", "结束时保存的结果") : view.refreshed
+                    {view.status !== "active" ? label("Results saved at completion", "结束时保存的结果") : view.refreshed
                       ? label("Actual conditions refreshed", "已刷新实际条件")
                       : label(
                           "Saved state · refresh to assess results",
@@ -257,10 +257,10 @@ export function App() {
                         )}
                   </small>
                 </div>
-                <h1>{view.task.authorization.request}</h1>
-                {view.task.summary && <p>{view.task.summary}</p>}
-                {view.task.authorization.goals.map((goal) => {
-                  const progress = view.task.progress.find(
+                <h1>{view.context.authorization.request}</h1>
+                {view.summary && <p>{view.summary}</p>}
+                {view.context.authorization.goals.map((goal) => {
+                  const progress = view.progress.find(
                     (p) => p.goal_id === goal.id,
                   );
                   return (
@@ -280,12 +280,11 @@ export function App() {
               </section>
               <section>
                 <h2>{label("Remaining problems", "剩余问题")}</h2>
-                {view.decision.findings
-                  .filter((f) => f.blocking)
+                {view.decision.gaps
                   .map((f) => (
-                    <p className="finding" key={f.id}>
+                    <p className="finding" key={f.code + ":" + f.subject}>
                       {f.path && <code>{f.path}</code>}
-                      {f.detail}
+                      {f.message}
                     </p>
                   ))}
                 {view.decision.missing_checks.length > 0 && (
@@ -295,9 +294,9 @@ export function App() {
                   </p>
                 )}
               </section>
-              {view.task.status === "active" && (
+              {view.status === "active" && (
                 <DecisionPanel
-                  key={view.task.task_id + ":" + view.issue_digest}
+                  key={view.identity.task_id + ":" + view.issue_digest}
                   view={view}
                   busy={mutationBlocked}
                   mutate={change}
@@ -314,7 +313,7 @@ export function App() {
               <PlanPanel view={view} />
               <section>
                 <h2>{label("Checks and actual results", "检查与实际结果")}</h2>
-                {view.decision.accepted_failures.map((f) => (
+                {view.checks.flatMap((c) => c.accepted_failure ? [c.accepted_failure] : []).map((f) => (
                   <div className="finding" key={f.check_id}>
                     <strong>
                       {label(
@@ -327,29 +326,21 @@ export function App() {
                     <p>{f.reason}</p>
                   </div>
                 ))}
-                {view.task.evidence.map((e) => (
-                  <div className="evidence" key={e.id}>
-                    <strong>{e.check_id}</strong>
-                    <span>
-                      {e.source} · {e.status}
-                    </span>
-                    <p>{e.summary}</p>
-                    <small>
-                      {
-                        view.decision.evidence.find(
-                          (f) => f.evidence_id === e.id,
-                        )?.reason
-                      }
-                    </small>
-                    {e.source === "core_execution" && (
-                      <button onClick={() => void readRun(e.id)}>
+                {view.checks.map((check) => (
+                  <div className="evidence" key={check.id}>
+                    <strong>{check.id}</strong>
+                    <span>{check.source} · {check.status}</span>
+                    <p>{check.summary}</p>
+                    <small>{check.reason}</small>
+                    {check.run_id && (
+                      <button onClick={() => void readRun(check.run_id!)}>
                         {label("Read actual output", "查看实际输出")}
                       </button>
                     )}
                   </div>
                 ))}
-                {view.task.status === "active" &&
-                  view.task.plan.checks
+                {view.status === "active" &&
+                  view.context.plan.checks
                     .filter((c) => c.kind === "human")
                     .map((c) => (
                       <div key={c.id}>
@@ -375,15 +366,15 @@ export function App() {
                     {run.run_id} · {run.status}
                     {run.truncated && " · " + label("truncated", "已截断")}
                     {"\n"}
-                    {run.stdout}
+                    {run.output.stdout}
                     {"\n"}
-                    {run.stderr}
+                    {run.output.stderr}
                   </pre>
                 )}
               </section>
-              {view.task.status === "active" && (
+              {view.status === "active" && (
                 <FailureAcceptance
-            key={view.task.task_id}
+                  key={view.identity.task_id}
                   view={view}
                   busy={mutationBlocked || !view.refreshed}
                   mutate={change}
@@ -393,15 +384,15 @@ export function App() {
                 <h2>{label("Cumulative work", "累计投入")}</h2>
                 <div className="metrics">
                   <div>
-                    <strong>{view.task.usage.runs}</strong>
+                    <strong>{view.usage.runs}</strong>
                     <span>{label("Executions", "执行次数")}</span>
                   </div>
                   <div>
-                    <strong>{duration(view.task.usage.execution_ms)}</strong>
+                    <strong>{duration(view.usage.execution_ms)}</strong>
                     <span>{label("Execution time", "执行时间")}</span>
                   </div>
                   <div>
-                    <strong>{duration(view.task.usage.core_ms)}</strong>
+                    <strong>{duration(view.usage.core_ms)}</strong>
                     <span>
                       {label(
                         "Mutating Core calls, including execution",
@@ -411,16 +402,26 @@ export function App() {
                   </div>
                   <div>
                     <strong>
-                      {view.task.usage.host_reported_tokens} tokens
+                      {view.usage.host.tokens === null ? label("Not reported", "未上报") : view.usage.host.tokens + " tokens"}
                     </strong>
                     <span>
-                      {label(
-                        "Host reported · may be incomplete",
-                        "宿主报告 · 可能不完整",
-                      )}
+                      {view.usage.host.coverage === "unreported"
+                        ? label("Host usage unavailable", "尚未取得宿主用量")
+                        : view.usage.host.coverage === "partial"
+                          ? label("Partial Host report", "宿主仅报告部分用量")
+                          : label("Reported Host sources", "已报告来源的宿主用量")}
                     </span>
                   </div>
                 </div>
+                {view.usage.host.observed_through && (
+                  <p>{label("Latest Host report: ", "最近宿主报告：")}{view.usage.host.observed_through}</p>
+                )}
+                <p>
+                  {label("Host activity / waiting: ", "宿主活动 / 等待：")}
+                  {view.usage.host.active_ms === null ? label("Unknown", "未知") : duration(view.usage.host.active_ms)}
+                  {" / "}
+                  {view.usage.host.wait_ms === null ? label("Unknown", "未知") : duration(view.usage.host.wait_ms)}
+                </p>
                 <p>
                   {label(
                     "Saved-state reads do not write metering data. Timings overlap and must not be added.",
@@ -429,17 +430,17 @@ export function App() {
                 </p>
                 <p>
                   {label("Uncertain execution time: ", "未确定执行时间：")}
-                  {duration(view.task.usage.uncertain_ms)}
+                  {duration(view.usage.uncertain_ms)}
                 </p>
               </section>
-              {view.task.status === "active" && (
+              {view.status === "active" && (
                 <BudgetPanel
-                  key={view.task.task_id + ":" + view.authorization_digest}
+                  key={view.identity.task_id + ":" + view.digests.authorization}
                   view={view}
                   busy={mutationBlocked}
                   update={(budget, response) =>
                     void change("taskbelay_update_budget", {
-                      authorization_digest: view.authorization_digest,
+                      authorization_digest: view.digests.authorization,
                       budget,
                       response,
                       user_ref: "webui-budget-" + crypto.randomUUID(),
@@ -451,7 +452,7 @@ export function App() {
                 <summary>
                   {label("Recent decisions and changes", "近期决定与调整")}
                 </summary>
-                {view.task.changes?.map((c, i) => (
+                {view.details.changes?.map((c, i) => (
                   <div key={i}>
                     <small>
                       #{c.revision} · {c.at} · {c.kind}
@@ -463,15 +464,27 @@ export function App() {
               </details>
               <section>
                 <h2>
-                  {label("Constraints and remaining risks", "约束与剩余问题")}
+                  {label("Constraints and delivery limitations", "约束与交付限制")}
                 </h2>
-                {view.task.authorization.constraints?.map((c) => (
+                {view.context.authorization.constraints?.map((c) => (
                   <p key={c.id}>{c.statement}</p>
                 ))}
-                {view.task.risks.map((r) => (
-                  <p key={r}>{r}</p>
+                {view.limitations.map((r) => (
+                  <p key={r.id}>{r.summary} — {r.basis}</p>
                 ))}
-                {view.task.status === "active" ? (
+                {view.concerns.length > 0 && (
+                  <details>
+                    <summary>{label("Engineering questions and resolutions", "工程问题与处理情况")}</summary>
+                    {view.concerns.map((concern) => (
+                      <div key={concern.id}>
+                        <p>{concern.summary}</p>
+                        <p>{concern.resolution?.basis ?? label("Unresolved", "尚未解决")}</p>
+                        <small>{concern.reason}</small>
+                      </div>
+                    ))}
+                  </details>
+                )}
+                {view.status === "active" ? (
                   <button
                     disabled={mutationBlocked}
                     onClick={() => void cancel()}
@@ -483,11 +496,11 @@ export function App() {
                     disabled={mutationBlocked}
                     onClick={() =>
                       void change("taskbelay_archive_task", {
-                        archived: !view.task.archived,
+                        archived: !view.archived,
                       })
                     }
                   >
-                    {view.task.archived
+                    {view.archived
                       ? label("Restore from archive", "取消归档")
                       : label("Archive task", "归档任务")}
                   </button>

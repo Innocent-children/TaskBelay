@@ -64,7 +64,7 @@ test("Codex hook permits absent Task data, uses the managed launcher, and fails 
     arch: "arm64",
     spawn: (executable, arguments_, options) => {
       invocation = { executable, arguments_, options };
-      return { status: 0, stdout: JSON.stringify({ decision: "allow" }), stderr: "" };
+      return { status: 0, stdout: JSON.stringify({ ok:true, result:{ decision: "allow" } }), stderr: "" };
     },
   });
   assert.equal(allowed, 0);
@@ -114,7 +114,7 @@ test("Windows hook fallback prefers USERPROFILE when HOME is also present", asyn
     arch: "x64",
     spawn: (executable, arguments_, options) => {
       invocation = { executable, arguments_, options };
-      return { status: 0, stdout: JSON.stringify({ decision: "allow" }), stderr: "" };
+      return { status: 0, stdout: JSON.stringify({ ok:true, result:{ decision: "allow" } }), stderr: "" };
     },
   });
   assert.equal(code, 0);

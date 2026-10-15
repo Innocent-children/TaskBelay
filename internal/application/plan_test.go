@@ -20,10 +20,10 @@ func TestUserRequestStartsWorkAndMethodChangesDoNotAskAgain(t *testing.T) {
 	s, v, root := fixture(t)
 	ctx := context.Background()
 	before, e := s.PreWrite(ctx, root, []string{filepath.Join(root, "file.txt")}, true)
-	if e != nil || before["decision"] != "allow" {
+	if e != nil || before.Decision != "allow" {
 		t.Fatal("existing request did not authorize work", before, e)
 	}
-	v, e = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "start", v.Task.Revision}, Progress: []domain.Progress{{GoalID: "goal", Status: "doing", Summary: "Editing the requested text"}}})
+	v, e = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "start", v.Task.Revision}, Progress: []ProgressInput{{GoalID: "goal", Status: "doing", Summary: "Editing the requested text"}}})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -34,7 +34,7 @@ func TestUserRequestStartsWorkAndMethodChangesDoNotAskAgain(t *testing.T) {
 		t.Fatal("method revision lost authority or progress", e)
 	}
 	before, e = s.PreWrite(ctx, root, []string{filepath.Join(root, "file.txt")}, true)
-	if e != nil || before["decision"] != "allow" {
+	if e != nil || before.Decision != "allow" {
 		t.Fatal(before, e)
 	}
 	a := v.Task.Authorization
@@ -62,7 +62,7 @@ func TestExplicitAllowedScopeDiffersFromPredictedPaths(t *testing.T) {
 	}
 	for _, c := range []struct{ path, want string }{{"file.txt", "allow"}, {"extra.txt", "deny"}} {
 		r, e := s.PreWrite(ctx, root, []string{filepath.Join(root, c.path)}, true)
-		if e != nil || r["decision"] != c.want {
+		if e != nil || r.Decision != c.want {
 			t.Fatal(c, r, e)
 		}
 	}
@@ -92,7 +92,7 @@ func TestPreWriteObservesBranchAndHistoryBeforeAllowingChanges(t *testing.T) {
 	prewrite := func(want string) {
 		t.Helper()
 		result, e := s.PreWrite(ctx, root, []string{filepath.Join(root, "file.txt")}, true)
-		if e != nil || result["decision"] != want {
+		if e != nil || result.Decision != want {
 			t.Fatal("write decision", result, e)
 		}
 	}

@@ -56,6 +56,15 @@ struct SystemStatusResponse: Decodable, Equatable {
 
 /// The subset of `TaskSummary` used by the desktop. Unused response fields are
 /// deliberately not modelled.
+private struct DesktopRepositorySummary: Decodable {
+    let key: String
+    let repositoryPath: String
+    enum CodingKeys: String, CodingKey {
+        case key
+        case repositoryPath = "repository_path"
+    }
+}
+
 struct DesktopTaskSummary: Decodable, Equatable {
     let taskID: String
     let requestSummary: String
@@ -72,14 +81,12 @@ struct DesktopTaskSummary: Decodable, Equatable {
     enum CodingKeys: String, CodingKey {
         case taskID = "task_id"
         case requestSummary = "request_summary"
-        case originHost = "origin_host"
-        case currentNode = "current_node"
+        case originHost = "host"
+        case repositories
         case lifecycle
         case revision
         case updatedAt = "updated_at"
         case archived
-        case repositoryKeys = "repository_keys"
-        case worktreePath = "worktree_path"
         case blocker
     }
 
@@ -88,13 +95,17 @@ struct DesktopTaskSummary: Decodable, Equatable {
         taskID = try container.decode(String.self, forKey: .taskID)
         requestSummary = try container.decode(String.self, forKey: .requestSummary)
         originHost = try container.decode(String.self, forKey: .originHost)
-        currentNode = try container.decode(String.self, forKey: .currentNode)
         lifecycle = try container.decode(TaskLifecycle.self, forKey: .lifecycle)
+        currentNode = lifecycle.rawValue.uppercased()
         revision = try container.decode(UInt64.self, forKey: .revision)
         updatedAt = try container.decode(Date.self, forKey: .updatedAt)
         archived = try container.decode(Bool.self, forKey: .archived)
-        repositoryKeys = try container.decodeIfPresent([String].self, forKey: .repositoryKeys) ?? []
-        worktreePath = try container.decode(String.self, forKey: .worktreePath)
+        let repositories = try container.decode([DesktopRepositorySummary].self, forKey: .repositories)
+        guard let primary = repositories.first else {
+            throw DecodingError.dataCorruptedError(forKey: .repositories, in: container, debugDescription: "A Task must retain its bound repositories")
+        }
+        repositoryKeys = repositories.map(\.key)
+        worktreePath = primary.repositoryPath
         blocker = try container.decodeIfPresent(String.self, forKey: .blocker)
     }
 }

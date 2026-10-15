@@ -1,0 +1,4692 @@
+{
+  "check.run": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "check_id": "accept",
+        "operation_id": "example-operation-5",
+        "rationale": "Verify current tracked content",
+        "revision": 5,
+        "task_id": "task-example-1"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-5",
+        "result": {
+          "run": {
+            "check_id": "accept",
+            "duration_ms": 0,
+            "exit_code": 0,
+            "output_bytes": 0,
+            "run_id": "run-accept",
+            "status": "passed",
+            "truncated": false
+          },
+          "view": {
+            "archived": false,
+            "budget": {
+              "checks": [
+                {
+                  "check_id": "accept",
+                  "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                  "required": false,
+                  "startable": true,
+                  "timeout_ms": 3000
+                },
+                {
+                  "check_id": "regression",
+                  "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                  "required": true,
+                  "startable": true,
+                  "timeout_ms": 3000
+                },
+                {
+                  "check_id": "comparison",
+                  "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                  "required": false,
+                  "startable": true,
+                  "timeout_ms": 3000
+                }
+              ],
+              "feasible": true,
+              "limits": [
+                {
+                  "actual": 1,
+                  "coverage": "measured",
+                  "limit": 15,
+                  "limited": true,
+                  "name": "runs",
+                  "remaining": 14,
+                  "reserved": 0,
+                  "uncertain": 0
+                },
+                {
+                  "actual": 13,
+                  "coverage": "measured",
+                  "limit": 0,
+                  "limited": false,
+                  "name": "execution_ms",
+                  "remaining": null,
+                  "reserved": 0,
+                  "uncertain": 0
+                },
+                {
+                  "actual": 416,
+                  "coverage": "measured",
+                  "limit": 0,
+                  "limited": false,
+                  "name": "core_ms",
+                  "remaining": null,
+                  "reserved": 0,
+                  "uncertain": 0
+                },
+                {
+                  "actual": null,
+                  "coverage": "unreported",
+                  "limit": 0,
+                  "limited": false,
+                  "name": "host_ms",
+                  "remaining": null,
+                  "reserved": 0,
+                  "uncertain": 0
+                },
+                {
+                  "actual": null,
+                  "coverage": "unreported",
+                  "limit": 0,
+                  "limited": false,
+                  "name": "tokens",
+                  "remaining": null,
+                  "reserved": 0,
+                  "uncertain": 0
+                }
+              ],
+              "required_runs": 1,
+              "retry_reserve_ms": 3000,
+              "warnings": [],
+              "worst_case_ms": 3000
+            },
+            "checks": [
+              {
+                "applicable": true,
+                "evidence_id": "run-accept",
+                "goal_ids": [
+                  "goal"
+                ],
+                "id": "accept",
+                "kind": "command",
+                "purpose": "acceptance",
+                "reason": "current evidence",
+                "run_id": "run-accept",
+                "source": "core_execution",
+                "status": "passed",
+                "summary": "actual exit 0; passed; 13 ms"
+              },
+              {
+                "applicable": false,
+                "evidence_id": null,
+                "goal_ids": [
+                  "goal"
+                ],
+                "id": "human",
+                "kind": "human",
+                "purpose": "acceptance",
+                "reason": "Run the required check, or record an actual user observation for a human check",
+                "run_id": null,
+                "source": "",
+                "status": "not_run",
+                "summary": "No actual result recorded"
+              },
+              {
+                "applicable": false,
+                "evidence_id": null,
+                "goal_ids": [
+                  "goal"
+                ],
+                "id": "regression",
+                "kind": "command",
+                "purpose": "regression",
+                "reason": "Run the required check, or record an actual user observation for a human check",
+                "run_id": null,
+                "source": "",
+                "status": "not_run",
+                "summary": "No actual result recorded"
+              },
+              {
+                "applicable": false,
+                "evidence_id": null,
+                "goal_ids": [
+                  "goal"
+                ],
+                "id": "comparison",
+                "kind": "command",
+                "purpose": "diagnostic",
+                "reason": "Run the required check, or record an actual user observation for a human check",
+                "run_id": null,
+                "source": "",
+                "status": "not_run",
+                "summary": "No actual result recorded"
+              }
+            ],
+            "concerns": [
+              {
+                "applicable": false,
+                "check_ids": [
+                  "accept"
+                ],
+                "goal_ids": [
+                  "goal"
+                ],
+                "id": "tracked-result",
+                "reason": "concern has no resolution",
+                "summary": "Confirm the tracked result using an actual check"
+              }
+            ],
+            "decision": {
+              "advice": "self_correct",
+              "gaps": [
+                {
+                  "action": "continue",
+                  "code": "goal_not_done",
+                  "message": "Complete the authorized goal and record its actual result: The tracked result and its user observation are verified",
+                  "path": "progress",
+                  "related_ids": [
+                    "goal"
+                  ],
+                  "subject": "goal"
+                },
+                {
+                  "action": "verify",
+                  "code": "check_missing",
+                  "message": "No applicable passing result exists for this required check.",
+                  "path": "checks",
+                  "related_ids": [
+                    "human"
+                  ],
+                  "subject": "human"
+                },
+                {
+                  "action": "verify",
+                  "code": "check_missing",
+                  "message": "No applicable passing result exists for this required check.",
+                  "path": "checks",
+                  "related_ids": [
+                    "regression"
+                  ],
+                  "subject": "regression"
+                },
+                {
+                  "action": "review",
+                  "code": "review_missing",
+                  "message": "Submit assessment.review.summary after inspecting the actual diff, responsibilities and verification.",
+                  "path": "assessment.review",
+                  "related_ids": [],
+                  "subject": "review"
+                },
+                {
+                  "action": "self_correct",
+                  "code": "concern_open",
+                  "message": "concern has no resolution: Confirm the tracked result using an actual check",
+                  "path": "assessment.concerns",
+                  "related_ids": [
+                    "goal",
+                    "accept"
+                  ],
+                  "subject": "tracked-result"
+                }
+              ],
+              "missing_checks": [
+                "human",
+                "regression"
+              ],
+              "pending_runs": [],
+              "ready": false
+            },
+            "digests": {
+              "authorization": "0000000000000000000000000000000000000000000000000000000000000008",
+              "content": "0000000000000000000000000000000000000000000000000000000000000003",
+              "plan": "0000000000000000000000000000000000000000000000000000000000000009"
+            },
+            "host": "cli",
+            "identity": {
+              "revision": 7,
+              "task_id": "task-example-1"
+            },
+            "issue": null,
+            "limitations": [],
+            "progress": [],
+            "refreshed": true,
+            "replayed": false,
+            "status": "active",
+            "summary": "",
+            "usage": {
+              "core_calls": 7,
+              "core_ms": 0,
+              "execution_ms": 0,
+              "host": {
+                "active_ms": null,
+                "coverage": "unreported",
+                "observed_through": null,
+                "tokens": null,
+                "wait_ms": null
+              },
+              "observation_ms": 0,
+              "reserved_ms": 0,
+              "runs": 1,
+              "uncertain_ms": 0
+            }
+          }
+        },
+        "tool": "check.run"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "check.run",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied",
+        "execution": "not_started"
+      }
+    }
+  ],
+  "host-check.pre-file-write": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "host": "zcode",
+        "intent_digest": "0000000000000000000000000000000000000000000000000000000000000005",
+        "path_parse_complete": true,
+        "paths": [
+          "/workspace/demo/file.txt"
+        ],
+        "repository_path": "/workspace/demo",
+        "tool_name": "Edit"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-request",
+        "result": {
+          "coverage": "structured_paths",
+          "decision": "allow",
+          "semantic_review": "required_at_checkpoint",
+          "task_id": "task-example-1",
+          "task_revision": 1
+        },
+        "tool": "host-check.pre-file-write"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "host-check.pre-file-write",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "host-check.workspace-available": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "repositories": [
+          {
+            "key": "primary",
+            "repository_path": "/workspace/demo"
+          }
+        ]
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-request",
+        "result": {
+          "available": false,
+          "repositories": [
+            {
+              "active_task_id": "task-example-1",
+              "key": "primary",
+              "repository_path": "/workspace/demo"
+            }
+          ]
+        },
+        "tool": "host-check.workspace-available"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "host-check.workspace-available",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_accept_known_failure": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "check_id": "regression",
+        "comparison_evidence_id": "run-comparison",
+        "failed_evidence_id": "run-regression",
+        "failures": [
+          "missing-fixture-ref"
+        ],
+        "operation_id": "example-operation-10",
+        "reason": "Actual comparison confirms this separately accepted existing failure",
+        "revision": 13,
+        "task_id": "task-example-1",
+        "user_ref": "fixture-user-acceptance-5"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-10",
+        "result": {
+          "archived": false,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 3,
+                "coverage": "measured",
+                "limit": 15,
+                "limited": true,
+                "name": "runs",
+                "remaining": 12,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 42,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 1139,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 0,
+            "retry_reserve_ms": 0,
+            "warnings": [],
+            "worst_case_ms": 0
+          },
+          "checks": [
+            {
+              "applicable": true,
+              "evidence_id": "run-accept",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "current evidence",
+              "run_id": "run-accept",
+              "source": "core_execution",
+              "status": "passed",
+              "summary": "actual exit 0; passed; 13 ms"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "evidence-human",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "current evidence",
+              "run_id": null,
+              "source": "human",
+              "status": "passed",
+              "summary": "Fixture user inspected the tracked result"
+            },
+            {
+              "accepted_failure": {
+                "accepted_at": "2026-10-14T09:00:00Z",
+                "check_id": "regression",
+                "comparison_evidence_id": "run-comparison",
+                "failed_evidence_id": "run-regression",
+                "failures": [
+                  "missing-fixture-ref"
+                ],
+                "reason": "Actual comparison confirms this separately accepted existing failure",
+                "user_ref": "fixture-user-acceptance-5"
+              },
+              "applicable": true,
+              "evidence_id": "run-regression",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "check did not pass",
+              "run_id": "run-regression",
+              "source": "core_execution",
+              "status": "failed",
+              "summary": "actual exit 128; failed; 15 ms"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "run-comparison",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "current evidence",
+              "run_id": "run-comparison",
+              "source": "core_execution",
+              "status": "passed",
+              "summary": "actual exit 0; passed; 14 ms"
+            }
+          ],
+          "concerns": [
+            {
+              "applicable": false,
+              "check_ids": [
+                "accept"
+              ],
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "tracked-result",
+              "reason": "concern has no resolution",
+              "summary": "Confirm the tracked result using an actual check"
+            }
+          ],
+          "decision": {
+            "advice": "self_correct",
+            "gaps": [
+              {
+                "action": "continue",
+                "code": "goal_not_done",
+                "message": "Complete the authorized goal and record its actual result: The tracked result and its user observation are verified",
+                "path": "progress",
+                "related_ids": [
+                  "goal"
+                ],
+                "subject": "goal"
+              },
+              {
+                "action": "review",
+                "code": "review_missing",
+                "message": "Submit assessment.review.summary after inspecting the actual diff, responsibilities and verification.",
+                "path": "assessment.review",
+                "related_ids": [],
+                "subject": "review"
+              },
+              {
+                "action": "self_correct",
+                "code": "concern_open",
+                "message": "concern has no resolution: Confirm the tracked result using an actual check",
+                "path": "assessment.concerns",
+                "related_ids": [
+                  "goal",
+                  "accept"
+                ],
+                "subject": "tracked-result"
+              }
+            ],
+            "missing_checks": [],
+            "pending_runs": [],
+            "ready": false
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000008",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000009"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 14,
+            "task_id": "task-example-1"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [],
+          "refreshed": true,
+          "replayed": false,
+          "status": "active",
+          "summary": "",
+          "usage": {
+            "core_calls": 12,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 3,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_accept_known_failure"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_accept_known_failure",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_archive_task": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "archived": true,
+        "operation_id": "example-operation-13",
+        "revision": 16,
+        "task_id": "task-example-1"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-13",
+        "result": {
+          "archived": true,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 3,
+                "coverage": "measured",
+                "limit": 15,
+                "limited": true,
+                "name": "runs",
+                "remaining": 12,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 42,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 1514,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 0,
+            "retry_reserve_ms": 0,
+            "warnings": [],
+            "worst_case_ms": 0
+          },
+          "checks": [
+            {
+              "applicable": true,
+              "evidence_id": "run-accept",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "current evidence",
+              "run_id": "run-accept",
+              "source": "core_execution",
+              "status": "passed",
+              "summary": "actual exit 0; passed; 13 ms"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "evidence-human",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "current evidence",
+              "run_id": null,
+              "source": "human",
+              "status": "passed",
+              "summary": "Fixture user inspected the tracked result"
+            },
+            {
+              "accepted_failure": {
+                "accepted_at": "2026-10-14T09:00:00Z",
+                "check_id": "regression",
+                "comparison_evidence_id": "run-comparison",
+                "failed_evidence_id": "run-regression",
+                "failures": [
+                  "missing-fixture-ref"
+                ],
+                "reason": "Actual comparison confirms this separately accepted existing failure",
+                "user_ref": "fixture-user-acceptance-5"
+              },
+              "applicable": true,
+              "evidence_id": "run-regression",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "check did not pass",
+              "run_id": "run-regression",
+              "source": "core_execution",
+              "status": "failed",
+              "summary": "actual exit 128; failed; 15 ms"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "run-comparison",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "current evidence",
+              "run_id": "run-comparison",
+              "source": "core_execution",
+              "status": "passed",
+              "summary": "actual exit 0; passed; 14 ms"
+            }
+          ],
+          "concerns": [
+            {
+              "applicable": true,
+              "check_ids": [
+                "accept"
+              ],
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "tracked-result",
+              "reason": "resolution applies to the observed concern scope",
+              "resolution": {
+                "basis": "Actual current Git check covers the tracked-result question",
+                "evidence_ids": [
+                  "run-accept"
+                ],
+                "kind": "verified"
+              },
+              "summary": "Confirm the tracked result using an actual check"
+            }
+          ],
+          "decision": {
+            "advice": "stop",
+            "gaps": [],
+            "missing_checks": [],
+            "pending_runs": [],
+            "ready": false
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000008",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000009"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 17,
+            "task_id": "task-example-1"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [
+            {
+              "goal_digest": "0000000000000000000000000000000000000000000000000000000000000013",
+              "goal_id": "goal",
+              "status": "done",
+              "summary": "Actual checks and fixture observation are recorded"
+            }
+          ],
+          "refreshed": true,
+          "replayed": false,
+          "status": "done",
+          "summary": "Tracked result verified; existing regression remains explicitly accepted",
+          "usage": {
+            "core_calls": 15,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 3,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_archive_task"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_archive_task",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_cancel_task": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "operation_id": "example-operation-14",
+        "reason": "Fixture user cancels this separate request",
+        "revision": 1,
+        "task_id": "task-example-20"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-14",
+        "result": {
+          "archived": false,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "runs",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 151,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 0,
+            "retry_reserve_ms": 0,
+            "warnings": [],
+            "worst_case_ms": 0
+          },
+          "checks": [
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            }
+          ],
+          "concerns": [],
+          "decision": {
+            "advice": "stop",
+            "gaps": [],
+            "missing_checks": [],
+            "pending_runs": [],
+            "ready": false
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000002",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000004"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 2,
+            "task_id": "task-example-20"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [],
+          "refreshed": true,
+          "replayed": false,
+          "status": "cancelled",
+          "summary": "Fixture user cancels this separate request",
+          "usage": {
+            "core_calls": 2,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 0,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_cancel_task"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_cancel_task",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_checkpoint": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "assessment": {
+          "authorization_digest": "0000000000000000000000000000000000000000000000000000000000000008",
+          "concerns": [
+            {
+              "check_ids": [
+                "accept"
+              ],
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "tracked-result",
+              "resolution": {
+                "basis": "Actual current Git check covers the tracked-result question",
+                "evidence_ids": [
+                  "run-accept"
+                ],
+                "kind": "verified"
+              },
+              "summary": "Confirm the tracked result using an actual check"
+            }
+          ],
+          "content_digest": "0000000000000000000000000000000000000000000000000000000000000003",
+          "review": {
+            "summary": "The existing Git/text responsibilities fit the request; actual required results are recorded"
+          },
+          "summary": "Review current results and responsibilities"
+        },
+        "operation_id": "example-operation-11",
+        "progress": [
+          {
+            "goal_id": "goal",
+            "status": "done",
+            "summary": "Actual checks and fixture observation are recorded"
+          }
+        ],
+        "revision": 14,
+        "task_id": "task-example-1"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-11",
+        "result": {
+          "archived": false,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 3,
+                "coverage": "measured",
+                "limit": 15,
+                "limited": true,
+                "name": "runs",
+                "remaining": 12,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 42,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 1263,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 0,
+            "retry_reserve_ms": 0,
+            "warnings": [],
+            "worst_case_ms": 0
+          },
+          "checks": [
+            {
+              "applicable": true,
+              "evidence_id": "run-accept",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "current evidence",
+              "run_id": "run-accept",
+              "source": "core_execution",
+              "status": "passed",
+              "summary": "actual exit 0; passed; 13 ms"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "evidence-human",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "current evidence",
+              "run_id": null,
+              "source": "human",
+              "status": "passed",
+              "summary": "Fixture user inspected the tracked result"
+            },
+            {
+              "accepted_failure": {
+                "accepted_at": "2026-10-14T09:00:00Z",
+                "check_id": "regression",
+                "comparison_evidence_id": "run-comparison",
+                "failed_evidence_id": "run-regression",
+                "failures": [
+                  "missing-fixture-ref"
+                ],
+                "reason": "Actual comparison confirms this separately accepted existing failure",
+                "user_ref": "fixture-user-acceptance-5"
+              },
+              "applicable": true,
+              "evidence_id": "run-regression",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "check did not pass",
+              "run_id": "run-regression",
+              "source": "core_execution",
+              "status": "failed",
+              "summary": "actual exit 128; failed; 15 ms"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "run-comparison",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "current evidence",
+              "run_id": "run-comparison",
+              "source": "core_execution",
+              "status": "passed",
+              "summary": "actual exit 0; passed; 14 ms"
+            }
+          ],
+          "concerns": [
+            {
+              "applicable": true,
+              "check_ids": [
+                "accept"
+              ],
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "tracked-result",
+              "reason": "resolution applies to the observed concern scope",
+              "resolution": {
+                "basis": "Actual current Git check covers the tracked-result question",
+                "evidence_ids": [
+                  "run-accept"
+                ],
+                "kind": "verified"
+              },
+              "summary": "Confirm the tracked result using an actual check"
+            }
+          ],
+          "decision": {
+            "advice": "continue",
+            "gaps": [],
+            "missing_checks": [],
+            "pending_runs": [],
+            "ready": true
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000008",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000009"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 15,
+            "task_id": "task-example-1"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [
+            {
+              "goal_digest": "0000000000000000000000000000000000000000000000000000000000000013",
+              "goal_id": "goal",
+              "status": "done",
+              "summary": "Actual checks and fixture observation are recorded"
+            }
+          ],
+          "refreshed": true,
+          "replayed": false,
+          "status": "active",
+          "summary": "",
+          "usage": {
+            "core_calls": 13,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 3,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_checkpoint"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_checkpoint",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_finish_task": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "acceptance": [
+          {
+            "basis": "Current actual command and labelled fixture human observation",
+            "evidence_ids": [
+              "run-accept",
+              "evidence-human"
+            ],
+            "goal_id": "goal"
+          }
+        ],
+        "operation_id": "example-operation-12",
+        "revision": 15,
+        "summary": "Tracked result verified; existing regression remains explicitly accepted",
+        "task_id": "task-example-1"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-12",
+        "result": {
+          "archived": false,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 3,
+                "coverage": "measured",
+                "limit": 15,
+                "limited": true,
+                "name": "runs",
+                "remaining": 12,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 42,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 1390,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 0,
+            "retry_reserve_ms": 0,
+            "warnings": [],
+            "worst_case_ms": 0
+          },
+          "checks": [
+            {
+              "applicable": true,
+              "evidence_id": "run-accept",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "current evidence",
+              "run_id": "run-accept",
+              "source": "core_execution",
+              "status": "passed",
+              "summary": "actual exit 0; passed; 13 ms"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "evidence-human",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "current evidence",
+              "run_id": null,
+              "source": "human",
+              "status": "passed",
+              "summary": "Fixture user inspected the tracked result"
+            },
+            {
+              "accepted_failure": {
+                "accepted_at": "2026-10-14T09:00:00Z",
+                "check_id": "regression",
+                "comparison_evidence_id": "run-comparison",
+                "failed_evidence_id": "run-regression",
+                "failures": [
+                  "missing-fixture-ref"
+                ],
+                "reason": "Actual comparison confirms this separately accepted existing failure",
+                "user_ref": "fixture-user-acceptance-5"
+              },
+              "applicable": true,
+              "evidence_id": "run-regression",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "check did not pass",
+              "run_id": "run-regression",
+              "source": "core_execution",
+              "status": "failed",
+              "summary": "actual exit 128; failed; 15 ms"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "run-comparison",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "current evidence",
+              "run_id": "run-comparison",
+              "source": "core_execution",
+              "status": "passed",
+              "summary": "actual exit 0; passed; 14 ms"
+            }
+          ],
+          "concerns": [
+            {
+              "applicable": true,
+              "check_ids": [
+                "accept"
+              ],
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "tracked-result",
+              "reason": "resolution applies to the observed concern scope",
+              "resolution": {
+                "basis": "Actual current Git check covers the tracked-result question",
+                "evidence_ids": [
+                  "run-accept"
+                ],
+                "kind": "verified"
+              },
+              "summary": "Confirm the tracked result using an actual check"
+            }
+          ],
+          "decision": {
+            "advice": "stop",
+            "gaps": [],
+            "missing_checks": [],
+            "pending_runs": [],
+            "ready": false
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000008",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000009"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 16,
+            "task_id": "task-example-1"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [
+            {
+              "goal_digest": "0000000000000000000000000000000000000000000000000000000000000013",
+              "goal_id": "goal",
+              "status": "done",
+              "summary": "Actual checks and fixture observation are recorded"
+            }
+          ],
+          "refreshed": true,
+          "replayed": false,
+          "status": "done",
+          "summary": "Tracked result verified; existing regression remains explicitly accepted",
+          "usage": {
+            "core_calls": 14,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 3,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_finish_task"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_finish_task",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_get_run": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "run_id": "run-accept"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-request",
+        "result": {
+          "argv": [
+            "git",
+            "diff",
+            "--quiet"
+          ],
+          "check_id": "accept",
+          "cwd": "/workspace/demo",
+          "duration_ms": 0,
+          "exit_code": 0,
+          "fingerprints": {
+            "check": "000000000000000000000000000000000000000000000000000000000000000b",
+            "environment": "000000000000000000000000000000000000000000000000000000000000000c",
+            "inputs": "000000000000000000000000000000000000000000000000000000000000000d"
+          },
+          "finished_at": "2026-10-14T09:00:00Z",
+          "operation_id": "example-operation-5",
+          "output": {
+            "stderr": "",
+            "stdout": "",
+            "total_bytes": 0,
+            "truncated": false
+          },
+          "output_bytes": 0,
+          "process": {
+            "identity": "fixture-process-start",
+            "pid": 1234
+          },
+          "reconciliation": "",
+          "resolution_user_ref": "",
+          "retry": "repeatable",
+          "run_id": "run-accept",
+          "started_at": "2026-10-14T09:00:00Z",
+          "status": "passed",
+          "task_id": "task-example-1",
+          "truncated": false
+        },
+        "tool": "taskbelay_get_run"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_get_run",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_get_task": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "task_id": "task-example-1"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-request",
+        "result": {
+          "archived": false,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "runs",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 174,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 2,
+            "retry_reserve_ms": 3000,
+            "warnings": [],
+            "worst_case_ms": 6000
+          },
+          "checks": [
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            }
+          ],
+          "concerns": [],
+          "context": {
+            "authorization": {
+              "goals": [
+                {
+                  "id": "goal",
+                  "statement": "The tracked result and its user observation are verified"
+                }
+              ],
+              "limits": {},
+              "request": "Verify the tracked result without committing or publishing",
+              "user_ref": "fixture-user-message-1"
+            },
+            "plan": {
+              "approach": "Use existing Git and human checks",
+              "checks": [
+                {
+                  "argv": [
+                    "git",
+                    "diff",
+                    "--quiet"
+                  ],
+                  "conditions": "Isolated committed fixture",
+                  "cwd": ".",
+                  "goal_ids": [
+                    "goal"
+                  ],
+                  "id": "accept",
+                  "inputs": [
+                    "."
+                  ],
+                  "kind": "command",
+                  "purpose": "acceptance",
+                  "rationale": "Verify the tracked tree has no unintended changes",
+                  "repository_key": "primary",
+                  "retry": "repeatable",
+                  "timeout_ms": 3000
+                },
+                {
+                  "conditions": "Fixture user inspected the requested result",
+                  "cwd": ".",
+                  "goal_ids": [
+                    "goal"
+                  ],
+                  "id": "human",
+                  "inputs": [
+                    "."
+                  ],
+                  "kind": "human",
+                  "purpose": "acceptance",
+                  "rationale": "Retain the actual completed human observation",
+                  "repository_key": "primary"
+                },
+                {
+                  "argv": [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    "missing-fixture-ref"
+                  ],
+                  "conditions": "Isolated committed fixture",
+                  "cwd": ".",
+                  "goal_ids": [
+                    "goal"
+                  ],
+                  "id": "regression",
+                  "inputs": [
+                    "."
+                  ],
+                  "kind": "command",
+                  "purpose": "regression",
+                  "rationale": "Verify the tracked tree has no unintended changes",
+                  "repository_key": "primary",
+                  "retry": "repeatable",
+                  "timeout_ms": 3000
+                },
+                {
+                  "argv": [
+                    "git",
+                    "status",
+                    "--porcelain"
+                  ],
+                  "compares": "regression",
+                  "conditions": "Isolated committed fixture",
+                  "cwd": ".",
+                  "goal_ids": [
+                    "goal"
+                  ],
+                  "id": "comparison",
+                  "inputs": [
+                    "."
+                  ],
+                  "kind": "command",
+                  "purpose": "diagnostic",
+                  "rationale": "Verify the tracked tree has no unintended changes",
+                  "repository_key": "primary",
+                  "retry": "repeatable",
+                  "timeout_ms": 3000
+                }
+              ],
+              "verification_basis": "Actual local Git checks plus a separately labelled fixture user observation"
+            },
+            "repositories": [
+              {
+                "branch": "main",
+                "changed_paths": [],
+                "key": "primary",
+                "repository_path": "/workspace/demo",
+                "upstream": null
+              }
+            ]
+          },
+          "decision": {
+            "advice": "continue",
+            "gaps": [
+              {
+                "action": "review",
+                "code": "assessment_missing",
+                "message": "Review the actual changed paths and observed constraints.",
+                "path": "assessment",
+                "related_ids": [],
+                "subject": "assessment"
+              },
+              {
+                "action": "continue",
+                "code": "goal_not_done",
+                "message": "Complete the authorized goal and record its actual result: The tracked result and its user observation are verified",
+                "path": "progress",
+                "related_ids": [
+                  "goal"
+                ],
+                "subject": "goal"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "accept"
+                ],
+                "subject": "accept"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "human"
+                ],
+                "subject": "human"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "regression"
+                ],
+                "subject": "regression"
+              },
+              {
+                "action": "review",
+                "code": "review_missing",
+                "message": "Submit assessment.review.summary after inspecting the actual diff, responsibilities and verification.",
+                "path": "assessment.review",
+                "related_ids": [],
+                "subject": "review"
+              }
+            ],
+            "missing_checks": [
+              "accept",
+              "human",
+              "regression"
+            ],
+            "pending_runs": [],
+            "ready": false
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000002",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000004"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 1,
+            "task_id": "task-example-1"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [],
+          "refreshed": true,
+          "replayed": false,
+          "status": "active",
+          "summary": "",
+          "usage": {
+            "core_calls": 2,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 0,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_get_task"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_get_task",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_list_tasks": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "page": 1,
+        "page_size": 20,
+        "status": "active"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-request",
+        "result": {
+          "control_cost": {
+            "calls": 1,
+            "pending": 0,
+            "unknown_ms": 0,
+            "wall_ms": 0
+          },
+          "has_next": false,
+          "items": [
+            {
+              "archived": false,
+              "blocker": null,
+              "host": "cli",
+              "lifecycle": "active",
+              "outcome": "",
+              "repositories": [
+                {
+                  "branch": "main",
+                  "changed_paths": [],
+                  "key": "primary",
+                  "repository_path": "/workspace/demo",
+                  "upstream": null
+                }
+              ],
+              "request_summary": "Verify the tracked result without committing or publishing",
+              "revision": 1,
+              "status": "active",
+              "task_id": "task-example-1",
+              "updated_at": "2026-10-14T09:00:00Z"
+            }
+          ],
+          "page": 1
+        },
+        "tool": "taskbelay_list_tasks"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_list_tasks",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_open_task": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "authorization": {
+          "goals": [
+            {
+              "id": "goal",
+              "statement": "The tracked result and its user observation are verified"
+            }
+          ],
+          "limits": {},
+          "request": "Verify the tracked result without committing or publishing",
+          "user_ref": "fixture-user-message-1"
+        },
+        "host": "cli",
+        "operation_id": "example-open",
+        "plan": {
+          "approach": "Use existing Git and human checks",
+          "checks": [
+            {
+              "argv": [
+                "git",
+                "diff",
+                "--quiet"
+              ],
+              "conditions": "Isolated committed fixture",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "rationale": "Verify the tracked tree has no unintended changes",
+              "retry": "repeatable",
+              "timeout_ms": 3000
+            },
+            {
+              "conditions": "Fixture user inspected the requested result",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "rationale": "Retain the actual completed human observation"
+            },
+            {
+              "argv": [
+                "git",
+                "rev-parse",
+                "--verify",
+                "missing-fixture-ref"
+              ],
+              "conditions": "Isolated committed fixture",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "rationale": "Verify the tracked tree has no unintended changes",
+              "retry": "repeatable",
+              "timeout_ms": 3000
+            },
+            {
+              "argv": [
+                "git",
+                "status",
+                "--porcelain"
+              ],
+              "compares": "regression",
+              "conditions": "Isolated committed fixture",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "rationale": "Verify the tracked tree has no unintended changes",
+              "retry": "repeatable",
+              "timeout_ms": 3000
+            }
+          ],
+          "verification_basis": "Actual local Git checks plus a separately labelled fixture user observation"
+        },
+        "repositories": [
+          {
+            "key": "primary",
+            "repository_path": "/workspace/demo"
+          }
+        ]
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-open",
+        "result": {
+          "archived": false,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "runs",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 2,
+            "retry_reserve_ms": 3000,
+            "warnings": [],
+            "worst_case_ms": 6000
+          },
+          "checks": [
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            }
+          ],
+          "concerns": [],
+          "context": {
+            "authorization": {
+              "goals": [
+                {
+                  "id": "goal",
+                  "statement": "The tracked result and its user observation are verified"
+                }
+              ],
+              "limits": {},
+              "request": "Verify the tracked result without committing or publishing",
+              "user_ref": "fixture-user-message-1"
+            },
+            "plan": {
+              "approach": "Use existing Git and human checks",
+              "checks": [
+                {
+                  "argv": [
+                    "git",
+                    "diff",
+                    "--quiet"
+                  ],
+                  "conditions": "Isolated committed fixture",
+                  "cwd": ".",
+                  "goal_ids": [
+                    "goal"
+                  ],
+                  "id": "accept",
+                  "inputs": [
+                    "."
+                  ],
+                  "kind": "command",
+                  "purpose": "acceptance",
+                  "rationale": "Verify the tracked tree has no unintended changes",
+                  "repository_key": "primary",
+                  "retry": "repeatable",
+                  "timeout_ms": 3000
+                },
+                {
+                  "conditions": "Fixture user inspected the requested result",
+                  "cwd": ".",
+                  "goal_ids": [
+                    "goal"
+                  ],
+                  "id": "human",
+                  "inputs": [
+                    "."
+                  ],
+                  "kind": "human",
+                  "purpose": "acceptance",
+                  "rationale": "Retain the actual completed human observation",
+                  "repository_key": "primary"
+                },
+                {
+                  "argv": [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    "missing-fixture-ref"
+                  ],
+                  "conditions": "Isolated committed fixture",
+                  "cwd": ".",
+                  "goal_ids": [
+                    "goal"
+                  ],
+                  "id": "regression",
+                  "inputs": [
+                    "."
+                  ],
+                  "kind": "command",
+                  "purpose": "regression",
+                  "rationale": "Verify the tracked tree has no unintended changes",
+                  "repository_key": "primary",
+                  "retry": "repeatable",
+                  "timeout_ms": 3000
+                },
+                {
+                  "argv": [
+                    "git",
+                    "status",
+                    "--porcelain"
+                  ],
+                  "compares": "regression",
+                  "conditions": "Isolated committed fixture",
+                  "cwd": ".",
+                  "goal_ids": [
+                    "goal"
+                  ],
+                  "id": "comparison",
+                  "inputs": [
+                    "."
+                  ],
+                  "kind": "command",
+                  "purpose": "diagnostic",
+                  "rationale": "Verify the tracked tree has no unintended changes",
+                  "repository_key": "primary",
+                  "retry": "repeatable",
+                  "timeout_ms": 3000
+                }
+              ],
+              "verification_basis": "Actual local Git checks plus a separately labelled fixture user observation"
+            },
+            "repositories": [
+              {
+                "branch": "main",
+                "changed_paths": [],
+                "key": "primary",
+                "repository_path": "/workspace/demo",
+                "upstream": null
+              }
+            ]
+          },
+          "decision": {
+            "advice": "continue",
+            "gaps": [
+              {
+                "action": "review",
+                "code": "assessment_missing",
+                "message": "Review the actual changed paths and observed constraints.",
+                "path": "assessment",
+                "related_ids": [],
+                "subject": "assessment"
+              },
+              {
+                "action": "continue",
+                "code": "goal_not_done",
+                "message": "Complete the authorized goal and record its actual result: The tracked result and its user observation are verified",
+                "path": "progress",
+                "related_ids": [
+                  "goal"
+                ],
+                "subject": "goal"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "accept"
+                ],
+                "subject": "accept"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "human"
+                ],
+                "subject": "human"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "regression"
+                ],
+                "subject": "regression"
+              },
+              {
+                "action": "review",
+                "code": "review_missing",
+                "message": "Submit assessment.review.summary after inspecting the actual diff, responsibilities and verification.",
+                "path": "assessment.review",
+                "related_ids": [],
+                "subject": "review"
+              }
+            ],
+            "missing_checks": [
+              "accept",
+              "human",
+              "regression"
+            ],
+            "pending_runs": [],
+            "ready": false
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000002",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000004"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 1,
+            "task_id": "task-example-1"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [],
+          "refreshed": true,
+          "replayed": false,
+          "status": "active",
+          "summary": "",
+          "usage": {
+            "core_calls": 0,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 0,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_open_task"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_open_task",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_record_evidence": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "check_id": "human",
+        "content_digest": "0000000000000000000000000000000000000000000000000000000000000003",
+        "operation_id": "example-operation-9",
+        "revision": 12,
+        "source": "human",
+        "status": "passed",
+        "summary": "Fixture user inspected the tracked result",
+        "task_id": "task-example-1",
+        "user_ref": "fixture-human-observation-4"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-9",
+        "result": {
+          "archived": false,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 3,
+                "coverage": "measured",
+                "limit": 15,
+                "limited": true,
+                "name": "runs",
+                "remaining": 12,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 42,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 1033,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 1,
+            "retry_reserve_ms": 3000,
+            "warnings": [],
+            "worst_case_ms": 3000
+          },
+          "checks": [
+            {
+              "applicable": true,
+              "evidence_id": "run-accept",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "current evidence",
+              "run_id": "run-accept",
+              "source": "core_execution",
+              "status": "passed",
+              "summary": "actual exit 0; passed; 13 ms"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "evidence-human",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "current evidence",
+              "run_id": null,
+              "source": "human",
+              "status": "passed",
+              "summary": "Fixture user inspected the tracked result"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "run-regression",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "check did not pass",
+              "run_id": "run-regression",
+              "source": "core_execution",
+              "status": "failed",
+              "summary": "actual exit 128; failed; 15 ms"
+            },
+            {
+              "applicable": true,
+              "evidence_id": "run-comparison",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "current evidence",
+              "run_id": "run-comparison",
+              "source": "core_execution",
+              "status": "passed",
+              "summary": "actual exit 0; passed; 14 ms"
+            }
+          ],
+          "concerns": [
+            {
+              "applicable": false,
+              "check_ids": [
+                "accept"
+              ],
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "tracked-result",
+              "reason": "concern has no resolution",
+              "summary": "Confirm the tracked result using an actual check"
+            }
+          ],
+          "decision": {
+            "advice": "self_correct",
+            "gaps": [
+              {
+                "action": "continue",
+                "code": "goal_not_done",
+                "message": "Complete the authorized goal and record its actual result: The tracked result and its user observation are verified",
+                "path": "progress",
+                "related_ids": [
+                  "goal"
+                ],
+                "subject": "goal"
+              },
+              {
+                "action": "verify",
+                "code": "check_failed",
+                "message": "check did not pass",
+                "path": "checks",
+                "related_ids": [
+                  "regression",
+                  "run-regression"
+                ],
+                "subject": "regression"
+              },
+              {
+                "action": "review",
+                "code": "review_missing",
+                "message": "Submit assessment.review.summary after inspecting the actual diff, responsibilities and verification.",
+                "path": "assessment.review",
+                "related_ids": [],
+                "subject": "review"
+              },
+              {
+                "action": "self_correct",
+                "code": "concern_open",
+                "message": "concern has no resolution: Confirm the tracked result using an actual check",
+                "path": "assessment.concerns",
+                "related_ids": [
+                  "goal",
+                  "accept"
+                ],
+                "subject": "tracked-result"
+              }
+            ],
+            "missing_checks": [
+              "regression"
+            ],
+            "pending_runs": [],
+            "ready": false
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000008",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000009"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 13,
+            "task_id": "task-example-1"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [],
+          "recorded_evidence": {
+            "check_digest": "0000000000000000000000000000000000000000000000000000000000000011",
+            "check_id": "human",
+            "environment_digest": "0000000000000000000000000000000000000000000000000000000000000012",
+            "id": "evidence-human",
+            "inputs_digest": "000000000000000000000000000000000000000000000000000000000000000d",
+            "recorded_at": "2026-10-14T09:00:00Z",
+            "source": "human",
+            "status": "passed",
+            "summary": "Fixture user inspected the tracked result",
+            "user_ref": "fixture-human-observation-4"
+          },
+          "refreshed": true,
+          "replayed": false,
+          "status": "active",
+          "summary": "",
+          "usage": {
+            "core_calls": 11,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 3,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_record_evidence"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_record_evidence",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_recover_run": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "operation_id": "example-operation-6",
+        "resolution_basis": "",
+        "revision": 7,
+        "run_id": "run-accept",
+        "task_id": "task-example-1",
+        "user_ref": ""
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-6",
+        "result": {
+          "run": {
+            "check_id": "accept",
+            "duration_ms": 0,
+            "exit_code": 0,
+            "output_bytes": 0,
+            "run_id": "run-accept",
+            "status": "passed",
+            "truncated": false
+          },
+          "view": {
+            "archived": false,
+            "budget": {
+              "checks": [
+                {
+                  "check_id": "accept",
+                  "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                  "required": false,
+                  "startable": true,
+                  "timeout_ms": 3000
+                },
+                {
+                  "check_id": "regression",
+                  "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                  "required": true,
+                  "startable": true,
+                  "timeout_ms": 3000
+                },
+                {
+                  "check_id": "comparison",
+                  "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                  "required": false,
+                  "startable": true,
+                  "timeout_ms": 3000
+                }
+              ],
+              "feasible": true,
+              "limits": [
+                {
+                  "actual": 1,
+                  "coverage": "measured",
+                  "limit": 15,
+                  "limited": true,
+                  "name": "runs",
+                  "remaining": 14,
+                  "reserved": 0,
+                  "uncertain": 0
+                },
+                {
+                  "actual": 13,
+                  "coverage": "measured",
+                  "limit": 0,
+                  "limited": false,
+                  "name": "execution_ms",
+                  "remaining": null,
+                  "reserved": 0,
+                  "uncertain": 0
+                },
+                {
+                  "actual": 607,
+                  "coverage": "measured",
+                  "limit": 0,
+                  "limited": false,
+                  "name": "core_ms",
+                  "remaining": null,
+                  "reserved": 0,
+                  "uncertain": 0
+                },
+                {
+                  "actual": null,
+                  "coverage": "unreported",
+                  "limit": 0,
+                  "limited": false,
+                  "name": "host_ms",
+                  "remaining": null,
+                  "reserved": 0,
+                  "uncertain": 0
+                },
+                {
+                  "actual": null,
+                  "coverage": "unreported",
+                  "limit": 0,
+                  "limited": false,
+                  "name": "tokens",
+                  "remaining": null,
+                  "reserved": 0,
+                  "uncertain": 0
+                }
+              ],
+              "required_runs": 1,
+              "retry_reserve_ms": 3000,
+              "warnings": [],
+              "worst_case_ms": 3000
+            },
+            "checks": [
+              {
+                "applicable": true,
+                "evidence_id": "run-accept",
+                "goal_ids": [
+                  "goal"
+                ],
+                "id": "accept",
+                "kind": "command",
+                "purpose": "acceptance",
+                "reason": "current evidence",
+                "run_id": "run-accept",
+                "source": "core_execution",
+                "status": "passed",
+                "summary": "actual exit 0; passed; 13 ms"
+              },
+              {
+                "applicable": false,
+                "evidence_id": null,
+                "goal_ids": [
+                  "goal"
+                ],
+                "id": "human",
+                "kind": "human",
+                "purpose": "acceptance",
+                "reason": "Run the required check, or record an actual user observation for a human check",
+                "run_id": null,
+                "source": "",
+                "status": "not_run",
+                "summary": "No actual result recorded"
+              },
+              {
+                "applicable": false,
+                "evidence_id": null,
+                "goal_ids": [
+                  "goal"
+                ],
+                "id": "regression",
+                "kind": "command",
+                "purpose": "regression",
+                "reason": "Run the required check, or record an actual user observation for a human check",
+                "run_id": null,
+                "source": "",
+                "status": "not_run",
+                "summary": "No actual result recorded"
+              },
+              {
+                "applicable": false,
+                "evidence_id": null,
+                "goal_ids": [
+                  "goal"
+                ],
+                "id": "comparison",
+                "kind": "command",
+                "purpose": "diagnostic",
+                "reason": "Run the required check, or record an actual user observation for a human check",
+                "run_id": null,
+                "source": "",
+                "status": "not_run",
+                "summary": "No actual result recorded"
+              }
+            ],
+            "concerns": [
+              {
+                "applicable": false,
+                "check_ids": [
+                  "accept"
+                ],
+                "goal_ids": [
+                  "goal"
+                ],
+                "id": "tracked-result",
+                "reason": "concern has no resolution",
+                "summary": "Confirm the tracked result using an actual check"
+              }
+            ],
+            "decision": {
+              "advice": "self_correct",
+              "gaps": [
+                {
+                  "action": "continue",
+                  "code": "goal_not_done",
+                  "message": "Complete the authorized goal and record its actual result: The tracked result and its user observation are verified",
+                  "path": "progress",
+                  "related_ids": [
+                    "goal"
+                  ],
+                  "subject": "goal"
+                },
+                {
+                  "action": "verify",
+                  "code": "check_missing",
+                  "message": "No applicable passing result exists for this required check.",
+                  "path": "checks",
+                  "related_ids": [
+                    "human"
+                  ],
+                  "subject": "human"
+                },
+                {
+                  "action": "verify",
+                  "code": "check_missing",
+                  "message": "No applicable passing result exists for this required check.",
+                  "path": "checks",
+                  "related_ids": [
+                    "regression"
+                  ],
+                  "subject": "regression"
+                },
+                {
+                  "action": "review",
+                  "code": "review_missing",
+                  "message": "Submit assessment.review.summary after inspecting the actual diff, responsibilities and verification.",
+                  "path": "assessment.review",
+                  "related_ids": [],
+                  "subject": "review"
+                },
+                {
+                  "action": "self_correct",
+                  "code": "concern_open",
+                  "message": "concern has no resolution: Confirm the tracked result using an actual check",
+                  "path": "assessment.concerns",
+                  "related_ids": [
+                    "goal",
+                    "accept"
+                  ],
+                  "subject": "tracked-result"
+                }
+              ],
+              "missing_checks": [
+                "human",
+                "regression"
+              ],
+              "pending_runs": [],
+              "ready": false
+            },
+            "digests": {
+              "authorization": "0000000000000000000000000000000000000000000000000000000000000008",
+              "content": "0000000000000000000000000000000000000000000000000000000000000003",
+              "plan": "0000000000000000000000000000000000000000000000000000000000000009"
+            },
+            "host": "cli",
+            "identity": {
+              "revision": 8,
+              "task_id": "task-example-1"
+            },
+            "issue": null,
+            "limitations": [],
+            "progress": [],
+            "refreshed": true,
+            "replayed": false,
+            "status": "active",
+            "summary": "",
+            "usage": {
+              "core_calls": 8,
+              "core_ms": 0,
+              "execution_ms": 0,
+              "host": {
+                "active_ms": null,
+                "coverage": "unreported",
+                "observed_through": null,
+                "tokens": null,
+                "wait_ms": null
+              },
+              "observation_ms": 0,
+              "reserved_ms": 0,
+              "runs": 1,
+              "uncertain_ms": 0
+            }
+          }
+        },
+        "tool": "taskbelay_recover_run"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_recover_run",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_resolve_issue": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "decision": "Keep the requested tracked result",
+        "issue_digest": "0000000000000000000000000000000000000000000000000000000000000007",
+        "operation_id": "example-operation-3",
+        "revision": 3,
+        "task_id": "task-example-1",
+        "user_ref": "fixture-user-answer-2"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-3",
+        "result": {
+          "archived": false,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "runs",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 410,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 2,
+            "retry_reserve_ms": 3000,
+            "warnings": [],
+            "worst_case_ms": 6000
+          },
+          "checks": [
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            }
+          ],
+          "concerns": [
+            {
+              "applicable": false,
+              "check_ids": [
+                "accept"
+              ],
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "tracked-result",
+              "reason": "concern has no resolution",
+              "summary": "Confirm the tracked result using an actual check"
+            }
+          ],
+          "decision": {
+            "advice": "self_correct",
+            "gaps": [
+              {
+                "action": "continue",
+                "code": "goal_not_done",
+                "message": "Complete the authorized goal and record its actual result: The tracked result and its user observation are verified",
+                "path": "progress",
+                "related_ids": [
+                  "goal"
+                ],
+                "subject": "goal"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "accept"
+                ],
+                "subject": "accept"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "human"
+                ],
+                "subject": "human"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "regression"
+                ],
+                "subject": "regression"
+              },
+              {
+                "action": "review",
+                "code": "review_missing",
+                "message": "Submit assessment.review.summary after inspecting the actual diff, responsibilities and verification.",
+                "path": "assessment.review",
+                "related_ids": [],
+                "subject": "review"
+              },
+              {
+                "action": "self_correct",
+                "code": "concern_open",
+                "message": "concern has no resolution: Confirm the tracked result using an actual check",
+                "path": "assessment.concerns",
+                "related_ids": [
+                  "goal",
+                  "accept"
+                ],
+                "subject": "tracked-result"
+              }
+            ],
+            "missing_checks": [
+              "accept",
+              "human",
+              "regression"
+            ],
+            "pending_runs": [],
+            "ready": false
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000002",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000006"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 4,
+            "task_id": "task-example-1"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [],
+          "refreshed": true,
+          "replayed": false,
+          "status": "active",
+          "summary": "",
+          "usage": {
+            "core_calls": 5,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 0,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_resolve_issue"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_resolve_issue",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_revise_task": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "operation_id": "example-operation-1",
+        "plan": {
+          "approach": "Keep responsibilities unchanged and execute only the declared checks",
+          "checks": [
+            {
+              "argv": [
+                "git",
+                "diff",
+                "--quiet"
+              ],
+              "conditions": "Isolated committed fixture",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "rationale": "Verify the tracked tree has no unintended changes",
+              "retry": "repeatable",
+              "timeout_ms": 3000
+            },
+            {
+              "conditions": "Fixture user inspected the requested result",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "rationale": "Retain the actual completed human observation"
+            },
+            {
+              "argv": [
+                "git",
+                "rev-parse",
+                "--verify",
+                "missing-fixture-ref"
+              ],
+              "conditions": "Isolated committed fixture",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "rationale": "Verify the tracked tree has no unintended changes",
+              "retry": "repeatable",
+              "timeout_ms": 3000
+            },
+            {
+              "argv": [
+                "git",
+                "status",
+                "--porcelain"
+              ],
+              "compares": "regression",
+              "conditions": "Isolated committed fixture",
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "rationale": "Verify the tracked tree has no unintended changes",
+              "retry": "repeatable",
+              "timeout_ms": 3000
+            }
+          ],
+          "verification_basis": "Actual local Git checks plus a separately labelled fixture user observation"
+        },
+        "reason": "Refine implementation without changing the requested outcome",
+        "revision": 1,
+        "task_id": "task-example-1"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-1",
+        "result": {
+          "archived": false,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "runs",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 253,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 2,
+            "retry_reserve_ms": 3000,
+            "warnings": [],
+            "worst_case_ms": 6000
+          },
+          "checks": [
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            }
+          ],
+          "concerns": [],
+          "decision": {
+            "advice": "continue",
+            "gaps": [
+              {
+                "action": "review",
+                "code": "assessment_missing",
+                "message": "Review the actual changed paths and observed constraints.",
+                "path": "assessment",
+                "related_ids": [],
+                "subject": "assessment"
+              },
+              {
+                "action": "continue",
+                "code": "goal_not_done",
+                "message": "Complete the authorized goal and record its actual result: The tracked result and its user observation are verified",
+                "path": "progress",
+                "related_ids": [
+                  "goal"
+                ],
+                "subject": "goal"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "accept"
+                ],
+                "subject": "accept"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "human"
+                ],
+                "subject": "human"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "regression"
+                ],
+                "subject": "regression"
+              },
+              {
+                "action": "review",
+                "code": "review_missing",
+                "message": "Submit assessment.review.summary after inspecting the actual diff, responsibilities and verification.",
+                "path": "assessment.review",
+                "related_ids": [],
+                "subject": "review"
+              }
+            ],
+            "missing_checks": [
+              "accept",
+              "human",
+              "regression"
+            ],
+            "pending_runs": [],
+            "ready": false
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000002",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000006"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 2,
+            "task_id": "task-example-1"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [],
+          "refreshed": true,
+          "replayed": false,
+          "status": "active",
+          "summary": "",
+          "usage": {
+            "core_calls": 3,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 0,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_revise_task"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_revise_task",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_server_info": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {},
+      "output": {
+        "ok": true,
+        "request_id": "example-request",
+        "result": {
+          "auxiliary_contracts": [
+            "core.version",
+            "core.help",
+            "core.config.validate",
+            "core.webui.start",
+            "core.webui.open",
+            "core.webui.status",
+            "GET /api/system/status",
+            "GET /api/tasks",
+            "GET /api/tasks/{task_id}",
+            "GET /api/dashboard",
+            "POST /api/core/{tool}",
+            "POST /api/tasks/{task_id}/purge",
+            "core.webui.stop",
+            "core.mcp"
+          ],
+          "control_cost": {
+            "calls": 0,
+            "pending": 0,
+            "unknown_ms": 0,
+            "wall_ms": 0
+          },
+          "cost": "Core mutation timing overlaps execution. Host usage may be unreported or partial; unknown is not zero.",
+          "coverage": [
+            {
+              "boundary": "Other writes are observed at checkpoints; no sandbox or automatic new-chat permission",
+              "context": "skill_and_host_instructions",
+              "host": "codex",
+              "structured_write": [
+                "apply_patch"
+              ],
+              "usage": "host_reported"
+            },
+            {
+              "boundary": "Other writes are observed at checkpoints; native Host permissions remain authoritative",
+              "context": "skill",
+              "host": "claude",
+              "structured_write": [
+                "Write",
+                "Edit",
+                "NotebookEdit"
+              ],
+              "usage": "host_reported"
+            },
+            {
+              "boundary": "Actual registered Hook capability must be verified; no assumed turn/resume event or token callback",
+              "context": "skill_only",
+              "host": "zcode",
+              "structured_write": [
+                "Write",
+                "Edit"
+              ],
+              "usage": "host_reported"
+            },
+            {
+              "boundary": "Other writes are observed at checkpoints; existing user authority is retained",
+              "context": "activation_instructions",
+              "host": "deepseek",
+              "structured_write": [
+                "write",
+                "edit",
+                "str_replace_editor"
+              ],
+              "usage": "host_reported"
+            }
+          ],
+          "host_preferences": {
+            "claude": {
+              "codebase_memory": false
+            },
+            "codex": {
+              "codebase_memory": false
+            },
+            "deepseek": {
+              "codebase_memory": false
+            },
+            "zcode": {
+              "codebase_memory": false
+            }
+          },
+          "native_check": {
+            "command": "check run",
+            "contract": "check.run",
+            "description": "Execute an existing command check once under native Host permissions. Retain the returned view.identity and run_id. ok=true can contain a failed check; inspect run.status. Existing passing results are reused; lost responses require reading/recovering the original run, not another command."
+          },
+          "product": "taskbelay",
+          "schema": "2.5.0",
+          "semantic_evidence": "Host judgment with concrete basis; programs do not prove semantic truth. Claims never establish execution.",
+          "startup_diagnostics": {
+            "core_reached": true,
+            "host_mcp_visibility": "CLI success does not establish MCP availability; inspect tools exposed by the actual Host",
+            "shared_contract": "CLI, MCP and HTTP use the same service"
+          },
+          "tools": [
+            "taskbelay_server_info",
+            "taskbelay_open_task",
+            "taskbelay_get_task",
+            "taskbelay_checkpoint",
+            "taskbelay_resolve_issue",
+            "taskbelay_revise_task",
+            "taskbelay_record_evidence",
+            "taskbelay_get_run",
+            "taskbelay_recover_run",
+            "taskbelay_finish_task",
+            "taskbelay_cancel_task",
+            "taskbelay_list_tasks",
+            "taskbelay_accept_known_failure",
+            "taskbelay_update_budget",
+            "taskbelay_archive_task"
+          ],
+          "version": "0.26.0"
+        },
+        "tool": "taskbelay_server_info"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_server_info",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ],
+  "taskbelay_update_budget": [
+    {
+      "name": "success",
+      "preconditions": "Isolated Git fixture; replace /workspace/demo and returned identities with actual values. Semantic/user inputs are simulated fixture testimony, not a claim of real Host verification. Timestamps, process IDs, hashes and timings are normalized.",
+      "input": {
+        "authorization_digest": "0000000000000000000000000000000000000000000000000000000000000002",
+        "budget": {
+          "execution_ms": 0,
+          "runs": 15,
+          "tokens": 0,
+          "work_ms": 0
+        },
+        "operation_id": "example-operation-4",
+        "response": "Allow at most 15 runs; no time or token caps",
+        "revision": 4,
+        "task_id": "task-example-1",
+        "user_ref": "fixture-explicit-budget-3"
+      },
+      "output": {
+        "ok": true,
+        "request_id": "example-operation-4",
+        "result": {
+          "archived": false,
+          "budget": {
+            "checks": [
+              {
+                "check_id": "accept",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "regression",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": true,
+                "startable": true,
+                "timeout_ms": 3000
+              },
+              {
+                "check_id": "comparison",
+                "reason": "timeout can be reserved; acceptance and retry guards still apply",
+                "required": false,
+                "startable": true,
+                "timeout_ms": 3000
+              }
+            ],
+            "feasible": true,
+            "limits": [
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 15,
+                "limited": true,
+                "name": "runs",
+                "remaining": 15,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 0,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "execution_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": 413,
+                "coverage": "measured",
+                "limit": 0,
+                "limited": false,
+                "name": "core_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "host_ms",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              },
+              {
+                "actual": null,
+                "coverage": "unreported",
+                "limit": 0,
+                "limited": false,
+                "name": "tokens",
+                "remaining": null,
+                "reserved": 0,
+                "uncertain": 0
+              }
+            ],
+            "required_runs": 2,
+            "retry_reserve_ms": 3000,
+            "warnings": [],
+            "worst_case_ms": 6000
+          },
+          "changed_limits": {
+            "runs": 15
+          },
+          "checks": [
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "accept",
+              "kind": "command",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "human",
+              "kind": "human",
+              "purpose": "acceptance",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "regression",
+              "kind": "command",
+              "purpose": "regression",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            },
+            {
+              "applicable": false,
+              "evidence_id": null,
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "comparison",
+              "kind": "command",
+              "purpose": "diagnostic",
+              "reason": "Run the required check, or record an actual user observation for a human check",
+              "run_id": null,
+              "source": "",
+              "status": "not_run",
+              "summary": "No actual result recorded"
+            }
+          ],
+          "concerns": [
+            {
+              "applicable": false,
+              "check_ids": [
+                "accept"
+              ],
+              "goal_ids": [
+                "goal"
+              ],
+              "id": "tracked-result",
+              "reason": "concern has no resolution",
+              "summary": "Confirm the tracked result using an actual check"
+            }
+          ],
+          "decision": {
+            "advice": "self_correct",
+            "gaps": [
+              {
+                "action": "continue",
+                "code": "goal_not_done",
+                "message": "Complete the authorized goal and record its actual result: The tracked result and its user observation are verified",
+                "path": "progress",
+                "related_ids": [
+                  "goal"
+                ],
+                "subject": "goal"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "accept"
+                ],
+                "subject": "accept"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "human"
+                ],
+                "subject": "human"
+              },
+              {
+                "action": "verify",
+                "code": "check_missing",
+                "message": "No applicable passing result exists for this required check.",
+                "path": "checks",
+                "related_ids": [
+                  "regression"
+                ],
+                "subject": "regression"
+              },
+              {
+                "action": "review",
+                "code": "review_missing",
+                "message": "Submit assessment.review.summary after inspecting the actual diff, responsibilities and verification.",
+                "path": "assessment.review",
+                "related_ids": [],
+                "subject": "review"
+              },
+              {
+                "action": "self_correct",
+                "code": "concern_open",
+                "message": "concern has no resolution: Confirm the tracked result using an actual check",
+                "path": "assessment.concerns",
+                "related_ids": [
+                  "goal",
+                  "accept"
+                ],
+                "subject": "tracked-result"
+              }
+            ],
+            "missing_checks": [
+              "accept",
+              "human",
+              "regression"
+            ],
+            "pending_runs": [],
+            "ready": false
+          },
+          "digests": {
+            "authorization": "0000000000000000000000000000000000000000000000000000000000000008",
+            "content": "0000000000000000000000000000000000000000000000000000000000000003",
+            "plan": "0000000000000000000000000000000000000000000000000000000000000009"
+          },
+          "host": "cli",
+          "identity": {
+            "revision": 5,
+            "task_id": "task-example-1"
+          },
+          "issue": null,
+          "limitations": [],
+          "progress": [],
+          "refreshed": true,
+          "replayed": false,
+          "status": "active",
+          "summary": "",
+          "usage": {
+            "core_calls": 6,
+            "core_ms": 0,
+            "execution_ms": 0,
+            "host": {
+              "active_ms": null,
+              "coverage": "unreported",
+              "observed_through": null,
+              "tokens": null,
+              "wait_ms": null
+            },
+            "observation_ms": 0,
+            "reserved_ms": 0,
+            "runs": 0,
+            "uncertain_ms": 0
+          }
+        },
+        "tool": "taskbelay_update_budget"
+      }
+    },
+    {
+      "name": "unknown_member",
+      "preconditions": "Send an unknown member to this exact method. The request is rejected before any task or process operation.",
+      "input": {
+        "unexpected": true
+      },
+      "output": {
+        "ok": false,
+        "request_id": "example-request",
+        "tool": "taskbelay_update_budget",
+        "error": {
+          "code": "INVALID_ARGUMENT",
+          "message": "member is not allowed by the current request",
+          "details": [
+            {
+              "path": "arguments.unexpected",
+              "rule": "requirement",
+              "message": "member is not allowed by the current request"
+            }
+          ]
+        },
+        "recovery": {
+          "action": "correct_request",
+          "operation": "reuse",
+          "message": "Correct only the identified fields from existing facts; preserve operation identity and real authorization.",
+          "allowed_paths": [
+            "arguments.unexpected"
+          ]
+        },
+        "outcome": "not_applied"
+      }
+    }
+  ]
+}

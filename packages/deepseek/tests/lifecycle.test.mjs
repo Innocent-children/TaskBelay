@@ -75,7 +75,7 @@ test("official DSH add/remove/reinstall preserves Core data, repository, and Cod
     authorization:{user_ref:"fixture-lifecycle-request",request:"Lifecycle acceptance task",goals:[{id:"retention",statement:"Reinstall preserves this current task"}]},
     plan:planFor([{goal_ids:["retention"],id:"human",kind:"human",rationale:"Inspect retained identity",conditions:"Same current artifact and workspace"}]),
   });
-  const task = opened.result.task;
+  const task = opened.result;
   assert.equal(opened.ok, true);
   await firstMount.dispose();
   const dataAfterCreate = await treeDigest(dataDirectory);
@@ -103,12 +103,12 @@ test("official DSH add/remove/reinstall preserves Core data, repository, and Cod
   const reinstalledCore = await fileIdentity(join(reinstalledPackage, "runtime", "darwin-arm64", "taskbelay"));
   assert.deepEqual(reinstalledCore, coreIdentity);
   const secondMount = await mountInstalledProduct(reinstalledPackage, dataDirectory, taskRepository);
-  const reopened = await secondMount.call("mcp__taskbelay__taskbelay_get_task", {task_id:task.task_id,refresh:false});
+  const reopened = await secondMount.call("mcp__taskbelay__taskbelay_get_task", {task_id:task.identity.task_id,refresh:false});
   assert.equal(reopened.ok,true);
-  assert.equal(reopened.result.task.task_id, task.task_id);
-  assert.equal(reopened.result.task.revision, task.revision);
+  assert.equal(reopened.result.identity.task_id, task.identity.task_id);
+  assert.equal(reopened.result.identity.revision, task.identity.revision);
   await secondMount.dispose();
-  assert.equal(reopened.result.task.status, task.status);
+  assert.equal(reopened.result.status, task.status);
   assert.deepEqual(await codexIdentity(), beforeCodex);
   assert.deepEqual(await repositoryIdentity(taskRepository), beforeRepository);
 
@@ -133,11 +133,11 @@ test("official DSH add/remove/reinstall preserves Core data, repository, and Cod
       os: platform(), architecture: arch(), profile_identity_sha256: sha256(profileName),
     },
     core_contract: {
-      process_id: serverInfo.result.supported_processes[0].process_id,
-      process_definition_digest: serverInfo.result.supported_processes[0].definition_digest,
+      schema: serverInfo.result.schema,
+      tools: serverInfo.result.tools,
       qualified_tools: TASKBELAY_QUALIFIED_TOOL_NAMES,
     },
-    task: { task_id: task.task_id, revision: task.revision, reopened_revision: reopened.result.task.revision },
+    task: { task_id: task.identity.task_id, revision: task.identity.revision, reopened_revision: reopened.result.identity.revision },
     outcomes: {
       add_readback: "passed", remove_readback: "passed", repeated_remove_bounded: "passed",
       data_retention: "passed", repository_retention: "passed", codex_non_interference: "passed",
@@ -149,7 +149,7 @@ test("official DSH add/remove/reinstall preserves Core data, repository, and Cod
   t.diagnostic(JSON.stringify({
     artifact_sha256: artifactIdentity.sha256,
     core_sha256: coreIdentity.sha256,
-    task_id: task.task_id,
+    task_id: task.identity.task_id,
     lifecycle: "passed",
   }));
 });

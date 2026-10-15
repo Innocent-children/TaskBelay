@@ -3,7 +3,7 @@ import type { View } from "../lib/api";
 
 export function PlanPanel({ view }: { view: View }) {
   const { label } = useLanguage();
-  const { plan, authorization } = view.task;
+  const { plan, authorization } = view.context;
   const names: Record<string, string> = {
     runs: label("Executions", "执行次数"),
     execution_ms: label("Command time", "命令时间"),
@@ -11,7 +11,8 @@ export function PlanPanel({ view }: { view: View }) {
     host_ms: label("Reported work and wait", "报告的工作与等待"),
     tokens: "Tokens",
   };
-  const value = (name: string, n: number) =>
+  const value = (name: string, n: number | null) =>
+    n === null ? label("Unknown", "未知") :
     name.endsWith("_ms") ? `${Math.round(n / 1000)} s` : String(n);
   return (
     <details className="task-details">
@@ -23,7 +24,7 @@ export function PlanPanel({ view }: { view: View }) {
       </summary>
       <p>{plan.approach}</p>
       <p>{plan.verification_basis}</p>
-      {view.task.repositories.map((r) => (
+      {view.details.repositories.map((r) => (
         <p key={r.key}>
           <strong>{r.key}</strong> ·{" "}
           <code>{r.workspace_origin.canonical_worktree_root}</code> ·{" "}

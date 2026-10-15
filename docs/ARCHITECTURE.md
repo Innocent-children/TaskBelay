@@ -51,7 +51,7 @@ MCP 15 个工具，CLI call 和 HTTP /api/core/{tool} 使用同一 DTO/Schema/�
 
 实际请求、目标和明确限制与计划的 approach、verification_basis 分开。Authorization.BoundaryDigest 只排除引用和另行比较的成本字段；检查映射、预测和复核提示已经归入 Plan。用户边界变化或已设正数额度扩大/取消时，Revise 要求实际新 user_ref；普通方法调整沿用授权，实际操作仍遵守宿主权限。PlanApproval 和确认工具已移除；PlanDigest 用于技术复核当前安排，不表示用户批准。
 
-Goal.RequirementDigest 只关联用户目标；新增检查不会重置已完成实现或独立结果。CheckDigest 仍绑定具体方法、相关目标和约束。路径判断关联目标与实际内容。最终 DesignReview 使用 summary 和 uncertainty，由 Core 绑定当前计划及内容。既有失败例外依赖实际失败/比较结果及当前适用性，不因无关计划文字变化要求重复接受。
+Goal.RequirementDigest 只关联用户目标；新增检查不会重置已完成实现或独立结果。CheckDigest 仍绑定具体方法、相关目标和约束。路径判断关联目标与实际内容。最终 DesignReview 使用 summary，由 Core 绑定当前计划及内容。工程问题独立存入 assessment.concerns：稳定 ID 和原始问题不可被改名或省略清除；verified 使用实际适用结果，not_blocking 生成交付限制，scope_changed 引用已保存的真实用户范围调整。相关目标、检查或内容变化使处理记录失效。既有失败例外依赖实际失败/比较结果及当前适用性，不因无关计划文字变化要求重复接受。
 
 未设额度为零；正数额度在预留和执行时检查。BudgetDecision 单独记录实际预算变化；未设上限也持续记录消耗，不通过默认额度制造审批。
 
@@ -64,3 +64,11 @@ Plan 保存 approach、verification_basis、expected_paths、review_after_lines 
 internal/protocol.Handler 提供共享解码、结果摘要和错误。MCP/HTTP 只调用 Catalog；NativeCheck 仅通过 CLI check run 进入 Service.Execute。宿主原生工具负责权限、环境和等待，Core 的执行实现继续保存真实输入、进程身份和运行收据。长命令使用原生会话，不延长 MCP 请求或创建调度服务。Service.ResolveIssue 使用 issue_digest 防止过期答复，记录决定但不自动扩大授权。
 
 完成时只保留实际用于本次交付且仍适用的回归例外；读取终态返回这些交付时记录，既不丢失已接受失败，也不重新认证当前工作区。
+
+## 响应与用量的职责
+
+internal/protocol 对普通变更输出 TaskState，open/get 增加 context，需要详情时才返回明确的 details 字段。Task/run 身份、Core 生成的摘要与可提交的 assessment 输入分开。Decision.gaps 是唯一未满足条件清单，finish 失败复用它。MCP 始终保留完整 structuredContent；ZCode 选择简短文本，主要展示文本的 Host 保留完整响应。
+
+Store 按 (task_id, source_id) 保存 host_usage_sources。累计采样、与上次采样的差值、Task 修订、操作身份和累计计数在同一 CAS 事务中提交；更换 operation_id 也不能重复累加同一采样。未知指标为 null；reported 只说明已登记来源，不能证明未观察到的宿主活动。明确 Host 上限所需报告不足时阻止新命令预留，保存状态读取和原运行恢复仍可进行。适配器不估算 token 冒充测量。
+
+共享工作区方法创建分支时不隐式设置上游，Git 观察与 IDE 行为分开返回。随包接口说明只读，不保存 Task 游标，也不引入权限或工作流系统。

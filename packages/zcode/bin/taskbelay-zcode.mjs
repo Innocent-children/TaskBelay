@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { readSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { describeInterface, interfaceHelpRequest } from "../lib/interface-reference.mjs";
+import { fileURLToPath } from "node:url";
 import { core } from "../lib/runtime.mjs";
 import * as lifecycle from "../lib/lifecycle.mjs";
 import * as workspace from "../lib/workspace.mjs";
@@ -39,6 +41,13 @@ function lifecycleOptions(args) {
 }
 
 export async function runCLI(args) {
+  const help = interfaceHelpRequest(args);
+  if (help) {
+    const name = help.name ?? (help.operation ? `zcode.${help.group}.${help.operation}` : undefined);
+    process.stdout.write(JSON.stringify(await describeInterface(fileURLToPath(new URL("../", import.meta.url)), name), null, 2) + "\n");
+    return 0;
+  }
+
   if (args.length === 0 || args.length === 1 && args[0] === "--help") {
     process.stdout.write("taskbelay-zcode status|setup|remove [--json]\n" +
       "taskbelay-zcode remove --confirm-host-removed [--json]\n" +
@@ -47,7 +56,7 @@ export async function runCLI(args) {
       "taskbelay-zcode host-check pre-file-write|workspace-available\n" +
       "taskbelay-zcode hook pre-tool-use\n" +
       `taskbelay-zcode host-launch ${operations.join("|")}\n` +
-      "Host-launch accepts one closed JSON object on stdin. inspect: {request,repositories:[{key,repository_path}]}; prepare: {request,authorization_ref,repositories:[{key,repository_path,workspace_mode,source_type,remote_name,base_branch,target_branch,carry_changes,worktree_path}],handoff}. Other operations: {launch_id,...operation inputs}. Read the Skill for exact contracts.\n" +
+      "Host-launch accepts one closed JSON object on stdin. inspect: {request,repositories:[{key,repository_path}]}; prepare: {request,authorization_ref,repositories:[{key,repository_path,workspace_mode,source_type,remote_name,base_branch,target_branch,carry_changes,worktree_path}],handoff}. Other operations: {launch_id,...operation inputs}. Use host-launch <operation> --help --json for complete schemas and examples.\n" +
       "open/resume return UI guidance only. --confirm-host-removed records the user's confirmation that the plugin/marketplace were removed in ZCode and affected sessions were closed; it does not check ZCode automatically.\n");
     return 0;
   }
@@ -55,7 +64,7 @@ export async function runCLI(args) {
     process.stdout.write((await core(["version"])).stdout); return 0;
   }
   if (args.length === 2 && (args[0] === "call" || args[0] === "check" && args[1] === "run")) { const result = await core(args, {stream:true}); return result?.code ?? 0; }
-  if (args.length === 1 && args[0] === "mcp") { await core(["mcp", "--stdio"], { stream: true }); return 0; }
+  if (args.length === 1 && args[0] === "mcp") { return (await core(["mcp", "--stdio", "--result-text", "summary"], { stream: true })).code; }
   const settings = lifecycleOptions(args);
   if (settings) { process.stdout.write(JSON.stringify(await lifecycle[args[0]](settings)) + "\n"); return 0; }
   if (args.length === 2 && args[0] === "hook" && args[1] === "pre-tool-use") {

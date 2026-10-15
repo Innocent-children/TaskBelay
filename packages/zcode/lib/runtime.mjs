@@ -70,6 +70,7 @@ export async function core(arguments_, { input, environment = process.env, strea
     }
     child.once("close", code => {
       cleanup();
+      if (stream && !failure && Number.isInteger(code)) { resolveResult({ stdout, stderr, code }); return; }
       if (failure || code !== 0) {
         const error = failure ?? new Error(stderr || `Core exited with ${code}`);
         error.stdout = stdout; error.code = Number.isInteger(code) && code !== 0 ? code : 1;

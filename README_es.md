@@ -14,6 +14,8 @@ TaskBelay acompaña a Codex, DeepSeek Harness, Claude Code y ZCode. Conserva jun
 
 Las comprobaciones de comandos usan `taskbelay check run` desde la herramienta nativa de procesos del host, con sus permisos y entorno. La WebUI permite buscar tareas, filtrar por host y estado, elegir idioma, responder decisiones y recuperar ejecuciones. Cada objetivo requiere una comprobación de aceptación aprobada; aceptar fallos de regresión existentes no la sustituye. Leer el estado guardado no escribe datos de consumo.
 
+Las dudas técnicas conservan su identidad hasta resolverse; omitir el texto no las elimina. Las limitaciones de la entrega se derivan de esas decisiones guardadas. El uso del Host distingue entre no informado, parcial e informado; los valores no disponibles siguen siendo desconocidos. La ayuda de cada método incluye ejemplos de entrada y salida y cómo tratar errores, sin consultar el código fuente. Las nuevas ramas de Task no heredan un upstream implícito.
+
 ## Empezar
 
 Se requiere Node.js >=24 y un agente instalado. El desarrollo desde código fuente también necesita Go >=1.26 y pnpm >=11 <12. Este código incluye una evolución incompatible del contrato de ingeniería; los paquetes publicados y los registros de soporte estable no han cambiado. Compile este código para usar el nuevo contrato. Conserve los datos anteriores y elija explícitamente otro directorio de datos. No hay migración ni reinicio automático.

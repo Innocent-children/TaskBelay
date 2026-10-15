@@ -491,6 +491,11 @@ func digestRepositoryBinding(binding domain.RepositoryBinding) domain.Digest {
 	} else {
 		writeDigestField(digest, []byte(*binding.CurrentBranch))
 	}
+	if binding.BranchUpstream == nil {
+		writeDigestField(digest, nil)
+	} else {
+		writeDigestField(digest, []byte(*binding.BranchUpstream))
+	}
 	for _, set := range [][]domain.RepositoryChangedEntry{binding.ChangedEntries, binding.TaskSurface} {
 		for _, entry := range set {
 			writeDigestField(digest, []byte(entry.Path))

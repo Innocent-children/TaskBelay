@@ -37,13 +37,13 @@ enum TestFixtures {
         blocker: String? = nil
     ) -> String {
         let blockerValue = blocker.map { "\"\($0)\"" } ?? "null"
-        let keys = repositoryKeys.map { "\"\($0)\"" }.joined(separator: ",")
+        let repositories = repositoryKeys.map { "{\"key\":\"\($0)\",\"repository_path\":\"\(worktreePath)\",\"branch\":\"main\"}" }.joined(separator: ",")
         return """
-        {"task_id":"\(taskID)","request_summary":"\(requestSummary)","origin_host":"\(originHost)",\
-        "execution_host":"\(originHost)","current_node":"\(currentNode)","lifecycle":"\(lifecycle)",\
+        {"task_id":"\(taskID)","request_summary":"\(requestSummary)","host":"\(originHost)",\
+        "status":"\(currentNode.lowercased())","lifecycle":"\(lifecycle)",\
         "revision":\(revision),"updated_at":"\(updatedAt)","archived":\(archived),\
-        "repository_keys":[\(keys)],"repository_group_id":"group-1",\
-        "worktree_path":"\(worktreePath)","blocker":\(blockerValue),"outcome":null}
+        "repositories":[\(repositories)],\
+        "blocker":\(blockerValue),"outcome":""}
         """
     }
 

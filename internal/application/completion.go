@@ -12,9 +12,8 @@ type Acceptance = domain.Acceptance
 
 type FinishRequest struct {
 	Identity
-	Summary    string       `json:"summary"`
-	Acceptance []Acceptance `json:"acceptance"`
-	Risks      []string     `json:"risks"`
+	Summary    string       `json:"summary" description:"对实际变化/观察/结果的具体说明，文字本身不证明执行。"`
+	Acceptance []Acceptance `json:"acceptance" description:"Per-goal conclusions citing every applicable passed acceptance check; regression exceptions cannot replace them."`
 }
 
 func (s *Service) Finish(ctx context.Context, q FinishRequest) (View, error) {
@@ -36,7 +35,7 @@ func (s *Service) Finish(ctx context.Context, q FinishRequest) (View, error) {
 		return View{}, e
 	}
 	if !v.Decision.Ready {
-		return View{}, domain.Fail("ACCEPTANCE_INCOMPLETE", "acceptance", "current scope review, completed goals, applicable passing evidence and resolved executions are all required")
+		return View{}, &domain.Error{Code: "ACCEPTANCE_INCOMPLETE", Message: "resolve the listed current completion gaps", Gaps: v.Decision.Gaps, Current: currentState(t)}
 	}
 	if e = domain.Text("summary", q.Summary); e != nil {
 		return View{}, e
@@ -76,16 +75,16 @@ func (s *Service) Finish(ctx context.Context, q FinishRequest) (View, error) {
 		}
 	}
 	t.Exceptions = v.Decision.AcceptedFailures
+	t.Limitations = t.DeliveryLimitations(v.Decision.Evidence)
 	t.Status = "done"
 	t.Acceptance = q.Acceptance
 	t.Summary = q.Summary
-	t.Risks = q.Risks
 	return s.save(ctx, t, o, store.Charge{})
 }
 
 type CancelRequest struct {
 	Identity
-	Reason string `json:"reason"`
+	Reason string `json:"reason" description:"操作/处理的实际原因，不能替代所需用户决定。"`
 }
 
 func (s *Service) Cancel(ctx context.Context, q CancelRequest) (View, error) {
@@ -115,7 +114,7 @@ func (s *Service) Cancel(ctx context.Context, q CancelRequest) (View, error) {
 
 type ArchiveRequest struct {
 	Identity
-	Archived bool `json:"archived"`
+	Archived bool `json:"archived" description:"终态记录是否从默认列表隐藏；不删除、不重开Task。"`
 }
 
 func (s *Service) Archive(ctx context.Context, q ArchiveRequest) (View, error) {

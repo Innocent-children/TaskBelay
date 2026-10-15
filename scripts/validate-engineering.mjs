@@ -30,6 +30,7 @@ function testFiles(directory, suffix = ".test.mjs") {
 run(process.execPath, ["scripts/sync-skill-references.mjs", "--check"]);
 run(process.execPath, ["scripts/sync-host-commands.mjs", "--check"]);
 run(process.execPath, ["scripts/check-versions.mjs"]);
+run(process.execPath, ["scripts/package-interface-contracts.mjs", "--check"]);
 run("git", ["diff", "--check"]);
 const formatting = spawnSync("gofmt", ["-l", "cmd", "internal", "tests"], {
   cwd: root,
@@ -73,7 +74,7 @@ const tests = [
 for (const host of ["codex", "deepseek", "claude", "zcode", "taskbelay"])
   tests.push(...testFiles(`packages/${host}/tests`));
 tests.push(...testFiles("packages/desktop-pet/windows/tests", ".test.cjs"));
-run(process.execPath, ["--test", ...tests]);
+run(process.execPath, ["--test", ...tests], { ENGINEERING_CORE: executable });
 process.stdout.write(
   "Repository validation passed. Native Host chats and other-platform execution remain separate checks.\n",
 );

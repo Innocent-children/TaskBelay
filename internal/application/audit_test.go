@@ -76,6 +76,10 @@ func TestAuditReservationAfterShortRunAndAtomicFourHourBudgetDecision(t *testing
 	if e != nil || !replay.Replayed || replay.Task.Revision != v.Task.Revision {
 		t.Fatal("budget replay applied twice", e)
 	}
+	v, e = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "actual-host-usage", v.Task.Revision}, HostUsage: &domain.HostUsageReport{SourceID: "fixture", ObservedThrough: time.Now().UTC(), Coverage: "reported", Totals: domain.HostUsageTotals{Tokens: ptr(int64(0)), ActiveMS: ptr(int64(0)), WaitMS: ptr(int64(0))}}})
+	if e != nil {
+		t.Fatal(e)
+	}
 	run, e := s.Execute(ctx, RunRequest{Identity: Identity{task.TaskID, "after-update", v.Task.Revision}, CheckID: "check-0", Rationale: "Verify after complete approved limit update"})
 	if e != nil || run.Run.Status != "passed" {
 		t.Fatal("stale Core cap still blocked", e)
@@ -223,7 +227,7 @@ func TestAuditExactMultiRepositoryDependencyPermissionAndForbiddenWrite(t *testi
 		t.Fatal("normalizing a section granted a different package")
 	}
 	denied, e := s.PreWrite(ctx, root, []string{filepath.Join(root, "secret.txt")}, true)
-	if e != nil || denied["decision"] != "deny" {
+	if e != nil || denied.Decision != "deny" {
 		t.Fatal("dependency policy granted forbidden write", e)
 	}
 	os.WriteFile(filepath.Join(second, "package.json"), []byte(`{"dependencies":{"lucide-react":"1.0.0"}}`), 0600)
@@ -367,5 +371,23 @@ func TestAuditReviewDeniedOwnerQueryKeepsPendingMetering(t *testing.T) {
 	retained, e := s.Store.ControlCost(ctx, nil)
 	if e != nil || retained.Pending != 1 || retained.UnknownMS != 0 {
 		t.Fatal("denial settled an owner as dead", retained, e)
+	}
+}
+
+func TestFinalizeReadFailureRetainsAppliedExecutionIdentity(t *testing.T) {
+	s, v, _ := commandProposal(t, 1, 3000)
+	ctx := context.Background()
+	executed, err := s.Execute(ctx, RunRequest{Identity: Identity{v.Task.TaskID, "execute-for-finalize", v.Task.Revision}, CheckID: "check-0", Rationale: "Establish an actual result before a simulated response-read failure"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate losing storage access after the real command has settled.
+	if err = s.Store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = s.finalize(ctx, executed.Run, store.Operation{})
+	var failure *domain.Error
+	if !errors.As(err, &failure) || failure.Outcome != "applied" || failure.Execution != "started" || failure.ExistingResult == nil || failure.ExistingResult.RunID != executed.Run.RunID {
+		t.Fatal("lost original execution state", err)
 	}
 }

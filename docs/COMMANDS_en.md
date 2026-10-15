@@ -8,7 +8,7 @@ Public entry: npm install -g taskbelay@latest; taskbelay. Installation/status/do
 
 Core: taskbelay version; config validate (stdin); mcp --stdio; call <tool_name> (complete JSON stdin); host-check pre-file-write/workspace-available; webui start/open/status/stop (--json or --plain, start optionally --no-open). Set absolute TASKBELAY_DATA_DIR. Preserve old data and choose a new directory; no migration occurs. The unified npm launcher forwards call/webui to configured Core. Codex/Claude/ZCode taskbelay-<host> call <tool_name> forwards to bundled Core. DeepSeek uses the discovered MCP namespace.
 
-pre-file-write takes host, repository_path, tool_name, paths, intent_digest, path_parse_complete and returns allow/deny with actual coverage, not future edit semantics. workspace-available takes repository_path or repositories [{key,repository_path}], returning available and an existing task_id read-only. Observation failure never means no Task. Phase artifact commands have been removed.
+pre-file-write takes host, repository_path, tool_name, paths, intent_digest, path_parse_complete and returns allow/deny with actual coverage, not future edit semantics. workspace-available takes repository_path or repositories [{key,repository_path}], returning available and repositories [{key,repository_path,active_task_id}] read-only. Observation failure never means no Task. Phase artifact commands have been removed.
 
 `webui start/open/status/stop --json` returns top-level `readiness`, `core_identity`, `data_root_digest`, and `url`. `core_identity` is the Core version without a product-name prefix. `pid` is omitted when no service process is recorded; when present, it is a non-negative integer. The response has no `operation` member because the caller already knows the command it issued. After reading these fields, the desktop launcher must still query `/api/system/status` and match the version identity, data directory digest, and loopback address against the live service.
 
@@ -16,17 +16,17 @@ pre-file-write takes host, repository_path, tool_name, paths, intent_digest, pat
 
 | Tool | Current input |
 | --- | --- |
-| taskbelay_server_info | Empty object; actual capabilities |
+| taskbelay_server_info | Optional contracts array; actual capabilities and selected method schemas/examples |
 | taskbelay_list_tasks | Optional page, page_size (1..100), include_archived, status (active/done/cancelled); returns page and has_next |
 | taskbelay_open_task | operation_id, host, repositories, authorization, plan |
 | taskbelay_get_task | task_id, refresh (default true; false reads saved state), detail (default false) |
-| taskbelay_checkpoint | identity; optional assessment/progress/issue and host_ms/wait_ms/tokens |
+| taskbelay_checkpoint | identity; optional assessment/progress/issue and host_usage {source_id,observed_through,totals,coverage} |
 | taskbelay_revise_task | identity, reason; authorization/plan optional |
 | taskbelay_resolve_issue | identity, issue_digest, user_ref, decision; records an answer without changing authorization |
 | taskbelay_record_evidence | identity, check_id, source claim/human, status, summary, content_digest; human user_ref |
 | taskbelay_get_run | run_id; read actual saved result |
 | taskbelay_recover_run | identity, run_id, resolution_basis, user_ref when needed |
-| taskbelay_finish_task | identity, summary, acceptance [{goal_id,evidence_ids,basis}], risks |
+| taskbelay_finish_task | identity, summary, acceptance [{goal_id,evidence_ids,basis}] |
 | taskbelay_cancel_task | identity, reason |
 | taskbelay_accept_known_failure | identity, check_id, failed_evidence_id, comparison_evidence_id, failures, user_ref, reason |
 | taskbelay_update_budget | identity, authorization_digest, budget {runs,execution_ms,work_ms,tokens}, user_ref, response; actual complete approved budget decision |
@@ -48,11 +48,11 @@ GET /api/tasks?page=1&include_archived=false&status=active (status may be omitte
 
 Retired submit_*, get_next_action, resolve_blocker, relocation and phase-artifact protocols have no compatibility entrypoints. See [responses](CORE-RESPONSES_en.md).
 
-control_cost records global calls, wall_ms, unknown_ms and pending in server_info, list_tasks and complete details. Routine Task responses contain Task usage and current summaries, without full history or global metering. get_task detail:true adds result.details, whose details.task contains full workspace bindings, fingerprints, assessment and history. check run/recover_run return view and a run summary; get_run reads output.
+control_cost records global calls, wall_ms, unknown_ms and pending in server_info and list_tasks. Mutations return identity, digests, decision.gaps, progress, checks, concerns, limitations and Task usage/budget. open/get additionally return context.authorization/plan/repositories. get_task detail:true adds explicit details: facts, evidence_applicability, repository bindings, assessment, evidence, attempts, changes and terminal records. check run/recover_run return view and a run summary; get_run reads output.stdout/output.stderr and execution conditions.
 
 checkpoint.assessment may submit only new or affected paths, constraints and facts. Global digests must be current; Core stamps scope_digest and merges unaffected judgments. revise_task does not clear issue automatically; after an actual user decision use resolve_issue with issue_digest, user_ref and decision.
 
-plan contains approach, verification_basis, checks, expected_paths and review_after_lines. revise_task replaces only supplied fields. Actual changed user outcomes/restrictions or expanded existing caps require a new real user_ref; routine methods retain the request. plan.checks.purpose is acceptance/regression/diagnostic (default acceptance); all checks need goal_ids, full_suite needs execution justification, and compares names a regression check. Default inputs ["."] cover all repositories; narrow scopes need input_basis and use key::path for cross-repository inputs. checkpoint cannot change checks. assessment.paths uses path/goal_ids/basis; final assessment.review uses summary/uncertainty. Core generates applicability stamps.
+plan contains approach, verification_basis, checks, expected_paths and review_after_lines. revise_task replaces only supplied fields. Actual changed user outcomes/restrictions or expanded existing caps require a new real user_ref; routine methods retain the request. plan.checks.purpose is acceptance/regression/diagnostic (default acceptance); all checks need goal_ids, full_suite needs execution justification, and compares names a regression check. Default inputs ["."] cover all repositories; narrow scopes need input_basis and use key::path for cross-repository inputs. checkpoint cannot change checks. assessment.paths uses path/goal_ids/basis; final assessment.review uses summary. Core generates applicability stamps.
 
 HTTP lists also accept lifecycle=active/blocked/done/cancelled, filtering saved Core summaries before paging. status=active includes all active tasks, including blocked ones.
 
@@ -62,6 +62,14 @@ Only assess upstream when needed; for a requested new workspace, assess before f
 
 ## Native execution and saved-state reads
 
-Invoke taskbelay check run through the Host native process tool, with a complete RunRequest JSON on stdin: task_id, revision, operation_id, check_id, rationale; retries also supply previous_run_id/new_information, and full suites require full_suite_basis. The envelope tool is check.run. Codex/Claude/ZCode launchers also support check run. DeepSeek activation adds its exact bundled Core path and TASKBELAY_DATA_DIR to Skill context. The unified launcher forwards check run to its selected Core. MCP/HTTP cannot start commands; server_info.native_check publishes the request/result Schema. Keep native process sessions for long commands and inspect pending_runs/get_run rather than restarting after response loss.
+Invoke taskbelay check run through the Host native process tool, with a complete RunRequest JSON on stdin: task_id, revision, operation_id, check_id, rationale; retries also supply previous_run_id/new_information, and full suites require full_suite_basis. The envelope tool is check.run. Codex/Claude/ZCode launchers also support check run. DeepSeek activation adds its exact bundled Core path and TASKBELAY_DATA_DIR to Skill context. The unified launcher forwards check run to its selected Core. MCP/HTTP cannot start commands; server_info.native_check points to check.run; select that contract for its complete request/result Schema. Keep native process sessions for long commands and inspect pending_runs/get_run rather than restarting after response loss.
 
-get_task refresh:false, list_tasks, get_run and server_info read saved state without writing metering data or querying process identity. Mutations remain metered and fail before execution if metering is unavailable. Lists accept search (request or task ID) and host, filtering before paging. checkpoint.progress.next_step preserves the next action; details.task.changes retains at most 64 recent decisions and adjustment reasons. Check kind, purpose and retry enums are published from the same DTO. Each goal requires an acceptance check. Only regression checks can receive exceptions; finish acceptance references only passed acceptance results.
+get_task refresh:false, list_tasks, get_run and server_info read saved state without writing metering data or querying process identity. Mutations remain metered and fail before execution if metering is unavailable. Lists accept search (request or task ID) and host, filtering before paging. checkpoint.progress.next_step preserves the next action; details.changes retains at most 64 recent decisions and adjustment reasons. Check kind, purpose and retry enums are published from the same DTO. Each goal requires an acceptance check. Only regression checks can receive exceptions; finish acceptance references only passed acceptance results.
+
+## Self-contained method help
+
+Use `taskbelay call <tool> --help --json`, `taskbelay check run --help --json` or the configured native Core command. Codex/Claude/ZCode provide `host-launch <operation> --help --json`, `hook pre-tool-use --help --json` and `status|setup|remove --help --json`. The unified launcher provides `<lifecycle-operation> --help --json` and `pet start|stop --help --json`. Native Core also provides `config validate`, `webui <operation>`, `help`, `version` and `mcp` method help. These queries read packaged descriptions before opening data or executing the operation.
+
+`server_info.auxiliary_contracts` lists native/HTTP contract names; request them through `contracts` without creating new MCP tools. Each package includes `contracts/interfaces.json`; DeepSeek's six workspace_coordinator branches use that installed reference. Full input/output fields, nullable/default semantics, actual success/error examples, required authority and recovery behavior are available without source or database access. See [interface reference](INTERFACES_en.md).
+
+New task branches use `--no-track`; inspect the returned actual upstream and push_configuration. Original source selection remains separate. IDE push target is explicitly unknown. workspace-available returns a shared Core envelope with every selected root's active_task_id (null when unclaimed), never just the first conflict.

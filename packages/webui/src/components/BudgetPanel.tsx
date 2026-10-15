@@ -23,7 +23,7 @@ export function BudgetPanel({
     core_ms: 0,
     host_ms: 0,
     tokens: 0,
-    ...view.task.authorization.limits,
+    ...view.context.authorization.limits,
   };
   const [runs, setRuns] = useState(l.runs),
     [command, setCommand] = useState(l.execution_ms / 60000),

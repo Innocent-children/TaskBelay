@@ -14,7 +14,7 @@ export function preparedWriteFromHook(event) {
   };
 }
 
-export async function runHook(event, check = input => coreJSON(["host-check", "pre-file-write"], input)) {
+export async function runHook(event, check = async input => (await coreJSON(["host-check", "pre-file-write"], input)).result) {
   const input = preparedWriteFromHook(event);
   if (!input) return null;
   const result = await check(input);

@@ -16,6 +16,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/repository"
 	"github.com/Innocent-children/taskbelay/internal/store"
 	"github.com/Innocent-children/taskbelay/internal/userconfig"
+	"github.com/Innocent-children/taskbelay/internal/version"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
@@ -27,7 +28,11 @@ func testServer(t *testing.T) *Handler {
 	}
 	t.Cleanup(func() { s.Close() })
 	a, _ := application.NewService(s, repository.NewGitObserver())
-	v := NewHandler(a, "0.25.0", userconfig.Preferences{})
+	current, err := version.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := NewHandler(a, current, userconfig.Preferences{})
 	return v
 }
 func validate(t *testing.T, schema map[string]any, v any) {
@@ -57,7 +62,7 @@ func TestEveryToolEncodesActualErrorAgainstPublishedSchema(t *testing.T) {
 			if actual.OK {
 				t.Fatal("unknown member accepted")
 			}
-			expected := Envelope{RequestID: "example-request", Tool: tool.Name, Error: &domain.Error{Code: "INVALID_ARGUMENT", Message: "member is not allowed by the current request", Details: []domain.ContractViolation{{Path: "arguments.unexpected", Rule: "requirement", Message: "member is not allowed by the current request"}}}, Recovery: &Recovery{Action: "correct_request", RetrySafe: false, Message: "Correct only the identified fields from existing facts; preserve operation identity and real authorization.", AllowedPaths: []string{"arguments.unexpected"}}}
+			expected := Envelope{RequestID: "example-request", Tool: tool.Name, Error: &domain.Error{Code: "INVALID_ARGUMENT", Message: "member is not allowed by the current request", Details: []domain.ContractViolation{{Path: "arguments.unexpected", Rule: "requirement", Message: "member is not allowed by the current request"}}}, Recovery: &Recovery{Action: "correct_request", Operation: "reuse", Message: "Correct only the identified fields from existing facts; preserve operation identity and real authorization.", AllowedPaths: []string{"arguments.unexpected"}}, Outcome: "not_applied"}
 			a, _ := json.Marshal(actual)
 			b, _ := json.Marshal(expected)
 			if string(a) != string(b) {
@@ -156,31 +161,31 @@ func TestPlanBoundaryResponsesAndExecutionValidateAgainstPublishedSchemas(t *tes
 	if v.Details != nil || v.Decision.Advice != "continue" {
 		t.Fatal("ordinary start returned history or requested unnecessary correction", v)
 	}
-	detailed := dispatch("taskbelay_get_task", GetRequest{TaskID: v.Task.TaskID, Detail: true})
+	detailed := dispatch("taskbelay_get_task", GetRequest{TaskID: v.Identity.TaskID, Detail: true})
 	if !detailed.OK {
 		t.Fatal(detailed)
 	}
 	full := detailed.Result.(TaskResult).Details
-	if full == nil || full.Task.TaskID != v.Task.TaskID || len(full.Task.Repositories[0].Binding.TaskSurface) != 0 {
+	if full == nil || detailed.Result.(TaskResult).Identity.TaskID != v.Identity.TaskID || len(full.Repositories[0].Binding.TaskSurface) != 0 {
 		t.Fatal("detail lost saved task", full)
 	}
 	compactBytes, _ := json.Marshal(v)
-	fullBytes, _ := json.Marshal(full)
+	fullBytes, _ := json.Marshal(detailed.Result)
 	if len(compactBytes) >= len(fullBytes) || strings.Contains(string(compactBytes), "worktree_instance_digest") {
 		t.Fatal("default result still includes full repository detail")
 	}
 	t.Logf("initial Task response: summary %d bytes; full view %d bytes", len(compactBytes), len(fullBytes))
-	run := application.RunRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "authorized-run"}, CheckID: "check", Rationale: "Inspect fixture under the existing user request"}
+	run := application.RunRequest{Identity: application.Identity{TaskID: v.Identity.TaskID, Revision: v.Identity.Revision, OperationID: "authorized-run"}, CheckID: "check", Rationale: "Inspect fixture under the existing user request"}
 	executed := dispatch("check.run", run)
 	if !executed.OK || executed.Result.(RunResult).Run.Status != "passed" {
 		t.Fatal(executed)
 	}
-	before := executed.Result.(RunResult).View.Task.Revision
-	invalid := dispatch("taskbelay_checkpoint", map[string]any{"task_id": v.Task.TaskID, "revision": before, "operation_id": "weaken-check", "checks": []any{}})
+	before := executed.Result.(RunResult).View.Identity.Revision
+	invalid := dispatch("taskbelay_checkpoint", map[string]any{"task_id": v.Identity.TaskID, "revision": before, "operation_id": "weaken-check", "checks": []any{}})
 	if invalid.OK || invalid.Error.Details[0].Path != "arguments.checks" {
 		t.Fatal("checkpoint accepted changed checks", invalid)
 	}
-	saved, e := s.service.Store.Get(ctx, v.Task.TaskID)
+	saved, e := s.service.Store.Get(ctx, v.Identity.TaskID)
 	if e != nil || saved.Revision != before || saved.Usage.Runs != 1 {
 		t.Fatal("rejection changed semantic state", e)
 	}
@@ -229,13 +234,17 @@ func TestCompleteBudgetDecisionRoundTripsActualTransportSchema(t *testing.T) {
 	authorization := domain.Authorization{UserRef: "actual-fixture-request", Request: "Verify local clean diff", Goals: []domain.Goal{{ID: "goal", Statement: "No unintended changes"}}, Limits: domain.Limits{Runs: 20, ExecutionMS: 600000, CoreMS: 600000, HostMS: 3600000, Tokens: 1000000}}
 	plan := domain.Plan{Approach: "Use existing local Git check", VerificationBasis: "Actual diff exit"}
 	v := call("taskbelay_open_task", application.OpenRequest{OperationID: "budget-transport-open", Host: "cli", Repositories: []application.RepositoryInput{{Key: "primary", Path: root}}, Authorization: authorization, Plan: withChecks(plan, []domain.Check{{GoalIDs: []string{"goal"}, ID: "check", Kind: "command", Argv: []string{"git", "diff", "--quiet"}, TimeoutMS: 3000, Retry: "repeatable", Rationale: "Actual diff", Conditions: "Local fixture"}})})
-	q := application.BudgetRequest{Identity: application.Identity{TaskID: v.Task.TaskID, Revision: v.Task.Revision, OperationID: "budget-transport-update"}, AuthorizationDigest: v.AuthorizationDigest, Budget: domain.BudgetDecision{Runs: 40, ExecutionMS: 14400000, WorkMS: 14400000, Tokens: 1000000}, UserRef: "actual-complete-budget-decision", Response: "Approve four hours for command and work time and 40 runs"}
+	q := application.BudgetRequest{Identity: application.Identity{TaskID: v.Identity.TaskID, Revision: v.Identity.Revision, OperationID: "budget-transport-update"}, AuthorizationDigest: v.Digests.Authorization, Budget: domain.BudgetDecision{Runs: 40, ExecutionMS: 14400000, WorkMS: 14400000, Tokens: 1000000}, UserRef: "actual-complete-budget-decision", Response: "Approve four hours for command and work time and 40 runs"}
 	updated := call("taskbelay_update_budget", q)
-	if updated.Task.Authorization.Limits.CoreMS != 14400000 || updated.Task.Authorization.Limits.HostMS != 14400000 || updated.Task.BudgetDecision.UserRef != q.UserRef {
+	if updated.Context != nil {
+		t.Fatal("mutation repeated the complete context")
+	}
+	confirmed := call("taskbelay_get_task", GetRequest{TaskID: updated.Identity.TaskID, Detail: true})
+	if confirmed.Context.Authorization.Limits.CoreMS != 14400000 || confirmed.Context.Authorization.Limits.HostMS != 14400000 || confirmed.Details.BudgetDecision.UserRef != q.UserRef {
 		t.Fatal(updated)
 	}
 	replay := call("taskbelay_update_budget", q)
-	if !replay.Replayed || replay.Task.Revision != updated.Task.Revision {
+	if !replay.Replayed || replay.Identity.Revision != updated.Identity.Revision {
 		t.Fatal("replayed budget changed state")
 	}
 }
@@ -260,7 +269,7 @@ func TestMeterInitializationClassifiesActualErrorCategoryAndDoesNotDispatch(t *t
 				return nil, &application.ControlMeterError{Stage: c.phase, Err: c.cause}
 			}
 			result := s.Dispatch(context.Background(), "taskbelay_open_task", []byte(`{}`))
-			if result.OK || result.Result != nil || result.Error.Code != c.code || result.Recovery.Action != c.action || result.Recovery.RetrySafe {
+			if result.OK || result.Result != nil || result.Error.Code != c.code || result.Recovery.Action != c.action || result.Recovery.Operation != "read_before_retry" {
 				t.Fatal(result)
 			}
 			if len(result.Error.Details) != 1 || result.Error.Details[0].Path != "control_meter."+c.phase || !strings.Contains(result.Error.Details[0].Message, c.cause.Error()) {
@@ -326,7 +335,7 @@ func TestSavedReadsDoNotRequireProcessAccessOrMeterWrites(t *testing.T) {
 		}
 	}
 	actual := s.Dispatch(context.Background(), "taskbelay_get_task", readRequest)
-	if !actual.OK || actual.Result.(TaskResult).Details.Task.TaskID != opened.Task.TaskID {
+	if !actual.OK || actual.Result.(TaskResult).Identity.TaskID != opened.Task.TaskID {
 		t.Fatal("actual saved task was not readable", actual)
 	}
 

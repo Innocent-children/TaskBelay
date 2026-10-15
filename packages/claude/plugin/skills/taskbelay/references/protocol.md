@@ -1,122 +1,114 @@
 <!-- Generated from skills/taskbelay/core/protocol.md; edit the shared source and run node scripts/sync-skill-references.mjs. -->
 
-# Current Core protocol
+# Current Core interface
 
-Tools are discovered from the actual server; no historical tool catalog is accepted. Core publishes
-closed input/output Schemas from the same DTOs used by CLI and HTTP. Use `claude` for new Tasks.
+Use the actual server's tool names. Core publishes closed input/output Schemas with field descriptions,
+defaults and supported values. The same methods serve MCP, CLI call and local HTTP. New Tasks use host claude.
 
-| Tool | Inputs and purpose |
+## Discover a method without source
+
+Read taskbelay_server_info for actual capabilities. Its optional contracts array selects exact method names
+for complete schemas and adjacent success/failure examples; it does not run those methods. Native check.run
+and host-check.pre-file-write/workspace-available also have discoverable contracts, but are not MCP execution tools.
+For native calls, use the configured Core or Host launcher's call <tool> --help --json, check run --help --json,
+or host-check <operation> --help --json. Help does not open the Task database. Keep package help/resources
+available when installed away from the repository.
+
+| Method | Input and result |
 | --- | --- |
-| `taskbelay_server_info` | Empty object: actual tools, coverage and evidence boundaries |
-| `taskbelay_open_task` | operation_id, host, repositories, authorization, plan |
-| `taskbelay_get_task` | task_id, optional refresh (default true; false reads saved state), detail:true for full saved data |
-| `taskbelay_checkpoint` | identity; optional assessment, progress, issue and Host cost deltas |
-| `taskbelay_revise_task` | identity, reason and only the authorization/plan objects to replace |
-| `taskbelay_resolve_issue` | identity, current issue_digest, actual user_ref and decision; preserves authorization restrictions |
-| `taskbelay_record_evidence` | identity, check_id, source claim/human, status, summary, content_digest, actual user_ref for human |
-| `taskbelay_get_run` | run_id; reads actual output and status without rerunning |
-| `taskbelay_recover_run` | identity, run_id, resolution_basis, actual user_ref if needed |
-| `taskbelay_finish_task` | identity, summary, per-goal acceptance and risks |
-| `taskbelay_cancel_task` | identity, reason; releases claims and retains files |
-| `taskbelay_list_tasks` | Optional page, page_size, include_archived, status, search and host; bounded pagination |
-| `taskbelay_update_budget` | identity, current authorization_digest, budget {runs,execution_ms,work_ms,tokens}, actual user_ref and response; all effective caps updated together |
-| `taskbelay_accept_known_failure` | identity, check_id, failed_evidence_id, comparison_evidence_id, failures, actual user_ref, reason |
-| `taskbelay_archive_task` | identity, archived; terminal tasks only |
+| taskbelay_server_info | Optional contracts; actual tools, capabilities and selected complete method contracts |
+| taskbelay_open_task | operation_id, host, repositories, authorization, plan; identity, current context and gaps |
+| taskbelay_get_task | task_id, refresh (default true), detail (default false); current context and optional full records |
+| taskbelay_checkpoint | identity; optional assessment/progress/issue/repository_freshness/host_usage; compact current state |
+| taskbelay_revise_task | identity, reason, complete authorization and/or plan to replace; omissions preserved |
+| taskbelay_resolve_issue | identity, issue_digest, real user_ref, decision; resolves only that saved question |
+| taskbelay_record_evidence | identity, check_id, source claim/human, status, summary, content_digest; human needs real user_ref |
+| taskbelay_get_run | run_id; real saved status/output without re-execution |
+| taskbelay_recover_run | identity, run_id, resolution_basis and user_ref when required; original result or unresolved outcome |
+| taskbelay_finish_task | identity, summary, per-goal acceptance; limitations derived from saved concerns |
+| taskbelay_cancel_task | identity, reason; cancels and releases claims only when no unresolved execution remains |
+| taskbelay_list_tasks | search/host/status/page/page_size/include_archived; bounded saved summaries |
+| taskbelay_accept_known_failure | identity, check_id, failed/comparison_evidence_id, failures, actual user_ref, reason |
+| taskbelay_update_budget | identity, authorization_digest, complete budget {runs,execution_ms,work_ms,tokens}, real user_ref/response |
+| taskbelay_archive_task | identity, archived; terminal visibility only |
 
-Identity means task_id, current revision and a stable operation_id. Reuse the returned identity rather
-than guessing it. Success is ok:true with result; failure has error and recovery. Task results contain
-task (current request, plan (including checks), progress, usage and evidence), current digests, decision and budget.
-Repositories contain repository_path, branch and changed_paths. Routine results omit file fingerprints,
-old attempts and full output. get_task detail:true adds details (the complete application view, including
-details.task). run/recover return view plus run {run_id,check_id,status,exit_code,duration_ms,output_bytes,
-truncated}; read get_run for actual output or failure diagnostics. refreshed:false never claims current
-applicability. Inspect decision.advice and missing_checks; continue/review/verify are agent work,
-self_correct identifies corrections, ask_user is an actual saved decision, and stop preserves an unmet
-limit, pending operation or terminal outcome.
+identity inputs are task_id/current revision/stable operation_id. Responses return identity.task_id and
+identity.revision; native run/recover place this state under result.view. Copy the returned revision; a run
+can advance it more than once. Returned digests are authorization/content/plan under result.digests.
 
-Complete read request:
+Successful mutations return compact state, progress, checks, concerns, limitations, issue and budget/usage.
+open/get include context with authorization, plan and repository summaries. get_task detail=true adds
+result.details (assessment, facts, evidence_applicability, repositories, evidence, attempts, changes and delivery records), not details.task.
+get_run contains output.stdout/output.stderr, truncation, process/conditions and reconciliation. Claims never
+become passing checks. recorded_evidence identifies a newly saved observation; changed_limits reports a budget change.
+
+## Requests and actual authority
+
+authorization contains user_ref/request/goals and only explicit restrictions/limits. plan contains approach,
+verification_basis/checks and optional forecasts. Each check names goal_ids and purpose acceptance/regression/diagnostic;
+every goal needs a non-waivable acceptance check. conditions describes assumptions, not executable assertions.
+Default cwd and inputs are .; timeout is 60000 ms and retry is requires_user. Declare actual narrower dependencies
+with input_basis. full_suite requires a current full_suite_basis at execution.
+
+revise_task replaces supplied objects completely; omitted objects stay. Ordinary method changes reuse the
+user request; changed boundaries and increased/removed positive caps require the real new user decision.
+Predicted paths are not an allowlist. Native permissions remain in force.
+
+assessment binds current authorization_digest/content_digest and summary. paths contain path/goal_ids/basis;
+constraints/facts contain actual id/verdict/basis/uncertainty. Final review input is only {summary}. Core supplies
+all scope/plan/content bindings; caller-supplied server fields are rejected. concerns retain stable original
+questions and dependencies. resolution is verified with actual evidence_ids, not_blocking with its concrete basis,
+or scope_changed with the saved actual new user_ref. Omission/empty arrays cannot delete a concern. issue=null
+does not clear a pending question; use resolve_issue with the actual answer.
+
+host_usage contains source_id/observed_through/totals/coverage. Totals tokens/active_ms/wait_ms are cumulative
+per non-overlapping Task source. Unknown metrics are null, not zero. Repeated samples are counted once, older
+or decreasing samples are rejected. Report only measurements the Host actually exposes. Zero limits mean unset;
+remaining=null is not exhausted capacity. work_ms sets both overlapping Core/Host caps. Recovery never resets cost.
+
+## Failures and recovery
+
+Failure contains error.code/message/details plus concrete gaps/current/existing_result when available.
+outcome is not_applied/applied/unknown for semantic state; metering is separate. Native execution failures also
+report execution when known. recovery.operation means reuse/replace/read_before_retry/none. Never infer no
+side effects merely from a nonzero exit or an error envelope.
+
+INVALID_ARGUMENT identifies exact members. ASSESSMENT_STALE requires reviewing actual changed contents before
+copying new digests. REVISION_CONFLICT needs a current read and new operation identity. ACCEPTANCE_INCOMPLETE
+contains the same current gaps as get_task. CHECK_ALREADY_SATISFIED supplies the result to reuse.
+EXECUTION_PENDING/RUNNING/UNCERTAIN refer to the original run; do not rerun. HOST_USAGE_UNAVAILABLE applies only
+when an explicit Host cap depends on incomplete reporting. Preserve incompatible/corrupt data; never reset it.
+
+Complete read request to taskbelay_server_info:
 
 ```json
 {}
 ```
 
-Send it to `taskbelay_server_info`. The success envelope has `ok:true`, the actual `request_id` and
-`tool`, and `result` containing product, current version, schema, tools, host_preferences, coverage,
-semantic_evidence and cost. The machine-readable complete example and output Schema are checked
-by `internal/protocol/handler_test.go`; variable request identities and product versions come from Core.
-
-Adjacent same-tool error request (concrete trigger: an unknown member):
+Success returns ok=true with actual capabilities. Complete success and failure results for every method are
+published in its contracts entry and native --help output. Adjacent same-tool error: an unknown member.
 
 ```json
 {"unexpected":true}
 ```
 
-Complete encoded error, with the response identity represented as `example-request`:
-
 <!-- example:mcp-error taskbelay_server_info unknown_member -->
 ```json
-{"ok":false,"request_id":"example-request","tool":"taskbelay_server_info","error":{"code":"INVALID_ARGUMENT","message":"member is not allowed by the current request","details":[{"path":"arguments.unexpected","rule":"requirement","message":"member is not allowed by the current request"}]},"recovery":{"action":"correct_request","retry_safe":false,"message":"Correct only the identified fields from existing facts; preserve operation identity and real authorization.","allowed_paths":["arguments.unexpected"]}}
+{"ok":false,"request_id":"example-request","tool":"taskbelay_server_info","error":{"code":"INVALID_ARGUMENT","message":"member is not allowed by the current request","details":[{"path":"arguments.unexpected","rule":"requirement","message":"member is not allowed by the current request"}]},"recovery":{"action":"correct_request","operation":"reuse","message":"Correct only the identified fields from existing facts; preserve operation identity and real authorization.","allowed_paths":["arguments.unexpected"]},"outcome":"not_applied"}
 ```
 
-Implementation: `protocol.Decode`, `Handler.Dispatch`, `OutputSchema`; tests reproduce the unknown-member
-trigger and compare the entire normalized error. Do not add source, user decisions or passing
-results while correcting fields. Budget failures retain counters. Uncertain execution requires
-reading the saved run; storage incompatibility requires preserving data, not resetting it.
+Maintainer references: `internal/protocol/handler.go`, `internal/protocol/schema.go`, `internal/protocol/discovery.go` and `internal/protocol/examples_test.go`. Tests execute
+the actual producers, compare complete encoded errors and validate actual success/failure against output Schema.
+These references are for maintainers, not prerequisites for invoking a method.
 
-## Request fields
+## Native execution and delivery channels
 
-- authorization: user_ref and request from the actual user, goals [{id,statement}], plus explicit
-  constraints and restrictions. Omitted limits or zero fields mean
-  no user-set cap; positive values cap cumulative runs/execution_ms/core_ms/host_ms/tokens.
-- plan: approach, verification_basis, checks, optional expected_paths and review_after_lines. Forecasts never grant permission. Explain responsibility and proportionality in those fields
-  where relevant; no repeated understanding, completion or work-item form is required.
-- repositories: key and absolute repository_path; omit workspace_origin for the current branch.
-  An optional prepared workspace uses the helper's origin. remote_freshness is optional; omitted
-  observations remain not_checked. See [workspaces](workspace.md) only for actual Git operations.
-- plan.checks: id, goal_ids, kind (command/human), rationale, conditions; commands require argv. Defaults are cwd .,
-  inputs ["."], timeout_ms 60000, retry requires_user, purpose acceptance. Use repeatable only when
-  justified. Narrower inputs require input_basis. Regression checks can have accepted known failures;
-  all checks declare goal_ids; diagnostics are not required for delivery. Every goal needs an acceptance check. full_suite requires a reason each run; compares names the regression
-  check whose existing failures are being compared.
+Use the Host's native process tool to invoke check run with one RunRequest on stdin. Codex/Claude/ZCode use
+taskbelay-<host>; DeepSeek activation provides the exact bundled executable and data directory. Keep stdout
+JSON separate from stderr. ok=true can still contain run.status=failed; it never means acceptance passed by itself.
+Long commands keep their native session; read saved state and the original run after response loss.
 
-revise_task replaces only supplied fields; preserve other definitions. Changed user outcomes or
-restrictions, or expanded/removed explicit limits, require a real new user_ref. Method/forecast/check
-changes within that boundary do not. Do not weaken acceptance to avoid a failure. update_budget takes
-one real budget decision; work_ms updates both overlapping Core and reported-work caps. Zero removes
-an existing cap only with that actual decision. Counters never reset.
-
-checkpoint records meaningful progress and review, not every edit. assessment binds current
-authorization_digest and content_digest, plus summary, paths [{path,goal_ids,basis}], constraints/facts
-[{id,verdict,basis,uncertainty}]. Submit only new/affected judgments; Core retains unaffected ones.
-Final review is {summary,uncertainty}; explain the actual diff, resolved cause, responsibilities,
-complexity and verification. Core stamps applicability; it does not prove the reasoning true.
-Resolve a saved issue using taskbelay_resolve_issue, its issue_digest and the actual user answer. Recent decisions are retained in details.task.changes. progress.next_step records the next useful action.
-
-A failed check remains failed after a known-failure decision. Only applicable regression failures with
-current comparison results and actual user acceptance qualify. Required acceptance checks cannot be
-waived. Related requirement/input changes invalidate results and exceptions; unrelated plan prose does
-not require another user acceptance. Claims never satisfy a check.
-
-Implementation: internal/application service and DTOs, internal/domain authorization/plan/control,
-internal/protocol view and Schema. Saved details are for inspection, never an alternative writable Task.
-
-Maintainer implementation reference: `internal/protocol/handler.go`.
-
-## Native command execution
-
-MCP and HTTP never start verification commands. Use the Host's native process tool to invoke
-`taskbelay check run` (or the configured Host launcher `taskbelay-codex check run`,
-`taskbelay-claude check run`, `taskbelay-zcode check run`) with the RunRequest JSON on stdin.
-DeepSeek activation supplies the exact bundled Core executable and data-directory environment.
-`server_info.native_check` publishes the input/output Schema. The request contains task_id,
-revision, stable operation_id, check_id and rationale; unchanged retries also include previous_run_id
-and new_information, and full suites include full_suite_basis. The envelope tool is `check.run`.
-Use the same selected data directory. Native permissions and the chosen runtime environment apply;
-TaskBelay neither bypasses them nor installs missing dependencies.
-
-For a long check, retain the native process session and let that tool wait asynchronously. Read
-get_task/get_run for the saved pending run; do not start a second command after a timeout or lost
-response. Recovery reads the original signed result or retains unknown effects. A saved-state read
-(refresh:false, list_tasks, get_run or server_info) does not write metering data or query process
-identity. Mutations remain metered and refuse execution when metering is unavailable. Cost coverage
-is mutating Core work; saved-state reads are excluded, and reported Host cost may be incomplete.
+MCP always preserves canonical structuredContent. ZCode's adapter requests a short text summary because its
+bridge also renders the structured object. Text-rendering Hosts retain a complete text envelope. The delivery
+mode does not change data/authority semantics. Actual native Host session verification remains distinct from
+SDK transport and fixture tests.

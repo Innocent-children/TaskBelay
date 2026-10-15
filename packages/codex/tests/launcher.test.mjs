@@ -36,11 +36,12 @@ test("help describes every Host operation without reading stdin or resolving run
     assert.equal(stderr.text, "");
     if (args.length === 3) {
       const contract = JSON.parse(stdout.text);
-      assert.equal(contract.operation, args[1]);
+      assert.equal(contract.name, "codex.host-launch." + args[1]);
       assert.equal(contract.input_schema.additionalProperties, false);
       assert.ok(contract.input_schema.required.length > 0);
-      assert.ok(Object.keys(contract.output_fields).length > 0);
-      assert.ok(contract.next_step.length > 0);
+      assert.ok(Object.keys(contract.output_schema).length > 0);
+      assert.ok(contract.examples.some(e=>e.name === "success"));
+      assert.ok(contract.examples.some(e=>e.name !== "success"));
       if (args[1] === "prepare") {
         assert.ok(contract.input_schema.required.includes("handoff_file"));
         assert.ok(contract.input_schema.required.includes("authorization_ref"));
@@ -48,8 +49,10 @@ test("help describes every Host operation without reading stdin or resolving run
         assert.ok(!contract.input_schema.required.includes("launch_id"));
         assert.match(contract.input_schema.properties.worktree_path.description, /null.*managed_worktree/);
       }
-    } else {
+    } else if (args.length === 1) {
       assert.match(stdout.text, /host-launch <operation> --help/);
+    } else {
+      assert.ok(JSON.parse(stdout.text).length >= HOST_LAUNCH_OPERATIONS.length);
     }
   }
 });
@@ -166,7 +169,7 @@ test("host-launch accepts only closed JSON on the fixed internal operation surfa
     stderr: captureStream(),
     resolvePaths: async () => paths,
     readInput: async () => JSON.stringify({
-      lifecycle: "DONE",
+      lifecycle: "done",
       surface: "cli_worktree",
       clean: true,
       pushed: true,
@@ -193,7 +196,7 @@ test("host-launch accepts only closed JSON on the fixed internal operation surfa
     stdout: captureStream(),
     stderr: duplicateError,
     resolvePaths: async () => paths,
-    readInput: async () => '{"lifecycle":"DONE","lifecycle":"CANCELLED","surface":"cli_worktree","clean":true,"pushed":true,"stateCertain":true}',
+    readInput: async () => '{"lifecycle":"done","lifecycle":"cancelled","surface":"cli_worktree","clean":true,"pushed":true,"stateCertain":true}',
   }), { code: 1, signal: null });
   assert.match(duplicateError.text, /duplicate field lifecycle/u);
 });

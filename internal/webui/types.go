@@ -1,5 +1,14 @@
 package webui
 
+import "github.com/Innocent-children/taskbelay/internal/protocol"
+
+type TaskDetailResponse struct {
+	OK        bool                 `json:"ok" description:"Whether the requested Task was read successfully."`
+	Readiness Readiness            `json:"readiness" description:"Local service readiness, not Task completion."`
+	Summary   protocol.TaskSummary `json:"summary" description:"Same Core-owned saved summary used by task lists and desktop presentation."`
+	Result    protocol.TaskResult  `json:"result" description:"Public get_task result with context and requested details, not an internal application snapshot."`
+}
+
 type Readiness string
 
 const (
@@ -18,17 +27,3 @@ type SystemStatusResponse struct {
 }
 
 const maxRequestBodyBytes = 1024 * 1024
-
-type ErrorResponse struct {
-	Code       string   `json:"code"`
-	Message    string   `json:"message"`
-	FieldPaths []string `json:"field_paths"`
-	GuardID    *string  `json:"guard_id"`
-}
-type RecoveryAdvice struct {
-	Action    string `json:"action"`
-	RetrySafe bool   `json:"retry_safe"`
-	Message   string `json:"message"`
-}
-
-const RecoveryNone = "none"

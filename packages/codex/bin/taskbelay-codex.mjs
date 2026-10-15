@@ -5,6 +5,8 @@ import { execFile as execFileCallback, spawn } from "node:child_process";
 import { constants as fsConstants, realpathSync } from "node:fs";
 import { access, lstat, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { describeInterface, interfaceHelpRequest } from "../lib/interface-reference.mjs";
+import { fileURLToPath } from "node:url";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
@@ -68,15 +70,17 @@ export async function runCLI(arguments_, dependencies = {}) {
   let completedSetupChanges = [];
   let setupAttempted = false;
 
+  const help = interfaceHelpRequest(arguments_);
+  if (help) {
+    try {
+      const name = help.name ?? (help.operation ? `codex.${help.group}.${help.operation}` : undefined);
+      stdout.write(JSON.stringify(await describeInterface(fileURLToPath(new URL("../", import.meta.url)), name), null, 2) + "\n");
+      return { code: 0, signal: null };
+    } catch (error) { stderr.write(error.message + "\n"); return { code: 2, signal: null }; }
+  }
+
   if (Array.isArray(arguments_) && arguments_.length === 1 && arguments_[0] === "--help") {
     stdout.write("Usage: taskbelay-codex status|setup|remove [--json]\n       taskbelay-codex --version\n       taskbelay-codex mcp\ntaskbelay-codex check run\n       taskbelay-codex call <tool_name>\n       taskbelay-codex hook pre-tool-use\n       taskbelay-codex host-check pre-file-write\n       taskbelay-codex host-check workspace-available\n\n" + hostLaunchHelp());
-    return { code: 0, signal: null };
-  }
-  if (Array.isArray(arguments_) && arguments_[0] === "host-launch" && (
-    arguments_.length === 2 && arguments_[1] === "--help" ||
-    arguments_.length === 3 && HOST_LAUNCH_OPERATIONS.includes(arguments_[1]) && arguments_[2] === "--help"
-  )) {
-    stdout.write(hostLaunchHelp(arguments_.length === 3 ? arguments_[1] : undefined));
     return { code: 0, signal: null };
   }
 
@@ -380,7 +384,7 @@ async function runHostLaunchCommand(operation, input, paths, dependencies) {
         input: `${JSON.stringify({ repository_path: repositoryPath })}\n`,
         encoding: "utf8", timeout: 30_000, maxBuffer: 1024 * 1024,
       });
-      return JSON.parse(result.stdout);
+      return JSON.parse(result.stdout).result;
     }),
   };
   if (operation === "freshness") return await assessRepositoryFreshness(input,{runGit:dependencies.runGit,receiptRoot:paths.dataDirectory});

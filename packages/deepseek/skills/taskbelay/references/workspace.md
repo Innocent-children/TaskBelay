@@ -27,8 +27,14 @@ outcomes remain unknown. Preserve dirty, diverged, failed or partial results. Ne
 receipts to bypass an unresolved operation.
 
 Cleanup needs actual deletion authority, the exact terminal Core task, matching workspace and its
-provisioning_receipt_id. Request get_task detail:true to read details.task when a helper needs complete
+provisioning_receipt_id. Request get_task detail:true to read identity/status and details.repositories when a helper needs complete
 workspace bindings. Dirty or unpushed work is retained. Verify Host-specific new-chat capabilities only
 when the user requests that operation.
 
 Maintainer implementation reference: `internal/application/origin_input.go`.
+
+## Installed method contracts
+
+Use the installed Host command `host-launch <operation> --help --json` for complete input/output schemas, field notes and actual success/error examples. No Task storage or source access is needed. DeepSeek ships the six workspace_coordinator contracts in `contracts/interfaces.json` beside its installed lib directory. Native `host-check workspace-available` returns a Core envelope: read result.available and every result.repositories item, including active_task_id (null when unclaimed). Reuse existing Task identity for the same outcome; an empty claim does not prove an earlier uncertain creation never happened.
+
+New branches use --no-track and helpers verify/report actual upstream separately from original source_type/remote_name/base_branch. push_configuration reports Git values only; ide_target remains unknown. Do not set tracking or change push configuration merely to make inspection look complete.

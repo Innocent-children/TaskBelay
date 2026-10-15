@@ -18,6 +18,18 @@ REMOTE_OBSERVATION_STALE 表示 HEAD、对应上游或追踪提交与宿主观�
 
 WebUI 启动若子进程提前退出，明确返回进程退出和本次 webui-runtime.log 位置；未就绪超时也保留日志位置。先读原启动记录，不将退出或存储失败统称为连接问题。
 
-默认任务返回当前摘要，不包含完整文件指纹和尝试历史。taskbelay_get_task 的 detail:true 将完整视图放入 result.details；check.run/recover_run 的 run 是状态摘要，通过 get_run 读取真实输出。未设成本上限时 budget.limits[].limited=false；remaining=0 不能解释为额度耗尽。
+默认任务返回当前摘要，不包含完整文件指纹和尝试历史。taskbelay_get_task 的 detail:true 将完整视图放入 result.details；check.run/recover_run 的 run 是状态摘要，通过 get_run 读取真实输出。未设成本上限时 budget.limits[].limited=false；remaining=null 表示不限额或无法计算，结合 limited 与 coverage 判断。
 
 ISSUE_CHANGED 表示答复对应的问题已改变，应重新读取；resolve_issue 不修改授权。保存状态查询不进入计量初始化，相关计量错误只阻止变更。check.run 是原生 CLI 响应，不是 MCP 工具。
+
+## 当前状态与具体失败处理
+
+普通变更返回 identity/digests、当前 decision、progress、检查摘要、concerns、limitations、issue、usage、budget。open/get 增加 context；detail:true 增加明确记录，包括 facts 和 evidence_applicability。输入不接受内部 Task 快照或调用方自填的审查摘要。get_run 返回实际 cwd、原始 operation_id、执行指纹及 output.stdout/output.stderr。
+
+Decision.gaps 包含 code/path/subject/message/action/related_ids。finish 重新计算同一组条件，在失败时返回这些具体缺口；消费方无需翻译泛化的 review 提示。过期审查和修订冲突在可以取得时附带当前身份。CHECK_ALREADY_SATISFIED 的 existing_result 提供实际结果和运行身份。
+
+失败的 outcome 为 not_applied/applied/unknown，描述语义提交，与计量无关；原生命令在可以确定时返回 execution 阶段。recovery.operation 为 reuse/replace/read_before_retry/none。已知提交后的读取或清理失败返回 applied；结果未知时先读原记录。任何字段都不授权盲目重复副作用。
+
+Host 用量允许 null，并带 unreported/partial/reported；未知不等于实测零值。明确 Host 上限缺少足够报告时，新命令返回 HOST_USAGE_UNAVAILABLE，保存状态读取和恢复仍可执行。未设上限的 budget.remaining 为 null。
+
+方法说明、字段规则及相邻的完整实际样例可通过 server_info.contracts 和原生方法 --help --json 按需读取。auxiliary_contracts 列出原生/HTTP 名称，不增加工具。MCP 始终发送完整 structuredContent；仅 ZCode 请求简短文本，主要展示文本的 Host 保留完整响应。见[接口使用说明](INTERFACES.md)。

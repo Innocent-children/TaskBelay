@@ -8,7 +8,7 @@
 
 Core：taskbelay version；config validate（stdin 配置）；mcp --stdio；call <tool_name>（stdin 完整 JSON）；host-check pre-file-write / workspace-available；webui start/open/status/stop（--json 或 --plain，start 可 --no-open）。Core 运行必须设置绝对 TASKBELAY_DATA_DIR；保留旧数据，选择新目录，不自动迁移。统一 npm launcher 将 call 与 webui 转发到已配置 Core；Codex、Claude、ZCode 的 taskbelay-<host> call <tool_name> 转发到各自 bundled Core。DeepSeek 使用已发现的 MCP namespace。
 
-host-check pre-file-write 输入 host、repository_path、tool_name、paths、intent_digest、path_parse_complete；返回 decision allow/deny 和明确 coverage，不判断未来修改语义。workspace-available 输入 repository_path 或 repositories [{key,repository_path}]，只读返回 available 与已存在的 task_id。检查失败不按无 Task 放行。普通 artifact 阶段命令已移除。
+host-check pre-file-write 输入 host、repository_path、tool_name、paths、intent_digest、path_parse_complete；返回 decision allow/deny 和明确 coverage，不判断未来修改语义。workspace-available 输入 repository_path 或 repositories [{key,repository_path}]，只读返回 available 和逐仓 repositories [{key,repository_path,active_task_id}]，未占用为 null。检查失败不按无 Task 放行。普通 artifact 阶段命令已移除。
 
 `webui start/open/status/stop --json` 在顶层返回 `readiness`、`core_identity`、`data_root_digest` 和 `url`。`core_identity` 是 Core 版本号，不带产品名前缀；未记录服务进程时省略 `pid`，存在时它是非负整数。响应不包含 `operation`，调用方已知所执行的命令。桌面启动器核对这些字段后，仍须读取 `/api/system/status`，确认版本身份、数据目录摘要和本机地址与实际服务一致。
 
@@ -16,17 +16,17 @@ host-check pre-file-write 输入 host、repository_path、tool_name、paths、in
 
 | 工具 | 当前输入 |
 | --- | --- |
-| taskbelay_server_info | 空对象；实际能力 |
+| taskbelay_server_info | 可选 contracts 数组；实际能力及所选方法契约 |
 | taskbelay_list_tasks | 可选 page、page_size（1..100）、include_archived、status（active/done/cancelled）；返回 page 与 has_next |
 | taskbelay_open_task | operation_id, host, repositories, authorization, plan |
 | taskbelay_get_task | task_id, refresh（缺省 true；false 读取保存状态）, detail（缺省 false） |
-| taskbelay_checkpoint | identity；可选 assessment/progress/issue、host_ms/wait_ms/tokens |
+| taskbelay_checkpoint | identity；可选 assessment/progress/issue、host_usage {source_id,observed_through,totals,coverage} |
 | taskbelay_revise_task | identity、reason；按需提供 authorization、plan |
 | taskbelay_resolve_issue | identity, issue_digest, user_ref, decision；答复不自动改变授权 |
 | taskbelay_record_evidence | identity, check_id, source claim/human, status, summary, content_digest；human 的 user_ref |
 | taskbelay_get_run | run_id；只读真实结果 |
 | taskbelay_recover_run | identity, run_id, resolution_basis, 必需时 user_ref |
-| taskbelay_finish_task | identity, summary, acceptance [{goal_id,evidence_ids,basis}], risks |
+| taskbelay_finish_task | identity, summary, acceptance [{goal_id,evidence_ids,basis}] |
 | taskbelay_cancel_task | identity, reason |
 | taskbelay_accept_known_failure | identity, check_id, failed_evidence_id, comparison_evidence_id, failures, user_ref, reason |
 | taskbelay_update_budget | identity, authorization_digest, budget {runs,execution_ms,work_ms,tokens}, user_ref, response；实际批准的完整投入决定 |
@@ -48,7 +48,7 @@ HTTP GET /api/tasks?page=1&include_archived=false&status=active（status 可省�
 
 已退休的 submit_*、get_next_action、resolve_blocker、relocation、阶段 artifact 协议没有兼容入口。错误与恢复见[响应规范](CORE-RESPONSES.md)。
 
-control_cost 是本地数据目录跨任务累计成本，server_info、list_tasks 和完整 details 返回 calls、wall_ms、unknown_ms、pending。默认任务结果保留任务自身 usage，不重复附带完整历史或全局计量。get_task 的 detail:true 在 result.details 返回完整应用视图；其 details.task 包含工作区绑定、指纹、复核和历史。check run/recover_run 返回 view 和运行摘要；get_run 读取实际输出。
+control_cost 在 server_info、list_tasks 返回跨 Task 的 calls、wall_ms、unknown_ms、pending。普通变更返回 identity、digests、decision.gaps、progress、checks、concerns、limitations 和 Task 自身 usage/budget。open/get 额外返回 context.authorization/plan/repositories。get_task detail:true 增加明确的 details 字段：facts、evidence_applicability、仓库绑定、assessment、evidence、attempts、changes 和交付记录。check run/recover_run 返回 view 和运行摘要；get_run 读取 output.stdout/output.stderr 与实际执行条件。
 
 checkpoint.assessment 可仅提交新增或受影响的 paths、constraints、facts；全局摘要须当前，Core 生成每项 scope_digest 并合并未受影响判断。revise_task 不自动清除 issue；实际用户决定后使用 resolve_issue、当前 issue_digest 和 user_ref 保存答复。
 
@@ -62,6 +62,14 @@ HTTP 列表另支持 lifecycle=active/blocked/done/cancelled，按 Core 保存�
 
 ## 原生命令入口与保存状态读取
 
-宿主原生进程工具执行 taskbelay check run，stdin 为完整 RunRequest JSON：task_id、revision、operation_id、check_id、rationale；重试还需 previous_run_id/new_information，完整套件需 full_suite_basis。响应 tool 为 check.run。Codex/Claude/ZCode 的宿主 CLI 同样支持 check run；DeepSeek 激活时将 bundled Core 路径和 TASKBELAY_DATA_DIR 写入 Skill 上下文。统一入口 taskbelay check run 转发给选定 Core。MCP/HTTP 没有启动进程的工具；server_info.native_check 提供输入与输出 Schema。长命令沿用原生进程会话，读取 get_task 的 pending_runs 和 get_run，不因响应超时重新启动。
+宿主原生进程工具执行 taskbelay check run，stdin 为完整 RunRequest JSON：task_id、revision、operation_id、check_id、rationale；重试还需 previous_run_id/new_information，完整套件需 full_suite_basis。响应 tool 为 check.run。Codex/Claude/ZCode 的宿主 CLI 同样支持 check run；DeepSeek 激活时将 bundled Core 路径和 TASKBELAY_DATA_DIR 写入 Skill 上下文。统一入口 taskbelay check run 转发给选定 Core。MCP/HTTP 没有启动进程的工具；server_info.native_check 提供原生命令及契约名称，按需请求 contracts:["check.run"] 获取完整输入输出说明。长命令沿用原生进程会话，读取 get_task 的 pending_runs 和 get_run，不因响应超时重新启动。
 
-get_task refresh:false、list_tasks、get_run、server_info 读取已保存内容，不写计量、不查询进程身份。变更调用仍记录累计投入，计量失败拒绝执行。HTTP 列表额外接受 search（需求或任务 ID）和 host，先过滤后分页。checkpoint.progress.next_step 保存下一步；details.task.changes 保存最多 64 条近期决定和调整原因。plan.checks 的 kind、purpose、retry 枚举由同一 DTO 提供给公开 Schema。
+get_task refresh:false、list_tasks、get_run、server_info 读取已保存内容，不写计量、不查询进程身份。变更调用仍记录累计投入，计量失败拒绝执行。HTTP 列表额外接受 search（需求或任务 ID）和 host，先过滤后分页。checkpoint.progress.next_step 保存下一步；details.changes 保存最多 64 条近期决定和调整原因。plan.checks 的 kind、purpose、retry 枚举由同一 DTO 提供给公开 Schema。
+
+## 无需源码的方法帮助
+
+使用 `taskbelay call <tool> --help --json`、`taskbelay check run --help --json` 或当前配置的原生 Core。Codex/Claude/ZCode 支持 `host-launch <operation> --help --json`、`hook pre-tool-use --help --json` 和 `status|setup|remove --help --json`。统一入口支持 `<安装操作> --help --json`、`pet start|stop --help --json`。原生 Core 还提供 `config validate`、`webui <operation>`、`help`、`version`、`mcp` 的方法帮助。查询在打开数据目录之前读取随包说明，不执行所查询的操作。
+
+`server_info.auxiliary_contracts` 列出可通过 contracts 查询的原生命令/HTTP 契约名称，不增加 MCP 执行工具。每个包携带 `contracts/interfaces.json`；DeepSeek 的六个 workspace_coordinator 分支也有随包说明。输入输出、空值和缺省值、实际成功/失败样例、授权要求和恢复行为均可独立读取，不需要源码或数据库。见[接口说明](INTERFACES.md)。
+
+创建 Task 分支统一使用 `--no-track`，返回实际 upstream 与 push_configuration。原始来源选择与 Task 分支追踪关系分开；IDE 推送目标明确为 unknown。workspace-available 使用统一 Core 响应，逐项返回所有选定根目录的 active_task_id，未占用为 null，不只返回第一个冲突。

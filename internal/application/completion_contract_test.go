@@ -40,7 +40,7 @@ func TestRegressionExceptionCannotReplaceAcceptance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	v, err = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "review", v.Task.Revision}, Progress: []domain.Progress{{GoalID: "goal", Status: "done", Summary: "Fixture implementation complete"}}, Assessment: &domain.Assessment{AuthorizationDigest: v.AuthorizationDigest, ContentDigest: v.ContentDigest, Summary: "Fixture review", Review: &domain.DesignReview{Summary: "Existing responsibility and relevant checks are appropriate"}}})
+	v, err = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "review", v.Task.Revision}, Progress: []ProgressInput{{GoalID: "goal", Status: "done", Summary: "Fixture implementation complete"}}, Assessment: &AssessmentInput{AuthorizationDigest: v.AuthorizationDigest, ContentDigest: v.ContentDigest, Summary: "Fixture review", Review: &ReviewInput{Summary: "Existing responsibility and relevant checks are appropriate"}}})
 	if err != nil {
 		t.Fatal(err)
 	}

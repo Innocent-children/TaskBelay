@@ -112,7 +112,9 @@ async function runCoreCheck(request, { runtimePath, dataDirectory, spawnImpl }) 
   if (status.code !== 0 || status.signal !== null || outputBytes > MAX_OUTPUT_BYTES) {
     throw new Error(Buffer.concat(stderr).toString("utf8") || "Core host check failed");
   }
-  return JSON.parse(Buffer.concat(stdout).toString("utf8"));
+  const envelope = JSON.parse(Buffer.concat(stdout).toString("utf8"));
+  if (envelope.ok !== true) throw new Error(envelope.error?.message ?? "Core rejected preflight");
+  return envelope.result;
 }
 
 function stableJSON(value) {

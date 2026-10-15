@@ -207,7 +207,7 @@ window.pet.onState((next) => {
     state.display.summary?.request_summary ?? state.labels.selectTask;
   document.querySelector("#summary").textContent = [
     state.labels[state.display.phase] ?? state.display.phase,
-    state.display.summary?.current_node,
+    state.display.summary?.lifecycle,
     state.display.readiness === "read_only" ? state.labels.readOnly : null,
   ]
     .filter(Boolean)
@@ -217,8 +217,8 @@ window.pet.onState((next) => {
     [
       state.display.stale
         ? state.labels.stale
-        : state.display.summary?.origin_host,
-      state.display.summary?.current_node,
+        : state.display.summary?.host,
+      state.display.summary?.lifecycle,
       state.display.summary?.blocker,
       state.display.summary?.request_summary,
       state.display.summary?.updated_at
@@ -264,9 +264,9 @@ window.pet.onState((next) => {
       const detail = document.createElement("small");
       detail.textContent = [
         task.lifecycle,
-        task.current_node,
-        task.origin_host,
-        task.worktree_path,
+        task.lifecycle,
+        task.host,
+        task.repositories?.[0]?.repository_path,
       ].join(" · ");
       button.append(detail);
       button.onclick = () => command("open", task.task_id);
@@ -398,7 +398,7 @@ function renderCards() {
     const status = document.createElement("small");
     if (!hovered && index > 0) status.style.display = "none";
     status.textContent = [state.labels[card.result.phase] ?? card.result.phase,
-      card.result.summary?.current_node, card.result.stale ? state.labels.stale : null,
+      card.result.summary?.lifecycle, card.result.stale ? state.labels.stale : null,
       state.pinnedTaskID === card.taskID ? state.labels.pin : null].filter(Boolean).join(" · ");
     open.append(title, status);
     open.onclick = () => command("open", card.taskID);

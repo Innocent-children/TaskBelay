@@ -58,9 +58,9 @@ const (
 )
 
 type ContractViolation struct {
-	Path    string        `json:"path"`
-	Rule    ViolationRule `json:"rule"`
-	Message string        `json:"message"`
+	Path    string        `json:"path" description:"输入错误用arguments路径；审查/缺口使用限定仓库路径或具体记录位置。"`
+	Rule    ViolationRule `json:"rule" description:"违反的字段/关系规则类别，不作为用户授权。"`
+	Message string        `json:"message" description:"可直接阅读的具体原因，不含敏感原始参数或内部堆栈。"`
 }
 
 func ExplainedViolation(p string, r ViolationRule, m string) ContractViolation {
@@ -68,19 +68,37 @@ func ExplainedViolation(p string, r ViolationRule, m string) ContractViolation {
 }
 
 type BudgetFailure struct {
-	Used      int64 `json:"used"`
-	Requested int64 `json:"requested"`
-	Limit     int64 `json:"limit"`
-	Actual    int64 `json:"actual"`
-	Reserved  int64 `json:"reserved"`
-	Uncertain int64 `json:"uncertain"`
-	Remaining int64 `json:"remaining"`
+	Used      int64 `json:"used" description:"Actual plus reserved and uncertain amounts for this rejected limit."`
+	Requested int64 `json:"requested" description:"Amount this rejected reservation attempted to consume."`
+	Limit     int64 `json:"limit" description:"Explicit cumulative cap; zero means unset."`
+	Actual    int64 `json:"actual" description:"Known amount charged to this rejected explicit limit; unavailable Host measurement uses HOST_USAGE_UNAVAILABLE instead."`
+	Reserved  int64 `json:"reserved" description:"Amount reserved but not yet settled."`
+	Uncertain int64 `json:"uncertain" description:"Conservative charged amount from unresolved work in this dimension."`
+	Remaining int64 `json:"remaining" description:"Remaining capacity for this rejected explicit limit, clamped to zero."`
 }
 type Error struct {
-	Code    string              `json:"code"`
-	Message string              `json:"message"`
-	Details []ContractViolation `json:"details,omitempty"`
-	Budget  *BudgetFailure      `json:"budget,omitempty"`
+	Code           string              `json:"code" description:"稳定的错误或缺口类别；用此值分派处理，不解析message措辞。"`
+	Message        string              `json:"message" description:"可直接阅读的具体原因，不含敏感原始参数或内部堆栈。"`
+	Details        []ContractViolation `json:"details,omitempty" description:"Concrete field/relationship violations, each with path, rule and message."`
+	Budget         *BudgetFailure      `json:"budget,omitempty" description:"Numeric details for an explicit exceeded limit; unavailable Host usage has a separate error."`
+	Gaps           []Gap               `json:"gaps,omitempty" description:"当前未满足条件的具体条目；与finish错误使用同一次计算。"`
+	Current        *CurrentState       `json:"current,omitempty" description:"错误中返回的实际当前身份/摘要/变化路径；重新核对后使用，不盲目覆盖。"`
+	ExistingResult *ResultReference    `json:"existing_result,omitempty" description:"已保存且可读取的原执行/记录身份；复用它，不重新执行。"`
+	Outcome        string              `json:"-"`
+	Execution      string              `json:"-"`
+}
+
+type CurrentState struct {
+	TaskID              string   `json:"task_id" description:"唯一Core Task身份；不从标题、目录或临时会话ID猜测。"`
+	Revision            uint64   `json:"revision" description:"当前持久化修订。检查预留/结算都可能推进，不能自己加一。"`
+	AuthorizationDigest Digest   `json:"authorization_digest,omitempty" description:"当前授权摘要。"`
+	ContentDigest       Digest   `json:"content_digest,omitempty" description:"当前内容摘要。"`
+	ChangedPaths        []string `json:"changed_paths,omitempty" description:"当前Task观察到的完整限定变化路径集合，不是权限名单。"`
+}
+type ResultReference struct {
+	RunID      string `json:"run_id" description:"实际执行身份，来自原生check run；不重新构造执行来找结果。"`
+	EvidenceID string `json:"evidence_id,omitempty" description:"该检查摘要采用的实际记录身份；null为没有结果。"`
+	CheckID    string `json:"check_id,omitempty" description:"当前已保存检查的稳定身份。"`
 }
 
 func (e *Error) Error() string { return e.Message }

@@ -62,7 +62,9 @@
     "plugin/skills/taskbelay/references/protocol.md",
     "plugin/skills/taskbelay/references/workspace.md",
     "lib/repository-freshness.mjs",
-    "lib/integration-receipt.mjs"
+    "lib/integration-receipt.mjs",
+    "lib/interface-reference.mjs",
+    "contracts/interfaces.json"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/domain"
@@ -14,16 +13,16 @@ import (
 
 type RunRequest struct {
 	Identity
-	CheckID        string `json:"check_id"`
-	Rationale      string `json:"rationale"`
-	PreviousRunID  string `json:"previous_run_id,omitempty"`
-	NewInformation string `json:"new_information,omitempty"`
-	FullSuiteBasis string `json:"full_suite_basis,omitempty"`
+	CheckID        string `json:"check_id" description:"当前已保存检查的稳定身份。"`
+	Rationale      string `json:"rationale" description:"这项/这次检查如何覆盖具体目标或补充当前缺口。"`
+	PreviousRunID  string `json:"previous_run_id,omitempty" description:"Original failed run under unchanged conditions; read it before another execution."`
+	NewInformation string `json:"new_information,omitempty" description:"New actual diagnostic information for an unchanged failed-check retry."`
+	FullSuiteBasis string `json:"full_suite_basis,omitempty" description:"Required for a full suite: the actual gap targeted checks cannot cover."`
 }
 
 type RunResult struct {
-	View View          `json:"view"`
-	Run  execution.Run `json:"run"`
+	View View          `json:"view" description:"原生执行/恢复携带的最新TaskState，不是旧请求快照。"`
+	Run  execution.Run `json:"run" description:"本次实际或恢复运行的摘要，必须检查status。"`
 }
 
 func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) {
@@ -60,7 +59,7 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 		return RunResult{}, e
 	}
 	if len(pending) > 0 {
-		return RunResult{}, domain.Fail("EXECUTION_PENDING", "run_id", "resolve the recorded execution before starting another")
+		return RunResult{}, &domain.Error{Code: "EXECUTION_PENDING", Message: "resolve the recorded execution before starting another", ExistingResult: &domain.ResultReference{RunID: pending[0]}, Outcome: "not_applied", Execution: "not_started"}
 	}
 	c, ok := t.Check(q.CheckID)
 	if !ok || c.Kind != "command" {
@@ -71,6 +70,25 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 	}
 	if e := execution.CheckCommand(c.Argv); e != nil {
 		return RunResult{}, e
+	}
+	f, e := execution.Observe(ctx, t, c)
+	if e != nil {
+		return RunResult{}, e
+	}
+	pid, identity, e := execution.Owner()
+	if e != nil {
+		return RunResult{}, e
+	}
+	r := execution.Run{RunID: "run-" + string(domain.Hash([]string{t.TaskID, q.OperationID}))[:24], TaskID: t.TaskID, OperationID: q.OperationID, CheckID: c.ID, CheckDigest: t.CheckDigest(c), RequirementDigest: t.CheckRequirementDigest(c), Check: c, Before: f, Status: "running", OwnerPID: pid, OwnerIdentity: identity, StartedAt: time.Now().UTC(), Rationale: q.Rationale, NewInformation: q.NewInformation, FullSuiteBasis: q.FullSuiteBasis}
+	var previous execution.Run
+	found, e := s.Store.LatestRun(ctx, t.TaskID, r.InputKey(), &previous)
+	if e != nil {
+		return RunResult{}, e
+	}
+	for _, ev := range t.Evidence {
+		if ev.CheckID == c.ID && ev.Source == "core_execution" && ev.Status == "passed" && ev.CheckDigest == r.CheckDigest && ev.InputsDigest == f.Inputs && ev.EnvironmentDigest == f.Environment {
+			return RunResult{}, &domain.Error{Code: "CHECK_ALREADY_SATISFIED", Message: "reuse the existing passing result for these inputs and conditions", ExistingResult: &domain.ResultReference{RunID: ev.ID, EvidenceID: ev.ID, CheckID: c.ID}, Execution: "not_started"}
+		}
 	}
 	u, l := t.Usage, t.Authorization.Limits
 	for _, limit := range []struct {
@@ -83,24 +101,8 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 			return RunResult{}, &domain.Error{Code: "COST_LIMIT", Message: "cumulative control or Host cost limit reached; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits." + limit.path, Rule: "quantity", Message: "retain acceptance requirements and obtain a real authorized limit change"}}, Budget: domain.NewBudgetLine(limit.path, limit.used, 0, 0, limit.maximum).Failure(0)}
 		}
 	}
-	f, e := execution.Observe(ctx, t, c)
-	if e != nil {
-		return RunResult{}, e
-	}
-	pid, identity, e := execution.Owner()
-	if e != nil {
-		return RunResult{}, e
-	}
-	r := execution.Run{RunID: "run-" + string(domain.Hash([]string{t.TaskID, q.OperationID}))[:24], TaskID: t.TaskID, CheckID: c.ID, CheckDigest: t.CheckDigest(c), RequirementDigest: t.CheckRequirementDigest(c), Check: c, Before: f, Status: "running", OwnerPID: pid, OwnerIdentity: identity, StartedAt: time.Now().UTC(), Rationale: q.Rationale, NewInformation: q.NewInformation, FullSuiteBasis: q.FullSuiteBasis}
-	var previous execution.Run
-	found, e := s.Store.LatestRun(ctx, t.TaskID, r.InputKey(), &previous)
-	if e != nil {
-		return RunResult{}, e
-	}
-	if slices.ContainsFunc(t.Evidence, func(ev domain.Evidence) bool {
-		return ev.CheckID == c.ID && ev.Source == "core_execution" && ev.Status == "passed" && ev.CheckDigest == r.CheckDigest && ev.InputsDigest == f.Inputs && ev.EnvironmentDigest == f.Environment
-	}) {
-		return RunResult{}, domain.Fail("CHECK_ALREADY_SATISFIED", "check_id", "this command already passed for the same inputs and conditions; reuse its evidence")
+	if metric := t.Usage.UnavailableHostLimit(t.Authorization.Limits); metric != "" {
+		return RunResult{}, &domain.Error{Code: "HOST_USAGE_UNAVAILABLE", Message: "an explicit Host limit requires complete reported usage; no command was started", Details: []domain.ContractViolation{{Path: "usage.host." + metric, Rule: "requirement", Message: "provide actual usage or obtain a real budget change; do not estimate missing usage"}}, Execution: "not_started"}
 	}
 	if found && previous.Status != "passed" && (q.PreviousRunID != previous.RunID || domain.Text("new_information", q.NewInformation) != nil || q.NewInformation == previous.NewInformation) {
 		return RunResult{}, domain.Fail("RETRY_BASIS_REQUIRED", "new_information", "read the previous run and explain new diagnostic information before repeating unchanged conditions")
@@ -125,12 +127,38 @@ func (s *Service) Execute(ctx context.Context, q RunRequest) (RunResult, error) 
 		return s.Store.RecordStartedRun(ctx, r.RunID, reserved, started)
 	})
 	if e = execution.WriteReceipt(s.Store.Directory, r); e != nil {
-		return RunResult{}, domain.Fail("EXECUTION_UNCERTAIN", "run_id", "process returned, but its recovery receipt could not be saved; inspect the reserved run")
+		return RunResult{}, &domain.Error{Code: "EXECUTION_UNCERTAIN", Message: "process returned, but its recovery receipt could not be saved; inspect the reserved run", ExistingResult: &domain.ResultReference{RunID: r.RunID, CheckID: r.CheckID}, Outcome: "applied", Execution: "unknown"}
 	}
 	return s.finalize(context.WithoutCancel(ctx), r, store.Operation{})
 }
 
-func (s *Service) finalize(ctx context.Context, r execution.Run, operation store.Operation) (RunResult, error) {
+func (s *Service) finalize(ctx context.Context, r execution.Run, operation store.Operation) (result RunResult, err error) {
+	// Execute already saved its operation before starting the process. Recovery
+	// may still need to commit a separate operation, but always retains this run.
+	applied := operation.ID == ""
+	defer func() {
+		if err == nil {
+			return
+		}
+		var cause *domain.Error
+		if !errors.As(err, &cause) {
+			cause = &domain.Error{Code: "EXECUTION_UNCERTAIN", Message: "the original execution record or receipt is retained; read and recover that run before another command"}
+		}
+		copy := *cause
+		if applied {
+			copy.Outcome = "applied"
+		} else if copy.Outcome == "" {
+			copy.Outcome = "unknown"
+		}
+		copy.ExistingResult = &domain.ResultReference{RunID: r.RunID, CheckID: r.CheckID}
+		if copy.Execution == "" {
+			copy.Execution = "unknown"
+			if r.ExitCode != nil {
+				copy.Execution = "started"
+			}
+		}
+		err = &copy
+	}()
 	for attempt := 0; attempt < 5; attempt++ {
 		var saved execution.Run
 		if e := s.Store.Run(ctx, r.RunID, &saved); e != nil {
@@ -187,8 +215,9 @@ func (s *Service) finalize(ctx context.Context, r execution.Run, operation store
 			}
 			return RunResult{}, e
 		}
+		applied = true
 		if e = s.compactReceipts(ctx); e != nil {
-			return RunResult{}, domain.Fail("RESOURCE_CLEANUP_FAILED", "", "execution was saved; retired receipt cleanup failed, so read the saved run")
+			return RunResult{}, &domain.Error{Code: "RESOURCE_CLEANUP_FAILED", Message: "execution was saved; retired receipt cleanup failed, so read the saved run", Outcome: "applied", Execution: "started", ExistingResult: &domain.ResultReference{RunID: r.RunID, EvidenceID: r.RunID, CheckID: r.CheckID}, Current: currentState(t)}
 		}
 		t, e = s.Store.Get(ctx, t.TaskID)
 		if e != nil {
@@ -197,5 +226,5 @@ func (s *Service) finalize(ctx context.Context, r execution.Run, operation store
 		v, e := s.view(ctx, t, true)
 		return RunResult{v, r}, e
 	}
-	return RunResult{}, domain.Fail("REVISION_CONFLICT", "run_id", "execution receipt is retained; recover it after concurrent changes settle")
+	return RunResult{}, &domain.Error{Code: "REVISION_CONFLICT", Message: "execution receipt is retained; recover it after concurrent changes settle", Outcome: "unknown", Execution: "started", ExistingResult: &domain.ResultReference{RunID: r.RunID, CheckID: r.CheckID}}
 }

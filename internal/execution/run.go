@@ -20,38 +20,39 @@ import (
 )
 
 type Run struct {
-	RequirementDigest domain.Digest    `json:"requirement_digest"`
-	Rationale         string           `json:"rationale"`
-	NewInformation    string           `json:"new_information,omitempty"`
-	FullSuiteBasis    string           `json:"full_suite_basis,omitempty"`
-	RunID             string           `json:"run_id"`
-	TaskID            string           `json:"task_id"`
-	CheckID           string           `json:"check_id"`
-	CheckDigest       domain.Digest    `json:"check_digest"`
-	Check             domain.Check     `json:"check"`
-	Before            Fingerprint      `json:"before"`
-	After             *Fingerprint     `json:"after,omitempty"`
-	Status            string           `json:"status"`
-	ExitCode          *int             `json:"exit_code,omitempty"`
-	DurationMS        int64            `json:"duration_ms"`
-	Stdout            string           `json:"stdout"`
-	Stderr            string           `json:"stderr"`
-	StdoutDigest      domain.Digest    `json:"stdout_digest"`
-	StderrDigest      domain.Digest    `json:"stderr_digest"`
-	OutputBytes       int64            `json:"output_bytes"`
-	Truncated         bool             `json:"truncated"`
-	OwnerPID          int              `json:"owner_pid"`
-	OwnerIdentity     string           `json:"owner_identity"`
-	Process           *ProcessIdentity `json:"process"`
-	StartedAt         time.Time        `json:"started_at"`
-	FinishedAt        *time.Time       `json:"finished_at,omitempty"`
-	Reconciliation    string           `json:"reconciliation,omitempty"`
-	ResolutionUserRef string           `json:"resolution_user_ref,omitempty"`
+	RequirementDigest domain.Digest    `json:"requirement_digest" description:"Digest of goals and constraints served by the execution."`
+	Rationale         string           `json:"rationale" description:"这项/这次检查如何覆盖具体目标或补充当前缺口。"`
+	NewInformation    string           `json:"new_information,omitempty" description:"New actual diagnostic information for an unchanged failed-check retry."`
+	FullSuiteBasis    string           `json:"full_suite_basis,omitempty" description:"Required for a full suite: the actual gap targeted checks cannot cover."`
+	RunID             string           `json:"run_id" description:"实际执行身份，来自原生check run；不重新构造执行来找结果。"`
+	OperationID       string           `json:"operation_id" description:"稳定逻辑操作身份；同一已提交身份不能用于不同请求。"`
+	TaskID            string           `json:"task_id" description:"唯一Core Task身份；不从标题、目录或临时会话ID猜测。"`
+	CheckID           string           `json:"check_id" description:"当前已保存检查的稳定身份。"`
+	CheckDigest       domain.Digest    `json:"check_digest" description:"Digest of the check, associated goals and relevant constraints."`
+	Check             domain.Check     `json:"check" description:"当前检查定义及相关要求的摘要。"`
+	Before            Fingerprint      `json:"before" description:"Actual fingerprints before execution."`
+	After             *Fingerprint     `json:"after,omitempty" description:"Observed execution conditions after the process returned."`
+	Status            string           `json:"status" description:"对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"`
+	ExitCode          *int             `json:"exit_code,omitempty" description:"CLI进程或运行实际退出码；CLI的0不代替run.status。"`
+	DurationMS        int64            `json:"duration_ms" description:"真实运行耗时毫秒；未知结果的0值不能解释为没有执行。"`
+	Stdout            string           `json:"stdout" description:"实际标准输出文本；CLI展示中为空字符串表示没有输出。"`
+	Stderr            string           `json:"stderr" description:"独立诊断文本；不与stdout合并后解析JSON。"`
+	StdoutDigest      domain.Digest    `json:"stdout_digest" description:"Digest of complete stdout, including truncated bytes."`
+	StderrDigest      domain.Digest    `json:"stderr_digest" description:"Digest of complete stderr, including truncated bytes."`
+	OutputBytes       int64            `json:"output_bytes" description:"真实输出总字节数，详情通过get_run读取。"`
+	Truncated         bool             `json:"truncated" description:"是否只返回输出前缀。"`
+	OwnerPID          int              `json:"owner_pid" description:"Original execution owner PID, paired with startup identity."`
+	OwnerIdentity     string           `json:"owner_identity" description:"Original Core process startup identity, not merely a PID."`
+	Process           *ProcessIdentity `json:"process" description:"实际进程身份；执行尚未激活或不公开此信息时为null。"`
+	StartedAt         time.Time        `json:"started_at" description:"实际开始时间，UTC RFC3339。"`
+	FinishedAt        *time.Time       `json:"finished_at,omitempty" description:"实际结束时间，UTC；尚未结束或未知时按类型为null。"`
+	Reconciliation    string           `json:"reconciliation,omitempty" description:"未知运行的副作用检查说明；没有核对记录时为null。"`
+	ResolutionUserRef string           `json:"resolution_user_ref,omitempty" description:"Actual decision for reconciling a non-repeatable run; empty when unnecessary."`
 }
 
 type ProcessIdentity struct {
-	PID      int    `json:"pid"`
-	Identity string `json:"identity"`
+	PID      int    `json:"pid" description:"实际进程ID，必须结合启动身份，不能单独判定进程仍为原命令。"`
+	Identity string `json:"identity" description:"OS process startup identity paired with pid; a reused PID does not match this process."`
 }
 
 func ProcessActive(ctx context.Context, process *ProcessIdentity) (bool, error) {
@@ -196,8 +197,8 @@ func finish(r Run, start time.Time) Run {
 }
 
 type receipt struct {
-	Run       Run    `json:"run"`
-	Signature string `json:"signature"`
+	Run       Run    `json:"run" description:"本次实际或恢复运行的摘要，必须检查status。"`
+	Signature string `json:"signature" description:"Receipt integrity signature; cannot be submitted to manufacture execution."`
 }
 
 func receiptKey(dir string) ([]byte, error) {

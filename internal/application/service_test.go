@@ -40,7 +40,7 @@ func fixture(t *testing.T) (*Service, View, string) {
 	}
 	t.Cleanup(func() { db.Close() })
 	s, _ := NewService(db, repository.NewGitObserver())
-	v, e := s.Open(context.Background(), OpenRequest{Plan: testPlan(), OperationID: "open", Host: "cli", Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: domain.Authorization{UserRef: "actual-test-user", Request: "Change file text", Goals: []domain.Goal{{ID: "goal", Statement: "Change the text"}}, Limits: domain.Limits{Runs: 20, ExecutionMS: 600000, CoreMS: 600000, HostMS: 3600000, Tokens: 1000000}}})
+	v, e := s.Open(context.Background(), OpenRequest{Plan: testPlan(), OperationID: "open", Host: "cli", Repositories: []RepositoryInput{{Key: "primary", Path: root}}, Authorization: domain.Authorization{UserRef: "actual-test-user", Request: "Change file text", Goals: []domain.Goal{{ID: "goal", Statement: "Change the text"}}, Limits: domain.Limits{Runs: 20, ExecutionMS: 600000, CoreMS: 600000}}})
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -76,7 +76,7 @@ func TestObservationIsImmutableAndSamePathDriftPersists(t *testing.T) {
 func TestCompactionKeepsCostAndRejectsExpiredOperationReplay(t *testing.T) {
 	s, v, _ := fixture(t)
 	ctx := context.Background()
-	first := CheckpointRequest{Identity: Identity{TaskID: v.Task.TaskID, OperationID: "first", Revision: v.Task.Revision}, HostMS: 7, WaitMS: 3, Tokens: 11}
+	first := CheckpointRequest{Identity: Identity{TaskID: v.Task.TaskID, OperationID: "first", Revision: v.Task.Revision}, HostUsage: &domain.HostUsageReport{SourceID: "host", ObservedThrough: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Coverage: "reported", Totals: domain.HostUsageTotals{ActiveMS: ptr(int64(7)), WaitMS: ptr(int64(3)), Tokens: ptr(int64(11))}}}
 	v, e := s.Checkpoint(ctx, first)
 	if e != nil {
 		t.Fatal(e)
@@ -85,7 +85,7 @@ func TestCompactionKeepsCostAndRejectsExpiredOperationReplay(t *testing.T) {
 		task := v.Task
 		expected := task.Revision
 		task.Revision++
-		e = s.Store.Save(ctx, task, expected, store.Operation{ID: "op-" + string(domain.Hash(i))[:12], Kind: "checkpoint", Digest: domain.Hash(i)}, store.Charge{HostMS: 1}, "", nil, "", "")
+		e = s.Store.Save(ctx, task, expected, store.Operation{ID: "op-" + string(domain.Hash(i))[:12], Kind: "checkpoint", Digest: domain.Hash(i)}, store.Charge{HostUsage: &domain.HostUsageReport{SourceID: "host", ObservedThrough: time.Date(2026, 1, 1, 0, 0, i+1, 0, time.UTC), Coverage: "reported", Totals: domain.HostUsageTotals{ActiveMS: ptr(int64(i + 8)), WaitMS: ptr(int64(3)), Tokens: ptr(int64(11))}}}, "", nil, "", "")
 		if e != nil {
 			t.Fatal(i, e)
 		}

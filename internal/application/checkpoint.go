@@ -10,13 +10,11 @@ import (
 
 type CheckpointRequest struct {
 	Identity
-	RepositoryFreshness []domain.RepositoryFreshness `json:"repository_freshness,omitempty"`
-	Assessment          *domain.Assessment           `json:"assessment,omitempty"`
-	Progress            []domain.Progress            `json:"progress,omitempty"`
-	Issue               *domain.Issue                `json:"issue,omitempty"`
-	HostMS              int64                        `json:"host_ms,omitempty"`
-	WaitMS              int64                        `json:"wait_ms,omitempty"`
-	Tokens              int64                        `json:"tokens,omitempty"`
+	RepositoryFreshness []domain.RepositoryFreshness `json:"repository_freshness,omitempty" description:"Optional [{key,observation}] copied from the workspace helper; Core verifies it."`
+	Assessment          *AssessmentInput             `json:"assessment,omitempty" description:"公开审查对象，提交新增/受影响片段。"`
+	Progress            []ProgressInput              `json:"progress,omitempty" description:"按goal_id保存的当前实现进展，不是验证结果。"`
+	Issue               *domain.Issue                `json:"issue,omitempty" description:"Actual unresolved user authorization/tradeoff question; null in checkpoint does not clear it."`
+	HostUsage           *domain.HostUsageReport      `json:"host_usage,omitempty" description:"能力处说明依赖Host报告；请求中为有来源与范围的累计采样。"`
 }
 
 func (s *Service) Checkpoint(ctx context.Context, q CheckpointRequest) (View, error) {
@@ -54,15 +52,18 @@ func (s *Service) Checkpoint(ctx context.Context, q CheckpointRequest) (View, er
 			return View{}, domain.Invalid("repository_freshness.key", "repository must be bound to this Task")
 		}
 	}
-	if q.HostMS < 0 || q.WaitMS < 0 || q.Tokens < 0 {
-		return View{}, domain.Invalid("cost", "reported cost deltas must be nonnegative")
+	if q.HostUsage != nil {
+		if e = q.HostUsage.Validate(); e != nil {
+			return View{}, e
+		}
 	}
 	if len(q.Progress) > 0 {
 		if e = requireExecutionAuthority(t); e != nil {
 			return View{}, e
 		}
 	}
-	for _, p := range q.Progress {
+	for _, input := range q.Progress {
+		p := domain.Progress{GoalID: input.GoalID, Status: input.Status, Summary: input.Summary, NextStep: input.NextStep}
 		g, ok := t.Goal(p.GoalID)
 		if !ok || !slices.Contains([]string{"planned", "doing", "done"}, p.Status) || domain.Text("progress.summary", p.Summary) != nil {
 			return View{}, domain.Invalid("progress", "must reference an existing goal, status planned/doing/done and a concrete summary")
@@ -80,10 +81,22 @@ func (s *Service) Checkpoint(ctx context.Context, q CheckpointRequest) (View, er
 		}
 	}
 	if q.Assessment != nil {
-		if e = validateAssessment(t, *q.Assessment); e != nil {
+		a := q.Assessment.assessment()
+		if e = validateAssessment(t, a); e != nil {
 			return View{}, e
 		}
-		t.Assessment = t.MergeAssessment(*q.Assessment)
+		v, err := s.view(ctx, t, true)
+		if err != nil {
+			return View{}, err
+		}
+		a.Concerns, e = t.MergeConcerns(q.Assessment.Concerns, v.Decision.Evidence)
+		if e != nil {
+			return View{}, e
+		}
+		if len(q.Assessment.Concerns) > 0 {
+			t.RecordChange("concern", q.Assessment.Summary, "")
+		}
+		t.Assessment = t.MergeAssessment(a)
 	}
 	if q.Issue != nil {
 		if !slices.Contains([]string{"authorization", "tradeoff"}, q.Issue.Kind) || domain.Text("issue.summary", q.Issue.Summary) != nil || len(q.Issue.Options) < 2 || len(q.Issue.Options) > 8 {
@@ -91,12 +104,12 @@ func (s *Service) Checkpoint(ctx context.Context, q CheckpointRequest) (View, er
 		}
 		t.Issue = q.Issue
 	}
-	return s.save(ctx, t, o, store.Charge{HostMS: q.HostMS, WaitMS: q.WaitMS, Tokens: q.Tokens})
+	return s.save(ctx, t, o, store.Charge{HostUsage: q.HostUsage})
 }
 
 func validateAssessment(t domain.Task, a domain.Assessment) error {
 	if a.AuthorizationDigest != t.Authorization.Digest() || a.ContentDigest != t.ContentDigest() {
-		return domain.Fail("ASSESSMENT_STALE", "assessment", "review must bind the current authorization_digest and content_digest")
+		return &domain.Error{Code: "ASSESSMENT_STALE", Message: "review must bind current authorization and content; inspect the changed paths before correcting digests", Details: []domain.ContractViolation{{Path: "assessment", Rule: "requirement", Message: "use the current digests after reviewing actual changes"}}, Current: currentState(t)}
 	}
 	if e := domain.Text("assessment.summary", a.Summary); e != nil {
 		return e
@@ -145,6 +158,9 @@ func validateAssessment(t domain.Task, a domain.Assessment) error {
 			}
 			if !exists || seen[j.ID] || !slices.Contains([]string{"satisfied", "violation", "uncertain"}, j.Verdict) || domain.Text("assessment."+kind+".basis", j.Basis) != nil || j.Verdict == "uncertain" && j.Uncertainty == "" {
 				return domain.Invalid("assessment."+kind, "requires unique observed IDs, verdict satisfied/violation/uncertain, basis and explicit uncertainty")
+			}
+			if j.Verdict == "satisfied" && j.Uncertainty != "" {
+				return domain.Invalid("assessment."+kind+"."+j.ID+".uncertainty", "satisfied requires a supported conclusion without unresolved uncertainty; use uncertain or record a concern")
 			}
 			seen[j.ID] = true
 		}

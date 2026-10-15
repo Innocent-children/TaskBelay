@@ -19,10 +19,11 @@ import (
 )
 
 type Fingerprint struct {
-	Inputs      domain.Digest `json:"inputs"`
-	Environment domain.Digest `json:"environment"`
-	Executable  string        `json:"executable"`
-	Files       int           `json:"files"`
+	Inputs      domain.Digest `json:"inputs" description:"参与检查适用性计算的输入路径；缺省[.]覆盖绑定仓库Git可见内容。"`
+	Environment domain.Digest `json:"environment" description:"运行指纹处为环境摘要；命令示例处为环境变量；Host创建处为执行环境。"`
+	Executable  string        `json:"executable" description:"实际原生程序路径/名称，和arguments分别传递。"`
+	Files       int           `json:"files" description:"Number of actual input files in the fingerprint."`
+	Cwd         string        `json:"cwd" description:"检查为相对绑定仓库路径；启动描述为真实绝对工作目录。"`
 }
 
 func Observe(ctx context.Context, t domain.Task, c domain.Check) (Fingerprint, error) {
@@ -126,7 +127,7 @@ func Observe(ctx context.Context, t domain.Task, c domain.Check) (Fingerprint, e
 		}
 		env = append(env, executable+":"+string(d))
 	}
-	return Fingerprint{Inputs: domain.Hash(entries), Environment: domain.Hash(env), Executable: executable, Files: files}, nil
+	return Fingerprint{Inputs: domain.Hash(entries), Environment: domain.Hash(env), Executable: executable, Files: files, Cwd: cwd}, nil
 }
 func inputPaths(ctx context.Context, root string, scopes []string) (map[string]bool, error) {
 	raw, e := repository.ReadGit(ctx, root, "ls-files", "--cached", "--others", "--exclude-standard", "-z")

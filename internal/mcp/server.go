@@ -4,13 +4,14 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/Innocent-children/taskbelay/internal/protocol"
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type Server struct{ sdk *sdk.Server }
 
-func NewServer(handler *protocol.Handler, version, instructions string) *Server {
+func NewServer(handler *protocol.Handler, version, instructions string, summaryText bool) *Server {
 	server := sdk.NewServer(&sdk.Implementation{Name: "taskbelay", Version: version}, &sdk.ServerOptions{Instructions: instructions})
 	for _, tool := range protocol.Catalog {
 		destructive, openWorld := false, false
@@ -24,7 +25,14 @@ func NewServer(handler *protocol.Handler, version, instructions string) *Server 
 			if err != nil {
 				return nil, err
 			}
-			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(encoded)}}, StructuredContent: json.RawMessage(encoded), IsError: !value.OK}, nil
+			text := string(encoded)
+			if summaryText {
+				text = fmt.Sprintf("%s: ok=%t. Read the complete response in structuredContent.", tool.Name, value.OK)
+				if value.Error != nil {
+					text += " " + value.Error.Code + ": " + value.Error.Message
+				}
+			}
+			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: text}}, StructuredContent: json.RawMessage(encoded), IsError: !value.OK}, nil
 		})
 	}
 	return &Server{sdk: server}

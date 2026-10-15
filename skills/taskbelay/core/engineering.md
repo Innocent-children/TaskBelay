@@ -1,77 +1,99 @@
 # Development with TaskBelay
 
-Use TaskBelay when saved progress, current verification or interruption recovery helps the actual
-request. Small mechanical edits and ordinary questions usually need only the native agent. Honor an
-explicit invocation or opt-out. The agent understands and edits; Core records one Task and checks
-actual scope, result applicability, cost and completion.
+Use TaskBelay for substantial work that benefits from saved progress, verification reuse or recovery.
+Respect an explicit invocation or opt-out. Ordinary questions and small mechanical edits usually need
+only the native agent. Host reasoning and edits remain with the agent; Core owns the single Task.
 
-## Start from existing authority
+## Start and continue from real authority
 
-Read the request and repository rules, locate the cause and the responsible code, and explain a
-proportionate approach. Reuse the user's actual authorization. Open the Task in the selected/current
-workspace with the real user_ref, requested outcomes, explicit restrictions and an implementation plan
-(approach, verification_basis, checks and optional forecasts). No separate plan confirmation is required. Do not invent limits
-or turn predicted files into a user allowlist. Unset cost limits remain unset; actual usage accumulates.
+Read the request and repository rules, locate the responsible code and explain a proportionate approach.
+Reuse the user's actual request and workspace choice. Do not invent a budget, ask for repeat plan approval,
+or turn predicted paths into a permission list. Git, new chats, publication and deletion keep their own
+actual authorization and native Host permissions.
 
-Show the directory, branch and initial changes. Ask only when the workspace is unclear or a real
-conflict needs a choice. Read [workspace](workspace.md) only for requested branch/worktree preparation,
-upstream integration or cleanup. These are optional operations with their own actual authority.
+On meaningful new development or session recovery, use the retained task_id and get_task. If its identity
+is unknown, use native host-check workspace-available for the exact selected directories; each returned
+repository has its active_task_id. An empty claim is not proof that an earlier open failed. Recover an
+uncertain original creation before creating another. Do not run this discovery before every edit or ordinary question.
 
-## Continue and adjust
+Continue an active Task for the same outcome. Use revise_task for actual changes: it replaces only the
+complete authorization/plan objects supplied. Ordinary methods and check changes reuse existing authority;
+changed outcomes/restrictions or expanded explicit caps need the real new user message reference. A new
+independent request after a terminal task may open a new Task; do not use it to erase pending work or costs.
 
-Implement and run relevant checks in any useful order within the request and native Host permissions.
-Record progress at meaningful points: a completed piece of work, a relevant scope change, an actual
-verification result, a decision that needs the user, or a handoff. Do not checkpoint every edit or poll
-unchanged state. Review real changes against goals and constraints, correcting within scope first.
+Use the existing workspace helpers only when branch/worktree preparation, upstream work or cleanup is
+needed. Read [workspace](workspace.md) then. New branches do not implicitly track the source upstream.
+Inspect actual branch/upstream results; Git configuration does not prove an IDE's future push target.
 
-Use revise_task with only the fields that need replacing. Routine approach, forecast and check changes
-reuse the original request. Changed user outcomes or explicit restrictions, and increased/removed
-user-set limits, need the actual new user decision. Never invent its user_ref. Changing the verification
-method must still establish the same requested outcome; replacing a failing assertion with a passing
-placeholder is not verification. Core checks applicability, not the truth of the agent's reasoning.
+## Implement and verify the actual outcome
 
-Preserve unaffected progress and passing results. Explicit allowed_paths, forbidden_paths, pins and
-manifest dependency restrictions still apply. Dependencies without an explicit policy need a reasoned
-necessity/compatibility review, not automatic permission escalation. Native installation permissions
-remain in force. Structured hooks cover supported paths; shell and external edits are observed at
-checkpoints. TaskBelay is not a sandbox.
+Work and checks may alternate. Checkpoint meaningful progress, relevant changes, actual results, a real
+pending decision or a handoff. Do not checkpoint every edit, poll unchanged state or keep a second Task
+cursor in native Todo lists. Ordinary progress can continue without a final review on every checkpoint.
 
-## Verify the remaining gap
+Use the existing plan.checks goal_ids/purpose/rationale/conditions and plan.verification_basis. Explain
+which behavior the check observes and why the combination covers this change. A successful compilation
+alone does not establish behavior. When signatures, interfaces or data structures change, inspect their
+actual callers and affected existing tests, including test compilation when relevant. Use proportionate
+checks; document-only work does not require unrelated suites. Programs do not grade semantic correctness.
 
-Each plan.check names its goal_ids, purpose, exact argv, actual conditions and rationale. Every goal
-requires an acceptance check; regression failures can be accepted separately but never replace it. Default inputs ["."] cover
-Git-visible inputs across all bound repositories. Narrow inputs only with a concrete input_basis that
-includes relevant helpers, configuration and dependencies; key::path selects another repository.
-Undeclared external services are not verified. Use repeatable only for checks whose uncertain effects
-can safely be inspected and repeated; otherwise retain requires_user.
+conditions describes execution assumptions and applicability, not a natural-language assertion engine.
+Put executable assertions into the actual command or test. Prefer argv; when a shell is required, preserve
+the important process exit status instead of accepting a trailing tail/tee/echo result. Default inputs ["."]
+cover Git-visible files in all bound repositories; narrowing inputs requires an actual dependency basis.
+Ignored files, databases and external services are not automatically verified.
 
-Invoke check run through the Host native process tool with its actual permissions and environment.
-MCP/HTTP do not execute commands. Retain native sessions for long checks and query their saved run.
-Run only necessary checks and reuse applicable passing results. Read get_run for output and failure
-diagnostics. An unchanged failure retry needs previous_run_id and new_information; after three
-unchanged failures, change the implementation, conditions or method. A full suite needs a current
-full_suite_basis. Extra budget is not a reason for extra testing, and exhausted budget never waives
-acceptance. Set or change explicit cost limits only from the actual user decision.
+Run a planned check once through native check run. It actually executes the command; do not first run the
+same command separately and then run it again to register it. Keep the returned view.identity and run_id.
+ok=true means the request was processed; inspect run.status for passed/failed/unknown. Reuse the existing
+result returned with CHECK_ALREADY_SATISFIED. An unchanged failure retry requires the original run and new
+actual diagnostic information; after three unchanged failures change the code, conditions or method.
+Full suites require a concrete remaining gap, not surplus budget.
 
-## Resume and deliver
+## Keep unresolved questions visible
 
-Keep operation_id and returned run_id. After a lost response, read the saved Task/run before taking
-another action. Recover signed results without re-execution. Wait while an original process is alive;
-when it has stopped without a result, inspect effects and record what remains unknown. Obtain a real
-user decision before repeating a non-repeatable operation. Do not replace a Task to erase costs or
-unresolved work. Preserve unsupported historical data.
+assessment.paths ties actual changed paths to current goals. Submit only new/affected paths, constraints
+and observed facts; Core keeps applicable saved judgments. Constraint/fact IDs come from actual observations,
+not derived decision.gaps. satisfied cannot contain unresolved uncertainty; uncertain cannot satisfy acceptance.
 
-Before delivery, review the actual diff. assessment.paths ties each changed path to goal_ids and a
-concrete basis. assessment.review.summary explains whether the cause is resolved, responsibility is
-correct, complexity and validation are proportionate, and the resulting structure is still the one
-you would choose; uncertainty names unresolved concerns. Do not fill separate ceremonial work tables.
+Record an actual engineering question in assessment.concerns with a stable id, original summary and relevant
+goal_ids/check_ids/paths. Omitted concerns and empty arrays do not remove saved questions. Resolve the same
+question rather than relabelling it. verified cites actual applicable passing results; not_blocking gives a
+concrete reason the limitation does not affect the current goal; scope_changed references an actual already
+saved authorization change. These resolutions cannot waive required checks, violations, pending executions
+or user decisions. Related changes invalidate resolutions; a declaration alone cannot establish semantic truth.
 
-Finish only when decision.ready. Report actual changes, passed/failed/unrun checks, accepted existing
-regression failures and remaining limits. Claims never prove execution; human records require actual
-completed user observations. Existing regression failures require real comparison results and explicit
-user acceptance, and remain failures in delivery. Stop at the requested outcome. Completion grants no
-Git, publication or deletion authority.
+Only an actual unresolved authorization or important user tradeoff belongs in issue. Record the real answer
+with resolve_issue and the current issue_digest. It does not itself change authorization; apply any actual
+boundary change with revise_task. Do not invent user_refs, observations or acceptance of existing failures.
 
-Tool fields and recovery: [protocol](protocol.md). Normal use should not require reading plugin source.
+## Recover and deliver
 
-Maintainer implementation reference: `internal/application/completion.go`.
+Use returned identities/digests; do not calculate revisions. Errors contain specific fields, gaps and, when
+known, current state or an existing result. Follow recovery.operation: reuse, replace, read_before_retry or
+none. outcome=applied/unknown requires reading saved state before another effect. Do not debug routine
+protocol refusals by reading SQLite, binary symbols or implementation source.
+
+After response loss, read the original Task/run. Recover a signed result without another execution. If the
+original process is alive or cannot be observed, keep pending. A stopped process without a receipt remains
+interrupted_unknown; inspect actual effects and obtain a real decision before repeating a non-repeatable
+operation. Replanning and compaction never reset accumulated costs or unresolved operations.
+
+Host usage comes only from actual Host measurements. Submit cumulative host_usage with a stable Task-specific,
+non-overlapping source_id; do not estimate tokens or count inherited session totals again. null means unknown,
+zero means measured zero. Without a report, leave coverage unreported. An explicit cap on unavailable Host
+metrics blocks new checks until actual usage or a real budget change is available; reads and recovery remain
+possible. Without an explicit cap, keep working and state the measurement limit.
+
+Before delivery inspect the actual diff and submit assessment.review.summary explaining resolved causes,
+responsibilities, proportionate complexity/verification and whether this is the structure you would choose.
+Finish only when the current decision.ready is true. acceptance cites every applicable passed acceptance
+check for each goal; claims never count. Known regression failures require real comparison results and actual
+user acceptance, remain failures and do not replace acceptance. Delivery limitations come from saved concerns;
+there is no separate risks field that can hide an unresolved question.
+
+Report actual changes, passed/failed/unrun/unknown results and limitations. Stop at the requested outcome.
+Completion grants no Git, publication, new-chat or deletion authority. Tool fields, actual examples and
+recovery rules are available through [protocol](protocol.md); using the package does not require its source.
+
+Maintainer implementation references: `internal/domain/concern.go`, `internal/domain/control.go`, `internal/application/checkpoint.go` and `internal/store/host_usage.go`. They are not required for using the packaged method descriptions.

@@ -38,7 +38,7 @@ export async function inspect(input, { runGit = defaultRunGit } = {}) {
     exact(item, ["key", "repository_path"]); repositoryKey(item.key);
     const observation = await inspectSourceRepository(item.repository_path, { runGit });
     if (repositories.some(r => r.key === item.key || r.repository_path === observation.canonical_root)) throw new Error("Duplicate repository");
-    repositories.push({ key: item.key, repository_path: observation.canonical_root, head: observation.head, branch: observation.branch, status_digest: observation.status_digest, clean: observation.clean, source_identity: observation.source_repository_identity });
+    repositories.push({ key: item.key, repository_path: observation.canonical_root, head: observation.head, branch: observation.branch, status_digest: observation.status_digest, clean: observation.clean, source_identity: observation.source_repository_identity, upstream: observation.upstream, push_configuration: observation.push_configuration, observed_at: observation.observed_at });
   }
   return { request_digest: hash(input.request), repositories };
 }
@@ -59,7 +59,7 @@ export async function prepare(input, options = {}) {
     } else {
       if (selection.source_type !== "local" || selection.remote_name !== "" || resolve(selection.worktree_path) !== observed.repository_path) throw new Error("Local work must retain its source directory");
       await preflightLocalBranchSelection({ repositoryPath: observed.repository_path, workspaceMode: selection.workspace_mode, baseBranch: selection.base_branch, targetBranch: selection.target_branch, carryChanges: selection.carry_changes, runGit });
-      const available = await (options.checkWorkspaceAvailable ?? (root => coreJSON(["host-check", "workspace-available"], { repository_path: root }, options)))(observed.repository_path);
+      const available = await (options.checkWorkspaceAvailable ?? (async root => (await coreJSON(["host-check", "workspace-available"], { repository_path: root }, options)).result))(observed.repository_path);
       if (available.available !== true) throw new Error("Repository is claimed by an active Core Task");
     }
     if (repositories.some(r => resolve(r.worktree_path) === resolve(selection.worktree_path))) throw new Error("Duplicate destination");
@@ -68,7 +68,7 @@ export async function prepare(input, options = {}) {
   if (repositories.some(r => r.workspace_mode === "dedicated_worktree") && (!input.handoff || !Array.isArray(input.handoff.discussion) || !input.handoff.discussion.length)) throw new Error("Dedicated workspace needs complete original requirement discussion");
   const launchID = randomUUID(), dir = await directory(launchID, options.environment);
   await mkdir(dir, { recursive: true, mode: 0o700 });
-  const receipt = { launch_id: launchID, host: "claude", request: input.request, authorization_ref: input.authorization_ref, request_digest: hash(input.request), handoff: input.handoff, handoff_digest: hash(input.handoff), repositories, session: null, relocation: null };
+  const receipt = { launch_id: launchID, host: "claude", request: input.request, authorization_ref: input.authorization_ref, request_digest: hash(input.request), handoff: input.handoff, handoff_digest: hash(input.handoff), repositories, session: null };
   await atomic(join(dir, "receipt.json"), receipt);
   return await locked(launchID, options, async (r, save) => {
     for (const repo of r.repositories) {
@@ -143,7 +143,7 @@ export async function provision(id, options = {}) {
       if (repo.phase === "provisioned") continue;
       if (repo.phase !== "prepared") throw new Error("Provisioning is incomplete or uncertain; inspect retained state");
       if (repo.workspace_mode !== "dedicated_worktree") {
-        const available = await (options.checkWorkspaceAvailable ?? (root => coreJSON(["host-check", "workspace-available"], { repository_path: root }, options)))(repo.repository_path);
+        const available = await (options.checkWorkspaceAvailable ?? (async root => (await coreJSON(["host-check", "workspace-available"], { repository_path: root }, options)).result))(repo.repository_path);
         if (available.available !== true) throw new Error("Workspace is already claimed");
       }
       repo.phase = "provisioning"; await save();
@@ -153,7 +153,9 @@ export async function provision(id, options = {}) {
           await createCliWorktree({ ...args, worktreePath: repo.worktree_path });
           await applyWorkspaceChanges(repo.worktree_path, repo.snapshot, snapshotRun(runGit));
         } else await prepareLocalBranch(args);
-        repo.worktree_identity = await workspaceIdentity(await inspectSourceRepository(repo.worktree_path, { runGit }));
+        const actual = await inspectSourceRepository(repo.worktree_path, { runGit });
+        repo.worktree_identity = await workspaceIdentity(actual);
+        repo.observation = { branch: actual.branch, upstream: actual.upstream, push_configuration: actual.push_configuration, observed_at: actual.observed_at };
         repo.phase = "provisioned"; await save();
       } catch (error) { repo.phase = "uncertain"; await save(); throw error; }
     }
@@ -211,8 +213,8 @@ export async function cleanup(id, operation, input, options = {}) {
     if (!repo || repo.workspace_mode !== "dedicated_worktree") throw new Error("Only receipt-owned dedicated worktrees can be cleaned");
     if (input.terminal !== true || input.authorized !== true) throw new Error("Terminal Task and separate deletion authorization required");
     const response = await (options.readTask ?? (taskID => coreJSON(["call","taskbelay_get_task"], {task_id:taskID,refresh:false,detail:true}, options)))(input.task_id);
-    const task = response?.result?.details?.task;
-    if (!task || !["done","cancelled"].includes(task.status) || task.revision !== input.revision || task.task_id !== input.task_id || !task.repositories?.some(entry => entry.key === repo.key && entry.workspace_origin.provisioning_receipt_id === provisioningReceiptID(id, repo.key) && entry.workspace_origin.canonical_worktree_root === repo.worktree_path)) throw new Error("Current terminal Core task does not own this workspace");
+    const task = response?.result;
+    if (!task || !["done","cancelled"].includes(task.status) || task.identity?.revision !== input.revision || task.identity?.task_id !== input.task_id || !task.details?.repositories?.some(entry => entry.key === repo.key && entry.workspace_origin.provisioning_receipt_id === provisioningReceiptID(id, repo.key) && entry.workspace_origin.canonical_worktree_root === repo.worktree_path)) throw new Error("Current terminal Core task does not own this workspace");
     const key = operation === "cleanup-worktree" ? "worktree_cleanup" : "branch_cleanup";
     if (repo[key] === "completed") return r;
     if (repo[key]) throw new Error("Cleanup has already been requested; inspect its outcome");

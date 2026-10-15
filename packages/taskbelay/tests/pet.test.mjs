@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import { EventEmitter } from "node:events";
-import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { copyFile, chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -178,7 +178,10 @@ test("start consumes actual Core status and starts its service before handing of
   const { runtimePath, dataDirectory } = fixture.selection;
   await mkdir(dirname(runtimePath), { recursive: true });
   await mkdir(dataDirectory, { recursive: true });
-  await execPortableCommand("go", ["build", "-o", runtimePath, "./cmd/taskbelay"], {
+  // The aggregate check already built Core after the UI build. Reuse those
+  // exact bytes while package fixtures may rebuild their own assets concurrently.
+  if (process.env.ENGINEERING_CORE) await copyFile(process.env.ENGINEERING_CORE, runtimePath);
+  else await execPortableCommand("go", ["build", "-o", runtimePath, "./cmd/taskbelay"], {
     cwd: resolve(import.meta.dirname, "../../.."), encoding: "utf8", timeout: 120_000,
   });
   const native = nativePlatform();

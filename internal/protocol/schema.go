@@ -160,6 +160,15 @@ func typeSchema(t reflect.Type) map[string]any {
 			if values := f.Tag.Get("enum"); values != "" {
 				fieldSchema["enum"] = strings.Split(values, ",")
 			}
+			for _, name := range []string{"default", "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"} {
+				if raw := f.Tag.Get(name); raw != "" {
+					var value any
+					if json.Unmarshal([]byte(raw), &value) != nil {
+						panic("invalid Schema annotation: " + f.Name + "." + name)
+					}
+					fieldSchema[name] = value
+				}
+			}
 			props[name] = fieldSchema
 			if !strings.Contains(tag, "omitempty") {
 				required = append(required, name)
@@ -181,17 +190,22 @@ func typeSchema(t reflect.Type) map[string]any {
 	}
 }
 func OutputSchema(v any) map[string]any {
-	base := map[string]any{"request_id": map[string]any{"type": "string"}, "tool": map[string]any{"type": "string"}}
+	base := map[string]any{"request_id": map[string]any{"type": "string", "description": "Response identity; mutations retain the supplied operation_id."}, "tool": map[string]any{"type": "string", "description": "Exact method that produced this response; native execution is check.run."}}
 	success := map[string]any{}
 	failure := map[string]any{}
 	for k, x := range base {
 		success[k] = x
 		failure[k] = x
 	}
-	success["ok"] = map[string]any{"const": true}
+	success["ok"] = map[string]any{"const": true, "description": "Request was processed. For execution, run.status still determines whether the check passed."}
 	success["result"] = Schema(v)
-	failure["ok"] = map[string]any{"const": false}
+	success["result"].(map[string]any)["description"] = "Method-specific result; omitted on failure."
+	failure["ok"] = map[string]any{"const": false, "description": "Request failed; inspect outcome and recovery before another operation."}
 	failure["error"] = Schema(domain.Error{})
 	failure["recovery"] = Schema(Recovery{})
-	return map[string]any{"type": "object", "oneOf": []any{map[string]any{"properties": success, "required": []string{"ok", "request_id", "tool", "result"}, "additionalProperties": false}, map[string]any{"properties": failure, "required": []string{"ok", "request_id", "tool", "error", "recovery"}, "additionalProperties": false}}}
+	failure["error"].(map[string]any)["description"] = "Specific category, field paths and current completion gaps or saved execution reference."
+	failure["recovery"].(map[string]any)["description"] = "Operation-identity and recovery rules; never an automatic retry or authorization."
+	failure["outcome"] = map[string]any{"type": "string", "enum": []string{"not_applied", "applied", "unknown"}, "description": "Semantic commit outcome; control metering may have been written independently."}
+	failure["execution"] = map[string]any{"type": "string", "enum": []string{"not_started", "started", "unknown"}, "description": "Known native execution phase, when relevant."}
+	return map[string]any{"type": "object", "oneOf": []any{map[string]any{"properties": success, "required": []string{"ok", "request_id", "tool", "result"}, "additionalProperties": false}, map[string]any{"properties": failure, "required": []string{"ok", "request_id", "tool", "error", "recovery", "outcome"}, "additionalProperties": false}}}
 }

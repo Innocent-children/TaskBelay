@@ -1,3 +1,5 @@
+import { describeInterface } from "./interface-reference.mjs";
+import { fileURLToPath } from "node:url";
 import { mkdir } from "node:fs/promises";
 
 import { diagnoseInstallation } from "./diagnostics.mjs";
@@ -24,6 +26,13 @@ import { runTaskBelay } from "./runtime.mjs";
 import { installedPackageRoot, readLocalPackages } from "./local-packages.mjs";
 
 export async function runMain(arguments_, dependencies = {}) {
+  if (arguments_.length === 3 && arguments_[1] === "--help" && arguments_[2] === "--json") {
+    try {
+    const contract = await describeInterface(fileURLToPath(new URL("../", import.meta.url)), "taskbelay.lifecycle." + arguments_[0]);
+    (dependencies.output ?? process.stdout).write(JSON.stringify(contract, null, 2) + "\n");
+    return { code: 0 };
+    } catch (error) { (dependencies.errorOutput ?? process.stderr).write(error.message + "\n");return {code:2}; }
+  }
   const input = dependencies.input ?? process.stdin;
   const output = dependencies.output ?? process.stdout;
   const errorOutput = dependencies.errorOutput ?? process.stderr;

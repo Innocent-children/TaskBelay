@@ -94,7 +94,7 @@ class Observer {
       value &&
       (!value.summary ||
         value.summary.task_id !== id ||
-        typeof value.summary.current_node !== "string" ||
+        typeof value.summary.status !== "string" ||
         typeof value.summary.lifecycle !== "string")
     )
       throw new Error("Invalid task detail");

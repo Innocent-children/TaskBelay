@@ -11,7 +11,7 @@ type ReviseRequest struct {
 	Identity
 	Plan          *domain.Plan          `json:"plan,omitempty" description:"Replace the complete implementation plan, including checks, forecasts and review hints; omission retains it."`
 	Authorization *domain.Authorization `json:"authorization,omitempty" description:"Replace the user request and boundaries only when needed. Changed outcomes/restrictions or increased caps need an actual new user_ref."`
-	Reason        string                `json:"reason"`
+	Reason        string                `json:"reason" description:"操作/处理的实际原因，不能替代所需用户决定。"`
 }
 
 func (s *Service) Revise(ctx context.Context, q ReviseRequest) (View, error) {

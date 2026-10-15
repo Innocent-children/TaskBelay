@@ -83,8 +83,8 @@ func (s *Service) compactReceipts(ctx context.Context) error {
 		}
 		var v struct {
 			Run struct {
-				RunID string `json:"run_id"`
-			} `json:"run"`
+				RunID string `json:"run_id" description:"实际执行身份，来自原生check run；不重新构造执行来找结果。"`
+			} `json:"run" description:"本次实际或恢复运行的摘要，必须检查status。"`
 		}
 		if json.Unmarshal(b, &v) != nil || v.Run.RunID != id || !execution.OwnedReceipt(s.Store.Directory, id, b) {
 			continue

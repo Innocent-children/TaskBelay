@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { readSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { describeInterface, interfaceHelpRequest } from "../lib/interface-reference.mjs";
+import { fileURLToPath } from "node:url";
 import { core } from "../lib/runtime.mjs";
 import * as lifecycle from "../lib/lifecycle.mjs";
 import * as workspace from "../lib/workspace.mjs";
@@ -25,13 +27,20 @@ async function input() {
   return value;
 }
 export async function runCLI(args) {
+  const help = interfaceHelpRequest(args);
+  if (help) {
+    const name = help.name ?? (help.operation ? `claude.${help.group}.${help.operation}` : undefined);
+    process.stdout.write(JSON.stringify(await describeInterface(fileURLToPath(new URL("../", import.meta.url)), name), null, 2) + "\n");
+    return 0;
+  }
+
   if (args.length === 0 || args.includes("--help")) {
-    process.stdout.write("taskbelay-claude status|setup|remove [--json]\ntaskbelay-claude --version\ntaskbelay-claude mcp\ntaskbelay-claude check run\ntaskbelay-claude host-check pre-file-write|workspace-available\ntaskbelay-claude hook pre-tool-use\ntaskbelay-claude host-launch " + operations.join("|") + "\nHost-launch input: one JSON object on closed stdin. inspect: {request,repositories:[{key,repository_path}]}; prepare: {request,authorization_ref,repositories:[{key,repository_path,workspace_mode,source_type,remote_name,base_branch,target_branch,carry_changes,worktree_path}],handoff}. Other operations: {launch_id,...operation inputs}. Read the Skill for exact operation contracts.\n");
+    process.stdout.write("taskbelay-claude status|setup|remove [--json]\ntaskbelay-claude --version\ntaskbelay-claude mcp\ntaskbelay-claude check run\ntaskbelay-claude host-check pre-file-write|workspace-available\ntaskbelay-claude hook pre-tool-use\ntaskbelay-claude host-launch " + operations.join("|") + "\nHost-launch input: one JSON object on closed stdin. inspect: {request,repositories:[{key,repository_path}]}; prepare: {request,authorization_ref,repositories:[{key,repository_path,workspace_mode,source_type,remote_name,base_branch,target_branch,carry_changes,worktree_path}],handoff}. Other operations: {launch_id,...operation inputs}. Use host-launch <operation> --help --json for complete schemas and examples.\n");
     return 0;
   }
   if (args.length === 1 && args[0] === "--version") { process.stdout.write((await core(["version"])).stdout); return 0; }
   if (args.length === 2 && (args[0] === "call" || args[0] === "check" && args[1] === "run")) { const result = await core(args, {stream:true}); return result?.code ?? 0; }
-  if (args.length === 1 && args[0] === "mcp") { await core(["mcp", "--stdio"], { stream: true }); return 0; }
+  if (args.length === 1 && args[0] === "mcp") { return (await core(["mcp", "--stdio"], { stream: true })).code; }
   if (["status", "setup", "remove"].includes(args[0]) && (args.length === 1 || args.length === 2 && args[1] === "--json")) {
     process.stdout.write(JSON.stringify(await lifecycle[args[0]]()) + "\n"); return 0;
   }

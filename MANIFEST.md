@@ -11,3 +11,5 @@
 宿主指南: [Codex](packages/codex/README.md), [DeepSeek](packages/deepseek/README.md), [Claude](docs/CLAUDE.md), [ZCode](docs/ZCODE.md).
 
 工程维护: [AGENTS](AGENTS.md), [CONTRIBUTING](CONTRIBUTING_zh-CN.md), [I18N](docs/I18N.md), [versions](docs/VERSIONING.md), [release](release/README.md).
+
+- `docs/INTERFACES.md` / `docs/INTERFACES_en.md`: standalone method discovery, transport, field and example usage; `contracts/interfaces.json` is the complete generated reference.

@@ -34,7 +34,7 @@ test('failure refreshing a saved mutation preserves its outcome and never repeat
   const methods = [];
   globalThis.fetch = async (_, options) => {
     methods.push(options?.method ?? 'GET');
-    if (methods.length === 1) return { ok: true, json: async () => ({ ok: true, result: { task: { task_id: 'fixture' } } }) };
+    if (methods.length === 1) return { ok: true, json: async () => ({ ok: true, result: { identity: { task_id: 'fixture' } } }) };
     throw new Error('display refresh failed');
   };
   try {
@@ -50,12 +50,12 @@ test('run recovery refreshes the task identified by its view without repeating r
   const requests = [];
   globalThis.fetch = async (url, options) => {
     requests.push({url, method: options?.method ?? 'GET'});
-    if (requests.length === 1) return {ok:true,json:async()=>({ok:true,result:{view:{task:{task_id:'recovered-task'}},run:{run_id:'original-run',status:'interrupted_unknown'}}})};
-    return {ok:true,json:async()=>({ok:true,result:{task:{task_id:'recovered-task'},decision:{pending_runs:[]}}})};
+    if (requests.length === 1) return {ok:true,json:async()=>({ok:true,result:{view:{identity:{task_id:'recovered-task'}},run:{run_id:'original-run',status:'interrupted_unknown'}}})};
+    return {ok:true,json:async()=>({ok:true,result:{identity:{task_id:'recovered-task'},decision:{pending_runs:[]}}})};
   };
   try {
     const result=await callTask('taskbelay_recover_run',{operation_id:'recover-once'});
-    assert.equal(result.task.task_id,'recovered-task');
+    assert.equal(result.identity.task_id,'recovered-task');
     assert.deepEqual(requests,[{url:'/api/core/taskbelay_recover_run',method:'POST'},{url:'/api/tasks/recovered-task?refresh=1',method:'GET'}]);
   } finally {globalThis.fetch=original;globalThis.document=document}
 });

@@ -2,35 +2,40 @@
 
 [中文](PROJECT-STATUS.md) | [English](PROJECT-STATUS_en.md)
 
-Current source reuses existing user authority, supports focused method/check revisions, explicit scope restrictions, selective result invalidation, optional cost caps with continuous metering, known-failure exceptions and recovery. Routine tool responses are summaries with full details on demand. Core owns one Task; the retired node workflow and historical-data compatibility are not restored. Source changes do not update public npm/Tag/GitHub Release or native Host support claims.
+Current source supports development and verification under an existing user request, retaining one Core Task, actual results, unresolved questions and cumulative usage. Ordinary methods/checks can change within that request; changed outcomes, explicit restrictions or increased existing caps still require a real decision. Public npm versions, Tags, release records and platform support promises have not changed with this source work.
 
-## Verification entrypoints and scope
+## Current implementation
 
-| Check | Coverage |
+- Stable assessment.concerns retain engineering questions until explicitly resolved. Delivery limitations derive from applicable not_blocking records; omitted prose, empty arrays or a completion summary cannot erase the original question.
+- Decision.gaps describes unmet goals, checks, reviews, concerns and runs. Failures expose current identities, existing results and known commit/execution phases. Recovery never reruns the original command.
+- Existing goal_ids, rationale, conditions and verification_basis express coverage and retain independent applicable results. A passing command executes once; unavailable usage or a reached cap cannot make completed work require another execution.
+- Meaningful new development/recovery discovers the actual Task, including every selected root's claim. Hosts preserve real permissions and message references without a second Task cursor.
+- Mutations return compact state. Context, full records, actual output and method contracts are read on demand. All 100 existing method/operation branches have field descriptions and success/failure examples; packaged help works without source or storage. ZCode uses concise MCP text; text-rendering Hosts keep the full envelope.
+- New branches explicitly use --no-track, separating source selection from Task upstream. Cumulative Host samples use non-overlapping sources and commit deduplication, totals and operation identity in the same CAS transaction. Unknown values remain distinct from zero.
+
+Only the current database Schema is accepted. Older data is preserved and refused, without migration/reset; source trials need a separate data directory. CORE_VERSION and internal/store define the current Core/Schema versions.
+
+## Checks performed
+
+On 2026-10-14, macOS arm64 with Go 1.27.2, Node.js 24.21.0 and pnpm 11.28.2 ran:
+
+| Check | Result and scope |
 | --- | --- |
-| go test -count=1 -timeout=90s ./... | Current domain, authorization, storage, execution, CLI/MCP/HTTP and retained repository contracts |
-| tests/journeys/engineering.test.mjs | Actual processes in isolated Git/SQLite: immediate authorized start, independent result retention after new checks, acceptance gaps, cross-repository invalidation, repetition, exceptions and real interrupted execution |
-| tests/host-engineering.test.mjs | Independently staged packages for four Hosts using current Core, tools and complete references |
-| Four Host Node suites | Direct consumers of launch, workspace, hooks, Skills and installation management; unavailable platforms/capabilities are explicitly skipped |
-| scripts/build-webui.mjs | TypeScript and generated assets; browser interactions are checked separately |
-| scripts/sync-skill-references.mjs --check and scripts/check-versions.mjs | Generated contract consistency and version ownership |
+| pnpm validate | Passed Go vet/all Go packages, WebUI build/four request tests, native execution journeys, four independent Host packages, Node and existing build/release tests |
+| Native execution journeys and independent Host packages | 15 passed, including real child-process interruption, original-run recovery, result reuse and isolated packaged Core invocation |
+| Final Node suite | 655 tests: 642 passed, 13 skipped for Windows-native or specified DSH environments, no failures |
+| Focused Core/interface checks | Passed concern retention/invalidation, claim rejection, completion gaps, source deduplication/CAS rollback, result reuse after reaching a cap, post-commit read failure and MCP concise-text preservation |
+| 100 interface descriptions | Complete output examples validated against Schema; field notes, registered coverage, installed-only help and generated-file synchronization passed |
+| Windows x64 Core | Current source cross-compiled; no native Windows execution |
+| macOS desktop response models | All 14 WebUIModelTests passed |
+| Local browser | Isolated Git/data verified saved-versus-refreshed state, concrete gaps, actual passed results, retained concerns, limitations, unknown Host usage and layout; no browser warnings/errors |
 
-The original engineering-upgrade record used Windows x64, Go 1.27.0 and Node.js 24.18.0. The 2026-10-12 fixes were checked on macOS arm64, Go 1.27.0 and Node.js 24.21.0 for result reuse, branch/history write preflight, Claude/ZCode cleanup and process-group recovery after forced Core termination. The changed Windows suspended-launch implementation was cross-compiled but has not run natively. Checks use temporary repositories/data and preserve user installations and historical data. The complete entrypoint is node scripts/validate-engineering.mjs; choose individual checks according to affected scope. Actual passes, failures and skips come from the current execution output. Older tests/journeys/evidence/ records apply only to their recorded artifacts and cannot substitute for current-source verification.
+Simulated installation/session/user-semantic/desktop drivers are labelled separately and do not establish real Host actions. Checks did not change user installations, historical databases or public release records.
 
-On 2026-10-13, this change passed node scripts/validate-engineering.mjs on macOS arm64, Go 1.27.0 and Node.js 24.21.0: Go vet and every Go package passed, independently staged packages for four Hosts passed, and the Node suite passed 487 of 499 tests with 12 Windows-native or exact-DSH-environment skips. After adding the requirement-change scenario, all 10 tests in tests/journeys/engineering.test.mjs passed, and affected Go checks passed again. Windows x64 Core cross-compilation passed without native execution. A real local browser verified refresh, expandable details, unset-limit display and budget-save readback without console errors. Operations used temporary repositories and isolated data, without installing or changing the user's plugins.
+## Known verification limits
 
-For the same initial MCP task fixture, the summary was 2737 bytes versus 4712 bytes for the full application view. This measures that fixture's response size only; it does not establish model-task time or token savings.
+The full macOS Swift suite ran 192 tests, with two skipped for missing specified artwork packs. Nine tests produced 20 failed assertions in native animation/layout timing and existing phase text. Running those nine tests against a separate unchanged HEAD copy reproduced the same 20 assertions. The 14 affected response-model tests passed. The complete Swift suite is not reported as passing, and existing animation/text issues were not expanded into this change.
 
-## Unproven outcomes
+No real Codex, Claude Code, ZCode or DSH model development session was run. ZCode UI installation and new session events were not verified; no long-term token/time benefit was measured. ZCode recovery relies on Skill guidance and saved identity without assuming unavailable on-turn/on-resume/token callbacks. Other-platform native behavior, final public installation artifacts and desktop signing/notarization remain separate checks.
 
-Real Core execution is distinct from real user/model conversations. Journey answers and semantic judgments are fixture inputs; they cannot establish that AI understands every requirement or eliminates overdesign. Native Codex/Claude Code/ZCode/DSH model sessions, final registry installation artifacts and long-term cost comparisons have not been established here. No support or benefit claim is expanded from these checks.
-
-Core can reject boundary changes without a new user reference, explicit scope violations, stale results and unjustified repetition. Semantic necessity, comparison adequacy and authentic Host user testimony still need real review. Bypassed Host writes cannot be claimed preemptively intercepted. See [engineering acceptance](ENGINEERING-CONTROL_en.md) and the [support matrix](SUPPORT-MATRIX_en.md).
-
-## 2026-10-14 authorization, execution and acceptance adjustment
-
-Current source places checks, forecasts and review hints in Plan and uses goal_ids as the single outcome association. Every goal needs non-waivable acceptance; delivery cites passed acceptance separately from regression exceptions. internal/protocol owns shared requests, Schemas and errors; MCP is transport only, while native Host tools invoke check run. Saved reads neither write metering nor query process identity. WebUI adds search, filters, language selection, actual answers, exceptions and recovery.
-
-Full validation ran on macOS arm64, Go 1.27.0, Node.js 24.21.0 and pnpm 11.27.1: Go vet and all Go packages passed; real journeys and four independent Host packages passed 15 checks; the Node suite passed 639 of 652, with 13 skipped for native Windows or exact DSH environments. After correcting the recovery response, four frontend response-loss, stale-selection and recovery-refresh checks passed, as did TypeScript and the rebuilt WebUI. All Go packages passed again after the final responsibility changes, followed by the added actual saved-task read test. Windows x64 Core cross-compilation passed without native execution.
-
-The local browser used temporary repositories and isolated storage to check search/Host filtering, language, user answers, budget updates, regression exceptions retaining acceptance requirements and unknown-run recovery. The UI now handles recovery view/run responses correctly; rechecking retained interrupted_unknown, execution count and uncertain duration with no console errors. User and semantic inputs were fixtures, not real model sessions or product-benefit comparisons. User plugins, historical databases and public release records were untouched.
+Core verifies actual results and applicability, not the truth of Host semantic testimony, user references or declared dependency scopes. Writes outside integrated boundaries cannot be claimed as preemptively intercepted. See [product](PRODUCT_en.md), [engineering control](ENGINEERING-CONTROL_en.md), [interfaces](INTERFACES_en.md) and [support](SUPPORT-MATRIX_en.md).

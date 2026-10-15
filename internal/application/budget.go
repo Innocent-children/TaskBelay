@@ -10,10 +10,10 @@ import (
 
 type BudgetRequest struct {
 	Identity
-	AuthorizationDigest domain.Digest         `json:"authorization_digest"`
-	Budget              domain.BudgetDecision `json:"budget"`
-	UserRef             string                `json:"user_ref"`
-	Response            string                `json:"response"`
+	AuthorizationDigest domain.Digest         `json:"authorization_digest" description:"当前授权摘要。"`
+	Budget              domain.BudgetDecision `json:"budget" description:"Current reservation feasibility and explicit limits; timing categories overlap."`
+	UserRef             string                `json:"user_ref" description:"真实用户消息/观察/决定的可定位引用，不能仅填姓名或伪造来源。"`
+	Response            string                `json:"response" description:"场景的完整返回值。"`
 }
 
 func (s *Service) UpdateBudget(ctx context.Context, q BudgetRequest) (View, error) {
@@ -24,6 +24,7 @@ func (s *Service) UpdateBudget(ctx context.Context, q BudgetRequest) (View, erro
 	if replay {
 		v, e := s.view(ctx, t, false)
 		v.Replayed = true
+		v.ChangedLimits = &t.Authorization.Limits
 		return v, e
 	}
 	if e = requireExecutionAuthority(t); e != nil {
@@ -50,5 +51,9 @@ func (s *Service) UpdateBudget(ctx context.Context, q BudgetRequest) (View, erro
 	t.Authorization = a
 	t.RecordChange("budget", q.Response, q.UserRef)
 	t.BudgetDecision = &domain.BudgetApproval{DecisionDigest: domain.Hash([]any{previous, q.Budget}), UserRef: q.UserRef, Response: q.Response, ConfirmedAt: time.Now().UTC()}
-	return s.save(ctx, t, o, store.Charge{})
+	v, e := s.save(ctx, t, o, store.Charge{})
+	if e == nil {
+		v.ChangedLimits = &v.Task.Authorization.Limits
+	}
+	return v, e
 }

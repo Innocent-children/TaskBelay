@@ -403,7 +403,7 @@ test("CLI launch returns parser-ready argv and retains separate worktree and bra
   assert.match(provisioned.relaunch.arguments.at(-1), /## Confirmed requirements/u);
   assert.ok(provisioned.relaunch.arguments.at(-1).includes(request));
   assert.deepEqual(terminalCleanupDecision({
-    lifecycle: "DONE", surface: "cli_worktree", clean: true, pushed: false, stateCertain: true,
+    lifecycle: "done", surface: "cli_worktree", clean: true, pushed: false, stateCertain: true,
   }), {
     automatic_cleanup: false,
     worktree_cleanup: "separate_authorization_required",
@@ -694,7 +694,7 @@ test("local launch rejects dirty content and active Tasks before branch changes"
     source_type: "local", carry_changes: false, remote_name: "", base_branch: "main", target_branch: "codex/local-conflict",
     surface: "current_session", worktree_path: fixture.source, handoff_file: null,
   };
-  const available = async (root) => ({ available: true, repository_path: root });
+  const available = async (root) => ({ available: true, repositories:[{key:"primary",repository_path:root,active_task_id:null}] });
   await assert.rejects(prepareTaskLaunch(input, { ...fixture.options, checkWorkspaceAvailable: available }), /initial local changes/);
   input.carry_changes = true;
   await assert.rejects(prepareTaskLaunch(input, { ...fixture.options, checkWorkspaceAvailable: async (root) => ({ available: false, repository_path: root, task_id: "active" }) }), /active TaskBelay Task/);

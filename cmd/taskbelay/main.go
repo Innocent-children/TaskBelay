@@ -32,7 +32,7 @@ Usage:
 Set TASKBELAY_DATA_DIR to a local directory. Commands do not modify Git.
 `
 
-type mcpServeFunc func(context.Context, *application.Service, string, string, userconfig.Preferences) error
+type mcpServeFunc func(context.Context, *application.Service, string, string, userconfig.Preferences, bool) error
 
 func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv, serveStandardIO)) }
 func service(ctx context.Context, getenv func(string) string) (*application.Service, func(), error) {
@@ -52,6 +52,35 @@ func service(ctx context.Context, getenv func(string) string) (*application.Serv
 	return s, func() { db.Close() }, nil
 }
 func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string) string, serve mcpServeFunc) int {
+	if name := auxiliaryHelpName(args); name != "" {
+		contract, err := protocol.Describe(name)
+		if err != nil {
+			json.NewEncoder(out).Encode(protocol.ErrorEnvelope(name, err))
+			return 1
+		}
+		if json.NewEncoder(out).Encode(contract) != nil {
+			return 1
+		}
+		return 0
+	}
+	if len(args) >= 3 && (args[0] == "call" || args[0] == "check" && args[1] == "run" || args[0] == "host-check") && args[2] == "--help" && (len(args) == 3 || len(args) == 4 && args[3] == "--json") {
+		name := args[1]
+		if args[0] == "check" {
+			name = "check.run"
+		}
+		if args[0] == "host-check" {
+			name = "host-check." + name
+		}
+		contract, err := protocol.Describe(name)
+		if err != nil {
+			json.NewEncoder(out).Encode(protocol.ErrorEnvelope(name, err))
+			return 1
+		}
+		if json.NewEncoder(out).Encode(contract) != nil {
+			return 1
+		}
+		return 0
+	}
 	if len(args) == 0 || len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
 		io.WriteString(out, helpText)
 		return 0
@@ -114,13 +143,30 @@ func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string)
 		}
 		return 0
 	}
-	valid := len(args) == 2 && (args[0] == "call" || args[0] == "check" && args[1] == "run" || args[0] == "host-check" && (args[1] == "pre-file-write" || args[1] == "workspace-available") || args[0] == "mcp" && args[1] == "--stdio")
+	summaryText := len(args) == 4 && args[0] == "mcp" && args[1] == "--stdio" && args[2] == "--result-text" && args[3] == "summary"
+	valid := summaryText || len(args) == 2 && (args[0] == "call" || args[0] == "check" && args[1] == "run" || args[0] == "host-check" && (args[1] == "pre-file-write" || args[1] == "workspace-available") || args[0] == "mcp" && args[1] == "--stdio")
 	if !valid {
 		fmt.Fprintln(errout, "invalid arguments; use taskbelay help")
 		return 2
 	}
 	s, close, e := service(ctx, getenv)
 	if e != nil {
+		if args[0] != "mcp" {
+			name := args[1]
+			if args[0] == "check" {
+				name = "check.run"
+			}
+			if args[0] == "host-check" {
+				name = "host-check." + name
+			}
+			result := protocol.ErrorEnvelope(name, e)
+			result.Outcome = "not_applied"
+			if args[0] == "check" {
+				result.Execution = "not_started"
+			}
+			json.NewEncoder(out).Encode(result)
+			return 1
+		}
 		fmt.Fprintln(errout, e)
 		return 1
 	}
@@ -139,7 +185,7 @@ func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string)
 		if serve == nil {
 			serve = serveStandardIO
 		}
-		if e = serve(ctx, s, v, getenv("TASKBELAY_CODEX_MCP_INSTRUCTIONS"), preferences); e != nil {
+		if e = serve(ctx, s, v, getenv("TASKBELAY_CODEX_MCP_INSTRUCTIONS"), preferences, summaryText); e != nil {
 			fmt.Fprintln(errout, e)
 			return 1
 		}
@@ -150,61 +196,12 @@ func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string)
 		fmt.Fprintln(errout, "request input unavailable")
 		return 1
 	}
-	if args[0] == "host-check" {
-		var q struct {
-			Host           string `json:"host"`
-			RepositoryPath string `json:"repository_path"`
-			Repositories   []struct {
-				Key  string `json:"key"`
-				Path string `json:"repository_path"`
-			} `json:"repositories"`
-			Paths    []string `json:"paths"`
-			Tool     string   `json:"tool_name"`
-			Intent   string   `json:"intent_digest"`
-			Complete bool     `json:"path_parse_complete"`
-		}
-		if e = protocol.Decode(raw, &q); e != nil {
-			fmt.Fprintln(errout, e)
-			return 1
-		}
-		if args[1] == "pre-file-write" {
-			result, e := s.PreWrite(ctx, q.RepositoryPath, q.Paths, q.Complete)
-			if e != nil {
-				fmt.Fprintln(errout, e)
-				return 1
-			}
-			json.NewEncoder(out).Encode(result)
-			return 0
-		}
-		roots := []string{q.RepositoryPath}
-		if len(q.Repositories) > 0 {
-			roots = nil
-			for _, r := range q.Repositories {
-				roots = append(roots, r.Path)
-			}
-		}
-		for _, root := range roots {
-			canonical, _, e := s.Observer.IdentifyWorkspace(ctx, root)
-			if e != nil {
-				fmt.Fprintln(errout, e)
-				return 1
-			}
-			id, e := s.Store.Claim(ctx, canonical)
-			if e != nil {
-				fmt.Fprintln(errout, e)
-				return 1
-			}
-			if id != "" {
-				json.NewEncoder(out).Encode(map[string]any{"available": false, "task_id": id})
-				return 0
-			}
-		}
-		json.NewEncoder(out).Encode(map[string]any{"available": true, "repository_path": q.RepositoryPath})
-		return 0
-	}
+
 	handler := protocol.NewHandler(s, v, userconfig.Preferences{})
 	var result protocol.Envelope
-	if args[0] == "check" {
+	if args[0] == "host-check" {
+		result = handler.RunPreflight(ctx, "host-check."+args[1], raw)
+	} else if args[0] == "check" {
 		result = handler.RunCheck(ctx, raw)
 	} else {
 		result = handler.Dispatch(ctx, args[1], raw)
@@ -217,7 +214,38 @@ func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string)
 	}
 	return 0
 }
-func serveStandardIO(ctx context.Context, s *application.Service, v, instructions string, p userconfig.Preferences) error {
+func serveStandardIO(ctx context.Context, s *application.Service, v, instructions string, p userconfig.Preferences, summaryText bool) error {
 	handler := protocol.NewHandler(s, v, p)
-	return mcp.NewServer(handler, v, instructions).Run(ctx, &sdk.StdioTransport{})
+	return mcp.NewServer(handler, v, instructions, summaryText).Run(ctx, &sdk.StdioTransport{})
+}
+
+/**
+ * Help is resolved before data-directory and service initialization. An optional
+ * --json selects the same machine-readable contract as the plain help spelling.
+ */
+func auxiliaryHelpName(args []string) string {
+	if len(args) == 3 && args[0] == "config" && args[1] == "validate" && args[2] == "--help" {
+		return ""
+	}
+	if len(args) > 0 && args[len(args)-1] == "--json" {
+		args = args[:len(args)-1]
+	}
+	if len(args) < 2 || args[len(args)-1] != "--help" {
+		return ""
+	}
+	if len(args) == 2 {
+		switch args[0] {
+		case "version", "help", "mcp":
+			return "core." + args[0]
+		}
+	}
+	if len(args) == 3 {
+		if args[0] == "config" && args[1] == "validate" {
+			return "core.config.validate"
+		}
+		if args[0] == "webui" {
+			return "core.webui." + args[1]
+		}
+	}
+	return ""
 }

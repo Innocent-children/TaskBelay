@@ -16,7 +16,7 @@ func (t Task) ValidateRecords() error {
 		return Invalid("changes", "at most 64 recent decisions")
 	}
 	for _, c := range t.Changes {
-		if c.Revision == 0 || c.Revision > t.Revision || Text("changes.summary", c.Summary) != nil || validateUTC(c.At) != nil || !slices.Contains([]string{"authorization", "plan", "budget", "user_decision", "accepted_failure"}, c.Kind) {
+		if c.Revision == 0 || c.Revision > t.Revision || Text("changes.summary", c.Summary) != nil || validateUTC(c.At) != nil || !slices.Contains([]string{"authorization", "plan", "budget", "user_decision", "accepted_failure", "concern"}, c.Kind) {
 			return Invalid("changes", "invalid saved change")
 		}
 	}
@@ -74,6 +74,18 @@ func (t Task) ValidateRecords() error {
 			for _, j := range js {
 				if !j.ScopeDigest.IsValid() {
 					return Invalid("assessment.scope_digest", "requires a Core-bound semantic scope")
+				}
+			}
+		}
+		seen := map[string]bool{}
+		for _, c := range t.Assessment.Concerns {
+			if !ID(c.ID).IsValid() || seen[c.ID] || Text("concerns.summary", c.Summary) != nil || len(c.GoalIDs) == 0 || IDs("concerns.goal_ids", c.GoalIDs) != nil || IDs("concerns.check_ids", c.CheckIDs) != nil || Paths("concerns.paths", c.Paths) != nil || !c.OpenedAuthorizationDigest.IsValid() {
+				return Invalid("assessment.concerns", "invalid retained question or dependencies")
+			}
+			seen[c.ID] = true
+			if r := c.Resolution; r != nil {
+				if !c.ResolutionScopeDigest.IsValid() || Text("concerns.resolution.basis", r.Basis) != nil || !slices.Contains([]string{"verified", "not_blocking", "scope_changed"}, r.Kind) || IDs("concerns.resolution.evidence_ids", r.EvidenceIDs) != nil || (r.Kind == "verified") != (len(r.EvidenceIDs) > 0) || (r.Kind == "scope_changed") != (r.UserRef != "") {
+					return Invalid("assessment.concerns.resolution", "invalid retained resolution")
 				}
 			}
 		}

@@ -12,9 +12,9 @@ import (
 
 type RecoverRequest struct {
 	Identity
-	RunID           string `json:"run_id"`
-	ResolutionBasis string `json:"resolution_basis"`
-	UserRef         string `json:"user_ref"`
+	RunID           string `json:"run_id" description:"实际执行身份，来自原生check run；不重新构造执行来找结果。"`
+	ResolutionBasis string `json:"resolution_basis" description:"For a stopped run without a receipt, actual inspected side effects; never an invented success."`
+	UserRef         string `json:"user_ref" description:"真实用户消息/观察/决定的可定位引用，不能仅填姓名或伪造来源。"`
 }
 
 func (s *Service) Recover(ctx context.Context, q RecoverRequest) (RunResult, error) {

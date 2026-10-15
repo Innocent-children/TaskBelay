@@ -14,6 +14,8 @@ TaskBelay works alongside Codex, DeepSeek Harness, Claude Code and ZCode. It kee
 
 Command checks run through the Host native process tool using `taskbelay check run`, with its permissions and environment. The WebUI supports task search, Host/status filters, language selection, user decisions and execution recovery. Every goal needs a passed acceptance check; accepting an existing regression failure does not replace it. Saved-state reads do not write metering data.
 
+Engineering questions keep their original identities until resolved; omitted text does not erase them. Delivery limitations come from those saved decisions. Host usage distinguishes unreported, partial and reported totals, and unavailable values remain unknown. Method help includes input/output examples and recovery rules without requiring source access. New task branches do not implicitly inherit an upstream.
+
 ## Start
 
 Use Node.js >=24 and an installed coding Host. Source development additionally needs Go >=1.26 and pnpm >=11 <12. This checkout contains a breaking engineering upgrade; published package versions and stable support records are unchanged. Build this source to use the new contract. Preserve old data and select a separate explicit data directory; no migration or automatic reset is provided.

@@ -274,10 +274,25 @@ func (o *GitObserver) observe(ctx context.Context, repositoryPath string, select
 		return domain.WorkspaceOrigin{}, domain.RepositoryBinding{}, err
 	}
 	baseAncestor := baseAncestorResult.exitCode == 0
+	var upstream *string
+	if branch != nil {
+		observed, e := o.required(ctx, gitShowUpstream, canonicalRoot, *branch)
+		if e != nil {
+			return domain.WorkspaceOrigin{}, domain.RepositoryBinding{}, e
+		}
+		for _, line := range strings.Split(strings.TrimSpace(string(observed.stdout)), "\n") {
+			fields := strings.Split(line, "\x00")
+			if len(fields) >= 2 && fields[0] == "refs/heads/"+*branch && fields[1] != "" {
+				value := fields[1]
+				upstream = &value
+			}
+		}
+	}
 	binding := domain.RepositoryBinding{
 		WorktreeInstanceDigest: instance, IdentityDigest: identity, HistoryDigest: history, ContentDigest: content,
 		CurrentBranch: branch, Detached: detached, CurrentHead: head, HeadTree: headTree, HistoryRelation: relation,
 		BaseCommitAncestor: baseAncestor,
+		BranchUpstream:     upstream,
 		ChangedEntries:     changedEntries, TaskSurface: taskSurface, ObservedAt: time.Now().UTC(),
 	}
 	binding.BindingDigest = digestRepositoryBinding(binding)

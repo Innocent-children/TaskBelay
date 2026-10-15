@@ -171,8 +171,8 @@ test("packaged Core task data survives deregistration, npm uninstall, and same-a
     plan:planFor([{goal_ids:["retention"],id:"human",kind:"human",rationale:"Inspect retained task identity",conditions:"Same current artifact and original workspace"}]),
   });
   assert.equal(opened.ok, true);
-  const taskBefore = taskIdentity(opened.result.task);
-  assert.equal(opened.result.task.host, "codex");
+  const taskBefore = taskIdentity(opened.result);
+  assert.equal(opened.result.host, "codex");
   await firstCore.close();
 
   const dataBeforeRemoval = await directoryManifest(dataDirectory);
@@ -207,7 +207,7 @@ test("packaged Core task data survives deregistration, npm uninstall, and same-a
     task_id: taskBefore.task_id,
   });
   assert.equal(reopened.ok, true);
-  assert.deepEqual(taskIdentity(reopened.result.task), taskBefore);
+  assert.deepEqual(taskIdentity(reopened.result), taskBefore);
   await reopenedCore.close();
   const dataBeforeUninstall = await directoryManifest(dataDirectory);
 
@@ -244,14 +244,14 @@ test("packaged Core task data survives deregistration, npm uninstall, and same-a
     refresh:false,
     task_id: taskBefore.task_id,
   });
-  assert.deepEqual(taskIdentity(retained.result.task), taskBefore);
+  assert.deepEqual(taskIdentity(retained.result), taskBefore);
   const repeatedRead = await finalCore.callTool("taskbelay_get_task", {
     refresh:false,
     task_id: taskBefore.task_id,
   });
-  assert.deepEqual(taskIdentity(repeatedRead.result.task), taskBefore);
+  assert.deepEqual(taskIdentity(repeatedRead.result), taskBefore);
   await finalCore.close();
-  assert.equal(retained.result.task.status, "active");
+  assert.equal(retained.result.status, "active");
 
   await uninstallPackage(reinstallPrefix);
   await assert.rejects(stat(reinstalledPackage), { code: "ENOENT" });
@@ -442,9 +442,9 @@ function productPaths(installedPackage, isolatedHome, dataDirectory) {
   };
 }
 
-function taskIdentity(task) {
-  const {task_id, revision, host, status, authorization, plan, checks, progress, evidence, acceptance} = task;
-  return {task_id, revision, host, status, authorization, plan, checks, progress, evidence, acceptance};
+function taskIdentity(view) {
+  const {identity, host, status, context, checks, progress, concerns, limitations} = view;
+  return {...identity, host, status, context, checks, progress, concerns, limitations};
 }
 
 function fakeEnvironment(installPrefix, statePath, tracePath) {

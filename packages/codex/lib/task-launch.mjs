@@ -392,7 +392,7 @@ export async function provisionLocalTask(input, options = {}) {
 async function requireAvailableWorkspace(root, check) {
   if (typeof check !== "function") throw new Error("Core workspace availability check is required before local branch preparation");
   const result = await check(root);
-  if (result?.available !== true || result.repository_path !== root) throw new Error("workspace is unavailable or already has an active TaskBelay Task; resume or resolve that Task before changing branches");
+  if (result?.available !== true || result.repositories?.length !== 1 || result.repositories[0].repository_path !== root) throw new Error("workspace is unavailable or already has an active TaskBelay Task; resume or resolve that Task before changing branches");
 }
 
 function cliProvisionResult(path, receipt, input, handoff) {

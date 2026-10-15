@@ -3,11 +3,11 @@ package domain
 import "time"
 
 type Change struct {
-	Revision uint64    `json:"revision"`
-	Kind     string    `json:"kind"`
-	Summary  string    `json:"summary"`
-	UserRef  string    `json:"user_ref,omitempty"`
-	At       time.Time `json:"at"`
+	Revision uint64    `json:"revision" description:"当前持久化修订。检查预留/结算都可能推进，不能自己加一。"`
+	Kind     string    `json:"kind" description:"Saved change category: authorization, plan, budget, user_decision, accepted_failure or concern."`
+	Summary  string    `json:"summary" description:"对实际变化/观察/结果的具体说明，文字本身不证明执行。"`
+	UserRef  string    `json:"user_ref,omitempty" description:"真实用户消息/观察/决定的可定位引用，不能仅填姓名或伪造来源。"`
+	At       time.Time `json:"at" description:"实际保存时间，UTC。"`
 }
 
 /**

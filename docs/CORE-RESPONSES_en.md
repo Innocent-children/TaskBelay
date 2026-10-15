@@ -18,6 +18,18 @@ REMOTE_OBSERVATION_STALE means HEAD, configured upstream or tracking commit no l
 
 If the WebUI child exits before readiness, startup reports the process exit and its webui-runtime.log location; a readiness timeout also retains that location. Inspect the original startup before retrying, rather than classifying exit/storage errors as connection failures.
 
-Routine task responses omit full file fingerprints and attempt history. taskbelay_get_task detail:true places the complete view in result.details. check.run/recover_run return run status summaries; get_run reads actual output. Unset caps have budget.limits[].limited=false; remaining=0 does not mean exhausted budget.
+Routine task responses omit full file fingerprints and attempt history. taskbelay_get_task detail:true places the complete view in result.details. check.run/recover_run return run status summaries; get_run reads actual output. Unset caps have budget.limits[].limited=false; remaining=null means unlimited or unknown; inspect limited and coverage.
 
 ISSUE_CHANGED means the displayed question changed; read it again. resolve_issue never changes authorization. Saved-state reads bypass meter initialization; metering errors block mutations only. check.run is a native CLI response, not an MCP tool.
+
+## Current state and actionable failures
+
+Task mutations return identity/digests and the current decision, progress, check summaries, concerns, limitations, issue, usage and budget. open/get add context; detail:true adds explicit records, including facts and evidence_applicability. Internal Task snapshots and writable Core-generated review digests are not exposed as inputs. get_run returns actual cwd, original operation_id, fingerprints and output.stdout/output.stderr.
+
+Decision.gaps contains code/path/subject/message/action/related_ids. finish recomputes the same conditions and returns those gaps on failure; clients need not translate generic review text. Stale review and revision errors include current identities when available. CHECK_ALREADY_SATISFIED includes existing_result with the actual evidence/run identity.
+
+Failure outcome is not_applied/applied/unknown for semantic commit; it is independent of metering. Native execution phase is reported when known. recovery.operation is reuse/replace/read_before_retry/none. A known post-commit read or cleanup failure says applied; uncertain effects require inspecting the original record. No field authorizes an automatic blind retry.
+
+Host usage is nullable and has unreported/partial/reported coverage. Unknown is never measured zero. An explicit Host cap with insufficient reporting yields HOST_USAGE_UNAVAILABLE for new command execution; saved reads and recovery remain available. Unlimited budget.remaining is null.
+
+Descriptions, field rules and adjacent complete actual examples are selectively available through server_info.contracts and native method --help --json. Native/HTTP names appear in auxiliary_contracts without adding tools. MCP always sends complete structuredContent; ZCode alone requests concise text, while text-rendering Hosts retain the full envelope. See [interface usage](INTERFACES_en.md).

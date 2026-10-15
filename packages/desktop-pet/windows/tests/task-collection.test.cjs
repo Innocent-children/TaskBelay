@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { TaskCollection } = require("../task-collection.cjs");
-const summary = (id, lifecycle = "active", updated_at = "2026-09-10T00:00:00Z") => ({ task_id: id, lifecycle, updated_at, archived: false, current_node: lifecycle === "done" ? "DONE" : "ACTIVE" });
+const summary = (id, lifecycle = "active", updated_at = "2026-09-10T00:00:00Z") => ({ task_id: id, lifecycle, updated_at, archived: false, status: lifecycle === "blocked" ? "active" : lifecycle });
 
 test("all tasks remain visible; blocked preempts active while equal priority retains focus", () => {
   const tasks = new TaskCollection();

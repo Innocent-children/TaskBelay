@@ -27,6 +27,7 @@ export async function inspectSourceRepository(repositoryPath, { runGit = default
   const head = singleLine(await runGit(["-C", root, "rev-parse", "--verify", "HEAD"]));
   assertCommit(head, "HEAD");
   const branch = await currentBranch(root, runGit);
+  const tracking = await inspectBranchTracking(root, branch, runGit);
   const status = asBuffer(await runGit([
     "-C", root, "status", "--porcelain=v2", "-z", "--untracked-files=all", "--ignore-submodules=none",
   ], { encoding: "buffer" }));
@@ -39,7 +40,42 @@ export async function inspectSourceRepository(repositoryPath, { runGit = default
     branch,
     clean: status.length === 0,
     status_digest: createHash("sha256").update(status).digest("hex"),
+    ...tracking,
+    observed_at: new Date().toISOString(),
   });
+}
+
+/**
+ * Report actual task-branch tracking separately from the chosen base. These
+ * values describe Git configuration, not an IDE's future push selection.
+ */
+async function inspectBranchTracking(root, branch, runGit) {
+  let upstream = null;
+  if (branch) {
+    const records = String(await runGit(["-C", root, "for-each-ref", "--format=%(refname)%00%(upstream)", `refs/heads/${branch}`])).trimEnd().split(/\r?\n/u);
+    const fields = records.map(line => line.split("\0")).find(fields => fields[0] === `refs/heads/${branch}`);
+    upstream = fields?.[1] || null;
+  }
+  let configured = "";
+  try {
+    configured = String(await runGit(["-C", root, "config", "--null", "--get-regexp", "^(branch\\..*\\.pushremote|remote\\.pushdefault|push\\.default)$"]));
+  } catch (error) {
+    if (numericExitCode(error) !== 1 || error.stderr) throw error;
+  }
+  const values = new Map(configured.split("\0").filter(Boolean).map(record => {
+    const split = record.indexOf("\n");
+    if (split < 1) throw new Error("Git returned invalid push configuration");
+    return [record.slice(0, split), record.slice(split + 1)];
+  }));
+  return {
+    upstream,
+    push_configuration: {
+      branch_push_remote: branch ? values.get(`branch.${branch}.pushremote`) ?? null : null,
+      remote_push_default: values.get("remote.pushdefault") ?? null,
+      push_default: values.get("push.default") ?? null,
+      ide_target: "unknown",
+    },
+  };
 }
 
 export async function preflightWorktreeSelection({
@@ -87,9 +123,9 @@ export async function preflightLocalBranchSelection({ repositoryPath, workspaceM
 export async function prepareLocalBranch({ repositoryPath, workspaceMode, baseBranch, targetBranch, baseCommit, sourceRepositoryIdentity, carryChanges, runGit = defaultRunGit }) {
   const source = await preflightLocalBranchSelection({ repositoryPath, workspaceMode, baseBranch, targetBranch, carryChanges, runGit });
   if (source.head !== baseCommit || source.source_repository_identity !== sourceRepositoryIdentity) throw new Error("local workspace changed after preparation");
-  if (workspaceMode === "new_branch") await runGit(["-C", source.canonical_root, "switch", "-c", targetBranch, baseCommit]);
+  if (workspaceMode === "new_branch") await runGit(["-C", source.canonical_root, "switch", "--no-track", "-c", targetBranch, baseCommit]);
   const result = await inspectSourceRepository(source.canonical_root, { runGit });
-  if (result.canonical_root !== source.canonical_root || result.worktree_git_dir !== source.worktree_git_dir || result.head !== baseCommit || result.branch !== targetBranch || result.status_digest !== source.status_digest) throw new Error("local branch preparation could not be verified; inspect the retained workspace");
+  if (result.canonical_root !== source.canonical_root || result.worktree_git_dir !== source.worktree_git_dir || result.head !== baseCommit || result.branch !== targetBranch || result.status_digest !== source.status_digest || workspaceMode === "new_branch" && result.upstream !== null) throw new Error("local branch preparation could not be verified; inspect the retained workspace");
   return result;
 }
 
@@ -265,7 +301,7 @@ export function terminalCleanupDecision({
   if (surface === "current_session") {
     return Object.freeze({ automatic_cleanup: false, worktree_cleanup: "not_applicable", branch_cleanup: "not_applicable" });
   }
-  if (!["DONE", "CANCELLED"].includes(lifecycle)) {
+  if (!["done", "cancelled"].includes(lifecycle)) {
     return Object.freeze({ automatic_cleanup: false, worktree_cleanup: "blocked_active", branch_cleanup: "blocked_active" });
   }
   if (stateCertain !== true) {

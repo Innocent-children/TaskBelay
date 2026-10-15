@@ -9,9 +9,9 @@ import (
 
 type ResolveIssueRequest struct {
 	Identity
-	IssueDigest domain.Digest `json:"issue_digest"`
-	UserRef     string        `json:"user_ref"`
-	Decision    string        `json:"decision"`
+	IssueDigest domain.Digest `json:"issue_digest" description:"Current issue digest, copied when recording the real user answer."`
+	UserRef     string        `json:"user_ref" description:"真实用户消息/观察/决定的可定位引用，不能仅填姓名或伪造来源。"`
+	Decision    string        `json:"decision" description:"Actual user answer to the current issue. This clears that issue but does not revise authorization."`
 }
 
 /**

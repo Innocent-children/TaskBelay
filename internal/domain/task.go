@@ -8,161 +8,163 @@ import (
 )
 
 type Goal struct {
-	ID        string `json:"id"`
-	Statement string `json:"statement"`
+	ID        string `json:"id" description:"Stable ID for this authorized user outcome; preserve it while the outcome is unchanged."`
+	Statement string `json:"statement" description:"目标或限制的明确内容，不能用实施细节替换用户结果。"`
 }
 type Constraint struct {
-	ID        string   `json:"id"`
-	Kind      string   `json:"kind"`
-	Statement string   `json:"statement"`
-	Paths     []string `json:"paths"`
+	ID        string   `json:"id" description:"Stable ID for this explicit user restriction."`
+	Kind      string   `json:"kind" description:"Restriction category: non_goal, interface, data, dependency or design."`
+	Statement string   `json:"statement" description:"目标或限制的明确内容，不能用实施细节替换用户结果。"`
+	Paths     []string `json:"paths" description:"事项/约束的实际依赖路径；未声明时按契约保守覆盖全部。"`
 }
 type Pin struct {
-	Path   string `json:"path"`
-	Digest Digest `json:"digest"`
+	Path   string `json:"path" description:"Qualified repository-relative path whose exact content the user requires preserving."`
+	Digest Digest `json:"digest" description:"Lowercase SHA-256 digest of exact pinned content."`
 }
 type DependencyPolicy struct {
-	Path    string   `json:"path"`
-	Allowed []string `json:"allowed"`
+	Path    string   `json:"path" description:"Qualified path of the dependency manifest governed by this explicit policy."`
+	Allowed []string `json:"allowed" description:"Explicitly allowed dependency names; an empty array forbids changes in this manifest."`
 }
 type Limits struct {
-	Runs        int64 `json:"runs,omitempty"`
-	ExecutionMS int64 `json:"execution_ms,omitempty"`
-	CoreMS      int64 `json:"core_ms,omitempty"`
-	HostMS      int64 `json:"host_ms,omitempty"`
-	Tokens      int64 `json:"tokens,omitempty"`
+	Runs        int64 `json:"runs,omitempty" description:"Explicit user cap on actual command runs; zero removes this dimension cap. It does not reset recorded usage."`
+	ExecutionMS int64 `json:"execution_ms,omitempty" description:"Explicit user cap on cumulative command milliseconds; zero removes this dimension cap. It does not reset recorded usage."`
+	CoreMS      int64 `json:"core_ms,omitempty" description:"Explicit user cap on cumulative Core mutation milliseconds; zero removes this dimension cap. It does not reset recorded usage."`
+	HostMS      int64 `json:"host_ms,omitempty" description:"用户明确的Host累计时间上限毫秒；0不设上限。"`
+	Tokens      int64 `json:"tokens,omitempty" description:"Explicit user cap on cumulative Host tokens; zero removes this dimension cap. It does not reset recorded usage."`
 }
 type Authorization struct {
-	UserRef        string             `json:"user_ref"`
-	Request        string             `json:"request"`
-	Goals          []Goal             `json:"goals"`
-	Constraints    []Constraint       `json:"constraints,omitempty"`
-	AllowedPaths   []string           `json:"allowed_paths,omitempty"`
-	ForbiddenPaths []string           `json:"forbidden_paths,omitempty"`
-	Pins           []Pin              `json:"pins,omitempty"`
+	UserRef        string             `json:"user_ref" description:"真实用户消息/观察/决定的可定位引用，不能仅填姓名或伪造来源。"`
+	Request        string             `json:"request" description:"用户实际请求文本；工作区准备保留同一原始需求。"`
+	Goals          []Goal             `json:"goals" description:"当前用户目标数组；目标ID和statement必须对应真实需求。"`
+	Constraints    []Constraint       `json:"constraints,omitempty" description:"用户明确约束；不是预测文件列表。"`
+	AllowedPaths   []string           `json:"allowed_paths,omitempty" description:"Explicit user allowlist of repository-relative paths or directory prefixes; omission imposes no additional allowlist. Use key::path across repositories."`
+	ForbiddenPaths []string           `json:"forbidden_paths,omitempty" description:"Explicit user-prohibited paths; predictions never override them."`
+	Pins           []Pin              `json:"pins,omitempty" description:"Exact user-pinned content digests; omitted means no additional pins."`
 	Dependencies   []DependencyPolicy `json:"dependencies,omitempty" description:"Only explicit user restrictions per manifest. An empty allowed list forbids changes there; omission requires technical review instead."`
 	Limits         Limits             `json:"limits,omitempty" description:"Actual user-set cumulative caps only. Omitted or zero fields mean no cap; usage is still recorded."`
 }
 type Check struct {
-	ID            string        `json:"id"`
-	Kind          string        `json:"kind" enum:"command,human"`
-	Argv          []string      `json:"argv,omitempty"`
-	RepositoryKey RepositoryKey `json:"repository_key,omitempty"`
-	Cwd           string        `json:"cwd,omitempty"`
-	Inputs        []string      `json:"inputs,omitempty"`
-	InputBasis    string        `json:"input_basis,omitempty"`
-	Environment   []string      `json:"environment,omitempty"`
-	Conditions    string        `json:"conditions"`
-	ConstraintIDs []string      `json:"constraint_ids,omitempty"`
-	TimeoutMS     int64         `json:"timeout_ms,omitempty"`
-	Retry         string        `json:"retry,omitempty" enum:"repeatable,requires_user"`
-	Rationale     string        `json:"rationale"`
-	GoalIDs       []string      `json:"goal_ids"`
-	Purpose       string        `json:"purpose,omitempty" enum:"acceptance,regression,diagnostic"`
-	FullSuite     bool          `json:"full_suite,omitempty"`
-	Compares      string        `json:"compares,omitempty"`
+	ID            string        `json:"id" description:"Stable check ID referenced by run requests, progress gaps and evidence records."`
+	Kind          string        `json:"kind" enum:"command,human" description:"command runs an actual argv process; human requires an already completed user observation."`
+	Argv          []string      `json:"argv,omitempty" description:"实际执行程序和逐项参数；直接argv优先，需要shell时保留关键命令失败退出码。"`
+	RepositoryKey RepositoryKey `json:"repository_key,omitempty" description:"Stable bound repository key; omitted defaults to primary. Supply an actual key for a differently named or multi-repository scope."`
+	Cwd           string        `json:"cwd,omitempty" description:"Relative working directory within repository_key; omitted defaults to . and may not escape that repository."`
+	Inputs        []string      `json:"inputs,omitempty" description:"参与检查适用性计算的输入路径；缺省[.]覆盖绑定仓库Git可见内容。"`
+	InputBasis    string        `json:"input_basis,omitempty" description:"Required for inputs narrower than [.]; explain actual helpers, configuration and dependencies."`
+	Environment   []string      `json:"environment,omitempty" description:"Environment variable names whose actual current values participate in the fingerprint; this does not set variables. Executable, platform and cwd are also bound."`
+	Conditions    string        `json:"conditions" description:"环境与成立前提的文字说明及适用性输入，不是自动执行的自然语言断言。"`
+	ConstraintIDs []string      `json:"constraint_ids,omitempty" description:"Relevant constraint IDs; omission conservatively includes all current constraints."`
+	TimeoutMS     int64         `json:"timeout_ms,omitempty" description:"执行超时上限毫秒，同时用于预算预留；缺省60000。"`
+	Retry         string        `json:"retry,omitempty" enum:"repeatable,requires_user" description:"Default requires_user for command checks. repeatable permits recovery followed by a justified retry without a new user reference; neither grants native permissions."`
+	Rationale     string        `json:"rationale" description:"这项/这次检查如何覆盖具体目标或补充当前缺口。"`
+	GoalIDs       []string      `json:"goal_ids" description:"关联当前用户目标的ID数组；check中是唯一目标→检查关联。"`
+	Purpose       string        `json:"purpose,omitempty" enum:"acceptance,regression,diagnostic" description:"acceptance/regression/diagnostic；acceptance不可豁免，diagnostic不作为完成必需条件。"`
+	FullSuite     bool          `json:"full_suite,omitempty" description:"Whether every execution needs full_suite_basis; omitted means false."`
+	Compares      string        `json:"compares,omitempty" description:"Optional ID of another regression command whose existing failure this diagnostic compares."`
 }
 type Usage struct {
-	Runs          int64 `json:"runs"`
-	ExecutionMS   int64 `json:"execution_ms"`
-	ReservedMS    int64 `json:"reserved_ms"`
-	UncertainMS   int64 `json:"uncertain_ms"`
-	CoreCalls     int64 `json:"core_calls"`
-	CoreMS        int64 `json:"core_ms"`
-	ObservationMS int64 `json:"observation_ms"`
-	HostMS        int64 `json:"host_reported_ms"`
-	WaitMS        int64 `json:"host_reported_wait_ms"`
-	Tokens        int64 `json:"host_reported_tokens"`
+	Runs          int64            `json:"runs" description:"Lifetime count of actual reserved command runs; reading or replanning does not reset it."`
+	ExecutionMS   int64            `json:"execution_ms" description:"Settled actual process wall time in milliseconds; reservations and uncertain time are separate."`
+	ReservedMS    int64            `json:"reserved_ms" description:"已预留尚未结算的命令时间毫秒。"`
+	UncertainMS   int64            `json:"uncertain_ms" description:"未确定执行的保守时间记账，不冒充精确实测。"`
+	CoreCalls     int64            `json:"core_calls" description:"累计Core变更调用次数，不等于模型调用次数。"`
+	CoreMS        int64            `json:"core_ms" description:"Core变更调用墙钟毫秒，包含执行等待，与其它时间不可直接相加。"`
+	ObservationMS int64            `json:"observation_ms" description:"Core仓库观察时间毫秒，可能包含在Core时间内。"`
+	HostMS        int64            `json:"-"`
+	WaitMS        int64            `json:"-"`
+	Tokens        int64            `json:"-"`
+	Host          HostUsageSummary `json:"host" description:"Reported Host totals and coverage, separate from measured Core costs. Null means unknown; categories can overlap."`
 }
 type PathJudgment struct {
-	Path        string   `json:"path"`
-	GoalIDs     []string `json:"goal_ids"`
-	Basis       string   `json:"basis"`
-	ScopeDigest Digest   `json:"scope_digest,omitempty"`
+	Path        string   `json:"path" description:"Exact current qualified changed path reported in context.repositories.changed_paths."`
+	GoalIDs     []string `json:"goal_ids" description:"关联当前用户目标的ID数组；check中是唯一目标→检查关联。"`
+	Basis       string   `json:"basis" description:"与实际观察、当前目标或检查关联的具体判断理由。"`
+	ScopeDigest Digest   `json:"scope_digest,omitempty" description:"Core计算的判断适用性摘要，只读，输入不得填写。"`
 }
 type Judgment struct {
-	ID          string `json:"id"`
-	Verdict     string `json:"verdict"`
-	Basis       string `json:"basis"`
-	Uncertainty string `json:"uncertainty"`
-	ScopeDigest Digest `json:"scope_digest,omitempty"`
+	ID          string `json:"id" description:"Actual constraint ID or observed fact ID selected by the containing assessment array."`
+	Verdict     string `json:"verdict" description:"satisfied/violation/uncertain; satisfied cannot retain unresolved uncertainty."`
+	Basis       string `json:"basis" description:"与实际观察、当前目标或检查关联的具体判断理由。"`
+	Uncertainty string `json:"uncertainty" description:"仅用于constraints/facts的uncertain说明；最终review已改用concerns。"`
+	ScopeDigest Digest `json:"scope_digest,omitempty" description:"Core计算的判断适用性摘要，只读，输入不得填写。"`
 }
 type Assessment struct {
-	AuthorizationDigest Digest         `json:"authorization_digest"`
-	ContentDigest       Digest         `json:"content_digest"`
-	Paths               []PathJudgment `json:"paths"`
-	Constraints         []Judgment     `json:"constraints"`
-	Facts               []Judgment     `json:"facts"`
-	Summary             string         `json:"summary"`
-	Review              *DesignReview  `json:"review,omitempty"`
+	AuthorizationDigest Digest         `json:"authorization_digest" description:"当前授权摘要。"`
+	ContentDigest       Digest         `json:"content_digest" description:"当前内容摘要。"`
+	Paths               []PathJudgment `json:"paths" description:"Saved path-to-goal judgments, including Core-generated applicability digests."`
+	Constraints         []Judgment     `json:"constraints" description:"Saved judgments of explicit user constraints, keyed by constraint ID."`
+	Facts               []Judgment     `json:"facts" description:"Observed fact IDs, not IDs from derived decision gaps."`
+	Summary             string         `json:"summary" description:"对实际变化/观察/结果的具体说明，文字本身不证明执行。"`
+	Review              *DesignReview  `json:"review,omitempty" description:"最终审查；请求仅summary，Core生成适用性摘要。"`
+	Concerns            []Concern      `json:"concerns" description:"稳定ID的工程疑问及处理记录；省略或空数组不清除已存事项。"`
 }
 type Progress struct {
-	GoalID     string `json:"goal_id"`
-	Status     string `json:"status"`
-	Summary    string `json:"summary"`
-	NextStep   string `json:"next_step,omitempty"`
-	GoalDigest Digest `json:"goal_digest,omitempty"`
+	GoalID     string `json:"goal_id" description:"关联当前用户目标的稳定ID。"`
+	Status     string `json:"status" description:"Implementation progress only: planned, doing or done. done does not mean checks passed."`
+	Summary    string `json:"summary" description:"对实际变化/观察/结果的具体说明，文字本身不证明执行。"`
+	NextStep   string `json:"next_step,omitempty" description:"下一步可用操作或需要用户完成的动作；不得当成授权。"`
+	GoalDigest Digest `json:"goal_digest,omitempty" description:"Core计算的目标适用性摘要，只读。"`
 }
 type Issue struct {
-	Kind    string   `json:"kind"`
-	Summary string   `json:"summary"`
-	Options []string `json:"options"`
+	Kind    string   `json:"kind" description:"authorization means missing actual authority; tradeoff means an important unresolved user choice."`
+	Summary string   `json:"summary" description:"对实际变化/观察/结果的具体说明，文字本身不证明执行。"`
+	Options []string `json:"options" description:"Two to eight concrete choices for a real decision, not repeated plan approval."`
 }
 type Fact struct {
-	ID       string `json:"id"`
-	Kind     string `json:"kind"`
-	Path     string `json:"path"`
-	Detail   string `json:"detail"`
-	Blocking bool   `json:"blocking"`
+	ID       string `json:"id" description:"Observed fact ID to copy into assessment.facts; it is independent of gap codes."`
+	Kind     string `json:"kind" description:"Core observation category, such as dependency, exported declaration, path policy or change magnitude; inspect detail and blocking."`
+	Path     string `json:"path" description:"Qualified affected repository path, or the observation scope for an aggregate fact."`
+	Detail   string `json:"detail" description:"Concrete observed change or violation requiring correction or a supported semantic review."`
+	Blocking bool   `json:"blocking" description:"Whether this deterministic observation prevents work or completion."`
 }
 type Attempt struct {
-	RunID   string    `json:"run_id"`
-	CheckID string    `json:"check_id"`
-	Status  string    `json:"status"`
-	Summary string    `json:"summary"`
-	At      time.Time `json:"at"`
+	RunID   string    `json:"run_id" description:"实际执行身份，来自原生check run；不重新构造执行来找结果。"`
+	CheckID string    `json:"check_id" description:"当前已保存检查的稳定身份。"`
+	Status  string    `json:"status" description:"Saved actual execution status for this attempt; inspect its run_id for output and recovery."`
+	Summary string    `json:"summary" description:"对实际变化/观察/结果的具体说明，文字本身不证明执行。"`
+	At      time.Time `json:"at" description:"实际保存时间，UTC。"`
 }
 type Evidence struct {
-	ID                string    `json:"id"`
-	CheckID           string    `json:"check_id"`
-	Source            string    `json:"source"`
-	Status            string    `json:"status"`
-	CheckDigest       Digest    `json:"check_digest"`
-	InputsDigest      Digest    `json:"inputs_digest"`
-	EnvironmentDigest Digest    `json:"environment_digest"`
-	Summary           string    `json:"summary"`
-	UserRef           string    `json:"user_ref,omitempty"`
-	RecordedAt        time.Time `json:"recorded_at"`
+	ID                string    `json:"id" description:"Existing result identity. Core execution uses the run ID; submitted human/claim records use the returned evidence ID."`
+	CheckID           string    `json:"check_id" description:"当前已保存检查的稳定身份。"`
+	Source            string    `json:"source" description:"结果来源claim/human/core_execution；外部终端文本不能声明core_execution。"`
+	Status            string    `json:"status" description:"Saved result: passed, failed, not_run, timeout, interrupted, interrupted_unknown, invalidated or output_limit. Applicable passing results are evaluated separately."`
+	CheckDigest       Digest    `json:"check_digest" description:"Digest of the check, associated goals and relevant constraints."`
+	InputsDigest      Digest    `json:"inputs_digest" description:"Digest of actual files, missing paths and directory membership."`
+	EnvironmentDigest Digest    `json:"environment_digest" description:"Digest of actual executable, cwd, platform, declared variables and conditions."`
+	Summary           string    `json:"summary" description:"对实际变化/观察/结果的具体说明，文字本身不证明执行。"`
+	UserRef           string    `json:"user_ref,omitempty" description:"真实用户消息/观察/决定的可定位引用，不能仅填姓名或伪造来源。"`
+	RecordedAt        time.Time `json:"recorded_at" description:"Core记录结果的UTC时间。"`
 }
 type Task struct {
-	TaskID         string                 `json:"task_id"`
-	Host           Host                   `json:"host"`
-	Status         string                 `json:"status"`
-	Revision       uint64                 `json:"revision"`
-	Authorization  Authorization          `json:"authorization"`
-	Plan           Plan                   `json:"plan"`
-	BudgetDecision *BudgetApproval        `json:"budget_decision,omitempty"`
-	Exceptions     []KnownFailure         `json:"exceptions"`
-	Archived       bool                   `json:"archived"`
-	Repositories   []RepositoryScopeEntry `json:"repositories"`
-	Assessment     *Assessment            `json:"assessment"`
-	Progress       []Progress             `json:"progress"`
-	Issue          *Issue                 `json:"issue"`
-	Evidence       []Evidence             `json:"evidence"`
-	Attempts       []Attempt              `json:"attempts"`
-	Facts          []Fact                 `json:"facts"`
-	Usage          Usage                  `json:"usage"`
-	Acceptance     []Acceptance           `json:"acceptance"`
-	Summary        string                 `json:"summary"`
-	Changes        []Change               `json:"changes"`
-	Risks          []string               `json:"risks"`
-	CreatedAt      time.Time              `json:"created_at"`
-	UpdatedAt      time.Time              `json:"updated_at"`
+	TaskID         string                 `json:"task_id" description:"唯一Core Task身份；不从标题、目录或临时会话ID猜测。"`
+	Host           Host                   `json:"host" description:"Actual owning Host: cli, codex, deepseek, claude or zcode. This field does not authenticate user authorization."`
+	Status         string                 `json:"status" description:"Saved lifecycle: active, done or cancelled. blocked is derived presentation, not a stored lifecycle."`
+	Revision       uint64                 `json:"revision" description:"当前持久化修订。检查预留/结算都可能推进，不能自己加一。"`
+	Authorization  Authorization          `json:"authorization" description:"用户的真实请求、目标及明确限制；不得把实施建议混入权限。"`
+	Plan           Plan                   `json:"plan" description:"当前实施与验证安排；修订时完整替换提供的plan对象。"`
+	BudgetDecision *BudgetApproval        `json:"budget_decision,omitempty" description:"The saved actual user decision that changed limits; null if none."`
+	Exceptions     []KnownFailure         `json:"exceptions" description:"Explicit accepted existing regression failures retained for delivery."`
+	Archived       bool                   `json:"archived" description:"终态记录是否从默认列表隐藏；不删除、不重开Task。"`
+	Repositories   []RepositoryScopeEntry `json:"repositories" description:"按稳定key组织的完整仓库集合；处理各项结果，不只读取第一项。"`
+	Assessment     *Assessment            `json:"assessment" description:"公开审查对象，提交新增/受影响片段。"`
+	Progress       []Progress             `json:"progress" description:"按goal_id保存的当前实现进展，不是验证结果。"`
+	Issue          *Issue                 `json:"issue" description:"Actual unresolved user authorization/tradeoff question; null in checkpoint does not clear it."`
+	Evidence       []Evidence             `json:"evidence" description:"Saved observations and execution records; claims do not satisfy checks."`
+	Attempts       []Attempt              `json:"attempts" description:"近期真实运行尝试，不能从进展文字生成。"`
+	Facts          []Fact                 `json:"facts" description:"Observed fact IDs, not IDs from derived decision gaps."`
+	Usage          Usage                  `json:"usage" description:"本Task累计计量及Host报告覆盖；读取不会重置累计值。"`
+	Acceptance     []Acceptance           `json:"acceptance" description:"Per-goal conclusions citing every applicable passed acceptance check; regression exceptions cannot replace them."`
+	Summary        string                 `json:"summary" description:"对实际变化/观察/结果的具体说明，文字本身不证明执行。"`
+	Changes        []Change               `json:"changes" description:"有界保存的实际决定/修订历史。"`
+	Limitations    []Limitation           `json:"limitations" description:"由适用not_blocking处理派生的交付限制，保留原因。"`
+	CreatedAt      time.Time              `json:"created_at" description:"UTC time when this record was created."`
+	UpdatedAt      time.Time              `json:"updated_at" description:"该保存结果的更新时间，UTC。"`
 }
 type Acceptance struct {
-	GoalID      string   `json:"goal_id"`
-	EvidenceIDs []string `json:"evidence_ids"`
-	Basis       string   `json:"basis"`
+	GoalID      string   `json:"goal_id" description:"关联当前用户目标的稳定ID。"`
+	EvidenceIDs []string `json:"evidence_ids" description:"引用已有适用实际结果的ID数组。"`
+	Basis       string   `json:"basis" description:"与实际观察、当前目标或检查关联的具体判断理由。"`
 }
 
 func (a Authorization) Digest() Digest { return Hash(a) }

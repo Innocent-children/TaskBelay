@@ -10,7 +10,7 @@ type Props = {
 export function DecisionPanel({ view, busy, mutate }: Props) {
   const { label } = useLanguage();
   const [decision, setDecision] = useState("");
-  const issue = view.task.issue;
+  const issue = view.issue;
   if (!issue) return null;
   return (
     <section>
@@ -62,22 +62,22 @@ export function FailureAcceptance({ view, busy, mutate }: Props) {
   const [failures, setFailures] = useState("");
   const [reason, setReason] = useState("");
   const applicable = (id: string) =>
-    view.decision.evidence.some((f) => f.evidence_id === id && f.applicable);
-  const failed = view.task.evidence.filter(
+    view.checks.some((f) => f.evidence_id === id && f.applicable);
+  const failed = view.details.evidence.filter(
     (e) =>
       e.source === "core_execution" &&
       e.status === "failed" &&
       applicable(e.id) &&
-      view.task.plan.checks.some(
+      view.context.plan.checks.some(
         (c) => c.id === e.check_id && c.purpose === "regression",
       ),
   );
   const chosen = failed.find((e) => e.id === selected);
-  const comparisons = view.task.evidence.filter(
+  const comparisons = view.details.evidence.filter(
     (e) =>
       e.source === "core_execution" &&
-      view.decision.evidence.some((f) => f.evidence_id === e.id && f.valid) &&
-      view.task.plan.checks.some(
+      view.checks.some((f) => f.evidence_id === e.id && f.applicable && f.status === "passed") &&
+      view.context.plan.checks.some(
         (c) => c.id === e.check_id && c.compares === chosen?.check_id,
       ),
   );

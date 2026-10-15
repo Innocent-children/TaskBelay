@@ -11,18 +11,18 @@ import (
 )
 
 type RepositoryInput struct {
-	Key             domain.RepositoryKey    `json:"key"`
-	Path            string                  `json:"repository_path"`
-	Origin          *OriginInput            `json:"workspace_origin,omitempty"`
-	RemoteFreshness *domain.RemoteFreshness `json:"remote_freshness,omitempty"`
+	Key             domain.RepositoryKey    `json:"key" description:"仓库稳定key，1..128个小写ASCII字母数字及._-，以字母数字开头。"`
+	Path            string                  `json:"repository_path" description:"当前规范绝对Git工作目录。"`
+	Origin          *OriginInput            `json:"workspace_origin,omitempty" description:"由真实准备操作/观察生成的工作区来源。"`
+	RemoteFreshness *domain.RemoteFreshness `json:"remote_freshness,omitempty" description:"对原选定来源的实际远端观察。"`
 }
 
 type OpenRequest struct {
 	OperationID   string               `json:"operation_id" description:"Stable unique identity for this logical operation. Keep it after response loss; read saved state before retrying."`
-	Host          domain.Host          `json:"host"`
-	Repositories  []RepositoryInput    `json:"repositories"`
-	Authorization domain.Authorization `json:"authorization"`
-	Plan          domain.Plan          `json:"plan"`
+	Host          domain.Host          `json:"host" description:"Actual owning Host: cli, codex, deepseek, claude or zcode. This field does not authenticate user authorization."`
+	Repositories  []RepositoryInput    `json:"repositories" description:"按稳定key组织的完整仓库集合；处理各项结果，不只读取第一项。"`
+	Authorization domain.Authorization `json:"authorization" description:"用户的真实请求、目标及明确限制；不得把实施建议混入权限。"`
+	Plan          domain.Plan          `json:"plan" description:"当前实施与验证安排；修订时完整替换提供的plan对象。"`
 }
 
 func (s *Service) Open(ctx context.Context, q OpenRequest) (View, error) {
@@ -55,7 +55,7 @@ func (s *Service) Open(ctx context.Context, q OpenRequest) (View, error) {
 		return View{}, e
 	}
 	now := time.Now().UTC()
-	t := domain.Task{TaskID: id, Host: q.Host, Status: "active", Revision: 1, Authorization: q.Authorization, Plan: normalizePlan(q.Plan), Repositories: []domain.RepositoryScopeEntry{}, Progress: []domain.Progress{}, Evidence: []domain.Evidence{}, Attempts: []domain.Attempt{}, Facts: []domain.Fact{}, Risks: []string{}, CreatedAt: now, UpdatedAt: now}
+	t := domain.Task{TaskID: id, Host: q.Host, Status: "active", Revision: 1, Authorization: q.Authorization, Plan: normalizePlan(q.Plan), Repositories: []domain.RepositoryScopeEntry{}, Progress: []domain.Progress{}, Evidence: []domain.Evidence{}, Attempts: []domain.Attempt{}, Facts: []domain.Fact{}, Limitations: []domain.Limitation{}, CreatedAt: now, UpdatedAt: now}
 	for i, input := range q.Repositories {
 		if input.Key == "" && i == 0 {
 			input.Key = "primary"
@@ -82,6 +82,7 @@ func (s *Service) Open(ctx context.Context, q OpenRequest) (View, error) {
 		t.Repositories = append(t.Repositories, domain.RepositoryScopeEntry{Key: input.Key, Origin: origin, Binding: b, RemoteBaseline: &f, RemoteLatest: &f})
 	}
 	t.RecordChange("authorization", q.Authorization.Request, q.Authorization.UserRef)
+	t.Usage.Host.Coverage = "unreported"
 	t.Changes[0].Revision = t.Revision
 	if e := t.Validate(); e != nil {
 		return View{}, e

@@ -5,17 +5,16 @@ import (
 )
 
 type Plan struct {
-	Approach          string   `json:"approach"`
-	VerificationBasis string   `json:"verification_basis"`
-	ExpectedPaths     []string `json:"expected_paths,omitempty"`
-	ReviewAfterLines  int      `json:"review_after_lines,omitempty"`
-	Checks            []Check  `json:"checks"`
+	Approach          string   `json:"approach" description:"当前实现方法与职责选择；普通调整沿用已有授权。"`
+	VerificationBasis string   `json:"verification_basis" description:"为什么这些检查足以覆盖当前改动及其主要失败路径，以及未覆盖范围。"`
+	ExpectedPaths     []string `json:"expected_paths,omitempty" description:"Optional predicted paths, not a user allowlist or permission."`
+	ReviewAfterLines  int      `json:"review_after_lines,omitempty" description:"Optional nonnegative review hint; never a new workflow or permission."`
+	Checks            []Check  `json:"checks" description:"Full current check definitions. Every goal needs an acceptance check; relevant regression checks are also required, diagnostics only inform reasoning."`
 }
 type DesignReview struct {
-	Summary       string `json:"summary"`
-	Uncertainty   string `json:"uncertainty"`
-	PlanDigest    Digest `json:"plan_digest,omitempty"`
-	ContentDigest Digest `json:"content_digest,omitempty"`
+	Summary       string `json:"summary" description:"对实际变化/观察/结果的具体说明，文字本身不证明执行。"`
+	PlanDigest    Digest `json:"plan_digest,omitempty" description:"Core-generated current plan/authorization digest; read-only."`
+	ContentDigest Digest `json:"content_digest,omitempty" description:"当前内容摘要。"`
 }
 
 func (t Task) PlanDigest() Digest {
@@ -59,7 +58,7 @@ func (t Task) ReviewComplete() bool {
 		return false
 	}
 	r := t.Assessment.Review
-	return r.PlanDigest == t.PlanDigest() && r.ContentDigest == t.ContentDigest() && r.Uncertainty == "" && r.Summary != ""
+	return r.PlanDigest == t.PlanDigest() && r.ContentDigest == t.ContentDigest() && r.Summary != ""
 }
 
 /**

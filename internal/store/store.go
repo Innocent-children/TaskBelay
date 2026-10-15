@@ -18,7 +18,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const DatabaseSchemaVersion = "2.4.0"
+const DatabaseSchemaVersion = "2.5.0"
 const MaxSnapshotBytes = 8 * 1024 * 1024
 
 var schema = []string{
@@ -32,6 +32,7 @@ var schema = []string{
 	`CREATE TABLE failures(task_id TEXT NOT NULL, signature TEXT NOT NULL, count INTEGER NOT NULL, PRIMARY KEY(task_id,signature))`,
 	`CREATE TABLE control_calls(call_id TEXT PRIMARY KEY,started_at TEXT NOT NULL,completed_ms INTEGER,owner_pid INTEGER NOT NULL,owner_identity TEXT NOT NULL)`,
 	`CREATE TABLE control_totals(calls INTEGER NOT NULL,wall_ms INTEGER NOT NULL,unknown_ms INTEGER NOT NULL)`,
+	`CREATE TABLE host_usage_sources(task_id TEXT NOT NULL REFERENCES tasks(task_id), source_id TEXT NOT NULL, observed_through TEXT NOT NULL, tokens INTEGER, active_ms INTEGER, wait_ms INTEGER, coverage TEXT NOT NULL, PRIMARY KEY(task_id,source_id))`,
 }
 
 type Store struct {
@@ -143,11 +144,16 @@ func verify(ctx context.Context, q query) error {
 }
 func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) Get(ctx context.Context, id string) (domain.Task, error) {
+	tx, e := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if e != nil {
+		return domain.Task{}, e
+	}
+	defer tx.Rollback()
 	var b []byte
 	var revision uint64
 	var status string
 	var u domain.Usage
-	e := s.db.QueryRowContext(ctx, `SELECT snapshot,revision,status,runs,execution_ms,reserved_ms,uncertain_ms,core_calls,core_ms,observation_ms,host_ms,wait_ms,tokens FROM tasks WHERE task_id=?`, id).Scan(&b, &revision, &status, &u.Runs, &u.ExecutionMS, &u.ReservedMS, &u.UncertainMS, &u.CoreCalls, &u.CoreMS, &u.ObservationMS, &u.HostMS, &u.WaitMS, &u.Tokens)
+	e = tx.QueryRowContext(ctx, `SELECT snapshot,revision,status,runs,execution_ms,reserved_ms,uncertain_ms,core_calls,core_ms,observation_ms,host_ms,wait_ms,tokens FROM tasks WHERE task_id=?`, id).Scan(&b, &revision, &status, &u.Runs, &u.ExecutionMS, &u.ReservedMS, &u.UncertainMS, &u.CoreCalls, &u.CoreMS, &u.ObservationMS, &u.HostMS, &u.WaitMS, &u.Tokens)
 	if errors.Is(e, sql.ErrNoRows) {
 		return domain.Task{}, domain.Fail("TASK_NOT_FOUND", "task_id", "task does not exist")
 	}
@@ -158,8 +164,12 @@ func (s *Store) Get(ctx context.Context, id string) (domain.Task, error) {
 	if len(b) > MaxSnapshotBytes || decodeSnapshot(b, &t) != nil || t.Validate() != nil || t.ValidateRecords() != nil || t.TaskID != id || t.Revision != revision || t.Status != status {
 		return domain.Task{}, domain.Fail("STORAGE_CORRUPT", "", "saved task does not satisfy the current contract")
 	}
+	u.Host, e = hostUsage(ctx, tx, id)
+	if e != nil {
+		return domain.Task{}, e
+	}
 	t.Usage = u
-	return t, nil
+	return t, tx.Commit()
 }
 
 type Operation struct {
@@ -234,9 +244,7 @@ type Charge struct {
 	ExecutionMS      int64
 	ReleaseMS        int64
 	UncertainMS      int64
-	HostMS           int64
-	WaitMS           int64
-	Tokens           int64
+	HostUsage        *domain.HostUsageReport
 }
 
 func (s *Store) Save(ctx context.Context, t domain.Task, expected uint64, o Operation, c Charge, runID string, run any, runStatus, checkID string) error {
@@ -262,7 +270,11 @@ func (s *Store) Save(ctx context.Context, t domain.Task, expected uint64, o Oper
 	if c.ReserveMS > 0 && t.Authorization.Limits.ExecutionMS > 0 && spent+uncertain+reserved+c.ReserveMS > t.Authorization.Limits.ExecutionMS {
 		return &domain.Error{Code: "COST_LIMIT", Message: "cumulative execution time cannot reserve this check; no process was started", Details: []domain.ContractViolation{{Path: "authorization.limits.execution_ms", Rule: "quantity", Message: "reserve the command timeout without lowering acceptance quality"}}, Budget: domain.NewBudgetLine("execution_ms", spent, reserved, uncertain, t.Authorization.Limits.ExecutionMS).Failure(c.ReserveMS)}
 	}
-	r, e := tx.ExecContext(ctx, `UPDATE tasks SET revision=?,status=?,snapshot=?,runs=runs+?,reserved_ms=reserved_ms+?-?,execution_ms=execution_ms+?,uncertain_ms=uncertain_ms+?,host_ms=host_ms+?,wait_ms=wait_ms+?,tokens=tokens+? WHERE task_id=? AND revision=?`, t.Revision, t.Status, b, c.Runs, c.ReserveMS, c.ReleaseMS, c.ExecutionMS, c.UncertainMS, c.HostMS, c.WaitMS, c.Tokens, t.TaskID, expected)
+	delta, e := saveHostUsage(ctx, tx, t.TaskID, c.HostUsage)
+	if e != nil {
+		return e
+	}
+	r, e := tx.ExecContext(ctx, `UPDATE tasks SET revision=?,status=?,snapshot=?,runs=runs+?,reserved_ms=reserved_ms+?-?,execution_ms=execution_ms+?,uncertain_ms=uncertain_ms+?,host_ms=host_ms+?,wait_ms=wait_ms+?,tokens=tokens+? WHERE task_id=? AND revision=?`, t.Revision, t.Status, b, c.Runs, c.ReserveMS, c.ReleaseMS, c.ExecutionMS, c.UncertainMS, delta[1], delta[2], delta[0], t.TaskID, expected)
 	if e != nil {
 		return e
 	}
@@ -347,12 +359,12 @@ func (s *Store) Claim(ctx context.Context, root string) (string, error) {
 }
 
 type ListQuery struct {
-	Search          string      `json:"search,omitempty"`
-	Host            domain.Host `json:"host,omitempty"`
-	Page            int         `json:"page,omitempty"`
-	PageSize        int         `json:"page_size,omitempty"`
-	IncludeArchived bool        `json:"include_archived,omitempty"`
-	Status          string      `json:"status,omitempty"`
+	Search          string      `json:"search,omitempty" description:"Optional request/task ID substring, at most 512 UTF-8 bytes."`
+	Host            domain.Host `json:"host,omitempty" description:"Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"`
+	Page            int         `json:"page,omitempty" description:"当前页码，从1开始。"`
+	PageSize        int         `json:"page_size,omitempty" description:"Default 20; integer 1..100. Filters precede pagination."`
+	IncludeArchived bool        `json:"include_archived,omitempty" description:"Default false; true includes terminal archived tasks without restoring them."`
+	Status          string      `json:"status,omitempty" description:"对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"`
 }
 type TaskPage struct {
 	Items   []domain.Task
@@ -533,7 +545,7 @@ func (s *Store) Purge(ctx context.Context, id string, revision uint64) error {
 		return e
 	}
 	defer tx.Rollback()
-	for _, table := range []string{"operations", "runs", "failures", "claims"} {
+	for _, table := range []string{"operations", "runs", "failures", "claims", "host_usage_sources"} {
 		if _, e = tx.ExecContext(ctx, fmt.Sprintf("DELETE FROM %s WHERE task_id=?", table), id); e != nil {
 			return e
 		}

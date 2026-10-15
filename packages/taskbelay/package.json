@@ -67,7 +67,9 @@
     "lib/terminal.mjs",
     "README.md",
     "runtime/darwin-arm64/TaskBelayPet.app",
-    "runtime/win32-x64/TaskBelayPet"
+    "runtime/win32-x64/TaskBelayPet",
+    "lib/interface-reference.mjs",
+    "contracts/interfaces.json"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",

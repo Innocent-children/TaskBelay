@@ -82,11 +82,11 @@ func TestDesktopLifecycleFilteringPrecedesPagination(t *testing.T) {
 		return store.TaskPage{Items: items, Page: q.Page, HasNext: q.Page == 1}, nil
 	}
 	first, e := taskSummaryPage(context.Background(), list, store.ListQuery{Page: 1}, "blocked")
-	if e != nil || len(first["items"].([]map[string]any)) != 20 || first["has_next"] != true {
+	if e != nil || len(first["items"].([]core.TaskSummary)) != 20 || first["has_next"] != true {
 		t.Fatal("older blocked tasks disappeared", first, e)
 	}
 	second, e := taskSummaryPage(context.Background(), list, store.ListQuery{Page: 2}, "blocked")
-	if e != nil || len(second["items"].([]map[string]any)) != 1 || second["has_next"] != false {
+	if e != nil || len(second["items"].([]core.TaskSummary)) != 1 || second["has_next"] != false {
 		t.Fatal("filtered pagination is incorrect", second, e)
 	}
 }

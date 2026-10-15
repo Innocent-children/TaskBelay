@@ -45,7 +45,8 @@ export async function core(arguments_, { input, environment = process.env, strea
       child.stdin.end(input === undefined ? "" : JSON.stringify(input));
     }
     child.on("close", code => {
-      if (code !== 0) { const error = new Error(stderr || "Core exited with " + code); error.stdout = stdout; error.code = code; reject(error); }
+      if (stream) { resolveResult({stdout, stderr, code: code ?? 1}); }
+      else if (code !== 0) { const error = new Error(stderr || "Core exited with " + code); error.stdout = stdout; error.code = code; reject(error); }
       else resolveResult({ stdout, stderr, code });
     });
   });

@@ -110,7 +110,9 @@ export function runHook({
   }
   let result;
   try {
-    result = JSON.parse(child.stdout);
+    const envelope = JSON.parse(child.stdout);
+    if (envelope.ok !== true) throw new Error("Core rejected preflight");
+    result = envelope.result;
   } catch {
     error.write("TaskBelay file-scope check returned an invalid result; the write was stopped.\n");
     return 2;

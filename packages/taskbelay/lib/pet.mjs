@@ -1,3 +1,4 @@
+import { describeInterface } from "./interface-reference.mjs";
 import { execFile as execFileCallback } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -43,6 +44,10 @@ export async function runPet(arguments_, dependencies = {}) {
   const arch = dependencies.arch ?? process.arch;
   const messages = messagesForLanguage(dependencies.language ?? resolveLanguage(environment)).pet;
   try {
+    if (arguments_[0] === "pet" && arguments_[2] === "--help" && (arguments_.length === 3 || arguments_.length === 4 && arguments_[3] === "--json")) {
+      stdout.write(JSON.stringify(await describeInterface(packageRoot,"taskbelay.pet."+arguments_[1]),null,2)+"\n");
+      return { code:0, signal:null };
+    }
     const command = parsePetArguments(arguments_, messages);
     assertSupportedPlatform(platform, arch, messages);
     const text = command === "start"

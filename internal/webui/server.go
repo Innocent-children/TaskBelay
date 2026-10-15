@@ -27,6 +27,9 @@ func NewAPI(service *application.Service, core *coreprotocol.Handler, status Sys
 	write := func(w http.ResponseWriter, v any) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
+		if envelope, ok := v.(coreprotocol.Envelope); ok && !envelope.OK {
+			w.WriteHeader(errorStatus(envelope))
+		}
 		json.NewEncoder(w).Encode(v)
 	}
 	mux.HandleFunc("GET /api/system/status", func(w http.ResponseWriter, r *http.Request) { s := status(); s.OK = true; write(w, s) })
@@ -34,7 +37,7 @@ func NewAPI(service *application.Service, core *coreprotocol.Handler, status Sys
 		pageNumber, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		page, e := taskSummaryPage(r.Context(), service.Store.List, store.ListQuery{Page: pageNumber, IncludeArchived: r.URL.Query().Get("include_archived") == "true", Status: r.URL.Query().Get("status"), Search: r.URL.Query().Get("search"), Host: domain.Host(r.URL.Query().Get("host"))}, r.URL.Query().Get("lifecycle"))
 		if e != nil {
-			http.Error(w, "invalid task page or unavailable store", 400)
+			WriteFailure(w, 400, "GET /api/tasks", e)
 			return
 		}
 		write(w, page)
@@ -42,15 +45,15 @@ func NewAPI(service *application.Service, core *coreprotocol.Handler, status Sys
 	mux.HandleFunc("GET /api/dashboard", func(w http.ResponseWriter, r *http.Request) {
 		page, e := service.Store.List(r.Context(), store.ListQuery{})
 		if e != nil {
-			http.Error(w, "task store unavailable", 503)
+			WriteFailure(w, 503, "GET /api/dashboard", e)
 			return
 		}
 		counts, e := service.Store.StatusCounts(r.Context())
 		if e != nil {
-			http.Error(w, "task store unavailable", 503)
+			WriteFailure(w, 503, "GET /api/dashboard", e)
 			return
 		}
-		recent := []map[string]any{}
+		recent := []coreprotocol.TaskSummary{}
 		for _, t := range page.Items {
 			s := coreprotocol.Summary(t)
 			if len(recent) < 20 {
@@ -67,8 +70,8 @@ func NewAPI(service *application.Service, core *coreprotocol.Handler, status Sys
 			write(w, result)
 			return
 		}
-		v := *result.Result.(coreprotocol.TaskResult).Details
-		write(w, map[string]any{"ok": true, "readiness": "ready", "summary": coreprotocol.Summary(v.Task), "result": v})
+		view := result.Result.(coreprotocol.TaskResult)
+		write(w, TaskDetailResponse{OK: true, Readiness: ReadinessReady, Summary: view.SavedSummary, Result: view})
 	})
 	mux.HandleFunc("POST /api/core/{tool}", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
@@ -77,7 +80,7 @@ func NewAPI(service *application.Service, core *coreprotocol.Handler, status Sys
 		}
 		raw, e := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes+1))
 		if e != nil || coreprotocol.Decode(raw, &body) != nil {
-			http.Error(w, "invalid request", 400)
+			WriteFailure(w, 400, "POST /api/core", domain.Invalid("arguments", "request must contain only csrf and arguments"))
 			return
 		}
 		write(w, core.Dispatch(r.Context(), r.PathValue("tool"), body.Arguments))
@@ -90,11 +93,11 @@ func NewAPI(service *application.Service, core *coreprotocol.Handler, status Sys
 		}
 		raw, _ := io.ReadAll(io.LimitReader(r.Body, maxRequestBodyBytes+1))
 		if coreprotocol.Decode(raw, &body) != nil || body.ConfirmTaskID != r.PathValue("task_id") {
-			http.Error(w, "exact terminal task confirmation is required", 400)
+			WriteFailure(w, 400, "POST /api/tasks/purge", domain.Invalid("confirm_task_id", "exact terminal task confirmation is required"))
 			return
 		}
 		if e := service.Store.Purge(r.Context(), body.ConfirmTaskID, body.Revision); e != nil {
-			http.Error(w, e.Error(), 409)
+			WriteFailure(w, 409, "POST /api/tasks/purge", e)
 			return
 		}
 		write(w, map[string]any{"ok": true})
@@ -105,7 +108,7 @@ func NewAPI(service *application.Service, core *coreprotocol.Handler, status Sys
 		if !dispatched && r.Method != http.MethodGet {
 			complete, e := service.MeasureControl(r.Context())
 			if e != nil {
-				http.Error(w, "control cost reservation unavailable", 503)
+				WriteFailure(w, 503, "HTTP mutation", e)
 				return
 			}
 			defer complete()
@@ -124,7 +127,7 @@ func taskSummaryPage(ctx context.Context, list func(context.Context, store.ListQ
 		return nil, domain.Invalid("page", "page must be 1..1000000")
 	}
 	pageNumber := q.Page
-	items := []map[string]any{}
+	items := []coreprotocol.TaskSummary{}
 	result := func(next bool) map[string]any {
 		return map[string]any{"ok": true, "readiness": "ready", "page": pageNumber, "has_next": next, "items": items}
 	}
@@ -159,7 +162,7 @@ func taskSummaryPage(ctx context.Context, list func(context.Context, store.ListQ
 		}
 		for _, t := range page.Items {
 			summary := coreprotocol.Summary(t)
-			if summary["lifecycle"] != lifecycle {
+			if summary.Lifecycle != lifecycle {
 				continue
 			}
 			if skip > 0 {
@@ -218,7 +221,7 @@ func (s *Server) Close(ctx context.Context) error { return s.server.Shutdown(ctx
 func exactHost(host string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != host {
-			http.Error(w, "exact loopback host required", 403)
+			WriteFailure(w, 403, "HTTP request", &domain.Error{Code: "HOST_REJECTED", Message: "exact loopback Host required", Outcome: "not_applied"})
 			return
 		}
 		next.ServeHTTP(w, r)

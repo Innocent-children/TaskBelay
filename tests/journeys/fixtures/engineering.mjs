@@ -40,32 +40,36 @@ export function fixture(t, files = { primary: { 'check.cjs': 'process.exit(0);\n
     if (error) { assert.equal(envelope.ok, false); assert.equal(envelope.error.code, error, JSON.stringify(envelope)); return envelope; }
     assert.equal(envelope.ok, true, JSON.stringify(envelope)); assert.equal(r.status, 0, r.stderr);
     const result = envelope.result;
-    if (result.view) view = result.view; else if (result.task) view = result;
+    const state = result.view ?? (result.identity ? result : null);
+    if (state) {
+      view = state;
+      if (tool !== 'taskbelay_get_task') call('taskbelay_get_task', {task_id:state.identity.task_id,refresh:true,detail:true});
+    }
     return result;
   }
-  const identity = () => ({ task_id: view.task.task_id, revision: view.task.revision, operation_id: `fixture-${++sequence}` });
-  const inspect = () => call('taskbelay_get_task', { task_id: view.task.task_id });
+  const identity = () => ({ task_id: view.identity.task_id, revision: view.identity.revision, operation_id: `fixture-${++sequence}` });
+  const inspect = () => call('taskbelay_get_task', { task_id: view.identity.task_id, detail:true });
   function open(goals, checks, authorization = {}) {
     return call('taskbelay_open_task', { operation_id: 'fixture-open', host: 'cli', repositories, authorization: { user_ref: 'fixture-user-request', request: 'Deliver the listed fixture outcomes.', goals, ...authorization }, plan: planFor(checks) });
   }
   const checkpoint = (data, error) => call('taskbelay_checkpoint', { ...identity(), ...data }, error);
-  function revise(authorization = view.task.authorization, checks = view.task.plan.checks, plan = {...view.task.plan, checks}) {
+  function revise(authorization = view.context.authorization, checks = view.context.plan.checks, plan = {...view.context.plan, checks}) {
     return call('taskbelay_revise_task', { ...identity(), authorization, plan, reason: 'Fixture user changes this requirement or verification plan.' });
   }
   const run = (id, extra = {}, error) => call('check.run', { ...identity(), check_id: id, rationale: 'Establish the unmet fixture check after relevant inputs or approved requirements changed.', ...extra }, error);
   function review(verdict = 'satisfied') {
     inspect();
-    return checkpoint({ progress: view.task.authorization.goals.map(g => ({ goal_id: g.id, status: 'done', summary: 'Fixture submits completion for guard verification.' })), assessment: {
-      authorization_digest: view.authorization_digest, content_digest: view.content_digest,
-      paths: view.task.repositories.flatMap(r => r.changed_paths.map(path => ({ path, goal_ids: view.task.authorization.goals.map(g => g.id), basis: 'Changed file directly participates in this fixture.' }))),
-      constraints: (view.task.authorization.constraints ?? []).map(c => ({ id: c.id, verdict, basis: 'Scripted review of the constraint.', uncertainty: '' })),
-      facts: view.decision.findings.filter(f => !f.blocking).map(f => ({ id: f.id, verdict: 'satisfied', basis: 'Observed change is needed for the fixture goal.', uncertainty: '' })),
+    return checkpoint({ progress: view.context.authorization.goals.map(g => ({ goal_id: g.id, status: 'done', summary: 'Fixture submits completion for guard verification.' })), assessment: {
+      authorization_digest: view.digests.authorization, content_digest: view.digests.content,
+      paths: view.context.repositories.flatMap(r => r.changed_paths.map(path => ({ path, goal_ids: view.context.authorization.goals.map(g => g.id), basis: 'Changed file directly participates in this fixture.' }))),
+      constraints: (view.context.authorization.constraints ?? []).map(c => ({ id: c.id, verdict, basis: 'Scripted review of the constraint.', uncertainty: '' })),
+      facts: view.details.facts.filter(f => !f.blocking).map(f => ({ id: f.id, verdict: 'satisfied', basis: 'Observed change is needed for the fixture goal.', uncertainty: '' })),
       summary: 'Scripted semantic testimony; not an AI model or real user measurement.',
-      review: { summary: 'The existing module fixes the original behavior with relevant assertions and no unrelated features; this structure remains appropriate.', uncertainty: '' },
+      review: { summary: 'The existing module fixes the original behavior with relevant assertions and no unrelated features; this structure remains appropriate.' },
     } });
   }
   function finish(error) {
-    return call('taskbelay_finish_task', { ...identity(), summary: 'Fixture delivered with current evidence.', risks: ['Scripted user and semantic inputs.'], acceptance: view.task.authorization.goals.map(g => ({ goal_id: g.id, evidence_ids: view.task.evidence.filter(e => view.task.plan.checks.some(c => c.id === e.check_id && c.purpose === 'acceptance' && c.goal_ids.includes(g.id)) && view.decision.evidence.some(f => f.evidence_id === e.id && f.valid)).map(e => e.id), basis: 'Applicable passing acceptance checks establish this outcome.' })) }, error);
+    return call('taskbelay_finish_task', { ...identity(), summary: 'Fixture delivered with current evidence.', acceptance: view.context.authorization.goals.map(g => ({ goal_id: g.id, evidence_ids: view.details.evidence.filter(e => view.context.plan.checks.some(c => c.id === e.check_id && c.purpose === 'acceptance' && c.goal_ids.includes(g.id)) && view.details.evidence_applicability.some(f => f.evidence_id === e.id && f.valid)).map(e => e.id), basis: 'Applicable passing acceptance checks establish this outcome.' })) }, error);
   }
   function write(path, value, key = repositories[0].key) { writeFileSync(join(repositories.find(r => r.key === key).repository_path, path), value); }
   return { root, env, repositories, call, identity, inspect, open, checkpoint, revise, run, review, finish, write, get view() { return view; } };

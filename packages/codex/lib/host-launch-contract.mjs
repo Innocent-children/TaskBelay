@@ -29,12 +29,12 @@ const anchor = object({
   }), "Copy the complete repositories array from inspect, including all confirmed repositories."),
 });
 const hostResult = { description: "Complete original Host tool result, including its wrapper if present. Use null when the result was lost; never fabricate an ID." };
-const cleanup = object({ ...identity, source_repository_path: source, terminal: { const: true }, authorized: { const: true } });
+const cleanup = object({ ...identity, source_repository_path: source, terminal: { type: "boolean", const: true, description: "Actual Core terminal state, read before cleanup; not inferred from finished edits." }, authorized: { type: "boolean", const: true, description: "Actual separate deletion authority. Completion alone does not grant it." } });
 
 const contracts = {
  freshness: {
   description:"Assess the explicitly bound original source; task-branch upstream changes do not change source selection. Integration has a durable receipt and never replays an existing operation.",
-  input_schema:object({repositories:array(object({key,repository_path:path("Current canonical worktree being assessed"),source_type:{enum:["local","remote"]},remote_name:{type:"string",description:"workspace_origin.remote_name; empty for local source"},base_branch:text("workspace_origin.base_branch; a remote source need not have a local branch")},["source_type","remote_name","base_branch"]),"All task repositories; bound callers copy all three original source fields"),fetch:{type:"boolean"},integrate:{type:"boolean"},authorization_ref:text("Actual authority to fetch refs"),integration_authorization_ref:text("Separate actual integration authority"),operation_id:text("Stable integration identity; required with integrate=true"),recover:{type:"boolean"}},["fetch","integrate","authorization_ref","integration_authorization_ref","operation_id","recover"]),
+  input_schema:object({repositories:array(object({key,repository_path:path("Current canonical worktree being assessed"),source_type:{type:"string",enum:["local","remote"],description:"Original selected source type; preserve it after creating the task branch."},remote_name:{type:"string",description:"workspace_origin.remote_name; empty for local source"},base_branch:text("workspace_origin.base_branch; a remote source need not have a local branch")},["source_type","remote_name","base_branch"]),"All task repositories; bound callers copy all three original source fields"),fetch:{type:"boolean",default:true,description:"Fetch corresponding refs under actual existing authority; default true."},integrate:{type:"boolean",default:false,description:"Separately authorized clean fast-forward; default false."},authorization_ref:text("Actual authority to fetch refs"),integration_authorization_ref:text("Separate actual integration authority"),operation_id:text("Stable integration identity; required with integrate=true"),recover:{type:"boolean",default:false,description:"Reconcile the original stopped operation without replaying Git mutations."}},["fetch","integrate","authorization_ref","integration_authorization_ref","operation_id","recover"]),
   output_fields:{repositories:"Per-root remote_freshness plus integration state, frozen target and any read-only recovery observation",integration_blocked:"True for blocked, partial, unknown or reconciled batches",operation:"Integration operation_id, receipt_path, status and replayed. Same identity reads its record; recover=true only reconciles a stopped original owner and never repeats Git mutation"},
   next_step:"Copy original source_type/remote_name/base_branch for every bound root. Retain operation_id/receipt_path and all per-root results. Partial success stays applied; after read-only reconciliation, remaining work needs a fresh separately authorized assessment/identity. Do not present an incomplete batch as successful."
  },
@@ -45,15 +45,15 @@ const contracts = {
     next_step: "Reuse existing authorization; obtain only missing workspace choices before prepare.",
   },
   prepare: {
-    description: "After user confirmation, save the launch material and receipt, resolve the selected local or remote base and freeze its commit and selected workspace contents.",
+    description: "Using existing actual authority, save the launch material and receipt, resolve the selected local or remote base and freeze its commit and selected workspace contents.",
     input_schema: object({
       request: text("Same exact request supplied to inspect."), authorization_ref: text("Reference to actual authorization for this workspace operation; retain an existing valid choice."),
       ...identity, repository_path: source,
-      workspace_mode: { enum: ["new_branch", "current_branch", "dedicated_worktree"], description: "Ask for this new Task: current branch, new local branch or dedicated worktree. No default; retain the actual answer." },
-      source_type: { enum: ["local", "remote"] }, carry_changes: { type: "boolean", description: "Explicit user choice; only true for local sources." },
+      workspace_mode: { enum: ["new_branch", "current_branch", "dedicated_worktree"], description: "Retain the user-selected/current workspace. Ask only for a missing choice; do not repeat an already authorized decision." },
+      source_type: { type: "string", enum: ["local", "remote"], description: "Original selected source type; local retains the original local branch." }, carry_changes: { type: "boolean", description: "Explicit user choice; only true for local sources." },
       remote_name: { type: "string", description: "Confirmed remote, or empty for local." }, base_branch: text("Confirmed branch name on the selected source."),
       target_branch: text("Confirmed new branch, or the observed current branch for current_branch."),
-      surface: { enum: ["current_session", "managed_worktree", "cli_worktree"] },
+      surface: { type: "string", description: "Actual selected Host execution surface; do not infer a new chat request.", enum: ["current_session", "managed_worktree", "cli_worktree"] },
       worktree_path: nullablePath("The current canonical repository_path for current_session; null for managed_worktree; destination for cli_worktree."),
       handoff_file: nullablePath("Null for current_session. Dedicated worktrees require complete retained requirements JSON matching the packaged lib/task-handoff.mjs contract."),
     }, ["launch_id"]),
@@ -85,7 +85,7 @@ const contracts = {
   },
   "dispatch-recover": {
     description: "Restore a dispatch that provably never called the Host; empty IDs alone are insufficient. Retains the exact request and rotates the claim ID.",
-    input_schema: object({ ...identity, dispatch_attempt_id: text("Current claim ID."), host_call_not_made: { const: true }, previous_caller_stopped: { const: true }, reason: text("Observed call sequence proving no create_thread call and that the previous caller has stopped.") }),
+    input_schema: object({ ...identity, dispatch_attempt_id: text("Current claim ID."), host_call_not_made: { type: "boolean", const: true, description: "True only after observing that the original Host creation call never occurred." }, previous_caller_stopped: { type: "boolean", const: true, description: "True only after confirming the original dispatcher has stopped. A timeout is insufficient." }, reason: text("Observed call sequence proving no create_thread call and that the previous caller has stopped.") }),
     output_fields: { ...receiptOutput, should_dispatch: "False; use dispatch-call with the new claim ID.", host_request: "Unchanged saved request." },
     next_step: "Read the saved request, then dispatch-call. Never use recovery for a timeout or missing Host response.",
   },
@@ -115,7 +115,7 @@ const contracts = {
   scope: {
     description: "Read and validate the complete set of provisioned records for one Task and build its Core repository arguments.",
     input_schema: object({ launch_id: identity.launch_id, repository_keys: { ...array(key, "Every confirmed repository, including the primary."), minItems: 1, maxItems: 8, uniqueItems: true }, primary_repository_key: key }),
-    output_fields: { repository_path: "Primary Task worktree.", workspace_origin: "Primary verified origin.", primary_repository_key: "Present for multiple repositories.", additional_repositories: "Present for multiple repositories; closed {key,repository_path,workspace_origin} entries." },
+    output_fields: { repositories: "Complete verified {key,repository_path,workspace_origin} array for current Core open_task; copy it unchanged." },
     next_step: "Use the complete result as the repository fields of taskbelay_open_task; add host, authorization, plan and checks from the actual request. Reuse the actual user request; no separate plan confirmation is required. Core re-observes every worktree.",
   },
 
@@ -123,7 +123,7 @@ const contracts = {
 
   "cleanup-decision": {
     description: "Read-only cleanup eligibility from current Core and Git facts; this does not authorize deletion.",
-    input_schema: object({ lifecycle: text("Current Core cursor, such as DONE or CANCELLED."), surface: { enum: ["current_session", "managed_worktree", "cli_worktree"] }, clean: { type: "boolean" }, pushed: { type: "boolean" }, stateCertain: { type: "boolean" } }),
+    input_schema: object({ lifecycle: text("Current Core status: active, done or cancelled."), surface: { type: "string", description: "Actual selected Host execution surface; do not infer a new chat request.", enum: ["current_session", "managed_worktree", "cli_worktree"] }, clean: { type: "boolean", description: "Actual current worktree has no pending edits." }, pushed: { type: "boolean", description: "Actual current commits are retained at an observed remote." }, stateCertain: { type: "boolean", description: "All original operations have a known effect. Uncertainty retains resources." } }),
     output_fields: { automatic_cleanup: "Always false.", worktree_cleanup: "Keep, Host-owned cleanup or separate authorization requirement.", branch_cleanup: "Keep, Host-owned cleanup or separate authorization requirement." },
     next_step: "Keep uncertain, active, dirty or unpushed resources. Worktree and branch deletion require separate current authorizations.",
   },

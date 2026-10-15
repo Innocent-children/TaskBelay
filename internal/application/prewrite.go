@@ -14,27 +14,27 @@ import (
  * PreWrite gates supported structured paths; it cannot inspect future semantics
  * or shell writes. The native Host permission still applies.
  */
-func (s *Service) PreWrite(ctx context.Context, root string, paths []string, complete bool) (map[string]any, error) {
+func (s *Service) PreWrite(ctx context.Context, root string, paths []string, complete bool) (WriteDecision, error) {
 	canonical, instance, e := s.Observer.IdentifyWorkspace(ctx, root)
 	if e != nil {
 		if errors.Is(e, repository.ErrNotGitRepository) {
-			return map[string]any{"decision": "allow", "coverage": "no_active_task"}, nil
+			return WriteDecision{Decision: "allow", Coverage: "no_active_task"}, nil
 		}
-		return nil, e
+		return WriteDecision{}, e
 	}
 	id, e := s.Store.Claim(ctx, canonical)
 	if e != nil {
-		return nil, e
+		return WriteDecision{}, e
 	}
 	if id == "" {
-		return map[string]any{"decision": "allow", "coverage": "no_active_task"}, nil
+		return WriteDecision{Decision: "allow", Coverage: "no_active_task"}, nil
 	}
 	t, e := s.Store.Get(ctx, id)
 	if e != nil {
-		return nil, e
+		return WriteDecision{}, e
 	}
-	deny := func(reason string) map[string]any {
-		return map[string]any{"decision": "deny", "reason": reason, "task_id": id, "task_revision": t.Revision, "coverage": "structured_paths"}
+	deny := func(reason string) WriteDecision {
+		return WriteDecision{Decision: "deny", Reason: reason, TaskID: id, TaskRevision: t.Revision, Coverage: "structured_paths"}
 	}
 	for _, r := range t.Repositories {
 		if r.Origin.CanonicalWorktreeRoot == canonical && r.Binding.WorktreeInstanceDigest != instance {
@@ -77,5 +77,5 @@ func (s *Service) PreWrite(ctx context.Context, root string, paths []string, com
 			}
 		}
 	}
-	return map[string]any{"decision": "allow", "task_id": id, "coverage": "structured_paths", "semantic_review": "required_at_checkpoint"}, nil
+	return WriteDecision{Decision: "allow", TaskID: id, TaskRevision: t.Revision, Coverage: "structured_paths", SemanticReview: "required_at_checkpoint"}, nil
 }

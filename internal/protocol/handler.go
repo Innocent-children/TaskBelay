@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"strings"
 	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/application"
@@ -16,26 +15,28 @@ import (
 )
 
 type Recovery struct {
-	Action       string   `json:"action"`
-	RetrySafe    bool     `json:"retry_safe"`
-	Message      string   `json:"message"`
-	AllowedPaths []string `json:"allowed_paths,omitempty"`
+	Action       string   `json:"action" description:"Concrete next action: correct_request, read_task, self_correct, recover_run, request_authorization, repair_storage or inspect_environment. Preserve actual user authority."`
+	Operation    string   `json:"operation" enum:"reuse,replace,read_before_retry,none" description:"How to handle operation_id after this failure. Never automatically replay an uncertain side effect."`
+	Message      string   `json:"message" description:"可直接阅读的具体原因，不含敏感原始参数或内部堆栈。"`
+	AllowedPaths []string `json:"allowed_paths,omitempty" description:"此错误允许纠正的请求字段路径；不是文件写入授权。"`
 }
 type Envelope struct {
-	OK        bool          `json:"ok"`
-	RequestID string        `json:"request_id"`
-	Tool      string        `json:"tool"`
-	Result    any           `json:"result,omitempty"`
-	Error     *domain.Error `json:"error,omitempty"`
-	Recovery  *Recovery     `json:"recovery,omitempty"`
+	OK        bool          `json:"ok" description:"请求是否按接口契约正常处理；true不代表命令检查通过，仍检查run.status。"`
+	RequestID string        `json:"request_id" description:"响应身份；变更请求沿用operation_id，只读请求由服务生成。"`
+	Tool      string        `json:"tool" description:"执行此请求的公开方法名，原生命令为check.run。"`
+	Result    any           `json:"result,omitempty" description:"成功分支的类型化结果；与error互斥。"`
+	Error     *domain.Error `json:"error,omitempty" description:"失败分支；不能据失败推定没有任何副作用。"`
+	Recovery  *Recovery     `json:"recovery,omitempty" description:"根据实际故障给出的后续处理，不能用它获得新权限。"`
+	Outcome   string        `json:"outcome,omitempty" enum:"not_applied,applied,unknown" description:"Semantic commit outcome, separate from control metering. Unknown requires reading saved state."`
+	Execution string        `json:"execution,omitempty" enum:"not_started,started,unknown" description:"Known execution phase on native-check failures; does not imply the command passed."`
 }
 type GetRequest struct {
-	TaskID  string `json:"task_id"`
-	Refresh *bool  `json:"refresh,omitempty"`
-	Detail  bool   `json:"detail,omitempty" description:"Default false. True adds result.details with full saved Task, repository fingerprints and history."`
+	TaskID  string `json:"task_id" description:"唯一Core Task身份；不从标题、目录或临时会话ID猜测。"`
+	Refresh *bool  `json:"refresh,omitempty" description:"Default true; false reads saved state without metering writes or process queries."`
+	Detail  bool   `json:"detail,omitempty" description:"Default false. True adds explicit saved assessment, facts, applicability, bindings, evidence, attempts, changes and terminal acceptance; never a writable Task snapshot."`
 }
 type GetRunRequest struct {
-	RunID string `json:"run_id"`
+	RunID string `json:"run_id" description:"实际执行身份，来自原生check run；不重新构造执行来找结果。"`
 }
 type Empty struct{}
 type Tool struct {
@@ -47,21 +48,21 @@ type Tool struct {
 }
 
 var Catalog = []Tool{
-	{"taskbelay_server_info", "Read actual tools, evidence boundary and Host coverage.", Empty{}, map[string]any{}, true},
-	{"taskbelay_open_task", "Start from the actual user request in the selected workspace. Existing authorization permits work without a separate plan approval.", application.OpenRequest{}, TaskResult{}, false},
-	{"taskbelay_get_task", "Refresh actual code changes and evidence applicability; recover current requirements and progress. Set detail:true only for full repository fingerprints and history.", GetRequest{}, TaskResult{}, false},
-	{"taskbelay_checkpoint", "Record current reasoning, necessary changes, progress and cost. Use revise_task for changes to the approach or check definitions.", application.CheckpointRequest{}, TaskResult{}, false},
-	{"taskbelay_resolve_issue", "Record the actual user answer to the displayed issue without changing authorization.", application.ResolveIssueRequest{}, TaskResult{}, false},
-	{"taskbelay_revise_task", "Replace only supplied authorization or plan, including its check definitions. Routine method changes reuse authority; changed user boundaries require a new actual user reference. Preserve unaffected results and cost.", application.ReviseRequest{}, TaskResult{}, false},
-	{"taskbelay_record_evidence", "Record an agent claim or a completed human observation; cannot manufacture Core execution.", application.EvidenceRequest{}, TaskResult{}, false},
-	{"taskbelay_get_run", "Read a saved actual execution after response loss; never executes a command.", GetRunRequest{}, execution.Run{}, true},
-	{"taskbelay_recover_run", "Recover a signed result receipt or classify a stopped owner with no receipt; never infer passing or replay execution.", application.RecoverRequest{}, RunResult{}, false},
-	{"taskbelay_finish_task", "Conclude only with current scope reasoning and applicable passing evidence for every authorized goal.", application.FinishRequest{}, TaskResult{}, false},
-	{"taskbelay_cancel_task", "End the task and release claims while retaining files and results; unresolved execution prevents cancellation.", application.CancelRequest{}, TaskResult{}, false},
-	{"taskbelay_list_tasks", "Read a bounded page of saved task summaries, including archived tasks when requested.", store.ListQuery{}, map[string]any{}, true},
-	{"taskbelay_accept_known_failure", "Record a user's explicit acceptance of named existing regression failures with current actual comparison evidence; never waive acceptance checks.", application.AcceptFailureRequest{}, TaskResult{}, false},
-	{"taskbelay_update_budget", "Apply one explicitly approved complete budget decision; synchronize Core and Host work-time caps without resetting cumulative cost.", application.BudgetRequest{}, TaskResult{}, false},
-	{"taskbelay_archive_task", "Archive or restore a terminal task without changing its outcome or deleting work.", application.ArchiveRequest{}, TaskResult{}, false},
+	{"taskbelay_server_info", "读取实际工具和能力。可选 contracts 按名称展开方法说明、输入输出Schema、字段注释与完整样例；查询契约不会执行方法。 只读保存状态，不写计量或查询进程身份。 可重复读取。", ServerInfoRequest{}, ServerInfoResult{}, true},
+	{"taskbelay_open_task", "从真实请求在现有工作区创建active Task。无需重复批准计划；本方法不创建分支或运行检查。 更新Core任务、操作与计量；不修改Git，不启动命令。占用目录claims。 同一operation_id和相同请求回读原Task；不同内容拒绝。响应丢失先查已保存Task，不能用新身份重复创建。", application.OpenRequest{}, ContextResult{}, false},
+	{"taskbelay_get_task", "读取当前请求和进展。refresh=true观察实际变化；false只读保存状态。detail=true展开公开详情。 refresh=true可能保存新观察并计量；false只读。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", GetRequest{}, TaskResult{}, false},
+	{"taskbelay_checkpoint", "记录有意义的进展、局部审查、未解决事项、用户待决定问题和用量。省略保留；concerns按id合并，空数组不删除旧事项。 更新Core任务、操作与计量；不修改Git，不启动命令。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", application.CheckpointRequest{}, TaskState{}, false},
+	{"taskbelay_resolve_issue", "记录针对当前issue的真实用户答复并清除问题。答复本身不修改授权；目标或限制改变还需revise_task。 更新Core任务、操作与计量；不修改Git，不启动命令。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", application.ResolveIssueRequest{}, TaskState{}, false},
+	{"taskbelay_revise_task", "仅替换提供的完整authorization或plan；省略保留。普通方法调整沿用原请求；改变目标/限制或扩大上限需真实新决定。 更新Core任务、操作与计量；不修改Git，不启动命令。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", application.ReviseRequest{}, TaskState{}, false},
+	{"taskbelay_record_evidence", "记录agent声明或已完成的用户人工观察。claim不能满足必需检查，human只用于human检查；不能伪造Core执行。 更新Core任务、操作与计量；不修改Git，不启动命令。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", application.EvidenceRequest{}, TaskState{}, false},
+	{"taskbelay_get_run", "读取保存的真实运行与输出，不查询进程或重新执行。running仅为保存状态；恢复接口核对实际进程。 只读保存状态。 可重复读取。", GetRunRequest{}, RunDetail{}, true},
+	{"taskbelay_recover_run", "恢复匹配收据或分类已停止且无收据的运行，永远不重跑命令。Core及命令组均已停止后，缺收据只能记录interrupted_unknown。 结算原结果/用量，不重执行。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", application.RecoverRequest{}, RunResult{}, false},
+	{"taskbelay_finish_task", "在所有当前目标、检查、审查、事项和运行满足完成条件后结束Task。limitations从已保存事项产生，不接收独立risks。 更新Core任务、操作与计量；不修改Git，不启动命令。active→done，释放claims，保留文件。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", application.FinishRequest{}, TaskState{}, false},
+	{"taskbelay_cancel_task", "明确取消Task并释放claims，保留文件与结果。存在未知执行时先处理原运行。 更新Core任务、操作与计量；不修改Git，不启动命令。active→cancelled并释放claims。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", application.CancelRequest{}, TaskState{}, false},
+	{"taskbelay_list_tasks", "分页读取保存摘要；先过滤后分页，不访问Git。归档默认隐藏。 只读保存状态。 可重复读取；有界页码不是稳定全量快照。", store.ListQuery{}, TaskPage{}, true},
+	{"taskbelay_accept_known_failure", "记录用户明确接受的既有回归失败。只有regression可用，失败继续显示failed，不豁免acceptance。 更新Core任务、操作与计量；不修改Git，不启动命令。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", application.AcceptFailureRequest{}, TaskState{}, false},
+	{"taskbelay_update_budget", "应用已经发生的完整预算决定。0移除该维度上限；work_ms同时更新Core和Host上限，累计消耗保留。 更新Core任务、操作与计量；不修改Git，不启动命令。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", application.BudgetRequest{}, TaskState{}, false},
+	{"taskbelay_archive_task", "归档或恢复终态Task的可见性，保留文件、执行结果与终态。 更新Core任务、操作与计量；不修改Git，不启动命令。 响应丢失先读保存状态；相同已保存身份与相同内容回读，不重做。revision 冲突读取后换 operation_id；输入被拒且未登记可保留身份修正。", application.ArchiveRequest{}, TaskState{}, false},
 }
 
 type Handler struct {
@@ -75,7 +76,21 @@ func NewHandler(service *application.Service, version string, preferences userco
 	return &Handler{service: service, version: version, preferences: preferences, measureControl: service.MeasureControl}
 }
 
-var NativeCheck = Tool{"check.run", "Run an approved check through the Host native process permission and environment.", application.RunRequest{}, RunResult{}, false}
+var NativeCheck = Tool{"check.run", "Execute an existing command check once under native Host permissions. Retain the returned view.identity and run_id. ok=true can contain a failed check; inspect run.status. Existing passing results are reused; lost responses require reading/recovering the original run, not another command.", application.RunRequest{}, RunResult{}, false}
+
+var NativePreflights = []Tool{
+	{"host-check.pre-file-write", "Preflight actual structured write paths against the current Core claim. Does not judge future semantics or grant native permissions. A deny decision is a successful preflight response, not permission to bypass it.", application.WriteRequest{}, application.WriteDecision{}, true},
+	{"host-check.workspace-available", "Read every selected canonical workspace claim. Returns all active_task_id values, not only the first conflict. No claim does not prove a previous open failed. Does not create a Task or grant write authority.", application.WorkspaceRequest{}, application.WorkspaceAvailability{}, true},
+}
+
+func (s *Handler) RunPreflight(ctx context.Context, name string, raw []byte) Envelope {
+	for _, tool := range NativePreflights {
+		if tool.Name == name {
+			return s.dispatch(ctx, tool, raw)
+		}
+	}
+	return failure(newID(), name, domain.Invalid("tool", "unknown native preflight"))
+}
 
 func (s *Handler) Dispatch(ctx context.Context, name string, raw []byte) Envelope {
 	for _, tool := range Catalog {
@@ -92,7 +107,7 @@ func (s *Handler) RunCheck(ctx context.Context, raw []byte) Envelope {
 
 func savedRead(name string, raw []byte) bool {
 	switch name {
-	case "taskbelay_server_info", "taskbelay_list_tasks", "taskbelay_get_run":
+	case "taskbelay_server_info", "taskbelay_list_tasks", "taskbelay_get_run", "host-check.pre-file-write", "host-check.workspace-available":
 		return true
 	case "taskbelay_get_task":
 		var q GetRequest
@@ -116,8 +131,8 @@ func (s *Handler) dispatch(ctx context.Context, tool Tool, raw []byte) (envelope
 	}
 	taskID := ""
 	var identity struct {
-		TaskID      string `json:"task_id"`
-		OperationID string `json:"operation_id"`
+		TaskID      string `json:"task_id" description:"唯一Core Task身份；不从标题、目录或临时会话ID猜测。"`
+		OperationID string `json:"operation_id" description:"稳定逻辑操作身份；同一已提交身份不能用于不同请求。"`
 	}
 	_ = json.Unmarshal(raw, &identity)
 	taskID = identity.TaskID
@@ -141,18 +156,29 @@ func (s *Handler) dispatch(ctx context.Context, tool Tool, raw []byte) (envelope
 	detail := false
 	e = nil
 	switch name {
-	case "taskbelay_server_info":
-		var q Empty
-		e = Decode(raw, &q)
-		if e == nil {
-			names := []string{}
-			for _, d := range Catalog {
-				names = append(names, d.Name)
+	case "host-check.pre-file-write":
+		var q application.WriteRequest
+		if e = Decode(raw, &q); e == nil {
+			if !q.Host.IsValid() || !q.IntentDigest.IsValid() || domain.Text("tool_name", q.ToolName) != nil {
+				e = domain.Invalid("arguments", "requires the actual Host, tool_name and intent_digest")
+			} else {
+				result, e = s.service.PreWrite(ctx, q.RepositoryPath, q.Paths, q.PathParseComplete)
 			}
-			result = map[string]any{"startup_diagnostics": map[string]any{"core_reached": true, "shared_contract": "CLI, MCP and HTTP use the same service", "host_mcp_visibility": "check tools visible in the current Host; CLI success does not establish MCP availability"}, "product": "taskbelay", "version": s.version, "schema": store.DatabaseSchemaVersion, "tools": names, "host_preferences": s.preferences, "coverage": map[string]any{"core_execution": "local argv only; not a sandbox", "codex": "apply_patch path preflight; other writes observed at checkpoints", "claude": "Write/Edit/NotebookEdit path preflight; other writes observed at checkpoints", "zcode": "registered structured writes only; Host capability must be verified", "deepseek": "write/edit/str_replace_editor path preflight; other writes observed at checkpoints"}, "semantic_evidence": "Host judgment with cited basis and uncertainty; not a correctness proof", "cost": "Mutating Core calls are metered; saved-state reads do not write cost or query process identity. Host usage is reported.", "native_check": map[string]any{"command": "check run", "input_schema": Schema(NativeCheck.Input), "output_schema": OutputSchema(NativeCheck.Output)}}
-			cost, err := s.service.SavedControlCost(ctx)
-			e = err
-			result.(map[string]any)["control_cost"] = cost
+		}
+	case "host-check.workspace-available":
+		var q application.WorkspaceRequest
+		if e = Decode(raw, &q); e == nil {
+			result, e = s.service.WorkspaceAvailable(ctx, q)
+		}
+	case "taskbelay_server_info":
+		var q ServerInfoRequest
+		if e = Decode(raw, &q); e == nil {
+			var info ServerInfoResult
+			info, e = s.serverInfo(q)
+			if e == nil {
+				info.ControlCost, e = s.service.SavedControlCost(ctx)
+			}
+			result = info
 		}
 	case "taskbelay_open_task":
 		var q application.OpenRequest
@@ -217,7 +243,7 @@ func (s *Handler) dispatch(ctx context.Context, tool Tool, raw []byte) (envelope
 			} else {
 				var r execution.Run
 				e = s.service.Store.Run(ctx, q.RunID, &r)
-				result = r
+				result = runDetail(r)
 				taskID = r.TaskID
 			}
 		}
@@ -241,7 +267,7 @@ func (s *Handler) dispatch(ctx context.Context, tool Tool, raw []byte) (envelope
 		if e = Decode(raw, &q); e == nil {
 			var page store.TaskPage
 			page, e = s.service.Store.List(ctx, q)
-			items := []map[string]any{}
+			items := []TaskSummary{}
 			for _, t := range page.Items {
 				items = append(items, Summary(t))
 			}
@@ -249,7 +275,7 @@ func (s *Handler) dispatch(ctx context.Context, tool Tool, raw []byte) (envelope
 			if e == nil {
 				e = err
 			}
-			result = map[string]any{"items": items, "page": page.Page, "has_next": page.HasNext, "control_cost": cost}
+			result = TaskPage{Items: items, Page: page.Page, HasNext: page.HasNext, ControlCost: cost}
 		}
 	}
 	if e != nil {
@@ -257,36 +283,13 @@ func (s *Handler) dispatch(ctx context.Context, tool Tool, raw []byte) (envelope
 	}
 	switch v := result.(type) {
 	case application.View:
-		result = taskResult(v, detail)
+		result = taskResult(v, name == "taskbelay_open_task" || name == "taskbelay_get_task", detail)
 	case application.RunResult:
 		result = runResult(v)
 	}
 	envelope.OK = true
 	envelope.Result = result
 	return envelope
-}
-func Summary(t domain.Task) map[string]any {
-	lifecycle := t.Status
-	node := strings.ToUpper(t.Status)
-	var blocker *string
-	if t.Status == "active" && t.Issue != nil {
-		lifecycle = "blocked"
-		node = "BLOCKED"
-		blocker = &t.Issue.Summary
-	}
-	for _, f := range t.Facts {
-		if t.Status == "active" && f.Blocking {
-			lifecycle = "blocked"
-			node = "BLOCKED"
-			x := f.Detail
-			blocker = &x
-		}
-	}
-	keys := []string{}
-	for _, r := range t.Repositories {
-		keys = append(keys, string(r.Key))
-	}
-	return map[string]any{"task_id": t.TaskID, "request_summary": t.Authorization.Request, "origin_host": t.Host, "execution_host": t.Host, "current_node": node, "lifecycle": lifecycle, "revision": t.Revision, "updated_at": t.UpdatedAt, "archived": t.Archived, "repository_keys": keys, "repository_group_id": t.Repositories[0].Origin.SourceRepositoryGroupDigest, "worktree_path": t.Repositories[0].Origin.CanonicalWorktreeRoot, "blocker": blocker, "outcome": t.Summary}
 }
 func newID() string {
 	b := make([]byte, 16)
