@@ -2,7 +2,7 @@
 
 The current machine-readable reference is interfaces.json. Usage and transport rules are in docs/INTERFACES.md and docs/INTERFACES_en.md. Every method carries input/output field descriptions, complete producer examples, preconditions and failure handling. Maintainer paths are informational; installed consumers need no repository source.
 
-Sources are the live Core DTO/catalog, explicit host-inputs.mjs, Codex's existing host-launch-contract.mjs and field-notes.json. Example scripts execute isolated Git/Core/HTTP and public serializers; external Host installation/session/desktop drivers are labelled simulations. Output sample schemas are expanded with live Core schemas where those contracts are reused. Retained Host receipts, handoffs and external Host result objects are opaque and must be preserved unchanged.
+Sources are the live Core DTO/catalog, explicit host-inputs.mjs, freshness-output.mjs, Codex's existing host-launch-contract.mjs and field-notes.json. Example scripts execute isolated Git/Core/HTTP and public serializers; external Host installation/session/desktop drivers are labelled simulations. Freshness outputs use the explicit shared schema for fetch, integration and recovery branches; other output sample schemas are expanded with live Core schemas where those contracts are reused. Retained Host receipts, handoffs and external Host result objects are opaque and must be preserved unchanged.
 
 Regenerate after changing an owning producer:
 

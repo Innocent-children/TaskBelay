@@ -27,6 +27,9 @@ func (s *Service) Checkpoint(ctx context.Context, q CheckpointRequest) (View, er
 		v.Replayed = true
 		return v, e
 	}
+	if q.Issue != nil && t.Issue != nil && domain.Hash(q.Issue) != domain.Hash(t.Issue) {
+		return View{}, domain.Fail("ISSUE_CHANGED", "issue", "resolve the saved question with taskbelay_resolve_issue before recording a different question")
+	}
 	t, e = s.observe(ctx, t)
 	if e != nil {
 		return View{}, e

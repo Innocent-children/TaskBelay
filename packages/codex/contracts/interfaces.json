@@ -28538,42 +28538,49 @@
       "description": "Complete transport result. Success and failure are separate branches; read the method transport instructions before parsing.",
       "anyOf": [
         {
+          "description": "Complete source freshness result, including optional fetch, integration and recovery records.",
           "type": "object",
-          "description": "Complete method result.",
           "additionalProperties": false,
           "properties": {
             "repositories": {
               "type": "array",
-              "description": "按稳定key组织的完整仓库集合；处理各项结果，不只读取第一项。",
+              "description": "Actual result for every selected repository.",
               "items": {
+                "description": "One bound repository and its observed operation result.",
                 "type": "object",
-                "description": "按稳定key组织的完整仓库集合；处理各项结果，不只读取第一项。",
                 "additionalProperties": false,
                 "properties": {
                   "key": {
                     "type": "string",
-                    "description": "仓库稳定key，1..128个小写ASCII字母数字及._-，以字母数字开头。"
+                    "description": "Stable repository key supplied by the caller."
                   },
                   "repository_path": {
                     "type": "string",
-                    "description": "当前规范绝对Git工作目录。"
+                    "description": "Canonical absolute worktree path."
                   },
                   "source_selection": {
+                    "description": "Original selected source, independent of task-branch tracking.",
                     "type": "object",
-                    "description": "不可变的原来源选择，后续任务分支上游不改变它。",
                     "additionalProperties": false,
                     "properties": {
                       "source_type": {
                         "type": "string",
-                        "description": "local/remote，说明冻结来源。"
+                        "description": "Original source type.",
+                        "enum": [
+                          "local",
+                          "remote"
+                        ]
                       },
                       "remote_name": {
                         "type": "string",
-                        "description": "remote来源的真实远端名；local来源为空。"
+                        "description": "Selected remote name; empty for a local source."
                       },
                       "base_branch": {
-                        "type": "string",
-                        "description": "原来源分支，不自行换成main。"
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Selected source branch; null for an unselected detached source."
                       }
                     },
                     "required": [
@@ -28583,45 +28590,60 @@
                     ]
                   },
                   "remote_freshness": {
+                    "description": "Actual local comparison and whether a fetch completed.",
                     "type": "object",
-                    "description": "对原选定来源的实际远端观察。",
                     "additionalProperties": false,
                     "properties": {
                       "head": {
                         "type": "string",
-                        "description": "实际观察到的HEAD提交。"
+                        "description": "Observed local HEAD."
                       },
                       "upstream": {
                         "type": "string",
-                        "description": "该处明确指代的来源或任务分支上游引用；null表示没有，不能推定IDE目标。"
+                        "description": "Selected remote-tracking ref; empty when unavailable."
                       },
                       "remote_head": {
                         "type": "string",
-                        "description": "实际获取的追踪提交，未获取时为空，不能伪称最新。"
+                        "description": "Observed fetched commit; empty when unavailable."
                       },
                       "state": {
                         "type": "string",
-                        "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                        "description": "Observed freshness or reason it is unknown.",
+                        "enum": [
+                          "not_checked",
+                          "not_fetched",
+                          "fetch_failed",
+                          "no_upstream",
+                          "detached",
+                          "current",
+                          "ahead",
+                          "behind",
+                          "diverged"
+                        ]
                       },
                       "fetched": {
                         "type": "boolean",
-                        "description": "本次观察是否实际fetch成功。"
+                        "description": "Whether this observation includes a successful fetch."
                       },
                       "remote_name": {
                         "type": "string",
-                        "description": "remote来源的真实远端名；local来源为空。"
+                        "description": "Actual source remote; empty when unavailable."
                       },
                       "remote_ref": {
                         "type": "string",
-                        "description": "选定远端上的完整ref，例如refs/heads/main。"
+                        "description": "Actual source branch ref; empty when unavailable."
+                      },
+                      "fetched_at": {
+                        "type": "string",
+                        "description": "UTC time of the successful fetch; absent when no fetch completed or after read-only recovery."
                       },
                       "checked_at": {
                         "type": "string",
-                        "description": "此次观察时间，UTC。"
+                        "description": "UTC time of this observation."
                       },
                       "basis": {
                         "type": "string",
-                        "description": "与实际观察、当前目标或检查关联的具体判断理由。"
+                        "description": "Concrete explanation of the observation and its limits."
                       }
                     },
                     "required": [
@@ -28638,28 +28660,157 @@
                   },
                   "action": {
                     "type": "string",
-                    "description": "建议的处理动作。Core为continue/review/self_correct/verify/stop/ask_user等；错误以恢复表为准。"
+                    "description": "Suggested next action; this does not grant authority.",
+                    "enum": [
+                      "inspect",
+                      "fast_forward_available",
+                      "preserve_dirty",
+                      "preserve_divergence",
+                      "continue",
+                      "preserve_and_inspect"
+                    ]
                   },
                   "integrated": {
                     "type": "boolean",
-                    "description": "该仓库是否已完成所请求整合。"
+                    "description": "Whether this operation verified a successful fast-forward."
+                  },
+                  "fetch_status": {
+                    "type": "string",
+                    "description": "Saved fetch attempt state; absent when no fetch was attempted.",
+                    "enum": [
+                      "attempting",
+                      "completed",
+                      "failed",
+                      "unknown"
+                    ]
+                  },
+                  "failure": {
+                    "description": "Original Git or integration failure, retained for inspection.",
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "message": {
+                        "type": "string",
+                        "description": "Original failure message."
+                      },
+                      "code": {
+                        "type": [
+                          "integer",
+                          "string",
+                          "null"
+                        ],
+                        "description": "Original process exit code or OS error code; null when unavailable."
+                      },
+                      "stderr": {
+                        "type": "string",
+                        "description": "Original diagnostic output, bounded by the producer."
+                      }
+                    },
+                    "required": [
+                      "message",
+                      "code",
+                      "stderr"
+                    ]
                   },
                   "integration": {
+                    "description": "Per-repository integration outcome and optional recovery observation.",
                     "type": "object",
-                    "description": "逐仓整合结果及原冻结目标。",
                     "additionalProperties": false,
                     "properties": {
                       "state": {
                         "type": "string",
-                        "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                        "description": "Saved integration attempt state.",
+                        "enum": [
+                          "pending",
+                          "not_needed",
+                          "blocked",
+                          "applying",
+                          "applied",
+                          "unknown"
+                        ]
                       },
                       "target_head": {
                         "type": "string",
-                        "description": "原整合冻结目标，不能恢复时改成新获取提交。"
+                        "description": "Frozen fetched target commit; empty before one is observed."
                       },
                       "basis": {
                         "type": "string",
-                        "description": "与实际观察、当前目标或检查关联的具体判断理由。"
+                        "description": "Reason for the saved integration result."
+                      },
+                      "attempted_at": {
+                        "type": "string",
+                        "description": "UTC time saved before the merge attempt."
+                      },
+                      "finished_at": {
+                        "type": "string",
+                        "description": "UTC time the successful merge was verified."
+                      },
+                      "failure": {
+                        "description": "Original Git or integration failure, retained for inspection.",
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "message": {
+                            "type": "string",
+                            "description": "Original failure message."
+                          },
+                          "code": {
+                            "type": [
+                              "integer",
+                              "string",
+                              "null"
+                            ],
+                            "description": "Original process exit code or OS error code; null when unavailable."
+                          },
+                          "stderr": {
+                            "type": "string",
+                            "description": "Original diagnostic output, bounded by the producer."
+                          }
+                        },
+                        "required": [
+                          "message",
+                          "code",
+                          "stderr"
+                        ]
+                      },
+                      "recovery": {
+                        "description": "Read-only inspection after the original owner stopped; not proof of the original command result.",
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                          "checked_at": {
+                            "type": "string",
+                            "description": "UTC time of recovery inspection."
+                          },
+                          "head": {
+                            "type": "string",
+                            "description": "Observed local HEAD during recovery."
+                          },
+                          "clean": {
+                            "type": "boolean",
+                            "description": "Whether the inspected worktree is clean."
+                          },
+                          "observation": {
+                            "type": "string",
+                            "description": "Current Git state relative to the saved source and target.",
+                            "enum": [
+                              "target_present",
+                              "original_state_present",
+                              "workspace_drift"
+                            ]
+                          },
+                          "basis": {
+                            "type": "string",
+                            "description": "Limits of the read-only recovery observation."
+                          }
+                        },
+                        "required": [
+                          "checked_at",
+                          "head",
+                          "clean",
+                          "observation",
+                          "basis"
+                        ]
                       }
                     },
                     "required": [
@@ -28682,7 +28833,53 @@
             },
             "integration_blocked": {
               "type": "boolean",
-              "description": "整批被阻止、部分完成或未知时为true，不代表已成功的仓库回滚。"
+              "description": "Whether the integration batch is blocked, partial, uncertain or reconciled rather than complete."
+            },
+            "operation": {
+              "description": "Original integration operation; absent for observation-only requests.",
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "operation_id": {
+                  "type": "string",
+                  "description": "Stable integration identity supplied by the caller."
+                },
+                "receipt_path": {
+                  "type": "string",
+                  "description": "Absolute path of the retained operation receipt."
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Saved batch state.",
+                  "enum": [
+                    "assessing",
+                    "integrating",
+                    "complete",
+                    "blocked",
+                    "partial",
+                    "uncertain",
+                    "reconciled"
+                  ]
+                },
+                "replayed": {
+                  "type": "boolean",
+                  "description": "Whether this response reads an existing operation without repeating effects."
+                },
+                "error": {
+                  "type": "string",
+                  "description": "Original operation failure when present."
+                },
+                "receipt_error": {
+                  "type": "string",
+                  "description": "Failure while saving the operation result when present."
+                }
+              },
+              "required": [
+                "operation_id",
+                "receipt_path",
+                "status",
+                "replayed"
+              ]
             }
           },
           "required": [

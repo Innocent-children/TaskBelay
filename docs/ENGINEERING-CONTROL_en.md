@@ -42,6 +42,8 @@ Mutations require successful metering preparation before work. Saved-state reads
 
 WebUI offers search, Host/status filters, language selection, actual user answers, regression exceptions and execution recovery. Answers bind issue_digest and retain their reason without changing restrictions. Mutations are never replayed automatically. Response loss requires refresh; saved changes followed by display failure are distinguished, and late responses cannot replace another task.
 
+A checkpoint may omit or repeat the current issue unchanged, but cannot replace an unresolved question. Record the actual user answer with resolve_issue before saving a different question.
+
 ## Verification
 
 Use temporary Git repositories and isolated SQLite to verify rejection of goals without acceptance, exceptions separate from acceptance, retained independent results, user answers preserving restrictions, saved reads under denied process queries without metering writes, no MCP/HTTP process execution, durable native interruption recovery, and filtering before paging. Browser checks cover decision/budget writes and unknown-run recovery; simulated response loss and stale selection requests check UI behavior.

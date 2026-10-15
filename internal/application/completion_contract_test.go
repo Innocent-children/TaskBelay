@@ -88,3 +88,51 @@ func TestUserDecisionIsBoundAndPreservesRestrictions(t *testing.T) {
 		t.Fatal("decision replay duplicated history", err)
 	}
 }
+
+func TestCheckpointPreservesUnresolvedIssueUntilUserAnswers(t *testing.T) {
+	s, v, _ := fixture(t)
+	ctx := context.Background()
+	issue := &domain.Issue{Kind: "authorization", Summary: "May this task change the public API?", Options: []string{"Retain", "Change"}}
+	v, err := s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "ask", v.Task.Revision}, Issue: issue})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, next := range []struct {
+		name  string
+		issue *domain.Issue
+	}{{"omitted", nil}, {"unchanged", issue}} {
+		v, err = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, next.name, v.Task.Revision}, Issue: next.issue})
+		if err != nil || domain.Hash(v.Task.Issue) != domain.Hash(issue) || v.Decision.Advice != "ask_user" {
+			t.Fatal("checkpoint lost the unanswered question", err)
+		}
+	}
+	for _, changed := range []domain.Issue{
+		{Kind: "tradeoff", Summary: issue.Summary, Options: issue.Options},
+		{Kind: issue.Kind, Summary: "Which label should be used?", Options: issue.Options},
+		{Kind: issue.Kind, Summary: issue.Summary, Options: []string{"Different choice", "Change"}},
+	} {
+		_, err = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "replace", v.Task.Revision}, Issue: &changed})
+		if code(err) != "ISSUE_CHANGED" {
+			t.Fatal("unanswered question was replaced", err)
+		}
+		saved, err := s.Store.Get(ctx, v.Task.TaskID)
+		if err != nil || saved.Revision != v.Task.Revision || domain.Hash(saved.Issue) != domain.Hash(issue) || code(requireExecutionAuthority(saved)) != "AUTHORIZATION_PENDING" {
+			t.Fatal("rejected replacement changed the saved question or authority", err)
+		}
+		if _, exists, err := s.Store.Operation(ctx, v.Task.TaskID, "replace"); err != nil || exists {
+			t.Fatal("rejected replacement recorded an operation", err)
+		}
+	}
+	v, err = s.ResolveIssue(ctx, ResolveIssueRequest{Identity: Identity{v.Task.TaskID, "answer", v.Task.Revision}, IssueDigest: v.IssueDigest, UserRef: "actual-user-answer", Decision: "Retain the public API"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := &domain.Issue{Kind: "tradeoff", Summary: "Which label should be used?", Options: []string{"First label", "Second label"}}
+	v, err = s.Checkpoint(ctx, CheckpointRequest{Identity: Identity{v.Task.TaskID, "next-question", v.Task.Revision}, Issue: next})
+	if err != nil || domain.Hash(v.Task.Issue) != domain.Hash(next) {
+		t.Fatal("could not record a new question after the actual answer", err)
+	}
+	if last := v.Task.Changes[len(v.Task.Changes)-1]; last.Kind != "user_decision" || last.UserRef != "actual-user-answer" {
+		t.Fatal("original user answer was not retained", last)
+	}
+}

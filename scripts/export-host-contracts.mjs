@@ -5,6 +5,7 @@ import { execFile as execCallback } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { workspaceInputs, workspaceDescriptions, deepseekInput } from '../contracts/host-inputs.mjs';
+import { freshnessOutputSchema } from '../contracts/freshness-output.mjs';
 import { exampleSchema, mergeSchema } from './interface-schema.mjs';
 const execFile=promisify(execCallback);
 const root=resolve(import.meta.dirname,'..');
@@ -63,7 +64,7 @@ async function record(host,op,input,action,description=workspaceDescriptions[op]
  const name=`${host}.host-launch.${op}`;
  let entry=records.find(x=>x.name===name);
  if(!entry){entry={name,description,input_schema:inputSchema,output_schema:null,transport:'One closed JSON object on stdin; success stdout is the complete JSON result. Failure exits nonzero with stderr. Preserve any returned launch/receipt identity before another action.',examples:[]};records.push(entry)}
- entry.output_schema=mergeSchema(entry.output_schema,exampleSchema(output,notes));
+ entry.output_schema=op==='freshness'?freshnessOutputSchema:mergeSchema(entry.output_schema,exampleSchema(output,notes));
  entry.examples.push({name:'success',preconditions:'Actual helper and Git/Core fixture. Paths, IDs and timestamps are illustrative; Host session observations are simulated and do not establish a real Host session.',input:normalize(input),output:normalize(output)});
  return output;
 }
@@ -170,7 +171,7 @@ async function deepseekHost(){
   const output=await action();
   let message;
   try{await badAction();throw new Error('invalid fixture accepted');}catch(error){if(error.message==='invalid fixture accepted')throw error;message=error.message}
-  records.push({name:'deepseek.workspace_coordinator.'+op,description:'Use workspace_coordinator operation='+op+'. Preserve actual authority and the original launch/Task identity. Output is the producer result; errors are surfaced as Host tool errors without silently retrying.',input_schema:deepseekInput(op),output_schema:exampleSchema(output,notes),transport:'One DSH tool call. Success is the complete JSON value; a thrown error is rendered by the Host with isError=true.',examples:[{name:'success',preconditions:'Real helper/Git/Core fixture; Host dispatch and user input are explicitly simulated.',input:normalize(input),output:normalize(output)},{name:'invalid_request',preconditions:'Concrete invalid request to the same operation.',input:normalize(bad),output:{isError:true,message:normalize(message)}}]});
+  records.push({name:'deepseek.workspace_coordinator.'+op,description:'Use workspace_coordinator operation='+op+'. Preserve actual authority and the original launch/Task identity. Output is the producer result; errors are surfaced as Host tool errors without silently retrying.',input_schema:deepseekInput(op),output_schema:op==='freshness'?freshnessOutputSchema:exampleSchema(output,notes),transport:'One DSH tool call. Success is the complete JSON value; a thrown error is rendered by the Host with isError=true.',examples:[{name:'success',preconditions:'Real helper/Git/Core fixture; Host dispatch and user input are explicitly simulated.',input:normalize(input),output:normalize(output)},{name:'invalid_request',preconditions:'Concrete invalid request to the same operation.',input:normalize(bad),output:{isError:true,message:normalize(message)}}]});
   return output;
  };
  const freshness={operation:'freshness',freshness_repositories:[{key:'primary',repository_path:repo,source_type:'local',remote_name:'',base_branch:'main'}],fetch:false,integrate:false};

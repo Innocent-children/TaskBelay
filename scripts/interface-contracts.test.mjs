@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { HOST_LAUNCH_OPERATIONS } from '../packages/codex/lib/host-launch-contract.mjs';
 import { operations as zcodeOperations } from '../packages/zcode/bin/taskbelay-zcode.mjs';
 import { OPERATIONS } from '../packages/taskbelay/lib/cli.mjs';
+import { freshnessOutputSchema } from '../contracts/freshness-output.mjs';
 const root=resolve(import.meta.dirname,'..');
 const all=JSON.parse(await readFile(join(root,'contracts/interfaces.json'),'utf8'));
 function described(schema,path) {
@@ -28,6 +29,7 @@ test('current public method/operation branches have complete discoverable contra
     assert.ok(entry.examples.some(x=>x.name!=='success'),entry.name);
     described(entry.input_schema,entry.name+'.input');described(entry.output_schema,entry.name+'.output');
     for(const e of entry.examples){assert.ok(e.preconditions,entry.name);assert.notEqual(e.input,undefined);assert.notEqual(e.output,undefined)}
+    if(entry.name.endsWith('.freshness'))assert.deepEqual(entry.output_schema.anyOf[0],freshnessOutputSchema,entry.name);
   }
 });
 test('method help works from isolated package files without Core, Git, stdin or a Task data directory',async t=>{
