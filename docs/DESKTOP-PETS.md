@@ -10,7 +10,7 @@
 
 桌面组件面向 macOS arm64（Apple Silicon）与 Windows 10/11 x64，运行时需要至少一个已安装并配置的 Codex、DeepSeek、Claude Code 或 ZCode Adapter 提供 Core。
 Swift Package 与应用 metadata 的部署目标为 macOS 14；最低系统实际运行、Developer ID 签名和 Apple 公证尚未完成正式分发验证。
-具体已验证范围见[支持矩阵](SUPPORT-MATRIX.md#桌面宠物功能检查)。
+具体已验证范围见[支持矩阵](SUPPORT-MATRIX.md)。
 
 下文 `productRoot` 指产品目录，macOS 默认是 `~/.taskbelay`；设置与形象保存在其中的 `pet/` 子目录。
 
@@ -50,6 +50,8 @@ taskbelay pet start
 ```
 
 本地包与正式制备复用同一平台应用装配。macOS 构建机器需要 Node.js >=24、Xcode >=27 和 macOS SDK >=27；`xcrun swift` 使用当前选中的 Xcode。构建前会检查工具链并输出版本，失败日志包含标准输出和标准错误。
+
+验证本地安装时，已有用户目录应用副本须先按“更新程序与素材”更新，再依次执行 `taskbelay pet start`、`taskbelay pet stop`、`taskbelay pet start`。最后一次启动应显示宠物，并能继续读取任务；仅编译成功不代表应用已连接 Core。启动器和原生应用按[命令参考](COMMANDS.md#安装与本机入口)读取当前运行状态，并核对实际本机服务。
 
 ## Windows 本地构建与安装
 
@@ -160,7 +162,7 @@ Windows 调整大小时会结束当前待机活动、停止对应位移，再按
 
 五类必需动作是 `idle`、`working`、`blocked`、`complete`、`disconnected`，保证任务状态都有对应展示。
 四类附加动作是 `running-right`、`running-left`、`waving`、`review`，用于散步、回应和思考。
-缺少的附加动作会从休闲候选中排除；审核节点缺少 review 素材时使用 working。
+缺少的附加动作会从休闲候选中排除；活动任务使用 working。
 安装副本的动作可在 `productRoot/pet/appearances/<id>/animations.json` 的 `clips` 中查看。
 
 ## 导入与切换
@@ -244,7 +246,7 @@ my-pet/
 ## Codex 标准宠物格式兼容
 
 TaskBelay 兼容 Codex 精灵图格式 1 和 2。兼容范围是本地包中的图集布局、所需动作帧和逐帧时长；
-任务阶段、提示和点击跳转由 TaskBelay 决定。导入入口接受以下字段组成的 `pet.json` 与 PNG/WebP 图集：
+任务状态、提示和点击跳转由 TaskBelay 决定。导入入口接受以下字段组成的 `pet.json` 与 PNG/WebP 图集：
 
 ```json
 {
@@ -280,8 +282,8 @@ TaskBelay 兼容 Codex 精灵图格式 1 和 2。兼容范围是本地包中的�
 | 完成 | `complete` | jumping，行 4 | 5 |
 | 未连接 | `disconnected` | failed，行 5 | 8 |
 | 受阻 | `blocked` | waiting，行 6 | 6 |
-| 普通阶段 | `working` | running，行 7 | 6 |
-| Review | `review` | review，行 8 | 6 |
+| 活动任务 | `working` | running，行 7 | 6 |
+| Idle thinking | `review` | review，行 8 | 6 |
 
 导入时拆成 PNG 帧并保留标准逐帧时长，之后使用统一播放器。向右走、向左走、挥手和 review
 参与下述待机活动与任务动作选择；循环素材也可按指定完整遍数播放后结束。
@@ -321,10 +323,10 @@ TaskBelay 导入成功不表示原图集能被 Codex 识别。需要同时在 Co
 | 基础待机 | 每个短动作结束后等待随机 6–12 秒，再选择下一项。相同状态的普通轮询保持当前动作和倒计时。 |
 | 向右走、向左走 | 初始权重各 25%。对应方向至少有 40 pt 空间时，水平移动 40–80 pt，平均速度约 `20 × scale` pt/秒，持续时间为距离除以速度，100% 大小时为 2–4 秒。结束后有 30% 概率接一次挥手。 |
 | 挥手 | 随机权重 20%；空闲启动或重新显示、角色悬停至少 0.4 秒、拖动放下也可触发。每次播放 1–2 遍，共享 20 秒冷却。持续悬停只回应一次，离开至少 2 秒后可重新触发。 |
-| Review／看电脑思考 | 随机权重 30%；空闲时随机选择 3–5 秒目标时长，播足完整遍数后回到待机。实际任务位于 `COMPREHENSION_REVIEW` 节点时持续播放，离开该节点后恢复工作动作。 |
+| Review／看电脑思考 | 随机权重 30%；空闲时随机选择 3–5 秒目标时长，播足完整遍数后回到待机。活动任务统一使用 working；review 仅表示空闲动画，不代表 Core 阶段。 |
 
 先排除缺少素材、冷却中或空间不足的动作，再按剩余权重选择；有其他候选时避免连续重复同一动作。
-未提供 review 素材的形象在审核节点使用 working。空闲思考保留原气泡文字，任务含义和跳转目标继续由 Core 状态决定。
+未提供 review 素材的形象不参与空闲思考候选。空闲思考保留原气泡文字，任务含义和跳转目标继续由 Core 状态决定。
 
 自动散步以最后手动摆放位置为中心，水平范围为左右各 120 pt，目标距当前屏幕边缘至少 16 pt，
 完整窗口保持在可见区域内。自动位移只保存在内存中，手动拖动才更新保存位置；屏幕布局变化会取消当前路线并重新约束位置。
@@ -375,6 +377,8 @@ TaskBelay 导入成功不表示原图集能被 Codex 识别。需要同时在 Co
 | --- | --- |
 | `swift test --package-path packages/desktop-pet/macos --filter 'PetMotionTests\|PetAnimationTimelineTests\|AnimationAndBubbleTests\|PetTaskCollectionTests\|PetActivityTests'` | macOS；原生窗口的动画反向、中断、屏幕约束、滚动与按钮命中，以及逐帧时间线与活动规则；窗口检查使用构造的任务数据 |
 | `swift test --package-path packages/desktop-pet/macos --filter TaskObserverTests` | macOS；使用模拟 Core/HTTP 检查多任务发现、固定关注、自动交接与迟到响应处理 |
+| `node --test packages/taskbelay/tests/pet.test.mjs` | 使用源码编译的真实 Core 检查无服务时的状态输出、服务启动与启动器读取；原生窗口交接使用模拟入口。需要 Go。 |
+| `swift test --package-path packages/desktop-pet/macos --filter WebUIModelTests` | macOS；除模型测试外，编译并调用真实 Core，检查状态解码及原生启动参数。需要 Go；最终应用的显示与启停另行验证。 |
 | `swift test --package-path packages/desktop-pet/macos --filter PetAppearanceTests` | macOS；静态、原生和 Codex 素材导入保留支持的帧与时长，失败时保留已安装形象 |
 | `node --test packages/desktop-pet/windows/tests/contracts.test.cjs` | Node.js；检查 Windows 素材加载与导入的帧数和时长限制，超限重导入保留已安装形象；不运行 Windows 原生窗口 |
 | `node --test packages/desktop-pet/windows/tests/task-selection.test.cjs` | 模拟 Electron、偏好与 HTTP，检查任务发现和选择规则 |

@@ -1,5 +1,5 @@
 {
-  "description": "TaskBelay checks supported file writes against the active Task Plan before execution.",
+  "description": "TaskBelay checks supported structured write paths against current authorization; semantic and external changes are observed at checkpoints.",
   "hooks": {
     "PreToolUse": [
       {

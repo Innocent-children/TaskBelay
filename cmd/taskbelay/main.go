@@ -3,386 +3,249 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/application"
-	"github.com/Innocent-children/taskbelay/internal/domain"
-	coremcp "github.com/Innocent-children/taskbelay/internal/mcp"
+	"github.com/Innocent-children/taskbelay/internal/mcp"
+	"github.com/Innocent-children/taskbelay/internal/protocol"
 	"github.com/Innocent-children/taskbelay/internal/repository"
 	"github.com/Innocent-children/taskbelay/internal/store"
 	"github.com/Innocent-children/taskbelay/internal/userconfig"
 	"github.com/Innocent-children/taskbelay/internal/version"
 	"github.com/Innocent-children/taskbelay/internal/webui"
-	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const (
-	dataDirectoryEnvironment   = "TASKBELAY_DATA_DIR"
-	mcpInstructionsEnvironment = "TASKBELAY_CODEX_MCP_INSTRUCTIONS"
-	databaseFileName           = "taskbelay.db"
-)
-
-const helpText = `taskbelay exposes the governed Core over local STDIO MCP and a shared local WebUI.
-
+const helpText = `TaskBelay observes authorized changes and actual verification evidence locally.
 Usage:
-  taskbelay [help|-h|--help]
-  taskbelay version
-  taskbelay config validate
+  taskbelay help|version
   taskbelay mcp --stdio
-  taskbelay host-check pre-file-write
-  taskbelay host-check workspace-available
-  taskbelay artifacts collect
-  taskbelay artifacts prepare
-  taskbelay webui start [--no-open] [--plain|--json]
-  taskbelay webui open [--plain|--json]
-  taskbelay webui status [--plain|--json]
-  taskbelay webui stop [--plain|--json]
-
-Set TASKBELAY_DATA_DIR to an existing local data directory before starting MCP or WebUI.
-Host product integration, installation, publication, and remote transports are not included.
+  taskbelay check run                  Native execution; JSON request on stdin
+  taskbelay call <tool_name>             JSON request on stdin
+  taskbelay host-check pre-file-write|workspace-available
+  taskbelay config validate
+  taskbelay webui start|open|status|stop [--no-open] [--json|--plain]
+Set TASKBELAY_DATA_DIR to a local directory. Commands do not modify Git.
 `
 
-type mcpServeFunc func(context.Context, *application.Service, string, *coremcp.Diagnostics, string, userconfig.Preferences) error
+type mcpServeFunc func(context.Context, *application.Service, string, string, userconfig.Preferences, bool) error
 
-var (
-	startWebUI       = webui.Start
-	statusWebUI      = webui.Status
-	openWebUIBrowser = webui.OpenBrowser
-	stopWebUI        = webui.Stop
-)
-
-func main() {
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv, serveStandardIO))
-}
-
-func run(
-	args []string,
-	stdin io.Reader,
-	stdout io.Writer,
-	stderr io.Writer,
-	getenv func(string) string,
-	serve mcpServeFunc,
-) int {
-	if len(args) == 0 || len(args) == 1 && isHelp(args[0]) {
-		_, _ = io.WriteString(stdout, helpText)
-		return 0
+func main() { os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv, serveStandardIO)) }
+func service(ctx context.Context, getenv func(string) string) (*application.Service, func(), error) {
+	dir := getenv("TASKBELAY_DATA_DIR")
+	if dir == "" || !filepath.IsAbs(dir) {
+		return nil, nil, fmt.Errorf("TASKBELAY_DATA_DIR must be an absolute local directory")
 	}
-
-	if len(args) == 1 && args[0] == "version" {
-		current, err := version.Current()
+	db, e := store.Open(ctx, filepath.Join(dir, "taskbelay.db"))
+	if e != nil {
+		return nil, nil, e
+	}
+	s, e := application.NewService(db, repository.NewGitObserver())
+	if e != nil {
+		db.Close()
+		return nil, nil, e
+	}
+	return s, func() { db.Close() }, nil
+}
+func run(args []string, in io.Reader, out, errout io.Writer, getenv func(string) string, serve mcpServeFunc) int {
+	if name := auxiliaryHelpName(args); name != "" {
+		contract, err := protocol.Describe(name)
 		if err != nil {
-			_, _ = io.WriteString(stderr, "taskbelay: version is unavailable\n")
+			json.NewEncoder(out).Encode(protocol.ErrorEnvelope(name, err))
 			return 1
 		}
-		_, _ = fmt.Fprintf(stdout, "taskbelay %s\n", current)
+		if json.NewEncoder(out).Encode(contract) != nil {
+			return 1
+		}
 		return 0
 	}
-
-	if len(args) == 2 && args[0] == "mcp" && args[1] == "--stdio" {
-		return runMCP(stdin, stdout, stderr, getenv, serve)
+	if len(args) >= 3 && (args[0] == "call" || args[0] == "check" && args[1] == "run" || args[0] == "host-check") && args[2] == "--help" && (len(args) == 3 || len(args) == 4 && args[3] == "--json") {
+		name := args[1]
+		if args[0] == "check" {
+			name = "check.run"
+		}
+		if args[0] == "host-check" {
+			name = "host-check." + name
+		}
+		contract, err := protocol.Describe(name)
+		if err != nil {
+			json.NewEncoder(out).Encode(protocol.ErrorEnvelope(name, err))
+			return 1
+		}
+		if json.NewEncoder(out).Encode(contract) != nil {
+			return 1
+		}
+		return 0
 	}
-	if len(args) == 3 && args[0] == "config" && args[1] == "validate" && isHelp(args[2]) {
-		_, _ = io.WriteString(stdout, configValidationHelp)
+	if len(args) == 0 || len(args) == 1 && (args[0] == "help" || args[0] == "--help" || args[0] == "-h") {
+		io.WriteString(out, helpText)
+		return 0
+	}
+	if len(args) == 1 && args[0] == "version" {
+		v, e := version.Current()
+		if e != nil {
+			fmt.Fprintln(errout, e)
+			return 1
+		}
+		fmt.Fprintln(out, "taskbelay "+v)
 		return 0
 	}
 	if len(args) == 2 && args[0] == "config" && args[1] == "validate" {
-		return runConfigValidation(stdin, stdout)
+		return runConfigValidation(in, out)
 	}
-	if len(args) == 2 && args[0] == "host-check" && args[1] == "pre-file-write" {
-		return runPreFileWriteCheck(stdin, stdout, stderr, getenv)
-	}
-	if len(args) == 2 && args[0] == "host-check" && args[1] == "workspace-available" {
-		return runWorkspaceAvailabilityCheck(stdin, stdout, stderr, getenv)
-	}
-	if len(args) == 2 && args[0] == "artifacts" && (args[1] == "collect" || args[1] == "prepare") {
-		return runArtifacts(args[1], stdin, stdout, stderr, getenv)
-	}
-	if len(args) >= 2 && args[0] == "webui" {
-		return runWebUI(args[1:], stdout, stderr, getenv)
-	}
-
-	_, _ = io.WriteString(stderr, "taskbelay: invalid arguments; use \"taskbelay help\"\n")
-	return 2
-}
-
-type preFileWriteInput struct {
-	Host              domain.Host   `json:"host"`
-	RepositoryPath    string        `json:"repository_path"`
-	ToolName          string        `json:"tool_name"`
-	Paths             []string      `json:"paths"`
-	IntentDigest      domain.Digest `json:"intent_digest"`
-	PathParseComplete bool          `json:"path_parse_complete"`
-}
-
-type preFileWriteOutput struct {
-	Decision       application.FileChangeDecision `json:"decision"`
-	Reason         string                         `json:"reason,omitempty"`
-	TaskID         domain.ID                      `json:"task_id,omitempty"`
-	TaskRevision   uint64                         `json:"task_revision,omitempty"`
-	ScopeRequestID domain.ID                      `json:"scope_request_id,omitempty"`
-	Paths          []string                       `json:"paths,omitempty"`
-}
-
-func runPreFileWriteCheck(stdin io.Reader, stdout, stderr io.Writer, getenv func(string) string) int {
-	if stdin == nil || stdout == nil || stderr == nil || getenv == nil {
-		_, _ = io.WriteString(stderr, "taskbelay: Host file check configuration is unavailable\n")
-		return 1
-	}
-	dataDirectory := getenv(dataDirectoryEnvironment)
-	if !usableDataDirectory(dataDirectory) {
-		_, _ = io.WriteString(stderr, "taskbelay: Host file check data directory is unavailable\n")
-		return 1
-	}
-	databasePath := filepath.Join(dataDirectory, databaseFileName)
-	if _, err := os.Stat(databasePath); errors.Is(err, os.ErrNotExist) {
-		_ = json.NewEncoder(stdout).Encode(preFileWriteOutput{Decision: application.FileChangeAllow})
+	if len(args) == 3 && args[0] == "config" && args[1] == "validate" && args[2] == "--help" {
+		io.WriteString(out, configValidationHelp)
 		return 0
-	} else if err != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: Host file check storage is unavailable\n")
-		return 1
 	}
-	decoder := json.NewDecoder(stdin)
-	decoder.DisallowUnknownFields()
-	var input preFileWriteInput
-	if decoder.Decode(&input) != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: Host file check input is invalid\n")
-		return 1
-	}
-	var trailing any
-	if decoder.Decode(&trailing) != io.EOF {
-		_, _ = io.WriteString(stderr, "taskbelay: Host file check input is invalid\n")
-		return 1
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := signal.NotifyContext(context.Background(), webUISignals()...)
 	defer cancel()
-	taskStore, err := store.Open(ctx, databasePath)
-	if err != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: Host file check storage startup failed\n")
-		return 1
-	}
-	defer taskStore.Close()
-	service, err := application.NewService(taskStore, repository.NewGitObserver())
-	if err != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: Host file check Core startup failed\n")
-		return 1
-	}
-	result, err := service.PrepareFileChange(ctx, application.PrepareFileChangeRequest{
-		Host: input.Host, RepositoryPath: input.RepositoryPath, ToolName: input.ToolName,
-		Paths: input.Paths, IntentDigest: input.IntentDigest, PathParseComplete: input.PathParseComplete,
-	})
-	if err != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: Host file check failed\n")
-		return 1
-	}
-	output := preFileWriteOutput{Decision: result.Decision, Reason: result.Reason, TaskID: result.TaskID, TaskRevision: result.TaskRevision, ScopeRequestID: result.ScopeRequestID, Paths: result.Paths}
-	if json.NewEncoder(stdout).Encode(output) != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: Host file check output failed\n")
-		return 1
-	}
-	return 0
-}
-
-func runWebUI(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
-	if getenv == nil || len(args) == 0 {
-		_, _ = io.WriteString(stderr, "taskbelay: invalid WebUI arguments; use \"taskbelay help\"\n")
-		return 2
-	}
-	dataDirectory := getenv(dataDirectoryEnvironment)
-	if !usableDataDirectory(dataDirectory) {
-		_, _ = io.WriteString(stderr, "taskbelay: TASKBELAY_DATA_DIR must name an existing usable directory\n")
-		return 1
-	}
-	currentVersion, err := version.Current()
-	if err != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: WebUI version startup failed\n")
-		return 1
-	}
-	coreIdentity := "taskbelay/" + currentVersion
-	command := args[0]
-	if command == "serve" {
-		if len(args) != 1 {
-			_, _ = io.WriteString(stderr, "taskbelay: invalid WebUI serve arguments\n")
+	if len(args) >= 2 && args[0] == "webui" {
+		dir := getenv("TASKBELAY_DATA_DIR")
+		if dir == "" {
+			fmt.Fprintln(errout, "TASKBELAY_DATA_DIR is required")
+			return 1
+		}
+		v, _ := version.Current()
+		var result webui.RuntimeState
+		var e error
+		switch args[1] {
+		case "serve":
+			e = webui.Serve(ctx, dir, v)
+		case "start":
+			noOpen := false
+			for _, x := range args[2:] {
+				noOpen = noOpen || x == "--no-open"
+			}
+			result, e = webui.Start(ctx, dir, v, noOpen)
+		case "status":
+			result, e = webui.Status(ctx, dir, v)
+		case "open":
+			result, e = webui.Status(ctx, dir, v)
+			if e == nil {
+				e = webui.OpenBrowser(result.URL)
+			}
+		case "stop":
+			result, e = webui.Stop(ctx, dir, v)
+		default:
+			fmt.Fprintln(errout, "invalid WebUI operation")
 			return 2
 		}
-		ctx, cancel := signal.NotifyContext(context.Background(), webUISignals()...)
-		defer cancel()
-		if err := webui.Serve(ctx, dataDirectory, coreIdentity); err != nil {
-			_, _ = io.WriteString(stderr, "taskbelay: WebUI serve failed\n")
+		if e != nil {
+			fmt.Fprintln(errout, e)
+			return 1
+		}
+		if args[1] != "serve" {
+			json.NewEncoder(out).Encode(result)
+		}
+		return 0
+	}
+	summaryText := len(args) == 4 && args[0] == "mcp" && args[1] == "--stdio" && args[2] == "--result-text" && args[3] == "summary"
+	valid := summaryText || len(args) == 2 && (args[0] == "call" || args[0] == "check" && args[1] == "run" || args[0] == "host-check" && (args[1] == "pre-file-write" || args[1] == "workspace-available") || args[0] == "mcp" && args[1] == "--stdio")
+	if !valid {
+		fmt.Fprintln(errout, "invalid arguments; use taskbelay help")
+		return 2
+	}
+	s, close, e := service(ctx, getenv)
+	if e != nil {
+		if args[0] != "mcp" {
+			name := args[1]
+			if args[0] == "check" {
+				name = "check.run"
+			}
+			if args[0] == "host-check" {
+				name = "host-check." + name
+			}
+			result := protocol.ErrorEnvelope(name, e)
+			result.Outcome = "not_applied"
+			if args[0] == "check" {
+				result.Execution = "not_started"
+			}
+			json.NewEncoder(out).Encode(result)
+			return 1
+		}
+		fmt.Fprintln(errout, e)
+		return 1
+	}
+	defer close()
+	v, e := version.Current()
+	if e != nil {
+		fmt.Fprintln(errout, e)
+		return 1
+	}
+	if args[0] == "mcp" {
+		preferences, e := userconfig.Load(userHomeDirectory(getenv))
+		if e != nil {
+			fmt.Fprintln(errout, e)
+			return 1
+		}
+		if serve == nil {
+			serve = serveStandardIO
+		}
+		if e = serve(ctx, s, v, getenv("TASKBELAY_CODEX_MCP_INSTRUCTIONS"), preferences, summaryText); e != nil {
+			fmt.Fprintln(errout, e)
 			return 1
 		}
 		return 0
 	}
-	options, err := parseWebUIOptions(command, args[1:])
-	if err != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: invalid WebUI arguments; use \"taskbelay help\"\n")
-		return 2
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
-	defer cancel()
-	var state webui.RuntimeState
-	switch command {
-	case "start":
-		state, err = startWebUI(ctx, dataDirectory, coreIdentity, options.noOpen)
-	case "status":
-		state, err = statusWebUI(ctx, dataDirectory, coreIdentity)
-	case "open":
-		state, err = statusWebUI(ctx, dataDirectory, coreIdentity)
-		if err == nil && state.Readiness == webui.ReadinessReady {
-			err = openWebUIBrowser(state.URL)
-		} else if err == nil {
-			err = fmt.Errorf("WebUI is %s", state.Readiness)
-		}
-	case "stop":
-		state, err = stopWebUI(ctx, dataDirectory, coreIdentity)
-	default:
-		_, _ = io.WriteString(stderr, "taskbelay: invalid WebUI arguments; use \"taskbelay help\"\n")
-		return 2
-	}
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "taskbelay: WebUI %s failed: %v\n", command, err)
-		return 1
-	}
-	writeRuntimeState(stdout, command, state, options.json)
-	return 0
-}
-
-type webUIOptions struct {
-	json   bool
-	noOpen bool
-}
-
-func parseWebUIOptions(command string, args []string) (webUIOptions, error) {
-	var result webUIOptions
-	formatSeen := false
-	for index := 0; index < len(args); index++ {
-		switch args[index] {
-		case "--json", "--plain":
-			if formatSeen {
-				return webUIOptions{}, errors.New("duplicate output mode")
-			}
-			formatSeen = true
-			result.json = args[index] == "--json"
-		case "--no-open":
-			if command != "start" || result.noOpen {
-				return webUIOptions{}, errors.New("invalid no-open option")
-			}
-			result.noOpen = true
-		default:
-			return webUIOptions{}, errors.New("unknown WebUI option")
-		}
-	}
-	return result, nil
-}
-
-func writeRuntimeState(output io.Writer, operation string, state webui.RuntimeState, jsonOutput bool) {
-	if jsonOutput {
-		_ = json.NewEncoder(output).Encode(map[string]any{"operation": operation, "readiness": state.Readiness, "core_identity": state.CoreIdentity, "data_root_digest": state.DataRootDigest, "url": state.URL, "pid": state.PID})
-		return
-	}
-	_, _ = fmt.Fprintf(output, "WebUI %s: %s\n", operation, state.Readiness)
-	if state.URL != "" {
-		_, _ = fmt.Fprintf(output, "URL: %s\n", state.URL)
-	}
-}
-
-func usableDataDirectory(dataDirectory string) bool {
-	if dataDirectory == "" {
-		return false
-	}
-	info, err := os.Stat(dataDirectory)
-	return err == nil && info.IsDir()
-}
-
-func runMCP(
-	_ io.Reader,
-	_ io.Writer,
-	stderr io.Writer,
-	getenv func(string) string,
-	serve mcpServeFunc,
-) int {
-	if getenv == nil || serve == nil {
-		_, _ = io.WriteString(stderr, "taskbelay: MCP startup configuration is unavailable\n")
-		return 1
-	}
-	dataDirectory := getenv(dataDirectoryEnvironment)
-	if dataDirectory == "" {
-		_, _ = io.WriteString(stderr, "taskbelay: TASKBELAY_DATA_DIR must name an existing usable directory\n")
-		return 1
-	}
-	info, err := os.Stat(dataDirectory)
-	if err != nil || !info.IsDir() {
-		_, _ = io.WriteString(stderr, "taskbelay: TASKBELAY_DATA_DIR must name an existing usable directory\n")
-		return 1
-	}
-	preferences, err := userconfig.Load(userHomeDirectory(getenv))
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "taskbelay: %v\n", err)
+	raw, e := io.ReadAll(io.LimitReader(in, 1024*1024+1))
+	if e != nil {
+		fmt.Fprintln(errout, "request input unavailable")
 		return 1
 	}
 
-	ctx := context.Background()
-	taskStore, err := store.Open(ctx, filepath.Join(dataDirectory, databaseFileName))
-	if err != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: MCP storage startup failed\n")
+	handler := protocol.NewHandler(s, v, userconfig.Preferences{})
+	var result protocol.Envelope
+	if args[0] == "host-check" {
+		result = handler.RunPreflight(ctx, "host-check."+args[1], raw)
+	} else if args[0] == "check" {
+		result = handler.RunCheck(ctx, raw)
+	} else {
+		result = handler.Dispatch(ctx, args[1], raw)
+	}
+	if e = json.NewEncoder(out).Encode(result); e != nil {
 		return 1
 	}
-	closed := false
-	defer func() {
-		if !closed {
-			_ = taskStore.Close()
-		}
-	}()
-
-	service, err := application.NewService(taskStore, repository.NewGitObserver())
-	if err != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: MCP Core startup failed\n")
-		return 1
-	}
-	currentVersion, err := version.Current()
-	if err != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: MCP version startup failed\n")
-		return 1
-	}
-	diagnostics := coremcp.NewDiagnostics(stderr)
-	serveErr := serve(ctx, service, currentVersion, diagnostics, getenv(mcpInstructionsEnvironment), preferences)
-	closeErr := taskStore.Close()
-	closed = true
-	if serveErr != nil && !errors.Is(serveErr, io.EOF) {
-		_, _ = io.WriteString(stderr, "taskbelay: MCP STDIO session failed\n")
-		return 1
-	}
-	if closeErr != nil {
-		_, _ = io.WriteString(stderr, "taskbelay: MCP storage shutdown failed\n")
+	if !result.OK {
 		return 1
 	}
 	return 0
 }
-
-func serveStandardIO(
-	ctx context.Context,
-	service *application.Service,
-	currentVersion string,
-	diagnostics *coremcp.Diagnostics,
-	instructions string,
-	preferences userconfig.Preferences,
-) error {
-	server, err := coremcp.NewServer(service, currentVersion, &coremcp.ServerOptions{
-		Diagnostics:     diagnostics,
-		Instructions:    instructions,
-		HostPreferences: preferences,
-	})
-	if err != nil {
-		return err
-	}
-	return server.Run(ctx, &sdkmcp.StdioTransport{})
+func serveStandardIO(ctx context.Context, s *application.Service, v, instructions string, p userconfig.Preferences, summaryText bool) error {
+	handler := protocol.NewHandler(s, v, p)
+	return mcp.NewServer(handler, v, instructions, summaryText).Run(ctx, &sdk.StdioTransport{})
 }
 
-func isHelp(argument string) bool {
-	return argument == "help" || argument == "-h" || argument == "--help"
+/**
+ * Help is resolved before data-directory and service initialization. An optional
+ * --json selects the same machine-readable contract as the plain help spelling.
+ */
+func auxiliaryHelpName(args []string) string {
+	if len(args) == 3 && args[0] == "config" && args[1] == "validate" && args[2] == "--help" {
+		return ""
+	}
+	if len(args) > 0 && args[len(args)-1] == "--json" {
+		args = args[:len(args)-1]
+	}
+	if len(args) < 2 || args[len(args)-1] != "--help" {
+		return ""
+	}
+	if len(args) == 2 {
+		switch args[0] {
+		case "version", "help", "mcp":
+			return "core." + args[0]
+		}
+	}
+	if len(args) == 3 {
+		if args[0] == "config" && args[1] == "validate" {
+			return "core.config.validate"
+		}
+		if args[0] == "webui" {
+			return "core.webui." + args[1]
+		}
+	}
+	return ""
 }

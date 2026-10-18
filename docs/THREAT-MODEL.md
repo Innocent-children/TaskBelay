@@ -1,81 +1,15 @@
-# TaskBelay 威胁模型
+# TaskBelay 信任边界
 
 [中文](THREAT-MODEL.md) | [English](THREAT-MODEL_en.md)
 
-## 最重要的边界
+TaskBelay 是本地工程控制系统。代理保留原生权限，Core 不授予网络、文件、Git 发布或其他权限。受控本地检查由 Core 启动，但命令本身仍可能有副作用；Host 必须遵守真实授权。它不是沙箱，不能隔离同一用户账户下能够修改代码、数据目录或进程的恶意程序。
 
-TaskBelay 保护的是**开发任务的过程状态**，不是包裹编程 Agent 的安全沙箱。
+确定性事实由 Git、文件指纹、进程结果和 SQLite 记录取得。语义审查、用户消息引用、依赖范围与人工观察由 Host 提供，其来源和不确定性必须明示；程序不能认证对话或证明模型判断正确。Core 执行来源不能通过 record_evidence 提交。签名收据防止意外损坏与错误提交，不是针对同账户攻击者的密码学隔离。
 
-Codex、DeepSeek Harness、Claude Code 或 ZCode 仍然使用开发者授予的权限读取仓库、修改文件和运行
-命令；Go Core 负责保存唯一 Task 状态，并校验流转、仓库绑定、持久化和 Recovery 决策。
+结构化钩子只检查可解析路径。shell、外部编辑、数据库与远端服务不自动受控；观察时机及外部条件覆盖需明确。输入默认 Git 可见文件，ignored 依赖须显式选择。两次指纹观察不能证明运行期间内容从未变化或外部环境完全稳定。前端缓存不成为任务事实。
 
-```mermaid
-flowchart LR
-    U[开发者] --> H[Codex / DeepSeek / Claude Code / ZCode]
-    H --> R[已授权仓库]
-    H --> A[TaskBelay Adapter]
-    A --> C[本地 Go Core]
-    C --> S[SQLite Task 状态]
-```
+HTTP 只绑定本机 loopback，精确 Host/Origin/CSRF 防止其他网页提交；不可暴露到公网。输出和证据保存在用户本机，可能包含检查日志，应按项目的数据规则管理。Core 本身只读 Git，工作区准备和清理由获授权 Host 执行。旧数据不迁移或重置。详见[架构](ARCHITECTURE.md)。
 
-## 保护对象
+Core 保留实际请求和明确限制；普通计划和检查方法调整不会产生新的用户审批。改变用户边界或扩大已设上限需要实际新决定。Host 提供的 user_ref 不能认证真实对话；Core 不能判断新引用是否对应用户原意。语义必要性、测试充分性与比较结果仍由技术判断负责；程序核对明确限制、真实执行及适用性。WebUI 的预算决定和人工观察受 Origin/CSRF 保护。
 
-- 开发者声明的一个至八个 Git 仓库；
-- Task 原始意图、当前阶段、revision、Action、验证记录、Blocker、Outcome，以及可恢复 Action 操作的
-  规范化 payload 与 digest；
-- Repository Scope、仓库身份与 aggregate binding；
-- WorkspaceOrigin、工作树实例身份、固定 base commit、当前 Task surface；
-- 本地 SQLite、安装 receipt、provisioning receipt、relocation record 与用户配置；
-- npm package、bundled Core、Git Tag、GitHub Release 与 artifact digest；
-- 日志和验证结果中可能出现的路径、代码片段和诊断信息。
-
-## 职责划分
-
-| 参与者 | 责任 |
-| --- | --- |
-| 开发者 | 选择是否进入 TaskBelay；确认 source/base/target/carry、仓库和 Host 权限、理解结论、handoff、清理与发布操作 |
-| Codex / DeepSeek Harness / Claude Code / ZCode | 真正读取文件、修改仓库和运行命令，使用开发者授予的较高权限 |
-| Host Adapter | 只读评估请求；在确认后执行 fetch、branch、worktree、relaunch/handoff；在命令、完整套件、测试文件修改和复核前判断范围；按 Action、Scope、当前验证计划和 Recovery 调用 Core |
-| Go Core | 只读观察 Git，保存唯一流程状态，计算 Task surface，并校验 revision、workspace、只允许约定字段的 payload、流转和持久化 |
-| 仓库内容 | 视为不可信输入，可能包含 prompt injection、危险脚本、symlink 或恶意文件名 |
-| npm / GitHub | 提供远程 package 和 Release 身份，发布流程必须回读核对 |
-
-## 主要风险与现有防护
-
-本机 WebUI 只监听 `tcp4 127.0.0.1` 并要求精确 Host；mutation 还验证精确 Origin、进程内随机 session
-值与当前 Task revision。macOS receipt 是 mode `0600` 的普通非链接文件；Windows receipt 是位于用户
-profile 下、继承该目录 ACL 的普通非链接文件。两者都绑定进程启动身份、data-root digest、URL 和实时
-Core identity，避免错误复用或 PID 重用；Windows 从内核进程信息读取创建时间。统一管理器的
-`factory-reset` 计划绑定当前 ownership target；可恢复清理移动精确目标，永久
-清理还要求独立确认。身份或目标变化会停止清理。
-
-| 风险 | 当前防护 |
-| --- | --- |
-| 小请求被流程接管，或确认前产生 Task/Git 写入 | 新请求先做只读评估并停止；assessment 绑定 request、root、HEAD 和 status；显式 selector 也不能跳过选择 |
-| 远端基线、目标分支或源 checkout 内容进入错误工作树 | 逐仓确认来源、分支和携带选择；冻结 commit 与选定快照；验证 branch、HEAD、common/git-dir，应用失败不创建 Task |
-| provisioning 或 Host dispatch 结果不确定而被重复执行 | 窄 provisioning receipt 绑定一次 launch 与资源；不确定时读取 receipt/Host 状态，不盲目重试或 force cleanup |
-| 路径穿越、symlink 或索引结果扩大仓库范围 | Task 创建时规范化并冻结 Scope；多仓库路径显式带 repository key；索引不能增加成员 |
-| 旧 Action、重复请求或丢失响应造成重复状态变化 | 完整 mutation 先校验后暂存；独立 Action 操作记录、revision CAS、Action/request identity、repository binding、原子 applied marker 和 read-before-retry |
-| 工作树被替换、历史回退或任一成员发生冲突 | worktree-specific Git dir、task branch、base、HEAD ancestry 与 content 分别核对；resume 和下一 Action 在实际工作前返回明确 Blocker 或 unavailable |
-| 本地目录被已有 Task 或其他写入者使用 | 分支操作前只读查询 Core 占用，创建时一次取得全部 claims；手工和其他工具的实际修改仍进入范围与验证检查。只读查询不预占目录，准备期间保持单一执行者 |
-| Host 自报文件范围遗漏真实变化 | Core 从 base commit、commits、index、worktree 和 untracked 状态计算当前 surface；节点 payload 不接受 Host 文件变化声明 |
-| relocation 失败或响应丢失造成双重 claim/handoff | Core prepare 保留源 claim；Host handoff 只执行一次；目标核验后在一个事务中替换 bindings 和 claims |
-| 仓库中的 prompt injection 诱导扩大工作 | TaskIntent、allowed effects、显式 Scope、TASKS 验证计划和带原因的预算调整独立于仓库文本；Host 只复核当前 diff 与因果影响；高风险 Git/发布仍需用户授权 |
-| 预算充足被误当成完整测试理由 | Skill 要求每次重新判断广泛影响、定向检查是否足够、待补风险和仓库检查点；Evidence 保存本次 `full_suite_reason` |
-| SQLite、配置或 executable 被本地进程篡改 | strict codec、Schema 检查、Task/Action-operation 关联检查、closed fields 与 package/executable identity 验证 |
-| 安装或移除误删相邻配置和 Task 数据 | ownership receipt；remove 只清理自己管理的注册；普通卸载保留 Task 数据 |
-| beta、源码和稳定支持被混为一谈 | 稳定声明只来自 Support Matrix；beta 与 source 在 Project Status 中单独标记 |
-| 日志或完整流程测试记录泄露隐私 | 提交的验证记录只包含数量受限的程序运行信息和摘要；完整会话原文默认不提交 |
-
-## 剩余风险
-
-- Core 不拦截 Host 的每一次文件读取、写入或 shell 命令；被攻陷的 Host 或错误授权仍可造成损害。
-- worktree 隔离只定义源码修改归属，不隔离进程、网络、凭据、端口、数据库或容器。
-- fetch、branch、worktree、handoff 与 cleanup 是 Host 高权限操作；receipt 只缩小可恢复范围，不消除错误授权风险。
-- 具有同一用户权限或管理员权限的攻击者可以替换本地 binary、SQLite 或配置。
-- 当前没有加密状态库、多用户隔离、远程认证、自动 secret scanning、代码签名或透明度日志。
-- TaskBelay 不能保证模型输出正确、代码无漏洞、测试充分或完全免疫 prompt injection。
-- Core 无法判断自然语言理由是否真的与改动相关；Host 对测试和复核范围是否合适的判断仍可能出错。
-- 不受支持的平台、Host 版本和 source-only build 没有稳定安全支持声明。
-
-安全问题请按仓库根目录的 [Security Policy](../SECURITY.md) 私密报告。
+命令必须由宿主原生执行工具调用 Core check run；MCP 与 HTTP 不暴露进程启动入口，原生权限和环境不能被一条工具调用绕过。保存状态读取不要求进程查询或计量写入；这不允许执行绕过计量。用户答复绑定当前问题，不能通过界面选择直接扩大授权。

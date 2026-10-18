@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bindTask, cleanup, inspect, prepare, provision, relocate, scope, session, status as launchStatus } from "../lib/workspace.mjs";
+import { bindTask, cleanup, inspect, prepare, provision, scope, session, status as launchStatus } from "../lib/workspace.mjs";
 import { paths } from "../lib/runtime.mjs";
 import { defaultRunGit as git } from "../lib/worktree-lifecycle.mjs";
 import { examples } from "../../../tests/skills/resources.mjs";
@@ -32,57 +32,13 @@ function shape(value) {
   return typeof value;
 }
 
-test("documented ZCode Host calls match the CLI and workspace result shapes", async t => {
-  const { root, options } = await fixture(t);
-  const admission = await readFile(new URL("../skills/taskbelay/references/admission.md", import.meta.url), "utf8");
-  const lifecycle = await readFile(new URL("../skills/taskbelay/references/host-lifecycle.md", import.meta.url), "utf8");
-
-  const inspectInput = structuredClone(example(admission, "host-launch", "inspect", "request"));
-  inspectInput.repositories[0].repository_path = root;
-  const command = spawnSync(process.execPath, [fileURLToPath(new URL("../bin/taskbelay-zcode.mjs", import.meta.url)), "host-launch", "inspect"], { input: JSON.stringify(inspectInput), encoding: "utf8" });
-  assert.equal(command.status, 0, command.stderr);
-  const anchor = JSON.parse(command.stdout);
-  assert.deepEqual(shape(anchor), shape(example(admission, "host-launch-output", "inspect", "success")));
-  assert.deepEqual(anchor, await inspect(inspectInput));
-
-  const prepareInput = structuredClone(example(admission, "host-launch", "prepare", "request"));
-  prepareInput.assessment.anchor = anchor;
-  prepareInput.repositories[0].repository_path = root;
-  prepareInput.repositories[0].worktree_path = root;
-  const rejectedInput = structuredClone(prepareInput);
-  rejectedInput.assessment.unknowns = ["Unresolved endpoint behavior"];
-  const rejected = spawnSync(process.execPath, [fileURLToPath(new URL("../bin/taskbelay-zcode.mjs", import.meta.url)), "host-launch", "prepare"], { input: JSON.stringify(rejectedInput), env: options.environment, encoding: "utf8" });
-  assert.equal(rejected.status, 1);
-  assert.equal(rejected.stdout, "");
-  assert.match(rejected.stderr, /Complete resolved assessment required/u);
-  const receipt = await prepare(prepareInput, options);
-  assert.deepEqual(shape(receipt), shape(example(admission, "host-launch-output", "prepare", "success")));
-  assert.deepEqual(receipt.user_choice, prepareInput.user_choice);
-  assert.equal(receipt.repositories[0].phase, "prepared");
-
-  await provision(receipt.launch_id, options);
-  const scoped = await scope(receipt.launch_id, options);
-  assert.deepEqual(shape(scoped), shape(example(admission, "host-launch-output", "scope", "success")));
-  const statusInput = structuredClone(example(lifecycle, "host-launch", "status", "request"));
-  assert.deepEqual(Object.keys(statusInput), ["launch_id"]);
-  statusInput.launch_id = receipt.launch_id;
-  assert.equal((await launchStatus(statusInput.launch_id, options)).repositories[0].phase, "provisioned");
-
-  const opened = await session(receipt.launch_id, "open", options);
-  const documentedOpen = example(admission, "host-launch-output", "open", "success");
-  assert.deepEqual(shape(opened), shape(documentedOpen));
-  assert.deepEqual(opened.next_steps, documentedOpen.next_steps);
-  assert.equal(opened.prompt, documentedOpen.prompt.replaceAll(documentedOpen.receipt_path, opened.receipt_path).replaceAll(documentedOpen.launch_id, receipt.launch_id));
-  assert.equal(opened.status, "action_required");
-  assert.equal(opened.task_id, null);
-});
 
 test("local branch prepares once and UI guidance preserves the Core identity", async t => {
   const { root, options } = await fixture(t);
   const receipt = await prepareSelections([{ ...dedicated(root), workspace_mode: "new_branch", worktree_path: root }], options);
   const ready = await provision(receipt.launch_id, options);
   assert.equal(ready.repositories[0].phase, "provisioned");
-  assert.equal((await scope(receipt.launch_id, options)).workspace_origin.task_branch, "task");
+  assert.equal((await scope(receipt.launch_id, options)).repositories[0].workspace_origin.task_branch, "task");
   await provision(receipt.launch_id, options);
   const before = await launchStatus(receipt.launch_id, options);
   const opened = await session(receipt.launch_id, "open", options);
@@ -103,32 +59,18 @@ test("local branch prepares once and UI guidance preserves the Core identity", a
   await assert.rejects(session(receipt.launch_id, "launch", options), /UI guidance/);
 });
 
-test("unresolved assessment cannot write Git", async t => {
-  const { root, options } = await fixture(t);
-  await assert.rejects(prepare({ request: "x", assessment: { unknowns: ["target"] }, user_choice: { source: "user", mode: "taskbelay", summary: "yes" }, repositories: [], handoff: null }, options), /resolved assessment/);
-  assert.equal(String(await git(["-C", root, "branch", "--show-current"])).trim(), "main");
-});
 
 test("uppercase repository keys are rejected before preparation changes Git", async t => {
   const { root, options } = await fixture(t);
   const before = await git(["-C", root, "show-ref"]);
-  await assert.rejects(prepare({ request: "Keep repository keys consistent with Core", assessment: {
-    change_level: "standard", candidate_components: ["workspace"], candidate_paths: ["base.txt"],
-    public_contract_flags: [], persistence_or_state_flags: [], host_or_platform_flags: ["ZCode"],
-    verification_shape: ["workspace checks"], reasons: ["Core repository identity"], unknowns: [],
-  }, user_choice: { source: "user", mode: "taskbelay", summary: "Confirmed" },
+  await assert.rejects(prepare({ request: "Keep repository keys consistent with Core", authorization_ref:"fixture-user-authorized-workspace",
   repositories: [dedicated(root, "Backend")], handoff: null }, options), /Repository key/);
   assert.equal(await git(["-C", root, "show-ref"]), before);
   assert.equal(String(await git(["-C", root, "branch", "--show-current"])).trim(), "main");
 });
 
-async function prepareSelections(repositories, options) {
-  const request = "Complete a multi-repository change";
-  const anchor = await inspect({ request, repositories: repositories.map(({ key, repository_path }) => ({ key, repository_path })) });
-  return prepare({ request, assessment: { change_level: "standard", candidate_components: ["workspace"], candidate_paths: ["base.txt"], public_contract_flags: [], persistence_or_state_flags: [], host_or_platform_flags: ["ZCode"], verification_shape: ["workspace checks"], reasons: ["multiple repositories"], unknowns: [], anchor },
-    user_choice: { source: "user", mode: "taskbelay", summary: "Confirmed exact workspaces and carry choices" }, repositories,
-    handoff: { discussion: [{ role: "user", text: request }] } }, options);
-}
+async function prepareSelections(repositories, options) {const request="Complete a multi-repository change";return prepare({request,authorization_ref:"fixture-user-authorized-workspace",repositories,handoff:{discussion:[{role:"user",text:request}]}},options);}
+
 function dedicated(root, key = "primary", carry = false) {
   return { key, repository_path: root, workspace_mode: "dedicated_worktree", source_type: "local", remote_name: "", base_branch: "main", target_branch: "task", carry_changes: carry, worktree_path: join(root, "..", "worktree") };
 }
@@ -157,9 +99,9 @@ test("dedicated worktree can exclude changes from an occupied source directory",
     assert.equal(receipt.repositories[0].snapshot, null);
     await provision(receipt.launch_id, occupied);
     const bound = await scope(receipt.launch_id, occupied);
-    assert.equal(bound.repository_path, selection.worktree_path);
-    assert.equal(bound.workspace_origin.source_type, sourceType);
-    assert.equal(bound.workspace_origin.carry_changes, false);
+    assert.equal(bound.repositories[0].repository_path, selection.worktree_path);
+    assert.equal(bound.repositories[0].workspace_origin.source_type, sourceType);
+    assert.equal(bound.repositories[0].workspace_origin.carry_changes, false);
     assert.equal(await readFile(join(selection.worktree_path, "base.txt"), "utf8"), sourceType === "remote" ? "remote base" : "base");
     assert.equal(await git(["-C", selection.worktree_path, "status", "--porcelain=v2"]), "");
     await assert.rejects(stat(join(selection.worktree_path, "new.txt")), { code: "ENOENT" });
@@ -197,7 +139,7 @@ test("local workspace modes retain initial-change acceptance and source occupanc
     available = true;
     await provision(receipt.launch_id, checked);
     assert.deepEqual(checks, [root, root, root, root]);
-    assert.equal((await scope(receipt.launch_id, options)).workspace_origin.mode, mode);
+    assert.equal((await scope(receipt.launch_id, options)).repositories[0].workspace_origin.mode, mode);
     assert.equal(await readFile(join(root, "base.txt"), "utf8"), "initial work");
   });
 });
@@ -212,7 +154,7 @@ test("dedicated worktree preserves staged, unstaged and untracked content with i
   assert.equal(String(await git(["-C", selection.worktree_path, "show", ":base.txt"])), "staged");
   assert.equal(await readFile(join(selection.worktree_path, "new.txt"), "utf8"), "untracked");
   assert.equal(await git(["-C", root, "status", "--porcelain=v2"]), before);
-  assert.equal((await scope(receipt.launch_id, options)).workspace_origin.carry_changes, true);
+  assert.equal((await scope(receipt.launch_id, options)).repositories[0].workspace_origin.carry_changes, true);
 });
 test("snapshot rejects changed contents even when Git status is unchanged", async t => {
   const { root, options } = await fixture(t);
@@ -260,7 +202,7 @@ test("all repositories are required and replacement worktree instances are rejec
   const selected = [dedicated(one.root), dedicated(two.root, "secondary")];
   const receipt = await prepareSelections(selected, one.options); await provision(receipt.launch_id, one.options);
   const bound = await scope(receipt.launch_id, one.options);
-  assert.equal(bound.additional_repositories[0].key, "secondary");
+  assert.equal(bound.repositories.slice(1)[0].key, "secondary");
   await git(["-C", one.root, "worktree", "remove", selected[0].worktree_path]);
   await git(["-C", one.root, "worktree", "add", selected[0].worktree_path, "task"]);
   await assert.rejects(scope(receipt.launch_id, one.options), /identity/);
@@ -284,7 +226,7 @@ test("current-branch and remote-base modes preserve their confirmed origins", as
   const current = { ...dedicated(local.root), workspace_mode: "current_branch", target_branch: "main", worktree_path: local.root };
   const localReceipt = await prepareSelections([current], local.options);
   await provision(localReceipt.launch_id, local.options);
-  assert.equal((await scope(localReceipt.launch_id, local.options)).workspace_origin.mode, "current_branch");
+  assert.equal((await scope(localReceipt.launch_id, local.options)).repositories[0].workspace_origin.mode, "current_branch");
   const source = await fixture(t), remote = await fixture(t);
   await writeFile(join(remote.root, "remote.txt"), "remote-only");
   await git(["-C", remote.root, "add", "remote.txt"]); await git(["-C", remote.root, "commit", "-m", "remote content"]);
@@ -292,31 +234,9 @@ test("current-branch and remote-base modes preserve their confirmed origins", as
   const selection = { ...dedicated(source.root), source_type: "remote", remote_name: "origin" };
   const receipt = await prepareSelections([selection], source.options); await provision(receipt.launch_id, source.options);
   assert.equal(await readFile(join(selection.worktree_path, "remote.txt"), "utf8"), "remote-only");
-  assert.equal((await scope(receipt.launch_id, source.options)).workspace_origin.source_type, "remote");
+  assert.equal((await scope(receipt.launch_id, source.options)).repositories[0].workspace_origin.source_type, "remote");
 });
 
-test("relocation and terminal cleanup retain Core authority and separate deletion decisions", async t => {
-  const { root, options } = await fixture(t), selection = dedicated(root);
-  const receipt = await prepareSelections([selection], options); await provision(receipt.launch_id, options);
-  await bindTask(receipt.launch_id, { task_id: "task-test" }, options);
-  await assert.rejects(cleanup(receipt.launch_id, "cleanup-worktree", { repository_key: "primary", terminal: false, authorized: true }, options), /Terminal/);
-  const destination = join(root, "..", "relocated");
-  const core_preparation = { relocation_id: "relocation-confirmed-by-core", task: { task_id: "task-test", origin_host: "zcode", revision: 2,
-    current_cursor: "BLOCKED", relocation: { relocation_id: "relocation-confirmed-by-core" },
-    blocker: { cause: "task_relocation_pending", condition: { kind: "resolve_task_relocation", relocation_id: "relocation-confirmed-by-core" } },
-    primary_repository_key: "primary", workspace_origin: { mode: "dedicated_worktree", canonical_worktree_root: selection.worktree_path } } };
-  const input = { relocation_id: core_preparation.relocation_id, core_preparation, destinations: [{ repository_key: "primary", repository_path: destination }], authorized: true };
-  const moved = await relocate(receipt.launch_id, input, options);
-  assert.equal(moved.core_resolution_required, true);
-  assert.deepEqual(await relocate(receipt.launch_id, input, options), moved);
-  await assert.rejects(relocate(receipt.launch_id, { ...input, destinations: [{ repository_key: "primary", repository_path: destination + "-other" }] }, options), /original Core preparation and destinations/);
-  assert.equal((await scope(receipt.launch_id, options)).repository_path, destination);
-  await cleanup(receipt.launch_id, "cleanup-worktree", { repository_key: "primary", terminal: true, authorized: true }, options);
-  await cleanup(receipt.launch_id, "cleanup-worktree", { repository_key: "primary", terminal: true, authorized: true }, options);
-  await assert.rejects(cleanup(receipt.launch_id, "cleanup-branch", { repository_key: "primary", terminal: true, authorized: false }, options), /authorization/);
-  await cleanup(receipt.launch_id, "cleanup-branch", { repository_key: "primary", terminal: true, authorized: true }, options);
-  await assert.rejects(git(["-C", root, "rev-parse", "--verify", "refs/heads/task"]));
-});
 
 test("concurrent callers never reclaim a stale operation lock", async t => {
   const { root, options } = await fixture(t);
@@ -361,10 +281,7 @@ test("prepare CLI exposes its saved launch identity after a failed remote fetch"
   await git(["-C", root, "remote", "add", "origin", remote]);
   const request = "Prepare from the explicitly selected remote base";
   const anchor = await inspect({ request, repositories: [{ key: "primary", repository_path: root }] });
-  const input = { request, assessment: { change_level: "standard", candidate_components: ["workspace"], candidate_paths: ["base.txt"],
-    public_contract_flags: [], persistence_or_state_flags: [], host_or_platform_flags: ["ZCode"], verification_shape: ["workspace checks"],
-    reasons: ["remote source"], unknowns: [], anchor },
-    user_choice: { source: "user", mode: "taskbelay", summary: "Confirmed remote base and workspace" },
+  const input = { request, authorization_ref:"fixture-user-authorized-workspace",
     repositories: [{ ...dedicated(root), source_type: "remote", remote_name: "origin" }],
     handoff: { discussion: [{ role: "user", text: request }] } };
   const result = spawnSync(process.execPath, [fileURLToPath(new URL("../bin/taskbelay-zcode.mjs", import.meta.url)), "host-launch", "prepare"], {
@@ -379,4 +296,30 @@ test("prepare CLI exposes its saved launch identity after a failed remote fetch"
   assert.equal(receipt.repositories[0].phase, "uncertain");
   assert.ok(result.stderr.includes(join((await paths(options.environment)).productRoot, "provisioning", "zcode", launchID, "receipt.json")));
   assert.equal(await git(["-C", root, "branch", "--list", "task"]), "");
+});
+
+
+test("cleanup verifies the same receipt identity produced by workspace scope", async t => {
+  const { root, options } = await fixture(t);
+  const selection = dedicated(root);
+  const receipt = await prepareSelections([selection], options);
+  await provision(receipt.launch_id, options);
+  const bound = await scope(receipt.launch_id, options);
+  const task = { task_id: "cleanup-task", revision: 3, status: "done", repositories: bound.repositories.map(entry => ({
+    ...entry, workspace_origin: { ...entry.workspace_origin, canonical_worktree_root: entry.repository_path },
+  })) };
+  const input = { repository_key: "primary", task_id: task.task_id, revision: task.revision, terminal: true, authorized: true };
+  const readTask = async () => ({ ok: true, result: { identity: {task_id:task.task_id,revision:task.revision}, status:task.status, details: { repositories:task.repositories } } });
+  const wrong = structuredClone(task);
+  wrong.repositories[0].workspace_origin.provisioning_receipt_id = receipt.launch_id;
+  await assert.rejects(cleanup(receipt.launch_id, "cleanup-worktree", input, {
+    ...options, readTask: async () => ({ ok: true, result: { identity: {task_id:wrong.task_id,revision:wrong.revision}, status:wrong.status, details: { repositories:wrong.repositories } } }),
+  }), /does not own/);
+  await assert.rejects(cleanup(receipt.launch_id, "cleanup-worktree", { ...input, revision: 2 }, { ...options, readTask }), /does not own/);
+  assert.ok((await stat(selection.worktree_path)).isDirectory());
+  const removed = await cleanup(receipt.launch_id, "cleanup-worktree", input, { ...options, readTask });
+  assert.equal(removed.repositories[0].worktree_cleanup, "completed");
+  await assert.rejects(stat(selection.worktree_path), { code: "ENOENT" });
+  await cleanup(receipt.launch_id, "cleanup-branch", input, { ...options, readTask });
+  assert.equal(await git(["-C", root, "branch", "--list", selection.target_branch]), "");
 });

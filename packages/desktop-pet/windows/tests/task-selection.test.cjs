@@ -5,7 +5,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 const { presentation } = require("../observation.cjs");
 
-const summary = (id, lifecycle = "active") => ({ task_id: id, lifecycle, current_node: "IMPLEMENT", archived: false });
+const summary = (id, lifecycle = "active") => ({ task_id: id, lifecycle, status: "active", archived: false });
 
 test("idle polls discover tasks and automatically prioritize new blockers", async () => {
   const h = await desktopHarness();

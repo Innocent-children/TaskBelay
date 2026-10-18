@@ -13,8 +13,11 @@ import (
 	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/application"
+	"github.com/Innocent-children/taskbelay/internal/domain"
+	coreprotocol "github.com/Innocent-children/taskbelay/internal/protocol"
 	"github.com/Innocent-children/taskbelay/internal/repository"
 	"github.com/Innocent-children/taskbelay/internal/store"
+	"github.com/Innocent-children/taskbelay/internal/userconfig"
 )
 
 const databaseFileName = "taskbelay.db"
@@ -60,9 +63,12 @@ func Start(ctx context.Context, dataDirectory, coreIdentity string, noOpen bool)
 		return RuntimeState{}, err
 	}
 	_ = logFile.Close()
+	exited := make(chan error, 1)
+	go func() { exited <- command.Wait() }()
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
-		state, _ = Status(ctx, dataDirectory, coreIdentity)
+		// The child owns storage initialization until it publishes its runtime receipt.
+		state, _ = runtimeStatus(ctx, dataDirectory, coreIdentity, false)
 		if state.Readiness == ReadinessReady {
 			if !noOpen {
 				if err := OpenBrowser(state.URL); err != nil {
@@ -75,15 +81,21 @@ func Start(ctx context.Context, dataDirectory, coreIdentity string, noOpen bool)
 			return state, fmt.Errorf("WebUI is %s", state.Readiness)
 		}
 		select {
+		case exitError := <-exited:
+			return RuntimeState{}, fmt.Errorf("WebUI process exited before readiness (%v); inspect %s", exitError, logPath)
 		case <-ctx.Done():
 			return RuntimeState{}, ctx.Err()
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-	return RuntimeState{}, fmt.Errorf("WebUI did not become ready")
+	return RuntimeState{}, fmt.Errorf("WebUI did not become ready; inspect %s before retrying the original startup", logPath)
 }
 
 func Status(ctx context.Context, dataDirectory, coreIdentity string) (RuntimeState, error) {
+	return runtimeStatus(ctx, dataDirectory, coreIdentity, true)
+}
+
+func runtimeStatus(ctx context.Context, dataDirectory, coreIdentity string, inspectStoppedStorage bool) (RuntimeState, error) {
 	digest, err := DataRootDigest(dataDirectory)
 	if err != nil {
 		return RuntimeState{Readiness: ReadinessUnavailable, CoreIdentity: coreIdentity}, err
@@ -91,7 +103,10 @@ func Status(ctx context.Context, dataDirectory, coreIdentity string) (RuntimeSta
 	base := RuntimeState{Readiness: ReadinessUnavailable, CoreIdentity: coreIdentity, DataRootDigest: digest}
 	receipt, err := ReadReceipt(dataDirectory)
 	if errors.Is(err, os.ErrNotExist) {
-		return classifyStoppedStorage(ctx, dataDirectory, base), nil
+		if inspectStoppedStorage {
+			base = classifyStoppedStorage(ctx, dataDirectory, base)
+		}
+		return base, nil
 	}
 	if err != nil {
 		return base, err
@@ -100,7 +115,10 @@ func Status(ctx context.Context, dataDirectory, coreIdentity string) (RuntimeSta
 	base.PID = receipt.PID
 	if !receiptProcessMatches(receipt) {
 		_ = removeReceipt(dataDirectory, receipt)
-		return classifyStoppedStorage(ctx, dataDirectory, base), nil
+		if inspectStoppedStorage {
+			base = classifyStoppedStorage(ctx, dataDirectory, base)
+		}
+		return base, nil
 	}
 	if receipt.DataRootDigest != digest {
 		base.Readiness = ReadinessIncompatible
@@ -136,7 +154,9 @@ func classifyStoppedStorage(ctx context.Context, dataDirectory string, state Run
 		_ = taskStore.Close()
 		return state
 	}
-	if errors.Is(err, store.ErrSchemaUnsupported) || errors.Is(err, store.ErrProcessUnsupported) {
+	var failure *domain.Error
+	if errors.As(err, &failure) && (failure.Code == "SCHEMA_UNSUPPORTED" || failure.Code == "STORAGE_CORRUPT") {
+		state.Readiness = ReadinessIncompatible
 		return state
 	}
 	if file, openErr := os.Open(databasePath); openErr == nil {
@@ -225,7 +245,7 @@ func Serve(ctx context.Context, dataDirectory, coreIdentity string) error {
 		return err
 	}
 	defer taskStore.Close()
-	controlCenter, err := application.NewControlCenter(taskStore, repository.NewGitObserver())
+	service, err := application.NewService(taskStore, repository.NewGitObserver())
 	if err != nil {
 		return err
 	}
@@ -237,7 +257,8 @@ func Serve(ctx context.Context, dataDirectory, coreIdentity string) error {
 		}
 		return SystemStatusResponse{Readiness: ReadinessReady, CoreIdentity: coreIdentity, DataRootDigest: digest, URL: url}
 	}
-	api, err := NewAPI(controlCenter, controlCenter, status)
+	core := coreprotocol.NewHandler(service, coreIdentity, userconfig.Preferences{})
+	api, err := NewAPI(service, core, status)
 	if err != nil {
 		return err
 	}

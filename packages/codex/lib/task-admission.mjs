@@ -7,13 +7,11 @@ import { nativeGitPath } from "./platform.mjs";
 
 const execFile = promisify(execFileCallback);
 
-export const CHANGE_LEVELS = Object.freeze(["small", "standard", "large", "uncertain"]);
-export const ADMISSION_RECOMMENDATIONS = Object.freeze(["direct", "taskbelay", "clarify"]);
 const digestPattern = /^[0-9a-f]{64}$/u;
 
 export function requestDigest(request) {
   if (typeof request !== "string" || request.trim() === "") {
-    throw new Error("assessment request must be a non-empty string");
+    throw new Error("workspace request must be a non-empty string");
   }
   return createHash("sha256").update(request, "utf8").digest("hex");
 }
@@ -24,13 +22,13 @@ export async function inspectAdmissionAnchor({
   runGit = defaultRunGit,
 } = {}) {
   if (!Array.isArray(repositories) || repositories.length === 0 || repositories.length > 8) {
-    throw new Error("assessment repositories must contain one to eight entries");
+    throw new Error("workspace repositories must contain one to eight entries");
   }
   const seenKeys = new Set();
   const seenRoots = new Set();
   const observed = [];
   for (const repository of repositories) {
-    assertExactKeys(repository, ["key", "repository_path"], "assessment repository");
+    assertExactKeys(repository, ["key", "repository_path"], "workspace repository");
     assertRepositoryKey(repository.key);
     if (seenKeys.has(repository.key)) throw new Error(`duplicate repository key ${repository.key}`);
     seenKeys.add(repository.key);
@@ -39,7 +37,7 @@ export async function inspectAdmissionAnchor({
     const topLevel = nativeGitPath(normalizeLine(await runGit(["-C", requestedPath, "rev-parse", "--show-toplevel"])));
     assertAbsolutePath(topLevel, "Git worktree root");
     const canonicalRoot = await realpath(topLevel);
-    if (seenRoots.has(canonicalRoot)) throw new Error("assessment repositories must identify distinct worktrees");
+    if (seenRoots.has(canonicalRoot)) throw new Error("workspace repositories must identify distinct worktrees");
     seenRoots.add(canonicalRoot);
     const head = normalizeLine(await runGit(["-C", canonicalRoot, "rev-parse", "--verify", "HEAD"]));
     assertCommit(head, "HEAD");
@@ -60,111 +58,6 @@ export async function inspectAdmissionAnchor({
     request_digest: requestDigest(request),
     repositories: Object.freeze(observed),
   });
-}
-
-export function validateSuitabilityAssessment(value) {
-  assertExactKeys(value, [
-    "change_level",
-    "observed_repositories",
-    "candidate_components",
-    "candidate_paths",
-    "public_contract_flags",
-    "persistence_or_state_flags",
-    "host_or_platform_flags",
-    "verification_shape",
-    "unknowns",
-    "recommendation",
-    "reasons",
-    "anchor",
-  ], "suitability assessment");
-  if (!CHANGE_LEVELS.includes(value.change_level)) throw new Error("assessment change_level is invalid");
-  if (!ADMISSION_RECOMMENDATIONS.includes(value.recommendation)) {
-    throw new Error("assessment recommendation is invalid");
-  }
-  for (const field of [
-    "observed_repositories", "candidate_components", "candidate_paths", "public_contract_flags",
-    "persistence_or_state_flags", "host_or_platform_flags", "verification_shape", "unknowns", "reasons",
-  ]) {
-    assertStringArray(value[field], `assessment ${field}`);
-  }
-  if (value.observed_repositories.length === 0) {
-    throw new Error("assessment observed_repositories must not be empty");
-  }
-  if (value.reasons.length === 0) throw new Error("assessment reasons must not be empty");
-  validateAdmissionAnchor(value.anchor);
-  const roots = value.anchor.repositories.map((entry) => entry.canonical_root).sort();
-  if (stableJSON([...value.observed_repositories].sort()) !== stableJSON(roots)) {
-    throw new Error("assessment observed_repositories must match the complete anchor roots");
-  }
-  if (value.change_level !== "uncertain" && [value.candidate_components, value.candidate_paths, value.verification_shape].some((items) => items.length === 0)) {
-    throw new Error("resolved assessment requires components, candidate paths and verification");
-  }
-  if (value.change_level === "small") {
-    const flags = [
-      ...value.public_contract_flags,
-      ...value.persistence_or_state_flags,
-      ...value.host_or_platform_flags,
-      ...value.unknowns,
-    ];
-    if (value.observed_repositories.length !== 1 || value.candidate_components.length !== 1 || flags.length !== 0) {
-      throw new Error("small assessment violates the closed small-change rules");
-    }
-    if (value.recommendation !== "direct") {
-      throw new Error("small assessment must recommend direct development");
-    }
-  }
-  if (value.unknowns.length > 0 && value.change_level !== "uncertain") {
-    throw new Error("an assessment with unknowns must be uncertain");
-  }
-  if (value.change_level === "uncertain" && value.recommendation !== "clarify") {
-    throw new Error("an uncertain assessment must recommend clarification");
-  }
-  if (
-    value.observed_repositories.length > 1 ||
-    value.public_contract_flags.length > 0 ||
-    value.persistence_or_state_flags.length > 0 ||
-    value.host_or_platform_flags.length > 0
-  ) {
-    if (value.change_level === "small" || value.recommendation === "direct") {
-      throw new Error("cross-cutting assessment cannot be small or recommend direct development");
-    }
-  }
-  return structuredClone(value);
-}
-
-export function validateAdmissionAnchor(value) {
-  assertExactKeys(value, ["request_digest", "repositories"], "assessment anchor");
-  if (!digestPattern.test(value.request_digest)) throw new Error("assessment request_digest is invalid");
-  if (!Array.isArray(value.repositories) || value.repositories.length === 0 || value.repositories.length > 8) {
-    throw new Error("assessment anchor repositories must contain one to eight entries");
-  }
-  const keys = new Set();
-  for (const repository of value.repositories) {
-    assertExactKeys(repository, [
-      "repository_key", "canonical_root", "head", "status_digest", "dirty_paths", "dirty_paths_truncated",
-    ], "assessment anchor repository");
-    assertRepositoryKey(repository.repository_key);
-    if (keys.has(repository.repository_key)) throw new Error("assessment anchor repository keys must be unique");
-    keys.add(repository.repository_key);
-    assertAbsolutePath(repository.canonical_root, "assessment canonical_root");
-    assertCommit(repository.head, "assessment HEAD");
-    if (!digestPattern.test(repository.status_digest)) throw new Error("assessment status_digest is invalid");
-    assertStringArray(repository.dirty_paths, "assessment dirty_paths");
-    if (typeof repository.dirty_paths_truncated !== "boolean") {
-      throw new Error("assessment dirty_paths_truncated must be a boolean");
-    }
-  }
-  return structuredClone(value);
-}
-
-export function admissionAnchorMatches(left, right) {
-  try {
-    const first = validateAdmissionAnchor(left);
-    const second = validateAdmissionAnchor(right);
-    return stableJSON(first) === stableJSON(second);
-  } catch {
-    return false;
-  }
 }
 
 function parsePorcelainV2Paths(value) {
@@ -252,14 +145,3 @@ function stableJSON(value) {
 }
 
 // The launch decision records the user's choice after the complete assessment was shown.
-export function validateLaunchAdmission(assessment, choice) {
-  const checked = validateSuitabilityAssessment(assessment);
-  assertExactKeys(choice, ["source", "mode", "summary"], "launch user choice");
-  if (choice.source !== "user" || choice.mode !== "taskbelay" || typeof choice.summary !== "string" || choice.summary.trim() === "") {
-    throw new Error("launch requires an explicit user taskbelay choice");
-  }
-  if (checked.change_level === "uncertain" || checked.recommendation === "clarify" || checked.unknowns.length !== 0) {
-    throw new Error("resolve assessment unknowns before provisioning");
-  }
-  return { assessment: checked, user_choice: structuredClone(choice) };
-}

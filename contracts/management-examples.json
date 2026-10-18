@@ -1,0 +1,4521 @@
+[
+  {
+    "name": "taskbelay.lifecycle.status",
+    "description": "Read current installed resources and retained operation outcomes. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
+            },
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "targets": {
+              "type": "array",
+              "description": "安装管理所检查/操作的Host与Profile集合。",
+              "items": {
+                "type": "object",
+                "description": "安装管理所检查/操作的Host与Profile集合。",
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                  },
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "DeepSeek Profile名；其它Host为null。"
+                  },
+                  "package_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "对应Host包版本，不等于Core版本。"
+                  },
+                  "core_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "包内实际Core版本，不凭npm版本推定。"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                  },
+                  "host_available": {
+                    "type": "boolean",
+                    "description": "CLI能否确认Host可用；null表示无法核对。"
+                  },
+                  "issues": {
+                    "type": "array",
+                    "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+                    "items": {
+                      "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
+                    }
+                  }
+                },
+                "required": [
+                  "host",
+                  "profile",
+                  "package_version",
+                  "core_version",
+                  "state",
+                  "host_available",
+                  "issues"
+                ]
+              }
+            },
+            "data": {
+              "type": "object",
+              "description": "安装管理对自有配置和数据的处理结果。",
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "description": "preserve/trash/remove等实际数据处理规则，不能从普通卸载推导删除授权。"
+                },
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "default_data": {
+                  "type": "string",
+                  "description": "默认Task数据目录存在/保留/未知状态。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "explicit_data": {
+                  "type": "array",
+                  "description": "用户显式指定的数据目录，只按精确实际确认处理。",
+                  "items": {
+                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
+                  }
+                },
+                "trash_root": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "实际移入回收区位置；null表示未移入。"
+                }
+              },
+              "required": [
+                "policy",
+                "configuration",
+                "default_data",
+                "pet",
+                "explicit_data",
+                "trash_root"
+              ]
+            },
+            "completed_actions": {
+              "type": "array",
+              "description": "已完成的安装动作，发生后失败仍须保留。",
+              "items": {
+                "description": "已完成的安装动作，发生后失败仍须保留。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "failed_action": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "restart_requirements": {
+              "type": "array",
+              "description": "需重载或重启的实际Host要求。",
+              "items": {
+                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "confirmation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_step": {
+              "type": "string",
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation_id",
+            "operation",
+            "status",
+            "changed",
+            "targets",
+            "data",
+            "completed_actions",
+            "failed_action",
+            "next_steps",
+            "restart_requirements",
+            "confirmation",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "status",
+            "--host",
+            "codex",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "status",
+            "status": "absent",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay install --host codex --yes"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_option",
+        "input": {
+          "argv": [
+            "status",
+            "--unexpected",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 2,
+          "stdout": {
+            "operation_id": null,
+            "operation": "status",
+            "error": {
+              "code": "INVALID_ARGUMENT",
+              "message": "unknown option --unexpected",
+              "detail": ""
+            },
+            "status": "failed",
+            "changed": false,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "unknown",
+              "default_data": "unknown",
+              "pet": "unknown",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay help"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "taskbelay.lifecycle.doctor",
+    "description": "Read the same installation and return concrete diagnostics. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
+            },
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "targets": {
+              "type": "array",
+              "description": "安装管理所检查/操作的Host与Profile集合。",
+              "items": {
+                "type": "object",
+                "description": "安装管理所检查/操作的Host与Profile集合。",
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                  },
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "DeepSeek Profile名；其它Host为null。"
+                  },
+                  "package_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "对应Host包版本，不等于Core版本。"
+                  },
+                  "core_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "包内实际Core版本，不凭npm版本推定。"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                  },
+                  "host_available": {
+                    "type": "boolean",
+                    "description": "CLI能否确认Host可用；null表示无法核对。"
+                  },
+                  "issues": {
+                    "type": "array",
+                    "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+                    "items": {
+                      "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
+                    }
+                  }
+                },
+                "required": [
+                  "host",
+                  "profile",
+                  "package_version",
+                  "core_version",
+                  "state",
+                  "host_available",
+                  "issues"
+                ]
+              }
+            },
+            "data": {
+              "type": "object",
+              "description": "安装管理对自有配置和数据的处理结果。",
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "description": "preserve/trash/remove等实际数据处理规则，不能从普通卸载推导删除授权。"
+                },
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "default_data": {
+                  "type": "string",
+                  "description": "默认Task数据目录存在/保留/未知状态。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "explicit_data": {
+                  "type": "array",
+                  "description": "用户显式指定的数据目录，只按精确实际确认处理。",
+                  "items": {
+                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
+                  }
+                },
+                "trash_root": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "实际移入回收区位置；null表示未移入。"
+                }
+              },
+              "required": [
+                "policy",
+                "configuration",
+                "default_data",
+                "pet",
+                "explicit_data",
+                "trash_root"
+              ]
+            },
+            "completed_actions": {
+              "type": "array",
+              "description": "已完成的安装动作，发生后失败仍须保留。",
+              "items": {
+                "description": "已完成的安装动作，发生后失败仍须保留。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "failed_action": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "restart_requirements": {
+              "type": "array",
+              "description": "需重载或重启的实际Host要求。",
+              "items": {
+                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "confirmation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_step": {
+              "type": "string",
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            },
+            "checks": {
+              "type": "array",
+              "description": "默认返回检查摘要；完整定义在context.plan.checks。",
+              "items": {
+                "type": "object",
+                "description": "默认返回检查摘要；完整定义在context.plan.checks。",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "方法/对象的公开名称。"
+                  },
+                  "status": {
+                    "type": "string",
+                    "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+                  },
+                  "message": {
+                    "type": "string",
+                    "description": "可直接阅读的具体原因，不含敏感原始参数或内部堆栈。"
+                  }
+                },
+                "required": [
+                  "name",
+                  "status",
+                  "message"
+                ]
+              }
+            }
+          },
+          "required": [
+            "operation_id",
+            "operation",
+            "status",
+            "changed",
+            "targets",
+            "data",
+            "completed_actions",
+            "failed_action",
+            "next_steps",
+            "restart_requirements",
+            "confirmation",
+            "next_step",
+            "checks"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "doctor",
+            "--host",
+            "codex",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": {
+            "operation_id": null,
+            "operation": "doctor",
+            "status": "absent",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay install --host codex --yes",
+            "checks": [
+              {
+                "name": "codex",
+                "status": "failed",
+                "message": "absent"
+              },
+              {
+                "name": "configuration",
+                "status": "passed",
+                "message": "Default preferences apply; configuration is absent."
+              },
+              {
+                "name": "default-data",
+                "status": "passed",
+                "message": "/example/manager/.taskbelay/data: not created"
+              }
+            ]
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_option",
+        "input": {
+          "argv": [
+            "doctor",
+            "--unexpected",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 2,
+          "stdout": {
+            "operation_id": null,
+            "operation": "doctor",
+            "error": {
+              "code": "INVALID_ARGUMENT",
+              "message": "unknown option --unexpected",
+              "detail": ""
+            },
+            "status": "failed",
+            "changed": false,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "unknown",
+              "default_data": "unknown",
+              "pet": "unknown",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay help"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "taskbelay.lifecycle.install",
+    "description": "Install the selected Host adapter under existing explicit installation authority. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation_id": {
+              "type": "string",
+              "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
+            },
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "targets": {
+              "type": "array",
+              "description": "安装管理所检查/操作的Host与Profile集合。",
+              "items": {
+                "type": "object",
+                "description": "安装管理所检查/操作的Host与Profile集合。",
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                  },
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "DeepSeek Profile名；其它Host为null。"
+                  },
+                  "package_version": {
+                    "type": "string",
+                    "description": "对应Host包版本，不等于Core版本。"
+                  },
+                  "core_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "包内实际Core版本，不凭npm版本推定。"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                  },
+                  "host_available": {
+                    "type": "boolean",
+                    "description": "CLI能否确认Host可用；null表示无法核对。"
+                  },
+                  "issues": {
+                    "type": "array",
+                    "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+                    "items": {
+                      "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
+                    }
+                  }
+                },
+                "required": [
+                  "host",
+                  "profile",
+                  "package_version",
+                  "core_version",
+                  "state",
+                  "host_available",
+                  "issues"
+                ]
+              }
+            },
+            "data": {
+              "type": "object",
+              "description": "安装管理对自有配置和数据的处理结果。",
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "description": "preserve/trash/remove等实际数据处理规则，不能从普通卸载推导删除授权。"
+                },
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "default_data": {
+                  "type": "string",
+                  "description": "默认Task数据目录存在/保留/未知状态。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "explicit_data": {
+                  "type": "array",
+                  "description": "用户显式指定的数据目录，只按精确实际确认处理。",
+                  "items": {
+                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
+                  }
+                },
+                "trash_root": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "实际移入回收区位置；null表示未移入。"
+                }
+              },
+              "required": [
+                "policy",
+                "configuration",
+                "default_data",
+                "pet",
+                "explicit_data",
+                "trash_root"
+              ]
+            },
+            "completed_actions": {
+              "type": "array",
+              "description": "已完成的安装动作，发生后失败仍须保留。",
+              "items": {
+                "type": "string",
+                "description": "已完成的安装动作，发生后失败仍须保留。"
+              }
+            },
+            "failed_action": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "type": "string",
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。"
+              }
+            },
+            "restart_requirements": {
+              "type": "array",
+              "description": "需重载或重启的实际Host要求。",
+              "items": {
+                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "confirmation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_step": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation_id",
+            "operation",
+            "status",
+            "changed",
+            "targets",
+            "data",
+            "completed_actions",
+            "failed_action",
+            "next_steps",
+            "restart_requirements",
+            "confirmation",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "install",
+            "--host",
+            "codex",
+            "--json",
+            "--yes"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "operation": "install",
+            "status": "ready",
+            "changed": true,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_version": "0.8.0",
+                "core_version": null,
+                "state": "ready",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [
+              "codex.default.install",
+              "codex.install"
+            ],
+            "failed_action": null,
+            "next_steps": [
+              "Open Codex /hooks, review and trust the TaskBelay hook, then start a new conversation."
+            ],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_option",
+        "input": {
+          "argv": [
+            "install",
+            "--unexpected",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 2,
+          "stdout": {
+            "operation_id": null,
+            "operation": "install",
+            "error": {
+              "code": "INVALID_ARGUMENT",
+              "message": "unknown option --unexpected",
+              "detail": ""
+            },
+            "status": "failed",
+            "changed": false,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "unknown",
+              "default_data": "unknown",
+              "pet": "unknown",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay help"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "taskbelay.lifecycle.upgrade",
+    "description": "Update the selected owned adapter to the requested target. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
+            },
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "targets": {
+              "type": "array",
+              "description": "安装管理所检查/操作的Host与Profile集合。",
+              "items": {
+                "type": "object",
+                "description": "安装管理所检查/操作的Host与Profile集合。",
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                  },
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "DeepSeek Profile名；其它Host为null。"
+                  },
+                  "package_version": {
+                    "type": "string",
+                    "description": "对应Host包版本，不等于Core版本。"
+                  },
+                  "core_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "包内实际Core版本，不凭npm版本推定。"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                  },
+                  "host_available": {
+                    "type": "boolean",
+                    "description": "CLI能否确认Host可用；null表示无法核对。"
+                  },
+                  "issues": {
+                    "type": "array",
+                    "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+                    "items": {
+                      "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
+                    }
+                  }
+                },
+                "required": [
+                  "host",
+                  "profile",
+                  "package_version",
+                  "core_version",
+                  "state",
+                  "host_available",
+                  "issues"
+                ]
+              }
+            },
+            "data": {
+              "type": "object",
+              "description": "安装管理对自有配置和数据的处理结果。",
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "description": "preserve/trash/remove等实际数据处理规则，不能从普通卸载推导删除授权。"
+                },
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "default_data": {
+                  "type": "string",
+                  "description": "默认Task数据目录存在/保留/未知状态。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "explicit_data": {
+                  "type": "array",
+                  "description": "用户显式指定的数据目录，只按精确实际确认处理。",
+                  "items": {
+                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
+                  }
+                },
+                "trash_root": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "实际移入回收区位置；null表示未移入。"
+                }
+              },
+              "required": [
+                "policy",
+                "configuration",
+                "default_data",
+                "pet",
+                "explicit_data",
+                "trash_root"
+              ]
+            },
+            "completed_actions": {
+              "type": "array",
+              "description": "已完成的安装动作，发生后失败仍须保留。",
+              "items": {
+                "description": "已完成的安装动作，发生后失败仍须保留。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "failed_action": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "type": "string",
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。"
+              }
+            },
+            "restart_requirements": {
+              "type": "array",
+              "description": "需重载或重启的实际Host要求。",
+              "items": {
+                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "confirmation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_step": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation_id",
+            "operation",
+            "status",
+            "changed",
+            "targets",
+            "data",
+            "completed_actions",
+            "failed_action",
+            "next_steps",
+            "restart_requirements",
+            "confirmation",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "upgrade",
+            "--host",
+            "codex",
+            "--json",
+            "--yes"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "upgrade",
+            "status": "ready",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_version": "0.8.0",
+                "core_version": null,
+                "state": "ready",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [
+              "Open Codex /hooks, review and trust the TaskBelay hook, then start a new conversation."
+            ],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_option",
+        "input": {
+          "argv": [
+            "upgrade",
+            "--unexpected",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 2,
+          "stdout": {
+            "operation_id": null,
+            "operation": "upgrade",
+            "error": {
+              "code": "INVALID_ARGUMENT",
+              "message": "unknown option --unexpected",
+              "detail": ""
+            },
+            "status": "failed",
+            "changed": false,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "unknown",
+              "default_data": "unknown",
+              "pet": "unknown",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay help"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "taskbelay.lifecycle.repair",
+    "description": "Restore missing or inconsistent owned registration and package resources. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
+            },
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "targets": {
+              "type": "array",
+              "description": "安装管理所检查/操作的Host与Profile集合。",
+              "items": {
+                "type": "object",
+                "description": "安装管理所检查/操作的Host与Profile集合。",
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                  },
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "DeepSeek Profile名；其它Host为null。"
+                  },
+                  "package_version": {
+                    "type": "string",
+                    "description": "对应Host包版本，不等于Core版本。"
+                  },
+                  "core_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "包内实际Core版本，不凭npm版本推定。"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                  },
+                  "host_available": {
+                    "type": "boolean",
+                    "description": "CLI能否确认Host可用；null表示无法核对。"
+                  },
+                  "issues": {
+                    "type": "array",
+                    "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+                    "items": {
+                      "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
+                    }
+                  }
+                },
+                "required": [
+                  "host",
+                  "profile",
+                  "package_version",
+                  "core_version",
+                  "state",
+                  "host_available",
+                  "issues"
+                ]
+              }
+            },
+            "data": {
+              "type": "object",
+              "description": "安装管理对自有配置和数据的处理结果。",
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "description": "preserve/trash/remove等实际数据处理规则，不能从普通卸载推导删除授权。"
+                },
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "default_data": {
+                  "type": "string",
+                  "description": "默认Task数据目录存在/保留/未知状态。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "explicit_data": {
+                  "type": "array",
+                  "description": "用户显式指定的数据目录，只按精确实际确认处理。",
+                  "items": {
+                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
+                  }
+                },
+                "trash_root": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "实际移入回收区位置；null表示未移入。"
+                }
+              },
+              "required": [
+                "policy",
+                "configuration",
+                "default_data",
+                "pet",
+                "explicit_data",
+                "trash_root"
+              ]
+            },
+            "completed_actions": {
+              "type": "array",
+              "description": "已完成的安装动作，发生后失败仍须保留。",
+              "items": {
+                "description": "已完成的安装动作，发生后失败仍须保留。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "failed_action": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "type": "string",
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。"
+              }
+            },
+            "restart_requirements": {
+              "type": "array",
+              "description": "需重载或重启的实际Host要求。",
+              "items": {
+                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "confirmation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_step": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation_id",
+            "operation",
+            "status",
+            "changed",
+            "targets",
+            "data",
+            "completed_actions",
+            "failed_action",
+            "next_steps",
+            "restart_requirements",
+            "confirmation",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "repair",
+            "--host",
+            "codex",
+            "--json",
+            "--yes"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "repair",
+            "status": "ready",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_version": "0.8.0",
+                "core_version": null,
+                "state": "ready",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [
+              "Open Codex /hooks, review and trust the TaskBelay hook, then start a new conversation."
+            ],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_option",
+        "input": {
+          "argv": [
+            "repair",
+            "--unexpected",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 2,
+          "stdout": {
+            "operation_id": null,
+            "operation": "repair",
+            "error": {
+              "code": "INVALID_ARGUMENT",
+              "message": "unknown option --unexpected",
+              "detail": ""
+            },
+            "status": "failed",
+            "changed": false,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "unknown",
+              "default_data": "unknown",
+              "pet": "unknown",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay help"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "taskbelay.lifecycle.reinstall",
+    "description": "Replace the selected owned adapter after the requested reinstall decision. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation_id": {
+              "type": "string",
+              "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
+            },
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "targets": {
+              "type": "array",
+              "description": "安装管理所检查/操作的Host与Profile集合。",
+              "items": {
+                "type": "object",
+                "description": "安装管理所检查/操作的Host与Profile集合。",
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                  },
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "DeepSeek Profile名；其它Host为null。"
+                  },
+                  "package_version": {
+                    "type": "string",
+                    "description": "对应Host包版本，不等于Core版本。"
+                  },
+                  "core_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "包内实际Core版本，不凭npm版本推定。"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                  },
+                  "host_available": {
+                    "type": "boolean",
+                    "description": "CLI能否确认Host可用；null表示无法核对。"
+                  },
+                  "issues": {
+                    "type": "array",
+                    "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+                    "items": {
+                      "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
+                    }
+                  }
+                },
+                "required": [
+                  "host",
+                  "profile",
+                  "package_version",
+                  "core_version",
+                  "state",
+                  "host_available",
+                  "issues"
+                ]
+              }
+            },
+            "data": {
+              "type": "object",
+              "description": "安装管理对自有配置和数据的处理结果。",
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "description": "preserve/trash/remove等实际数据处理规则，不能从普通卸载推导删除授权。"
+                },
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "default_data": {
+                  "type": "string",
+                  "description": "默认Task数据目录存在/保留/未知状态。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "explicit_data": {
+                  "type": "array",
+                  "description": "用户显式指定的数据目录，只按精确实际确认处理。",
+                  "items": {
+                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
+                  }
+                },
+                "trash_root": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "实际移入回收区位置；null表示未移入。"
+                }
+              },
+              "required": [
+                "policy",
+                "configuration",
+                "default_data",
+                "pet",
+                "explicit_data",
+                "trash_root"
+              ]
+            },
+            "completed_actions": {
+              "type": "array",
+              "description": "已完成的安装动作，发生后失败仍须保留。",
+              "items": {
+                "type": "string",
+                "description": "已完成的安装动作，发生后失败仍须保留。"
+              }
+            },
+            "failed_action": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "type": "string",
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。"
+              }
+            },
+            "restart_requirements": {
+              "type": "array",
+              "description": "需重载或重启的实际Host要求。",
+              "items": {
+                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "confirmation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_step": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation_id",
+            "operation",
+            "status",
+            "changed",
+            "targets",
+            "data",
+            "completed_actions",
+            "failed_action",
+            "next_steps",
+            "restart_requirements",
+            "confirmation",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "reinstall",
+            "--host",
+            "codex",
+            "--json",
+            "--yes"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "operation": "reinstall",
+            "status": "ready",
+            "changed": true,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_version": "0.8.0",
+                "core_version": null,
+                "state": "ready",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [
+              "codex.default.reinstall",
+              "codex.reinstall"
+            ],
+            "failed_action": null,
+            "next_steps": [
+              "Open Codex /hooks, review and trust the TaskBelay hook, then start a new conversation."
+            ],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_option",
+        "input": {
+          "argv": [
+            "reinstall",
+            "--unexpected",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 2,
+          "stdout": {
+            "operation_id": null,
+            "operation": "reinstall",
+            "error": {
+              "code": "INVALID_ARGUMENT",
+              "message": "unknown option --unexpected",
+              "detail": ""
+            },
+            "status": "failed",
+            "changed": false,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "unknown",
+              "default_data": "unknown",
+              "pet": "unknown",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay help"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "taskbelay.lifecycle.uninstall",
+    "description": "Remove selected owned adapter resources while retaining Task data. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation_id": {
+              "type": "string",
+              "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
+            },
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "targets": {
+              "type": "array",
+              "description": "安装管理所检查/操作的Host与Profile集合。",
+              "items": {
+                "type": "object",
+                "description": "安装管理所检查/操作的Host与Profile集合。",
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                  },
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "DeepSeek Profile名；其它Host为null。"
+                  },
+                  "package_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "对应Host包版本，不等于Core版本。"
+                  },
+                  "core_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "包内实际Core版本，不凭npm版本推定。"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                  },
+                  "host_available": {
+                    "type": "boolean",
+                    "description": "CLI能否确认Host可用；null表示无法核对。"
+                  },
+                  "issues": {
+                    "type": "array",
+                    "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+                    "items": {
+                      "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
+                    }
+                  }
+                },
+                "required": [
+                  "host",
+                  "profile",
+                  "package_version",
+                  "core_version",
+                  "state",
+                  "host_available",
+                  "issues"
+                ]
+              }
+            },
+            "data": {
+              "type": "object",
+              "description": "安装管理对自有配置和数据的处理结果。",
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "description": "preserve/trash/remove等实际数据处理规则，不能从普通卸载推导删除授权。"
+                },
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "default_data": {
+                  "type": "string",
+                  "description": "默认Task数据目录存在/保留/未知状态。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "explicit_data": {
+                  "type": "array",
+                  "description": "用户显式指定的数据目录，只按精确实际确认处理。",
+                  "items": {
+                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
+                  }
+                },
+                "trash_root": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "实际移入回收区位置；null表示未移入。"
+                }
+              },
+              "required": [
+                "policy",
+                "configuration",
+                "default_data",
+                "pet",
+                "explicit_data",
+                "trash_root"
+              ]
+            },
+            "completed_actions": {
+              "type": "array",
+              "description": "已完成的安装动作，发生后失败仍须保留。",
+              "items": {
+                "type": "string",
+                "description": "已完成的安装动作，发生后失败仍须保留。"
+              }
+            },
+            "failed_action": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "restart_requirements": {
+              "type": "array",
+              "description": "需重载或重启的实际Host要求。",
+              "items": {
+                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "confirmation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_step": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation_id",
+            "operation",
+            "status",
+            "changed",
+            "targets",
+            "data",
+            "completed_actions",
+            "failed_action",
+            "next_steps",
+            "restart_requirements",
+            "confirmation",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "uninstall",
+            "--host",
+            "codex",
+            "--json",
+            "--yes"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "operation": "uninstall",
+            "status": "absent",
+            "changed": true,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [
+              "codex.default.uninstall",
+              "codex.uninstall"
+            ],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_option",
+        "input": {
+          "argv": [
+            "uninstall",
+            "--unexpected",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 2,
+          "stdout": {
+            "operation_id": null,
+            "operation": "uninstall",
+            "error": {
+              "code": "INVALID_ARGUMENT",
+              "message": "unknown option --unexpected",
+              "detail": ""
+            },
+            "status": "failed",
+            "changed": false,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "unknown",
+              "default_data": "unknown",
+              "pet": "unknown",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay help"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "taskbelay.lifecycle.factory-reset",
+    "description": "Reset explicitly selected owned installation/data resources only after the plan-specific confirmation. --yes alone never supplies reset, permanent deletion or explicit-data confirmation. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
+            },
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "targets": {
+              "type": "array",
+              "description": "安装管理所检查/操作的Host与Profile集合。",
+              "items": {
+                "type": "object",
+                "description": "安装管理所检查/操作的Host与Profile集合。",
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                  },
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "DeepSeek Profile名；其它Host为null。"
+                  },
+                  "package_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "对应Host包版本，不等于Core版本。"
+                  },
+                  "core_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "包内实际Core版本，不凭npm版本推定。"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                  },
+                  "host_available": {
+                    "type": "boolean",
+                    "description": "CLI能否确认Host可用；null表示无法核对。"
+                  },
+                  "issues": {
+                    "type": "array",
+                    "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+                    "items": {
+                      "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method.",
+                      "type": []
+                    }
+                  }
+                },
+                "required": [
+                  "host",
+                  "profile",
+                  "package_version",
+                  "core_version",
+                  "state",
+                  "host_available",
+                  "issues"
+                ]
+              }
+            },
+            "data": {
+              "type": "object",
+              "description": "安装管理对自有配置和数据的处理结果。",
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "description": "preserve/trash/remove等实际数据处理规则，不能从普通卸载推导删除授权。"
+                },
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "default_data": {
+                  "type": "string",
+                  "description": "默认Task数据目录存在/保留/未知状态。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "explicit_data": {
+                  "type": "array",
+                  "description": "用户显式指定的数据目录，只按精确实际确认处理。",
+                  "items": {
+                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
+                  }
+                },
+                "trash_root": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "实际移入回收区位置；null表示未移入。"
+                }
+              },
+              "required": [
+                "policy",
+                "configuration",
+                "default_data",
+                "pet",
+                "explicit_data",
+                "trash_root"
+              ]
+            },
+            "completed_actions": {
+              "type": "array",
+              "description": "已完成的安装动作，发生后失败仍须保留。",
+              "items": {
+                "description": "已完成的安装动作，发生后失败仍须保留。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "failed_action": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "restart_requirements": {
+              "type": "array",
+              "description": "需重载或重启的实际Host要求。",
+              "items": {
+                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "confirmation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_step": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation_id",
+            "operation",
+            "status",
+            "changed",
+            "targets",
+            "data",
+            "completed_actions",
+            "failed_action",
+            "next_steps",
+            "restart_requirements",
+            "confirmation",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "factory-reset",
+            "--host",
+            "all",
+            "--json",
+            "--yes"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "factory-reset",
+            "status": "absent",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "deepseek",
+                "profile": "web",
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "claude",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "zcode",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_option",
+        "input": {
+          "argv": [
+            "factory-reset",
+            "--unexpected",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 2,
+          "stdout": {
+            "operation_id": null,
+            "operation": "factory-reset",
+            "error": {
+              "code": "INVALID_ARGUMENT",
+              "message": "unknown option --unexpected",
+              "detail": ""
+            },
+            "status": "failed",
+            "changed": false,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "unknown",
+              "default_data": "unknown",
+              "pet": "unknown",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay help"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "zcode.lifecycle.status",
+    "description": "Run status for the owned zcode adapter. JSON stdout includes actual local registration status. ZCode action_required requires the returned UI steps; it does not claim the plugin loaded. remove retains Task data; ZCode --confirm-host-removed records actual user confirmation only. A failed command may leave completed registration steps; inspect status before another mutation.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "package_version": {
+              "type": "string",
+              "description": "对应Host包版本，不等于Core版本。"
+            },
+            "core_version": {
+              "type": "string",
+              "description": "包内实际Core版本，不凭npm版本推定。"
+            },
+            "receipt_path": {
+              "type": "string",
+              "description": "保留的本机操作收据绝对路径，响应丢失先读取它。"
+            },
+            "registration": {
+              "type": "object",
+              "description": "真实注册核对结果，不能把包存在等同Host已加载。",
+              "additionalProperties": false,
+              "properties": {
+                "receipt": {
+                  "type": "boolean",
+                  "description": "公开操作记录投影；不作为可整体写回的对象。"
+                },
+                "package": {
+                  "type": "boolean",
+                  "description": "ZCode包完整性是否已核对。"
+                },
+                "host": {
+                  "type": "string",
+                  "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                },
+                "phase": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "原工作区/会话操作阶段；uncertain保留原结果，不重派。"
+                }
+              },
+              "required": [
+                "receipt",
+                "package",
+                "host",
+                "phase"
+              ]
+            },
+            "issues": {
+              "type": "array",
+              "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+              "items": {
+                "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "type": "string",
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。"
+              }
+            }
+          },
+          "required": [
+            "operation",
+            "status",
+            "changed",
+            "package_version",
+            "core_version",
+            "receipt_path",
+            "registration",
+            "issues",
+            "next_steps"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "status",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation": "status",
+            "status": "partial",
+            "changed": false,
+            "package_version": "0.1.0",
+            "core_version": "0.26.0",
+            "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
+            "registration": {
+              "receipt": false,
+              "package": true,
+              "host": "unverified",
+              "phase": null
+            },
+            "issues": [],
+            "next_steps": [
+              "Run taskbelay-zcode setup --json to prepare and verify the local plugin source."
+            ]
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_data_directory",
+        "input": {
+          "argv": [
+            "status",
+            "--json"
+          ],
+          "environment": {
+            "TASKBELAY_DATA_DIR": "relative"
+          }
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay-zcode: TASKBELAY_DATA_DIR must be absolute\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "zcode.lifecycle.setup",
+    "description": "Run setup for the owned zcode adapter. JSON stdout includes actual local registration status. ZCode action_required requires the returned UI steps; it does not claim the plugin loaded. remove retains Task data; ZCode --confirm-host-removed records actual user confirmation only. A failed command may leave completed registration steps; inspect status before another mutation.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "package_version": {
+              "type": "string",
+              "description": "对应Host包版本，不等于Core版本。"
+            },
+            "core_version": {
+              "type": "string",
+              "description": "包内实际Core版本，不凭npm版本推定。"
+            },
+            "receipt_path": {
+              "type": "string",
+              "description": "保留的本机操作收据绝对路径，响应丢失先读取它。"
+            },
+            "registration": {
+              "type": "object",
+              "description": "真实注册核对结果，不能把包存在等同Host已加载。",
+              "additionalProperties": false,
+              "properties": {
+                "receipt": {
+                  "type": "boolean",
+                  "description": "公开操作记录投影；不作为可整体写回的对象。"
+                },
+                "package": {
+                  "type": "boolean",
+                  "description": "ZCode包完整性是否已核对。"
+                },
+                "host": {
+                  "type": "string",
+                  "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                },
+                "phase": {
+                  "type": "string",
+                  "description": "原工作区/会话操作阶段；uncertain保留原结果，不重派。"
+                }
+              },
+              "required": [
+                "receipt",
+                "package",
+                "host",
+                "phase"
+              ]
+            },
+            "issues": {
+              "type": "array",
+              "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+              "items": {
+                "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "type": "string",
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。"
+              }
+            }
+          },
+          "required": [
+            "operation",
+            "status",
+            "changed",
+            "package_version",
+            "core_version",
+            "receipt_path",
+            "registration",
+            "issues",
+            "next_steps"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "setup",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation": "setup",
+            "status": "action_required",
+            "changed": true,
+            "package_version": "0.1.0",
+            "core_version": "0.26.0",
+            "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
+            "registration": {
+              "receipt": true,
+              "package": true,
+              "host": "unverified",
+              "phase": "prepared"
+            },
+            "issues": [],
+            "next_steps": [
+              "Open a ZCode workspace, then Settings > Plugins > Create > Add marketplace and select /example/zcode-package/marketplace.json.",
+              "Install and enable taskbelay-zcode@taskbelay-zcode-local from Personal. For an updated local package, refresh this marketplace; if its version is unchanged, uninstall and reinstall the plugin so its cached files are replaced.",
+              "Start a new ZCode session. Check the TaskBelay Skill, plugin MCP server and Write/Edit Hook in ZCode before starting a Task. This CLI cannot observe their loaded state."
+            ]
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_data_directory",
+        "input": {
+          "argv": [
+            "setup",
+            "--json"
+          ],
+          "environment": {
+            "TASKBELAY_DATA_DIR": "relative"
+          }
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay-zcode: TASKBELAY_DATA_DIR must be absolute\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "zcode.lifecycle.remove",
+    "description": "Run remove for the owned zcode adapter. JSON stdout includes actual local registration status. ZCode action_required requires the returned UI steps; it does not claim the plugin loaded. remove retains Task data; ZCode --confirm-host-removed records actual user confirmation only. A failed command may leave completed registration steps; inspect status before another mutation.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "package_version": {
+              "type": "string",
+              "description": "对应Host包版本，不等于Core版本。"
+            },
+            "core_version": {
+              "type": "string",
+              "description": "包内实际Core版本，不凭npm版本推定。"
+            },
+            "receipt_path": {
+              "type": "string",
+              "description": "保留的本机操作收据绝对路径，响应丢失先读取它。"
+            },
+            "registration": {
+              "type": "object",
+              "description": "真实注册核对结果，不能把包存在等同Host已加载。",
+              "additionalProperties": false,
+              "properties": {
+                "receipt": {
+                  "type": "boolean",
+                  "description": "公开操作记录投影；不作为可整体写回的对象。"
+                },
+                "package": {
+                  "type": "boolean",
+                  "description": "ZCode包完整性是否已核对。"
+                },
+                "host": {
+                  "type": "string",
+                  "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                },
+                "phase": {
+                  "type": "string",
+                  "description": "原工作区/会话操作阶段；uncertain保留原结果，不重派。"
+                }
+              },
+              "required": [
+                "receipt",
+                "package",
+                "host",
+                "phase"
+              ]
+            },
+            "issues": {
+              "type": "array",
+              "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+              "items": {
+                "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "type": "string",
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。"
+              }
+            }
+          },
+          "required": [
+            "operation",
+            "status",
+            "changed",
+            "package_version",
+            "core_version",
+            "receipt_path",
+            "registration",
+            "issues",
+            "next_steps"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "remove",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation": "remove",
+            "status": "action_required",
+            "changed": true,
+            "package_version": "0.1.0",
+            "core_version": "0.26.0",
+            "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
+            "registration": {
+              "receipt": true,
+              "package": false,
+              "host": "unverified",
+              "phase": "removal_required"
+            },
+            "issues": [],
+            "next_steps": [
+              "In ZCode Settings > Plugins > Manage installed, uninstall taskbelay-zcode@taskbelay-zcode-local; then remove taskbelay-zcode-local from Marketplace sources.",
+              "Close affected ZCode sessions and start a new session to discard the previous plugin/Hook snapshot. The CLI cannot verify removal of ZCode's cached plugin.",
+              "After the user confirms the plugin and marketplace were removed and affected sessions were closed, run taskbelay-zcode remove --confirm-host-removed --json; then repeat taskbelay uninstall --host zcode --yes (or use npm uninstall --global taskbelay-zcode for an Adapter-only installation).",
+              "Task data, Git workspaces and unrelated ZCode settings are retained."
+            ]
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_data_directory",
+        "input": {
+          "argv": [
+            "remove",
+            "--json"
+          ],
+          "environment": {
+            "TASKBELAY_DATA_DIR": "relative"
+          }
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay-zcode: TASKBELAY_DATA_DIR must be absolute\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "claude.lifecycle.status",
+    "description": "Run status for the owned claude adapter. JSON stdout includes actual local registration status. ZCode action_required requires the returned UI steps; it does not claim the plugin loaded. remove retains Task data; ZCode --confirm-host-removed records actual user confirmation only. A failed command may leave completed registration steps; inspect status before another mutation.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "package_version": {
+              "type": "string",
+              "description": "对应Host包版本，不等于Core版本。"
+            },
+            "core_version": {
+              "type": "string",
+              "description": "包内实际Core版本，不凭npm版本推定。"
+            },
+            "receipt_path": {
+              "type": "string",
+              "description": "保留的本机操作收据绝对路径，响应丢失先读取它。"
+            },
+            "registration": {
+              "type": "object",
+              "description": "真实注册核对结果，不能把包存在等同Host已加载。",
+              "additionalProperties": false,
+              "properties": {
+                "receipt": {
+                  "type": "boolean",
+                  "description": "公开操作记录投影；不作为可整体写回的对象。"
+                },
+                "marketplace": {
+                  "type": "boolean",
+                  "description": "对应Host marketplace是否已确认注册。"
+                },
+                "plugin": {
+                  "type": "boolean",
+                  "description": "对应Host插件是否已确认注册。"
+                },
+                "cache": {
+                  "type": "boolean",
+                  "description": "Claude安装缓存是否与包记录一致。"
+                }
+              },
+              "required": [
+                "receipt",
+                "marketplace",
+                "plugin",
+                "cache"
+              ]
+            }
+          },
+          "required": [
+            "operation",
+            "status",
+            "changed",
+            "package_version",
+            "core_version",
+            "receipt_path",
+            "registration"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "status",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation": "status",
+            "status": "partial",
+            "changed": false,
+            "package_version": "0.1.3",
+            "core_version": "0.26.0",
+            "receipt_path": "/example/hosts/.taskbelay/registrations/claude.json",
+            "registration": {
+              "receipt": false,
+              "marketplace": false,
+              "plugin": false,
+              "cache": false
+            }
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_data_directory",
+        "input": {
+          "argv": [
+            "status",
+            "--json"
+          ],
+          "environment": {
+            "TASKBELAY_DATA_DIR": "relative"
+          }
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay-claude: TASKBELAY_DATA_DIR must be absolute\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "claude.lifecycle.setup",
+    "description": "Run setup for the owned claude adapter. JSON stdout includes actual local registration status. ZCode action_required requires the returned UI steps; it does not claim the plugin loaded. remove retains Task data; ZCode --confirm-host-removed records actual user confirmation only. A failed command may leave completed registration steps; inspect status before another mutation.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "package_version": {
+              "type": "string",
+              "description": "对应Host包版本，不等于Core版本。"
+            },
+            "core_version": {
+              "type": "string",
+              "description": "包内实际Core版本，不凭npm版本推定。"
+            },
+            "receipt_path": {
+              "type": "string",
+              "description": "保留的本机操作收据绝对路径，响应丢失先读取它。"
+            },
+            "registration": {
+              "type": "object",
+              "description": "真实注册核对结果，不能把包存在等同Host已加载。",
+              "additionalProperties": false,
+              "properties": {
+                "receipt": {
+                  "type": "boolean",
+                  "description": "公开操作记录投影；不作为可整体写回的对象。"
+                },
+                "marketplace": {
+                  "type": "boolean",
+                  "description": "对应Host marketplace是否已确认注册。"
+                },
+                "plugin": {
+                  "type": "boolean",
+                  "description": "对应Host插件是否已确认注册。"
+                },
+                "cache": {
+                  "type": "boolean",
+                  "description": "Claude安装缓存是否与包记录一致。"
+                }
+              },
+              "required": [
+                "receipt",
+                "marketplace",
+                "plugin",
+                "cache"
+              ]
+            },
+            "next_step": {
+              "type": "string",
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation",
+            "status",
+            "changed",
+            "package_version",
+            "core_version",
+            "receipt_path",
+            "registration",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "setup",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation": "setup",
+            "status": "ready",
+            "changed": true,
+            "package_version": "0.1.3",
+            "core_version": "0.26.0",
+            "receipt_path": "/example/hosts/.taskbelay/registrations/claude.json",
+            "registration": {
+              "receipt": true,
+              "marketplace": true,
+              "plugin": true,
+              "cache": true
+            },
+            "next_step": "Reload Claude plugins or start a new session; review plugin and workspace permissions."
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_data_directory",
+        "input": {
+          "argv": [
+            "setup",
+            "--json"
+          ],
+          "environment": {
+            "TASKBELAY_DATA_DIR": "relative"
+          }
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay-claude: TASKBELAY_DATA_DIR must be absolute\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "claude.lifecycle.remove",
+    "description": "Run remove for the owned claude adapter. JSON stdout includes actual local registration status. ZCode action_required requires the returned UI steps; it does not claim the plugin loaded. remove retains Task data; ZCode --confirm-host-removed records actual user confirmation only. A failed command may leave completed registration steps; inspect status before another mutation.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "receipt_path": {
+              "type": "string",
+              "description": "保留的本机操作收据绝对路径，响应丢失先读取它。"
+            },
+            "next_step": {
+              "type": "string",
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation",
+            "status",
+            "changed",
+            "receipt_path",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "remove",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation": "remove",
+            "status": "absent",
+            "changed": true,
+            "receipt_path": "/example/hosts/.taskbelay/registrations/claude.json",
+            "next_step": "Task data, workspaces and unrelated Claude configuration are retained."
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_data_directory",
+        "input": {
+          "argv": [
+            "remove",
+            "--json"
+          ],
+          "environment": {
+            "TASKBELAY_DATA_DIR": "relative"
+          }
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay-claude: TASKBELAY_DATA_DIR must be absolute\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "codex.lifecycle.status",
+    "description": "Run status against the owned Codex adapter. Native registration results and configuration changes are reported separately. remove deregisters; the returned next_step handles package uninstall. After failure inspect status before repeating registration.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "package_version": {
+              "type": "string",
+              "description": "对应Host包版本，不等于Core版本。"
+            },
+            "core_version": {
+              "type": "string",
+              "description": "包内实际Core版本，不凭npm版本推定。"
+            },
+            "receipt_path": {
+              "type": "string",
+              "description": "保留的本机操作收据绝对路径，响应丢失先读取它。"
+            },
+            "registration": {
+              "type": "object",
+              "description": "真实注册核对结果，不能把包存在等同Host已加载。",
+              "additionalProperties": false,
+              "properties": {
+                "receipt": {
+                  "type": "boolean",
+                  "description": "公开操作记录投影；不作为可整体写回的对象。"
+                },
+                "marketplace": {
+                  "type": "boolean",
+                  "description": "对应Host marketplace是否已确认注册。"
+                },
+                "plugin": {
+                  "type": "boolean",
+                  "description": "对应Host插件是否已确认注册。"
+                }
+              },
+              "required": [
+                "receipt",
+                "marketplace",
+                "plugin"
+              ]
+            }
+          },
+          "required": [
+            "operation",
+            "status",
+            "changed",
+            "package_version",
+            "core_version",
+            "receipt_path",
+            "registration"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "status",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation": "status",
+            "status": "ready",
+            "changed": false,
+            "package_version": "0.10.5",
+            "core_version": "0.26.0",
+            "receipt_path": "/example/hosts/codex.json",
+            "registration": {
+              "receipt": true,
+              "marketplace": true,
+              "plugin": true
+            }
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_data_directory",
+        "input": {
+          "argv": [
+            "status",
+            "--json"
+          ],
+          "environment": {
+            "TASKBELAY_DATA_DIR": "relative"
+          }
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay-codex: TASKBELAY_DATA_DIR must be absolute\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "codex.lifecycle.setup",
+    "description": "Run setup against the owned Codex adapter. Native registration results and configuration changes are reported separately. remove deregisters; the returned next_step handles package uninstall. After failure inspect status before repeating registration.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "receipt_path": {
+              "type": "string",
+              "description": "保留的本机操作收据绝对路径，响应丢失先读取它。"
+            },
+            "configuration_path": {
+              "type": "string",
+              "description": "实际自有配置文件路径。"
+            },
+            "file_changes": {
+              "type": "array",
+              "description": "本次安装实际产生的自有文件变化。",
+              "items": {
+                "type": "object",
+                "description": "本次安装实际产生的自有文件变化。",
+                "additionalProperties": false,
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "输入错误用arguments路径；审查/缺口使用限定仓库路径或具体记录位置。"
+                  },
+                  "change": {
+                    "type": "string",
+                    "description": "文件变化类型，例如created。"
+                  }
+                },
+                "required": [
+                  "path",
+                  "change"
+                ]
+              }
+            },
+            "next_step": {
+              "type": "string",
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation",
+            "status",
+            "changed",
+            "receipt_path",
+            "configuration_path",
+            "file_changes",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "setup",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation": "setup",
+            "status": "installed",
+            "changed": true,
+            "receipt_path": "/example/hosts/codex.json",
+            "configuration_path": "/example/hosts/configuration/config.json",
+            "file_changes": [
+              {
+                "path": "/example/hosts/configuration/config.json",
+                "change": "created"
+              },
+              {
+                "path": "/example/hosts/codex.json",
+                "change": "created"
+              }
+            ],
+            "next_step": "Review and trust the TaskBelay hook with /hooks, then use $taskbelay-codex:taskbelay <task description> to assess the request"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_data_directory",
+        "input": {
+          "argv": [
+            "setup",
+            "--json"
+          ],
+          "environment": {
+            "TASKBELAY_DATA_DIR": "relative"
+          }
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay-codex: TASKBELAY_DATA_DIR must be absolute\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "codex.lifecycle.remove",
+    "description": "Run remove against the owned Codex adapter. Native registration results and configuration changes are reported separately. remove deregisters; the returned next_step handles package uninstall. After failure inspect status before repeating registration.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "receipt_path": {
+              "type": "string",
+              "description": "保留的本机操作收据绝对路径，响应丢失先读取它。"
+            },
+            "next_step": {
+              "type": "string",
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation",
+            "status",
+            "changed",
+            "receipt_path",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "remove",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation": "remove",
+            "status": "removed",
+            "changed": true,
+            "receipt_path": "/example/hosts/codex.json",
+            "next_step": "Run npm uninstall -g taskbelay-codex separately after deregistration."
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_data_directory",
+        "input": {
+          "argv": [
+            "remove",
+            "--json"
+          ],
+          "environment": {
+            "TASKBELAY_DATA_DIR": "relative"
+          }
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay-codex: TASKBELAY_DATA_DIR must be absolute\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "codex.hook.pre-tool-use",
+    "description": "Translate a native PreToolUse event into Core pre-file-write and return the Host permission response. Empty stdout means this guard did not deny; native Host permissions still apply. Shell and unrecognized tools are outside this structured guard. A Core error stops the write with exit 2.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hook_event_name": {
+          "type": "string",
+          "description": "Exact native event name.",
+          "const": "PreToolUse"
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Absolute actual working directory."
+        },
+        "tool_name": {
+          "type": "string",
+          "description": "Native structured tool name."
+        },
+        "tool_input": {
+          "type": "object",
+          "description": "Original tool arguments; preserve content. apply_patch uses command; Write/Edit use file_path.",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "hook_event_name",
+        "cwd",
+        "tool_name",
+        "tool_input"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "string",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。"
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "hook_event_name": "PreToolUse",
+          "cwd": "/example",
+          "tool_name": "apply_patch",
+          "tool_input": {
+            "command": "*** Begin Patch\n*** Add File: result.txt\n+value\n*** End Patch"
+          }
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "denied",
+        "input": {
+          "hook_event_name": "PreToolUse",
+          "cwd": "/example",
+          "tool_name": "apply_patch",
+          "tool_input": {
+            "command": "*** Begin Patch\n*** Add File: result.txt\n+value\n*** End Patch"
+          }
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "systemMessage": "Path is outside the current authorized scope.",
+            "hookSpecificOutput": {
+              "hookEventName": "PreToolUse",
+              "permissionDecision": "deny",
+              "permissionDecisionReason": "Path is outside the current authorized scope."
+            }
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "claude.hook.pre-tool-use",
+    "description": "Translate a native PreToolUse event into Core pre-file-write and return the Host permission response. Empty stdout means this guard did not deny; native Host permissions still apply. Shell and unrecognized tools are outside this structured guard. A Core error stops the write with exit 2.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hook_event_name": {
+          "type": "string",
+          "description": "Exact native event name.",
+          "const": "PreToolUse"
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Absolute actual working directory."
+        },
+        "tool_name": {
+          "type": "string",
+          "description": "Native structured tool name."
+        },
+        "tool_input": {
+          "type": "object",
+          "description": "Original tool arguments; preserve content. apply_patch uses command; Write/Edit use file_path.",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "hook_event_name",
+        "cwd",
+        "tool_name",
+        "tool_input"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "string",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。"
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "hook_event_name": "PreToolUse",
+          "cwd": "/example",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "result.txt",
+            "content": "value"
+          }
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "denied",
+        "input": {
+          "hook_event_name": "PreToolUse",
+          "cwd": "/example",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "result.txt",
+            "content": "value"
+          }
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "hookSpecificOutput": {
+              "hookEventName": "PreToolUse",
+              "permissionDecision": "deny",
+              "permissionDecisionReason": "Path is outside the current authorized scope."
+            }
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "zcode.hook.pre-tool-use",
+    "description": "Translate a native PreToolUse event into Core pre-file-write and return the Host permission response. Empty stdout means this guard did not deny; native Host permissions still apply. Shell and unrecognized tools are outside this structured guard. A Core error stops the write with exit 2.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hook_event_name": {
+          "type": "string",
+          "description": "Exact native event name.",
+          "const": "PreToolUse"
+        },
+        "cwd": {
+          "type": "string",
+          "description": "Absolute actual working directory."
+        },
+        "tool_name": {
+          "type": "string",
+          "description": "Native structured tool name."
+        },
+        "tool_input": {
+          "type": "object",
+          "description": "Original tool arguments; preserve content. apply_patch uses command; Write/Edit use file_path.",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "hook_event_name",
+        "cwd",
+        "tool_name",
+        "tool_input"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "string",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。"
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "hook_event_name": "PreToolUse",
+          "cwd": "/example",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "result.txt",
+            "content": "value"
+          }
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": "",
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "denied",
+        "input": {
+          "hook_event_name": "PreToolUse",
+          "cwd": "/example",
+          "tool_name": "Write",
+          "tool_input": {
+            "file_path": "result.txt",
+            "content": "value"
+          }
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "hookSpecificOutput": {
+              "hookEventName": "PreToolUse",
+              "permissionDecision": "deny",
+              "permissionDecisionReason": "Path is outside the current authorized scope."
+            }
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "taskbelay.pet.start",
+    "description": "Explicitly start the installed desktop companion on a supported local platform. Plain stdout only; no JSON flag. start verifies Core/service identities; stop ends the companion without starting Core. It does not change any Task.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "string",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。"
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "pet",
+            "start"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": "✓ Desktop pet started\n",
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "unsupported_platform",
+        "input": {
+          "argv": [
+            "pet",
+            "start"
+          ],
+          "platform": "win32-arm64"
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay: the desktop pet supports Apple silicon macOS and Windows 10/11 x64\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "taskbelay.pet.stop",
+    "description": "Explicitly stop the installed desktop companion on a supported local platform. Plain stdout only; no JSON flag. start verifies Core/service identities; stop ends the companion without starting Core. It does not change any Task.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "string",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。"
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "pet",
+            "stop"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": "✓ Desktop pet stopped\n",
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "unsupported_platform",
+        "input": {
+          "argv": [
+            "pet",
+            "stop"
+          ],
+          "platform": "win32-arm64"
+        },
+        "output": {
+          "exit_code": 1,
+          "stdout": "",
+          "stderr": "taskbelay: the desktop pet supports Apple silicon macOS and Windows 10/11 x64\n"
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  }
+]

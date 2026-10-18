@@ -1,89 +1,15 @@
-# TaskBelay Threat Model
+# TaskBelay trust boundaries
 
 [中文](THREAT-MODEL.md) | [English](THREAT-MODEL_en.md)
 
-## The important boundary
+TaskBelay is a local engineering-control system. The agent retains native permissions; Core grants no network/file/Git publication authority. Core starts controlled local checks, but commands may have side effects and must obey actual authorization. It is not a sandbox and cannot isolate hostile programs able to alter code, local data or processes as the same OS user.
 
-TaskBelay protects **task process state**; it is not a sandbox around the coding agent.
+Deterministic facts come from Git, file fingerprints, process results and SQLite. Hosts supply semantic judgments, user-message references, dependency scopes and human observations with explicit provenance and uncertainty. Programs cannot authenticate conversation or prove model conclusions true. record_evidence cannot submit Core execution provenance. Signed receipts protect against damage/mistaken submissions, not same-account attackers.
 
-Codex, DeepSeek Harness, Claude Code, or ZCode still reads repositories, changes files, and runs
-commands with the permissions the developer gave it. The Go Core keeps the single Task state and
-validates transitions, bindings, persistence, and recovery decisions.
+Structured hooks check parseable paths. Shell/external edits, databases and remote services are not automatically controlled; disclose observation timing and external-condition coverage. Default inputs are Git-visible files; ignored dependencies require explicit inclusion. Endpoint fingerprints cannot prove no transient changes during execution or fully stable external conditions. Frontend caches are not task authority.
 
-```mermaid
-flowchart LR
-    U[Developer] --> H[Codex / DeepSeek / Claude Code / ZCode]
-    H --> R[Authorized repositories]
-    H --> A[TaskBelay adapter]
-    A --> C[Local Go Core]
-    C --> S[SQLite Task state]
-```
+HTTP binds loopback with exact Host/Origin/CSRF; never expose it publicly. Local evidence/output can contain test logs and follows project data rules. Core itself observes Git read-only; authorized Hosts own preparation/cleanup. Old data is not migrated/reset. See [architecture](ARCHITECTURE_en.md).
 
-## Protected assets
+Core retains the actual request and explicit restrictions. Routine plan and check-method revisions do not create another user approval. Changed user boundaries or expanded caps need an actual new decision. A Host-provided user_ref cannot authenticate conversation; Core cannot determine whether a new reference reflects the user's intent. Necessity, test adequacy and comparison sufficiency remain technical judgments. Programs check explicit restrictions, actual execution and applicability. WebUI budget decisions and human observations are Origin/CSRF-protected.
 
-- the one to eight Git repositories explicitly authorized by the developer;
-- original Task intent, current stage, revision, Action, verification records, Blocker, Outcome, and the canonical
-  payload and digest of a recoverable Action operation;
-- Repository Scope, repository identities, and the aggregate binding;
-- WorkspaceOrigin, worktree-instance identity, the fixed base commit, and current Task surface;
-- local SQLite, installation and provisioning receipts, relocation records, and user configuration;
-- npm packages, bundled Core executables, Git Tags, GitHub Releases, and artifact digests;
-- paths, code fragments, and diagnostics that may appear in logs or verification results.
-
-## Responsibilities
-
-| Participant | Responsibility |
-| --- | --- |
-| Developer | Chooses whether to enter TaskBelay and confirms source/base/target/carry, repository and Host permissions, comprehension, handoff, cleanup, and releases |
-| Codex / DeepSeek Harness / Claude Code / ZCode | Actually reads files, changes repositories, and runs commands; uses the elevated permissions granted by the developer |
-| Host Adapter | Assesses requests read-only; after confirmation performs fetch, branch, worktree, relaunch/handoff; judges scope before commands, full suites, test-code changes, and review; calls Core under the Action, Scope, current verification plan, and Recovery contract |
-| Go Core | Observes Git read-only, retains the one process state, derives Task surface, and validates revision, workspace, payload field restrictions, transitions, and persistence |
-| Repository content | Treated as untrusted input that may contain prompt injection, dangerous scripts, symlinks, or hostile filenames |
-| npm / GitHub | Supplies remote package and Release identities that the release flow must read back |
-
-## Main risks and current defenses
-
-The local WebUI binds only `tcp4 127.0.0.1` and requires the exact Host. Mutations also validate the exact Origin, a random
-process-local session value, and current Task revision. On macOS the receipt is a mode-`0600` regular non-link file; on
-Windows it is a regular non-link file under the user profile and inherits that directory's ACL. Both bind process-start
-identity, data-root digest, URL, and live Core identity to prevent wrong reuse or PID reuse; Windows obtains creation time
-from kernel process information. The unified manager's `factory-reset` plan binds the current ownership targets;
-recoverable cleanup moves exact targets, while permanent cleanup requires separate confirmation.
-Identity or target drift stops cleanup.
-
-| Risk | Current defense |
-| --- | --- |
-| A small request is captured by the workflow or confirmation causes early Task/Git writes | Every new request stops after a read-only, request/root/HEAD/status-bound assessment; an exact selector cannot skip the developer choice |
-| Wrong source/base/target/carry or source-checkout content enters a Task worktree | Per-repository confirmation, exact fetch and frozen commit, branch/HEAD/common-dir/git-dir verification, and explicitly selected local content copying; application failures stop Task creation |
-| An uncertain provisioning or Host dispatch result is executed twice | A narrow provisioning receipt binds one launch and owned resources; uncertainty reads receipt/Host state instead of blindly retrying or force-cleaning |
-| Path traversal, symlinks, or index results expand Repository Scope | Scope is canonicalized and frozen at Task creation; multi-repository paths carry an explicit key; indexes cannot add members |
-| A stale Action, duplicate request, or lost response repeats a state change | complete mutation validation before staging; an independent Action operation record, revision CAS, Action/request identity, repository binding, an atomic applied marker, and read-before-retry |
-| A worktree is replaced, history rewinds, or a Scope member conflicts | Worktree-specific Git dir, task branch, base, HEAD ancestry, and content are checked separately; resume and next Action surface a blocker or unavailable result before work |
-| A local directory is already used by another Task or writer | Read Core claims before branch mutation and acquire all claims at creation. Manual/external edits remain subject to scope and verification checks. The read does not reserve the directory; keep one execution owner during preparation |
-| Host-reported paths omit actual changes | Core derives current surface from the base commit, commits, index, worktree, and untracked state; node payloads accept no Host file-change report |
-| Relocation failure or a lost response creates duplicate claims or handoffs | Core prepare retains source claims, Host handoff runs once, and verified destination bindings/claims replace them in one transaction |
-| Repository prompt injection tries to expand work | TaskIntent, allowed effects, explicit Scope, the TASKS verification plan, and reasoned budget adjustments are independent of repository prose; Host review stays within the diff and causal impact; high-risk Git and release actions still require user authorization |
-| Available budget is mistaken for a full-suite reason | Skills require a fresh broad-impact, focused-check, uncovered-risk, and repository-checkpoint decision every time; Evidence retains the current `full_suite_reason` |
-| SQLite, configuration, or the executable is modified locally | strict codecs, Schema checks, Task/Action-operation relationship checks, allowed fields, and package/executable identity verification detect several inconsistencies |
-| Setup or removal deletes adjacent configuration or Task data | ownership receipts; remove cleans only managed registration; ordinary uninstall retains Task data |
-| beta, source, and stable support are confused | only the Support Matrix defines stable support; beta and source are labeled separately in Project Status |
-| Logs or end-to-end test records leak sensitive data | committed verification records contain a limited amount of program output and digests; full conversation transcripts are not committed by default |
-
-## Residual risk
-
-- Core does not intercept every Host file read, write, or shell command; a compromised Host or incorrect
-  authorization can still cause harm.
-- Worktree isolation defines source-change ownership; it does not isolate processes, networks,
-  credentials, ports, databases, or containers.
-- Fetch, branch, worktree, handoff, and cleanup remain privileged Host operations. Receipts bound the
-  recoverable scope but cannot remove the risk of incorrect authorization.
-- An attacker with the same local-user or administrator privileges can replace binaries, SQLite, or
-  configuration.
-- There is currently no encrypted state store, multi-user isolation, remote authentication, automatic
-  secret scanning, code signing, or transparency log.
-- TaskBelay cannot guarantee correct model output, vulnerability-free code, sufficient tests, or immunity
-  to prompt injection.
-- Core cannot prove that natural-language reasons are causally related to the change; the Host can still judge the scope of verification and review incorrectly.
-- Unsupported platforms, Host versions, and source-only builds do not have a stable security support claim.
-
-Report security issues privately by following the repository [Security Policy](../SECURITY.md).
+Commands enter Core through check run invoked by the Host native process tool. MCP and HTTP expose no process-start entrypoint, preserving native permission and environment. Saved-state reads require neither process queries nor metering writes; execution cannot bypass metering. User answers bind the displayed question and do not themselves expand authorization.

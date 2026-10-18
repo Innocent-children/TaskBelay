@@ -2,137 +2,46 @@
 
 [中文](PRODUCT.md) | [English](PRODUCT_en.md)
 
-## Product position
+## Purpose and responsibilities
 
-**Long-running AI coding, on belay.**
+Help developers complete real work with their existing AI coding agent: less repeated explanation and confirmation, inspectable current results, useful recovery after interruption, and an honest account of completion and remaining gaps. The agent understands requirements, chooses methods and edits code. The local Go Core retains one Task relating actual requests, changes, results and cumulative usage.
 
-In climbing, a belayer manages the rope while the climber chooses the route. TaskBelay applies that idea to coding: the agent makes technical decisions, while TaskBelay checks approved scope and verification limits and uses saved records to recover from failures or uncertain results. It is neither a sandbox nor another coding agent.
+Use it for development that benefits from saved progress, verification reuse or continuation across sessions. Small mechanical edits and ordinary questions usually need only the native Host. Honor explicit invocation and opt-out. TaskBelay is not a coding model, general workflow engine or sandbox.
 
-Your coding agent decides what to do next. TaskBelay keeps the task under control.
+## Starting and continuing
 
-The Host / coding agent—Codex, DeepSeek, Claude Code or ZCode—understands requirements, reads code, reasons about technical solutions, chooses the next action, edits code and runs commands. TaskBelay does not replace that reasoning. It maintains a durable control boundary around the engineering task:
+The user states the outcome and necessary restrictions. The agent reads project rules and relevant code, explains the cause, approach and verification, then works within existing authority and Host permissions. A Task records the actual user reference and request; there is no separate approval of every plan. References are Host testimony, not conversation authentication.
 
-- **Explicit Scope:** check actual changes against the approved plan. Unplanned files need a recorded decision; expanding the plan requires renewed approval.
-- **Bounded Verification:** plan relevant checks and effort limits. Additional verification needs a concrete recorded reason; spare capacity alone does not justify wider testing.
-- **Durable State:** Go Core retains the one authoritative task state. Progress and valid checks come from saved records, not reconstructed chat context.
-- **Safe Recovery:** failures retain reasons and handling paths. Read saved operation records before deciding how to recover or retry an uncertain result.
+Use the workspace selected by the user or clear from context, showing its directory, branch and initial changes. Resolve a workspace choice only when it is unclear, conflicting or requires a new operation. Branches, worktrees, chats, upstream checks and integration follow actual need and authority, not a mandatory startup ritual. Unchecked upstream state remains unknown. Resume a saved Task in its bound directory.
 
-A Task is a persisted development job; an Action is an operation Core issues for its current stage. Core checks the worktree and submitted results to determine legal workflow transitions; the agent still chooses the technical action. New requests are assessed for fit, and small mechanical edits usually need only direct development.
+Implementation and verification can alternate. Record meaningful progress after a piece of work, relevant change, check result, necessary decision or handoff; do not impose a checkpoint on every edit. Routine tool results contain current requirements, progress, changed paths, checks and usage. Full history, file fingerprints and output are available on demand.
 
-## Target users and use cases
+## Requirement and check changes
 
-The product serves developers using Codex, DeepSeek, Claude Code or ZCode on real repositories over multiple sessions or days. It fits public-interface, persistence, multi-component and recovery-sensitive changes, as well as work requiring explicit file scope and verification effort.
+User outcomes and explicit restrictions are separate from the agent's implementation arrangements. Approach, method, forecast and review-hint changes reuse the original request. Changed outcomes, request or explicit restrictions, and expansion of user-set limits, require an actual new user reference. Revisions replace only supplied fields, retain unaffected work and accumulated usage, and do not answer an unresolved question automatically.
 
-Other changes in a shared checkout can obscure ownership. Chat history alone may not establish whether tests remain valid, an operation succeeded, or work remains after an interruption. TaskBelay defaults to a new branch in the current directory, also supports the current branch or a dedicated worktree, and retains requirements, plans, check results, blocker reasons and recovery information.
+Predicted paths grant no permission. Programs check explicit allowed/forbidden paths, content pins and dependency restrictions. Without an explicit dependency policy, changes require a necessity and compatibility review; violations of an explicit policy block. Native permissions always apply. Structured hooks cover supported paths, while other writes are observed at checkpoints.
 
-Direct Host use is usually simpler for one-off questions, explanations, status queries and small mechanical edits. A few explicitly selected repositories may share one Task, but multi-repository work and worktree handoff are advanced capabilities, not the primary use case.
+Authorization retains only user outcomes and explicit restrictions; Plan owns check definitions, forecasts and review hints. Checks use goal_ids as the only outcome mapping, and each goal requires an acceptance check that cannot be waived. Checks serve current outcomes and retain actual commands, inputs, conditions and rationale. Default inputs cover Git-visible content across all bound repositories. Narrower scopes need a reason and actual dependencies. Ignored files, databases and external services are not automatically verified. A passing command does not establish test sufficiency; the agent must review whether it proves the requested result.
 
-## Task creation and resume
+Relevant code, goal, constraint or execution-condition changes invalidate affected results. Unrelated work and additional independent checks preserve existing applicable results. Reuse a pass under the same conditions. Retrying an unchanged failure needs new diagnostic information; after three failures, change code, conditions or method. Full suites require a current gap. Weakening a check cannot establish acceptance.
 
-A new request receives a read-only assessment of discovered impact, unknowns and a recommendation. The developer chooses direct work, TaskBelay or clarification; an explicit selector does not skip assessment. Before selection there is no Task creation, Git mutation or development-session dispatch.
+## Usage and recovery
 
-After choosing TaskBelay, the default creates a task branch from the current HEAD in the current
-directory. Explicit alternatives retain the current branch or create a dedicated worktree. Local modes
-reuse dependencies, local configuration and build outputs, continuing the same session when it has all
-required directory permissions. The Host shows directories, current branches and initial changes and
-obtains missing target-branch or initial-content choices. Accepted initial changes all belong to the
-Task scope, with staged state retained. Unaccepted content stops preparation without automatic cleanup
-or exclusion of unrelated work.
+When the user has not set a cap, measure usage without inventing budget approvals. Positive limits cap cumulative executions, command time, Core time, reported Host time and tokens; zero means unset. Expanding or removing an existing cap requires an actual user decision. Actual, reserved and uncertain usage are separate; overlapping time categories must not be summed. Exhausted budget does not waive acceptance. Saved-state reads neither write metering data nor query process identity; cumulative Core time covers mutating calls.
 
-Dedicated worktrees select a local or remote source, base, target branch and local-content choice per
-repository. Local preparation works offline; remote preparation fetches the selected branch and freezes
-its commit. Carrying copies staged, unstaged and non-ignored untracked contents while preserving the
-source and index. Any preparation failure prevents a partial Task; retain local branches and changes
-for inspection.
+Native Host process tools invoke Core commands under their permission, environment and long-running sessions; MCP and HTTP never start commands. Persist operation identity and reservation before execution, and save results before returning. After response loss, read the original operation; recovering a receipt never reruns a command. Wait for a live original owner or command group. If they stopped without a result, inspect effects and retain the unknown conclusion. Non-repeatable operations need a real user decision. History compaction retains current results, unresolved operations and cumulative cost.
 
-One directory has one active Task. The Host checks Core claims read-only before local branch operations,
-and Core acquires all directory claims together at creation. That check does not lock later Git operations;
-users and external tools must avoid starting another writer during preparation. Manual and external edits
-in local directories remain subject to scope and verification rules. Keep the bound branch during a Task.
+## Delivery and interface
 
-Discovery follows user instructions, applicable repository rules and Host permissions. Discovery may identify candidates; Task membership requires confirmation and becomes fixed at creation.
+Review the actual diff before delivery: whether it resolves the cause, responsibilities are appropriate, complexity and validation are proportionate, and the structure remains the one you would choose. Engineering questions retain stable IDs in assessment.concerns; omission or an empty array never removes saved questions. A resolution cites applicable actual results, explains a limitation that does not affect the current outcome, or references a saved actual scope change. Related changes invalidate the resolution. Completion requires conclusions for all outcomes, applicable required results and concern resolutions, and no unresolved execution or decision. Delivery limitations come from the saved concerns, rather than a separate text field that can hide unresolved work. Agent claims do not prove execution; human results require actual user observations.
 
-When Codex starts a new session, it retains relevant requirements discussion and confirmed requirements, distinguishing unaccepted suggestions and unresolved questions. Explicit choices and authorizations that remain valid are retained; only unresolved decisions or required inputs need another question.
+Existing regression failures may be accepted using current failed execution, comparison results and the user's explicit decision. Acceptance checks cannot be waived. Exceptions and outcome acceptance are checked separately; delivery conclusions cite only actual passed acceptance checks. Exceptions apply only while related results remain applicable, and failures remain failed. Delivery distinguishes passed, failed, unrun and unknown work; a blocked task is not completed work.
 
-Explicit resume returns to the original working-directory instance and saved state without creating another task or selecting another worktree. The destination of a confirmed launch verifies the retained launch record before continuing initialization. A missing or replaced original worktree pauses progress; the developer can restore that instance or explicitly abandon the Task.
+The local WebUI supports request/task-ID search, Host and status filters, language selection, actual user answers and execution recovery. A compact task list sits beside details; narrow screens show them separately. Overview prioritizes results, pending decisions, uncertain executions and remaining work; check output expands below its check, while requirements and detailed usage have dedicated tabs. Update records reads saved content; Check current code re-observes actual conditions. Failed forms retain input, and lost responses require reading the original record first, without a plan-confirmation form. Completion, cancellation and archiving retain files and do not commit, push, merge, publish or delete resources. The desktop pet reads saved summaries, not live agent activity.
 
-## Planning discussion before implementation
+## Support and validation boundaries
 
-The Host shows the requirements and acceptance criteria, the design and its impact, and the complete work, expected-file and verification plan, then discusses the developer's changes. Separate approval at every stage is unnecessary, but implementation requires explicit approval of the complete plan. Choosing TaskBelay or workspace parameters does not approve an unseen plan.
+These changes are source capability. Public packages and stable support records follow independent release contracts. Historical protocols and databases are unsupported, without migration or automatic deletion. Cover ordinary development, common failures and known regressions; do not build mechanisms for speculative rare combinations.
 
-Core saves the draft and stays in task planning while waiting. Approval references the exact current requirements, design, plan content and planning round. Revisions invalidate earlier approval; a resumed session can continue from the same saved draft. Prefer exact files and explain the purpose and coverage of directory ranges. Expanding scope requires saving and confirming a revised plan.
-
-Codex launch preparation requires the complete impact assessment and the developer's mode choice. Missing data or unresolved unknowns prevent worktree preparation. Still-valid choices, explicit task resume and confirmed launch continuation remain effective. The Host owns actual presentation and user replies; Core cannot authenticate conversation content or intercept editing that never calls TaskBelay.
-
-## Change and verification rules
-
-| Situation | Current behavior |
-| --- | --- |
-| Worktree changes | Core derives actual changes from the bound directory, including local manual/external edits; dedicated worktrees remain separate from later source edits |
-| Work leaves the plan | Supported structured tools ask before writing; later observation finds other writes, and unexplained paths cannot reach testing or delivery |
-| An unplanned file needs handling | The developer chooses one-time allowance, replanning or restoration; Core retains the decision |
-| Analysis completes | The task plan records checks, rationales, initial command budget, full-suite expectation and test-code expectation |
-| Verification capacity is insufficient | Record a concrete new impact, risk, failure or gap and the required increase before more testing; remaining work or reruns of existing checks can also receive capacity |
-| A full suite is proposed | Reassess whether focused checks suffice, what remains uncovered and current repository requirements every time; spare capacity is not a reason to widen testing |
-| Testing repeats exactly | The third identical failure, result or change-and-failure loop pauses for an explicit decision |
-| Code is reviewed after a change | Cover the current change, direct or indirect impact and acceptance needs; fixes receive related rechecks; explicit review stays read-only and awaits separate repair authorization |
-| Content changes | Invalidate tests and comprehension based on older content; linear commits of identical content retain their results |
-| Workspace history is abnormal | Branch switches, detached HEAD, rewinds, unprepared history rewrites or instance replacement trigger a blocker or unavailable state |
-
-Carried local content belongs to the Task change scope. Codex plans preservation and new development separately; preservation checks do not certify existing behavior as tested.
-
-Task creation does not freeze the final verification budget. Consumption belongs to the current task plan; formally rebuilding the plan starts its budget while retaining old records. Capacity increases produce no passed results, and Hosts must report the checks actually performed and their sources.
-
-## Completion and uncertain operations
-
-Every planned work item must complete before testing. Delivery explicitly links each acceptance criterion to corresponding completed work and passed current checks. Automated, static, Host-observed and explicit manual checks are supported; developer comprehension confirmation is retained separately and cannot replace acceptance checks.
-
-An uncertain operation is read from Core's saved record before recovery or retry. Reopening WebUI still discovers pending submissions. Host handoff and worktree provisioning likewise use their own retained records to avoid duplicate execution.
-
-Codex retains the complete tool response before checking `ok` and reading success data; explicit rejections follow the returned error and handling instruction, and local caching or presentation errors do not change the original response.
-
-Workspace handoff requires every repository to use a dedicated worktree. Local modes resume in the original directory. Same-machine handoff starts with Core retaining recovery conditions, followed by one Host handoff. Core verifies the destination and replaces repository bindings atomically. Failure retains the original bindings and claims.
-
-DONE or CANCELLED ends the Task and releases repository claims without automatically committing, pushing, opening a PR or deleting a worktree. Local directories and branches are retained, and uncommitted work becomes initial content for the next Task. Dedicated worktree and branch cleanup require separate authorization. Explicit abandonment of an unavailable worktree retains the last known state and ends the Task.
-
-## Entry points and component responsibilities
-
-| Component | User purpose |
-| --- | --- |
-| Codex / DeepSeek / Claude Code / ZCode | Assess requests, perform confirmed development and Host operations, and resume the same Core Task |
-| Unified lifecycle CLI | Install, diagnose, maintain and remove Adapters, preserving Task data and configuration during ordinary maintenance |
-| Local WebUI | Inspect tasks, results, blockers and recovery, and submit supported operations through Core |
-| Desktop pet | Show multiple Tasks in stacked bubbles and open each WebUI; prioritize blocked tasks, follow unfinished work after completion, and provide pinning, custom appearances, animation controls, resizing and independent start/stop |
-| OpenSpec / Spec Kit | Optionally organize requirements, design and tasks; method-tool results do not decide Core state |
-
-When there are no tasks to display, only the character remains; task bubbles and the task count control are hidden. Bubbles return when tasks appear. Clicking the character still opens the task list.
-
-The formal `taskbelay` npm package includes the macOS arm64 and Windows 10/11 x64 desktop apps and default artwork. A configured Adapter supplies Core. Maintenance commands refresh the app copy while preserving settings and appearances. Desktop presentation indicates neither live Host activity nor completion percentages. See the [desktop pet guide](DESKTOP-PETS_en.md) for installation and artwork.
-
-## Product boundaries
-
-- Core observes Git read-only; authorized Hosts perform fetch, worktree creation, branch operations, handoff and cleanup.
-- Worktrees isolate source-change ownership, not processes, networks, credentials, ports, databases, containers or services.
-- Core does not intercept every Host file operation or shell command; external writes may happen before observation checks them.
-- The product does not automatically copy ignored files, install dependencies, expand repository scope or clean active, dirty, unpushed, unknown-owner or uncertain resources.
-- General agents, arbitrary workflow DSLs, custom state machines, cross-machine transfer, remote MCP, cloud multi-user management and automatic Git publication are outside scope.
-
-## Feature decisions and verified scope
-
-Improvements should address actual task problems, help resume from the right state and reduce the effort needed to understand state and next steps. Decisions use Task, Action, repository observations and retained records; Core remains the sole authority for Task state. A new platform, Host or interface needs a concrete user result and repeatable acceptance method.
-
-Source capability does not establish stable-package support. Results apply only to the actual artifacts, platforms and steps tested; simulations and static checks cannot replace real Host workflows. The project does not yet have enough external data to demonstrate lower defect rates, verification cost or recovery time.
-
-See the [Support Matrix](SUPPORT-MATRIX_en.md) for stable support and unverified scope, and [Project Status](PROJECT-STATUS_en.md) for delivered capabilities and gaps. Protocols and implementation belong in [Architecture](ARCHITECTURE_en.md), and operation parameters in the [Command Reference](COMMANDS_en.md).
-
-## Host interaction
-
-The Host translates developer requests into the shared task workflow. Permissions and session operations differ between Hosts; task state, completion conditions and recovery decisions remain Core-owned. See the [Codex guide](CODEX_en.md), [DeepSeek guide](DEEPSEEK_en.md), [Claude guide](CLAUDE_en.md) and [ZCode guide](ZCODE_en.md) for their actual operations.
-
-ZCode local package preparation and UI plugin loading are separate steps. Installation, updates and removal report the required UI actions; local preparation does not establish Host-session verification. Windows and macOS acceptance are recorded separately, retaining unexecuted native checks as pending.
-
-## Acceptance with known failures
-
-When related checks pass and an automated comparison finds no new or changed failures, developers may explicitly accept the listed existing failures. Core retains actual test results separately from acceptance; failed checks stay failed and delivery shows the accepted scope. Decisions apply only to the content and plan the user saw and require reassessment after either changes. Completion criteria still reference actual passed checks; unexecuted checks and new problems cannot pass as known failures.
-
-Completed user checks are separate from pending manual execution. Errors identify affected fields, permission restrictions or actual usage. Hosts correct parameter mistakes from established facts within Core's returned scope and ask only for missing user decisions.
+Actual Core processes, scripted user/semantic input, adapter tests and real model sessions are recorded separately. Source tests do not establish reduced human intervention, elapsed time or cost. Compare the native agent, a concise prompt and the full plugin under the same task conditions to measure those benefits, and disclose unexecuted comparisons. See [project status](PROJECT-STATUS_en.md), [architecture](ARCHITECTURE_en.md) and [engineering control](ENGINEERING-CONTROL_en.md).

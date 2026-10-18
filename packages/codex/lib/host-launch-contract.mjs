@@ -28,38 +28,34 @@ const anchor = object({
     dirty_paths_truncated: { type: "boolean" },
   }), "Copy the complete repositories array from inspect, including all confirmed repositories."),
 });
-const assessment = object({
- change_level: { enum: ["small", "standard", "large", "uncertain"] },
- observed_repositories: array(text("Canonical assessed root.")),
- candidate_components: array(text("Affected responsibility.")), candidate_paths: array(text("Candidate file.")),
- public_contract_flags: array(text("Public contract impact.")), persistence_or_state_flags: array(text("State impact.")),
- host_or_platform_flags: array(text("Host or platform impact.")), verification_shape: array(text("Planned check.")),
- unknowns: array(text("Unresolved question.")), recommendation: { enum: ["direct", "taskbelay", "clarify"] },
- reasons: array(text("Reason shown to the user.")), anchor,
-});
-const userChoice = object({source: {const:"user"}, mode: {const:"taskbelay"}, summary: text("Actual user choice after the assessment was displayed; reuse a still-valid answer.")});
 const hostResult = { description: "Complete original Host tool result, including its wrapper if present. Use null when the result was lost; never fabricate an ID." };
-const cleanup = object({ ...identity, source_repository_path: source, terminal: { const: true }, authorized: { const: true } });
+const cleanup = object({ ...identity, source_repository_path: source, terminal: { type: "boolean", const: true, description: "Actual Core terminal state, read before cleanup; not inferred from finished edits." }, authorized: { type: "boolean", const: true, description: "Actual separate deletion authority. Completion alone does not grant it." } });
 
 const contracts = {
+ freshness: {
+  description:"Assess the explicitly bound original source; task-branch upstream changes do not change source selection. Integration has a durable receipt and never replays an existing operation.",
+  input_schema:object({repositories:array(object({key,repository_path:path("Current canonical worktree being assessed"),source_type:{type:"string",enum:["local","remote"],description:"Original selected source type; preserve it after creating the task branch."},remote_name:{type:"string",description:"workspace_origin.remote_name; empty for local source"},base_branch:text("workspace_origin.base_branch; a remote source need not have a local branch")},["source_type","remote_name","base_branch"]),"All task repositories; bound callers copy all three original source fields"),fetch:{type:"boolean",default:true,description:"Fetch corresponding refs under actual existing authority; default true."},integrate:{type:"boolean",default:false,description:"Separately authorized clean fast-forward; default false."},authorization_ref:text("Actual authority to fetch refs"),integration_authorization_ref:text("Separate actual integration authority"),operation_id:text("Stable integration identity; required with integrate=true"),recover:{type:"boolean",default:false,description:"Reconcile the original stopped operation without replaying Git mutations."}},["fetch","integrate","authorization_ref","integration_authorization_ref","operation_id","recover"]),
+  output_fields:{repositories:"Per-root remote_freshness plus integration state, frozen target and any read-only recovery observation",integration_blocked:"True for blocked, partial, unknown or reconciled batches",operation:"Integration operation_id, receipt_path, status and replayed. Same identity reads its record; recover=true only reconciles a stopped original owner and never repeats Git mutation"},
+  next_step:"Copy original source_type/remote_name/base_branch for every bound root. Retain operation_id/receipt_path and all per-root results. Partial success stays applied; after read-only reconciliation, remaining work needs a fresh separately authorized assessment/identity. Do not present an incomplete batch as successful."
+ },
   inspect: {
-    description: "Read source repositories and return the assessment anchor without writing Git or a receipt.",
+    description: "Read source repositories and return the workspace observation without writing Git or a receipt.",
     input_schema: object({ request: text("Exact current request; retain the same string for prepare."), repositories: { ...array(object({ key, repository_path: source }), "All proposed repositories."), minItems: 1, maxItems: 8 } }),
-    output_fields: { request_digest: "Request identity.", repositories: "Canonical roots, HEADs, status digests and bounded dirty paths. Pass this entire result as prepare.assessment.anchor." },
-    next_step: "Complete assessment and obtain the user's execution and workspace choices before prepare.",
+    output_fields: { request_digest: "Request identity.", repositories: "Canonical roots, HEADs, status digests and bounded dirty paths. Pass this entire result as the workspace selection." },
+    next_step: "Reuse existing authorization; obtain only missing workspace choices before prepare.",
   },
   prepare: {
-    description: "After user confirmation, save the launch material and receipt, resolve the selected local or remote base and freeze its commit and selected workspace contents.",
+    description: "Using existing actual authority, save the launch material and receipt, resolve the selected local or remote base and freeze its commit and selected workspace contents.",
     input_schema: object({
-      request: text("Same exact request supplied to inspect."), assessment, user_choice: userChoice,
+      request: text("Same exact request supplied to inspect."), authorization_ref: text("Reference to actual authorization for this workspace operation; retain an existing valid choice."),
       ...identity, repository_path: source,
-      workspace_mode: { enum: ["new_branch", "current_branch", "dedicated_worktree"], default: "new_branch", description: "Default to a new branch in the current directory. Other modes follow the user's explicit choice." },
-      source_type: { enum: ["local", "remote"] }, carry_changes: { type: "boolean", description: "Explicit user choice; only true for local sources." },
+      workspace_mode: { enum: ["new_branch", "current_branch", "dedicated_worktree"], description: "Retain the user-selected/current workspace. Ask only for a missing choice; do not repeat an already authorized decision." },
+      source_type: { type: "string", enum: ["local", "remote"], description: "Original selected source type; local retains the original local branch." }, carry_changes: { type: "boolean", description: "Explicit user choice; only true for local sources." },
       remote_name: { type: "string", description: "Confirmed remote, or empty for local." }, base_branch: text("Confirmed branch name on the selected source."),
       target_branch: text("Confirmed new branch, or the observed current branch for current_branch."),
-      surface: { enum: ["current_session", "managed_worktree", "cli_worktree"] },
+      surface: { type: "string", description: "Actual selected Host execution surface; do not infer a new chat request.", enum: ["current_session", "managed_worktree", "cli_worktree"] },
       worktree_path: nullablePath("The current canonical repository_path for current_session; null for managed_worktree; destination for cli_worktree."),
-      handoff_file: nullablePath("Null for current_session. Dedicated worktrees require complete JSON material from references/task-handoff.md."),
+      handoff_file: nullablePath("Null for current_session. Dedicated worktrees require complete retained requirements JSON matching the packaged lib/task-handoff.mjs contract."),
     }, ["launch_id"]),
     output_fields: { ...receiptOutput, resumed: "Whether a retained preparation was found.", fetch_performed: "Whether this invocation fetched the base." },
     next_step: "Retain receipt.launch_id before preparing another repository. Phase=prepared proceeds to local-provision for current_session, dispatch-start for managed_worktree, or cli-provision. Inspect status after uncertainty.",
@@ -89,7 +85,7 @@ const contracts = {
   },
   "dispatch-recover": {
     description: "Restore a dispatch that provably never called the Host; empty IDs alone are insufficient. Retains the exact request and rotates the claim ID.",
-    input_schema: object({ ...identity, dispatch_attempt_id: text("Current claim ID."), host_call_not_made: { const: true }, previous_caller_stopped: { const: true }, reason: text("Observed call sequence proving no create_thread call and that the previous caller has stopped.") }),
+    input_schema: object({ ...identity, dispatch_attempt_id: text("Current claim ID."), host_call_not_made: { type: "boolean", const: true, description: "True only after observing that the original Host creation call never occurred." }, previous_caller_stopped: { type: "boolean", const: true, description: "True only after confirming the original dispatcher has stopped. A timeout is insufficient." }, reason: text("Observed call sequence proving no create_thread call and that the previous caller has stopped.") }),
     output_fields: { ...receiptOutput, should_dispatch: "False; use dispatch-call with the new claim ID.", host_request: "Unchanged saved request." },
     next_step: "Read the saved request, then dispatch-call. Never use recovery for a timeout or missing Host response.",
   },
@@ -119,29 +115,15 @@ const contracts = {
   scope: {
     description: "Read and validate the complete set of provisioned records for one Task and build its Core repository arguments.",
     input_schema: object({ launch_id: identity.launch_id, repository_keys: { ...array(key, "Every confirmed repository, including the primary."), minItems: 1, maxItems: 8, uniqueItems: true }, primary_repository_key: key }),
-    output_fields: { repository_path: "Primary Task worktree.", workspace_origin: "Primary verified origin.", primary_repository_key: "Present for multiple repositories.", additional_repositories: "Present for multiple repositories; closed {key,repository_path,workspace_origin} entries." },
-    next_step: "Use the complete result as the repository fields of taskbelay_open_task; add host and new_task from the admitted request. Core re-observes every worktree.",
+    output_fields: { repositories: "Complete verified {key,repository_path,workspace_origin} array for current Core open_task; copy it unchanged." },
+    next_step: "Use the complete result as the repository fields of taskbelay_open_task; add host, authorization, plan and checks from the actual request. Reuse the actual user request; no separate plan confirmation is required. Core re-observes every worktree.",
   },
-  "handoff-start": {
-    description: "Record one Host handoff attempt after Core prepares relocation.",
-    input_schema: object({ ...identity, relocation_id: text("Copy from taskbelay_prepare_task_relocation.result.relocation_id."), thread_id: text("Other Codex task being moved; the calling task cannot move itself.") }),
-    output_fields: { ...receiptOutput, should_dispatch: "Call the Host handoff only when true.", host_request: "Exact handoff_thread arguments when should_dispatch=true." },
-    next_step: "Call handoff_thread once and record its complete result using handoff-result.",
-  },
-  "handoff-result": {
-    description: "Retain the Host handoff operation identity or an uncertain result.",
-    input_schema: object({ ...identity, host_result: hostResult }), output_fields: { ...receiptOutput, changed: "Whether the record changed." },
-    next_step: "Poll the retained host_operation_id with the Host and save each changed result through handoff-status; never redispatch.",
-  },
-  "handoff-status": {
-    description: "Save a polled Host handoff status and the actual destination path.",
-    input_schema: object({ ...identity, status: { enum: ["succeeded", "failed", "pending"] }, revision: { type: "integer", minimum: 0, description: "Host operation revision, not Core Task revision." }, worktree_path: nullablePath("Actual destination path, or null while unavailable.") }),
-    output_fields: { ...receiptOutput, changed: "Whether the record changed.", relocation_id: "Retained Core relocation ID when updated." },
-    next_step: "Only after Host success, resolve the Core relocation blocker with the exact destination paths.",
-  },
+
+
+
   "cleanup-decision": {
     description: "Read-only cleanup eligibility from current Core and Git facts; this does not authorize deletion.",
-    input_schema: object({ lifecycle: text("Current Core cursor, such as DONE or CANCELLED."), surface: { enum: ["current_session", "managed_worktree", "cli_worktree"] }, clean: { type: "boolean" }, pushed: { type: "boolean" }, stateCertain: { type: "boolean" } }),
+    input_schema: object({ lifecycle: text("Current Core status: active, done or cancelled."), surface: { type: "string", description: "Actual selected Host execution surface; do not infer a new chat request.", enum: ["current_session", "managed_worktree", "cli_worktree"] }, clean: { type: "boolean", description: "Actual current worktree has no pending edits." }, pushed: { type: "boolean", description: "Actual current commits are retained at an observed remote." }, stateCertain: { type: "boolean", description: "All original operations have a known effect. Uncertainty retains resources." } }),
     output_fields: { automatic_cleanup: "Always false.", worktree_cleanup: "Keep, Host-owned cleanup or separate authorization requirement.", branch_cleanup: "Keep, Host-owned cleanup or separate authorization requirement." },
     next_step: "Keep uncertain, active, dirty or unpushed resources. Worktree and branch deletion require separate current authorizations.",
   },

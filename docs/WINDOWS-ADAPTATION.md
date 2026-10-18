@@ -1,85 +1,9 @@
-# Windows 适配报告
+# Windows 适配与当前验证
 
 [中文](WINDOWS-ADAPTATION.md) | [English](WINDOWS-ADAPTATION_en.md)
 
-## 范围与结论
+当前工程控制源码在 Windows x64、Go 1.27.0、Node.js 24.18.0 上执行验证。平台实现负责路径、文件身份、进程权限与寿命，Core 语义不选择操作系统。执行使用隐藏进程及 Windows Job，恢复核对原执行者启动身份并读取真实收据；它不是沙箱。
 
-本报告保留 2026-09-07 Windows 适配及本地桌面分发包的检查记录，不作为当前实施计划，也不代表本次重新验证。当前职责见[架构说明](ARCHITECTURE.md)，安装方式见[桌面宠物指南](DESKTOP-PETS.md)。
+完整 Go 检查、本机开发/修订/恢复、四宿主独立包及 Windows 桌面显示规则通过。ZCode 最终本地产物完成隔离 launcher、MCP、真实检查与路径钩子验证，未操作实际 ZCode UI。文件符号链接等本机不可用条件在测试输出明确跳过，不算通过。旧原生适配记录位于 Git 历史，当前结果以 [项目状态](PROJECT-STATUS.md) 为准。
 
-本次完善现有 Windows 10/11 桌面 x64 实现，处理器范围是 Intel、AMD 的 x86-64。x64 不代表 32 位 x86；Windows Server、ARM64、32 位和特殊 Windows 环境不在范围内。
-
-已修复 Windows 命令编码与 Codex 可执行文件检查缺陷，隔离已有 Host 平台交织，并完成本机 Windows 验证。所有任务状态、节点、转移、Schema 和 Git 只读边界保持现有设计；不新增工作流、兼容层、迁移或回退读取。
-
-本次没有执行 macOS 测试。完整统一入口包按仓库既有目标表交叉编译 Mac Core 文件，但不运行 Mac 程序。macOS 的路径、权限、信号、命令和宠物安装行为按现有逻辑迁入独立实现，已有 macOS 原生组件未修改。代码结构检查支持平台隔离的判断，但不等于 macOS 运行回归证明。
-
-## 验收环境
-
-- 日期：2026-09-07。
-- 系统：Microsoft Windows 11 专业版，10.0.26200，64 位。
-- CPU：13th Gen Intel Core i5-13600K。
-- 工具：本地 Go 1.27.0、Node.js 24.18.0、Git for Windows、系统 Windows PowerShell 与 cmd。
-- Core：从当前工作区按 windows/amd64、CGO_ENABLED=0 原生构建，版本通过 CORE_VERSION 注入；输出位于仓库外临时目录。
-
-## 验收结果
-
-| 检查 | 实际执行范围与结果 |
-| --- | --- |
-| Windows/Host 定向测试 | 20 项通过，0 失败、0 跳过；包含中文路径评估、真实临时 Git 仓库、工作树准备、失败 fetch、单次 dispatch 记录、Codex CLI 参数解析、两个 Adapter 的原生 Core 预检、hook 在 cmd/PowerShell 的调用及可恢复清理 |
-| Windows WebUI 原生进程 | 1 项通过；中文空格数据目录、start、重复 start 复用 PID、HTTP 状态、status、stop、停止后重新打开 SQLite |
-| Windows 验证归档 | 1 项通过；三个包分别暂存、压缩、解包，逐文件比对 manifest 所列内容，加载平台模块，执行 Codex/统一入口版本命令和 DeepSeek Core 预检 |
-| Go 定向 package | internal/repository、internal/webui、cmd/taskbelay、internal/store、internal/mcp、internal/version 均通过；仅 Windows 本机执行 |
-| 平台结构约束 | 3 项通过；Core 语义层无系统判断，Host 消费平台策略，两个平台目录不互相导入或重新选择操作系统 |
-| 安装包元数据 | Codex manifest 闭合清单、DeepSeek manifest 闭合清单与源码归档清单检查通过 |
-| 工具与版本 | npm --version 经实际 Windows 启动器成功；版本同步检查通过 |
-| 文档与格式 | 35 份修改文档的 294 个本地链接检查通过；Go 格式与 git diff --check 通过 |
-
-Windows 验证归档只包含 Windows Core，用于验证模块装配与本机运行，不是双平台正式发布安装包。没有用伪造的 macOS binary 补全归档，也没有调用独立发布流程。
-
-## 复现方式
-
-准备好当前 Windows Core，并设置 TASKBELAY_WINDOWS_CORE 为其仓库外绝对路径。Go 需在当前 PowerShell 的 PATH 中。
-
-~~~powershell
-$env:TASKBELAY_WINDOWS_CORE = "C:\verification\taskbelay.exe"
-node --test packages/codex/tests/windows-support.test.mjs packages/codex/tests/windows-command.test.mjs packages/codex/tests/task-admission.test.mjs packages/codex/tests/task-launch.test.mjs packages/deepseek/tests/windows-support.test.mjs packages/deepseek/tests/workspace-coordinator.test.mjs packages/taskbelay/tests/windows-support.test.mjs
-node --test packages/codex/tests/windows-webui.test.mjs packages/codex/tests/windows-package.test.mjs
-go test ./internal/repository ./internal/webui ./cmd/taskbelay ./internal/store ./internal/mcp ./internal/version
-go test ./tests/contract -run 'TestCoreSemanticPackagesContainNoOperatingSystemDecision|TestNodeConsumersUseClosedPlatformImplementations|TestHostPlatformImplementationsRemainSeparate'
-node scripts/check-versions.mjs
-~~~
-
-测试使用临时目录和测试仓库。工作树与 branch 的创建、fetch、清理仅在测试 fixture 中执行，不改变当前项目 Git 分支、提交、Tag 或远端。真实 Codex CLI 检查只执行帮助参数解析，不创建会话。
-
-## 验证限制与非目标
-
-Windows 10 和 AMD 处理器属于实现目标，但本次没有相应实机，不能报告为已验证。没有执行 macOS 测试、完整 Codex/DeepSeek 用户任务会话、npm 发布、Git Tag 或 Release 操作。完整制包包含 Mac Core 的交叉编译；本机统一入口安装与独立配置下的卸载重装已实测。既有稳定支持声明不扩大。
-
-适配范围覆盖 Windows Core、Codex/DeepSeek Adapter、统一生命周期入口、WebUI 与下述 Windows 桌面宠物。操作系统差异已在受影响表面分离；共享代码未来变化仍需各平台分别回归，不能把文件分离视为绝对无回归保证。
-
-## Windows 桌面功能对齐
-
-在原有平台适配基础上，Windows 已新增独立桌面宠物，覆盖 macOS 现有用户可见功能：任务选择与分页、状态与断连记录、任务更新时间与最后同步时间、WebUI 跳转、托盘和右键菜单、PNG/SVG 静态与原生动画、Codex 格式 1/2 PNG/WebP 图集及高分辨率扩展、九类动作、六档缩放、拖动、隐藏恢复、系统睡眠处理和独立启停。
-
-Windows 实现位于 packages/desktop-pet/windows，运行时依赖仅在该目录的锁文件中维护。macOS 的 Swift/AppKit 实现与原有构建入口未修改。两个桌面实现共享素材和只读 Core 接口，不共享操作系统窗口、进程或安装逻辑。此次桌面补齐没有再修改 Core、流程图、Schema 或产品版本。
-
-| 检查 | 实际结果 |
-| --- | --- |
-| Windows 桌面定向检查 | 新增 6 项通过；与前述 22 项合并回归共 28 项全部通过：Core 显示映射与断连、默认 9 类/312 帧、受限 SVG 与失败重导入保持、并发设置保存、Windows 菜单与架构选择、保留已有安装与设置；安装单元检查使用明确标注的文件 fixture |
-| Windows 原生桌面 | 真实窗口与透明截图、中文气泡、六档缩放、隐藏恢复、实际 Core/WebUI 的空任务列表均通过；构造的显示状态下验证九类素材播放，未将它们当作真实 Task 完成记录 |
-| 原生图集导入 | 格式 1 PNG、格式 2 WebP、高分辨率 PNG 均按九类动作提取 57 帧并切换使用；原分辨率与逐帧时长保留 |
-| 原生单实例与停止 | ready、restored 确认通过；不匹配 Core 的停止请求保留当前进程；正常停止保留 WebUI、设置与导入素材 |
-| 本地包 | Windows 专用构建、运行时装配、默认素材逐文件核对、归档与解包、实际桌面运行通过；未发布或全局替换用户安装 |
-
-源码入口为 scripts/build-desktop-pet-windows.mjs，构建步骤见[桌面宠物指南](DESKTOP-PETS.md#windows-本地构建与安装)。本地构建结果与包摘要保存在输出目录的 desktop-pet-build.json，截图和原生结果保存为 desktop.png、native-result.json、lifecycle-result.json 与 cli-result.json。
-
-鼠标拖放和真实系统睡眠/唤醒尚未进行完整人工操作验证；代码已连接对应 Windows 事件。Windows 10、AMD 实机和完整 Codex/DeepSeek Task 会话仍未验证。桌面专项检查未执行 macOS 构建或测试；后续统一分发包检查包含 Mac Core 交叉编译。上述结果均未扩大公开稳定支持声明。
-
-## 统一入口实际验收
-
-统一入口检查使用包含两个完整 Adapter 包与 Windows 桌面程序的本地分发包。
-
-已用独立的 npm 前缀、CODEX_HOME、DSH_HOME 和产品数据目录调用真实 Codex、DSH 与 taskbelay 命令，完成 install、pet start、重复启动、宠物运行中 reinstall、doctor、uninstall 和再次 install。注册与安装没有使用手工补写。卸载后的设置保留已检查。首次宠物启动约 1.25 秒返回，重复启动约 0.69 秒返回，修复了此前依赖超时才能返回的问题。
-
-本机真实配置随后同样使用 npm 引导统一入口，再执行 taskbelay install --host all --profile web --yes、status 和 pet start。检查时 Codex、DeepSeek web 均为 ready，宠物成功运行。安装器在 Windows 按目标包的实际可执行路径、命令和进程创建时间停止占用文件的 MCP 实例；这是统一流程的代码，不是手工终止步骤。
-
-完整包不再缺少 Mac Core 文件；只做交叉编译与制包检查，没有运行 Mac 程序或 Mac 测试。本轮没有发布 npm 或修改公开稳定版本。
+macOS arm64 只交叉构建与检查元数据；未执行 Swift 原生测试、模型会话、签名、公证或发布。已有用户安装、任务数据及原 main 未改变。当前支持边界见 [支持矩阵](SUPPORT-MATRIX.md)，运行方式见 [命令](COMMANDS.md) 和 [桌面指南](DESKTOP-PETS.md)。

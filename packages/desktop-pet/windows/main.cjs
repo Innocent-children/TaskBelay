@@ -115,7 +115,7 @@ function parse(argv) {
     operation === "run" &&
     (!path.isAbsolute(request.corePath ?? "") ||
       !path.isAbsolute(request.dataDirectory ?? "") ||
-      !/^taskbelay\/[\d.]+$/.test(request.coreIdentity ?? "") ||
+      !/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(request.coreIdentity ?? "") ||
       !/^[a-f0-9]{64}$/.test(request.dataRootDigest ?? ""))
   )
     throw new Error("Incomplete desktop identity");

@@ -22,14 +22,12 @@ test("Core and all five package versions are independent", async (t) => {
   const marketplace = JSON.parse(await readFile(marketplacePath, "utf8"));
   marketplace.plugins[0].version = "6.7.8";
   await writeFile(marketplacePath, JSON.stringify(marketplace));
-  await setFixtureVersion(join(root, "protocol/fixtures/graph-server-info.json"), "1.2.3");
-  await setNestedFixtureVersion(join(root, "packages/codex/tests/fixtures/graph-method-profiles.json"), "1.2.3");
   assert.deepEqual(await checkVersions(root), { core: "1.2.3", codex: "2.3.4", deepseek: "3.4.5", taskBelay: "4.5.6", claude: "5.6.7", zcode: "6.7.8" });
 });
 
 test("Core version authority accepts one Windows CRLF terminator", async (t) => {
   const root = await fixtureRoot(t);
-  const expected = JSON.parse(await readFile(join(root, "protocol/fixtures/graph-server-info.json"), "utf8")).version;
+  const expected = (await readFile(join(root, "CORE_VERSION"), "utf8")).trim();
   await writeFile(join(root, "CORE_VERSION"), `${expected}\r\n`);
   assert.equal((await checkVersions(root)).core, expected);
 });
@@ -87,10 +85,6 @@ test("current product surfaces contain no internal version system except the dat
   for (const path of ["internal", "packages/codex/bin", "packages/codex/lib", "packages/codex/plugin", "packages/deepseek/lib", "packages/deepseek/skills", "scripts", "release"]) {
     await walk(new URL(`${path}/`, root), files);
   }
-  for (const path of [
-    "protocol/fixtures/graph-server-info.json", "protocol/fixtures/graph-host-parity-codex.json",
-    "protocol/fixtures/graph-host-parity-deepseek.json",
-  ]) files.push(new URL(path, root));
 
   const forbidden = /core_contract_version|core_limits_version|storage_schema_version|schema_version|snapshot_version|process_version|build_profile|standard-development@\d+|(?:requirements|design|tasks|implementation|test|comprehension|refactor|delivery)-result@\d+|blocker-resolution@\d+|ProcessActionV\d+|persistedTaskV\d+|taskbelay\/(?:git-common-dir|repository-identity|worktree-fingerprint|repository-binding)\/v\d+/iu;
   const violations = [];
@@ -112,7 +106,6 @@ async function fixtureRoot(t) {
     "packages/claude/package.json", "packages/claude/.claude-plugin/plugin.json",
     "packages/zcode/package.json", "packages/zcode/.zcode-plugin/plugin.json", "packages/zcode/marketplace.json",
     "release/public-versions.json",
-    "protocol/fixtures/graph-server-info.json", "packages/codex/tests/fixtures/graph-method-profiles.json",
   ]) {
     await mkdir(join(root, path, ".."), { recursive: true });
     await cp(new URL(`../${path}`, import.meta.url), join(root, path), { recursive: true });
@@ -136,17 +129,5 @@ function fileURLPath(url) {
 async function setVersion(path, version) {
   const value = JSON.parse(await readFile(path, "utf8"));
   value.version = version;
-  await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-async function setFixtureVersion(path, version) {
-  const value = JSON.parse(await readFile(path, "utf8"));
-  value.version = version;
-  await writeFile(path, `${JSON.stringify(value)}\n`);
-}
-
-async function setNestedFixtureVersion(path, version) {
-  const value = JSON.parse(await readFile(path, "utf8"));
-  value.server_info.version = version;
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`);
 }

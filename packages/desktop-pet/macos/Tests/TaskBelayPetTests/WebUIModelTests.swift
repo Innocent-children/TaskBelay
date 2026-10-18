@@ -36,7 +36,7 @@ final class WebUIModelTests: XCTestCase {
         let detail = try WebUIDecoding.decodeTaskDetail(TestFixtures.taskDetail(readiness: "read_only"))
         XCTAssertEqual(detail.readiness, .readOnly)
         XCTAssertEqual(detail.summary.taskID, "task-1")
-        XCTAssertEqual(detail.summary.currentNode, "IMPLEMENT")
+        XCTAssertEqual(detail.summary.currentNode, "ACTIVE")
         XCTAssertEqual(detail.summary.originHost, "codex")
         XCTAssertEqual(detail.summary.repositoryKeys, ["repo-a"])
         XCTAssertEqual(detail.summary.worktreePath, "/tmp/worktrees/task-1")
@@ -103,12 +103,49 @@ final class WebUIModelTests: XCTestCase {
     }
 
     func testDecodesCoreRuntimeStatusAtTopLevel() throws {
-        let status = try CoreRuntimeStatus.decode(TestFixtures.coreRuntimeStatus(operation: "start", readiness: "unavailable", pid: nil))
-        XCTAssertEqual(status.operation, "start")
+        let status = try CoreRuntimeStatus.decode(TestFixtures.coreRuntimeStatus(readiness: "unavailable", pid: nil))
         XCTAssertEqual(status.readiness, .unavailable)
         XCTAssertNil(status.pid)
         XCTAssertEqual(status.coreIdentity, TestFixtures.coreIdentity)
         XCTAssertEqual(status.dataRootDigest, TestFixtures.dataRootDigest)
+    }
+
+    func testReadsActualCoreStatusAndUsesItsIdentityForLaunch() async throws {
+        let repository = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../../../..").standardizedFileURL
+        let temporary = FileManager.default.temporaryDirectory
+            .appendingPathComponent("taskbelay-pet-core-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        let data = temporary.appendingPathComponent("data")
+        try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
+        let executable = temporary.appendingPathComponent("taskbelay").path
+        let build = Process()
+        build.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        build.arguments = ["go", "build", "-o", executable, "./cmd/taskbelay"]
+        build.currentDirectoryURL = repository
+        try build.run()
+        build.waitUntilExit()
+        XCTAssertEqual(build.terminationStatus, 0)
+        guard build.terminationStatus == 0 else { return }
+
+        let client = CoreRuntimeClient(corePath: executable, dataDirectory: data.path, runner: SystemProcessRunner())
+        let result = await client.status()
+        guard case .status(let status) = result else {
+            XCTFail("Actual Core output could not be decoded: \(result)")
+            return
+        }
+        let version = try String(contentsOf: repository.appendingPathComponent("CORE_VERSION"), encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        XCTAssertEqual(status.coreIdentity, version)
+        XCTAssertEqual(status.readiness, .unavailable)
+        XCTAssertNil(status.pid)
+        let arguments = try LaunchArgumentParser.parse([
+            "run", "--core-path", executable, "--data-dir", data.path,
+            "--product-root", temporary.path, "--core-identity", status.coreIdentity,
+            "--data-root-digest", status.dataRootDigest,
+        ])
+        XCTAssertEqual(arguments.coreIdentity, status.coreIdentity)
     }
 
     func testRejectsIncompleteCoreRuntimeStatus() {

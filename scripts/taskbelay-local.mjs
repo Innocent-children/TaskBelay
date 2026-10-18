@@ -41,7 +41,7 @@ export async function runLocalTaskBelay(arguments_, dependencies = {}) {
     const lifecyclePath = join(packageRoot, "lib", "lifecycle.mjs");
     const { runMain } = await import(pathToFileURL(lifecyclePath).href);
     const forwarded = normalizeForwardedArguments(arguments_);
-    const runtimeOperation = forwarded[0] === "webui" || ["help", "--help", "-h", "version", "--version"].includes(forwarded[0]);
+    const runtimeOperation = ["webui","call"].includes(forwarded[0]) || ["help", "--help", "-h", "version", "--version"].includes(forwarded[0]);
     const result = runtimeOperation
       ? await (await import(pathToFileURL(join(packageRoot, "lib", "runtime.mjs")).href)).runTaskBelay(forwarded)
       : await runMain(forwarded, {
@@ -235,7 +235,7 @@ async function runCommand(executable, arguments_, { cwd, environment = process.e
       shell: false,
     });
   } catch (error) {
-    const detail = String(error.stderr ?? error.message).trim();
+    const detail = [error.stdout, error.stderr].filter(Boolean).join("\n").trim() || error.message;
     throw new Error(`${executable} ${arguments_.join(" ")} failed${detail ? `: ${detail}` : ""}`, { cause: error });
   }
 }

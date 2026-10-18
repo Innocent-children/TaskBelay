@@ -174,7 +174,7 @@ enum PresentationRules {
             case .active:
                 return Result(
                     phase: .working(node: summary.currentNode),
-                    clip: summary.currentNode == "COMPREHENSION_REVIEW" ? .review : .working,
+                    clip: .working,
                     playIntro: false,
                     useRestFrame: false,
                     summary: summary,

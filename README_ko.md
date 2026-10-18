@@ -1,156 +1,59 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="packages/webui/src/assets/taskbelay-wordmark-dark.svg" />
-    <img src="packages/webui/src/assets/taskbelay-wordmark.svg" width="360" height="180" alt="TaskBelay" />
-  </picture>
-</p>
+# TaskBelay
 
-<h1 align="center">TaskBelay</h1>
+[English](README.md) · [简体中文](README_zh-CN.md) · [繁體中文](README_zh-TW.md) · [日本語](README_ja.md) · [한국어](README_ko.md) · [Español](README_es.md) · [Français](README_fr.md) · [Deutsch](README_de.md) · [Português](README_pt-BR.md)
 
-<p align="center"><strong>오래 이어지는 AI 코딩, 빌레이의 보호와 함께.</strong></p>
+**실제 AI 코딩 작업을 위한 엔지니어링 제어.**
 
-<p align="center">
-  <a href="README.md">English</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_zh-TW.md">繁體中文</a> · <a href="README_ja.md">日本語</a> · <a href="README_ko.md">한국어</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_de.md">Deutsch</a> · <a href="README_pt-BR.md">Português (Brasil)</a>
-</p>
+TaskBelay는 Codex, DeepSeek Harness, Claude Code, ZCode와 함께 승인된 목표, 실제 코드 변경, 검증 증거를 저장합니다. 세션을 넘겨 작업할 때 같은 결정을 반복하는 부담을 줄일 수 있습니다. 구현과 기술 판단은 에이전트가 담당합니다.
 
-## TaskBelay로 할 수 있는 일
+## 할 수 있는 일
 
-기술적 판단은 Agent가 합니다.<br />
-TaskBelay는 작업의 경계를 유지합니다.
+- 목표, 명확한 제외 사항, 인터페이스·데이터·의존성·설계 제약을 개발 중에도 유지합니다. 경로뿐 아니라 파일 내부의 변경을 검토합니다. 범위 이탈은 기존 승인 안에서 수정하며, 승인이나 중요한 선택을 바꿔야 할 때 사용자에게 묻습니다.
+- 승인된 로컬 검사를 실행하고 실제 종료 코드, 입력, 환경 조건, 결과를 저장합니다. 에이전트의 주장, 프로세스 실행, 인수 결론은 구분됩니다. 관련 변경으로 증거가 만료되지만 의존 범위의 근거가 있는 독립 검사는 유지할 수 있습니다. 계획 변경은 누적 비용을 초기화하지 않습니다.
+- 구현과 검증을 번갈아 수행하고 요구를 수정하며 현재 결과, 실패한 시도, 결과가 불명확한 실행에서 복구합니다. 최근 기록은 제한된 범위에 보관하고 유효한 결과와 누적 비용은 유지합니다.
 
-Codex, DeepSeek, Claude Code 또는 ZCode와 함께 사용합니다. 코드를 이해하고 다음 기술적 행동을 선택하는 일은 Agent가 맡습니다.
+명령 검증은 호스트의 기본 프로세스 도구에서 `taskbelay check run`을 호출하며 해당 권한과 환경을 사용합니다. WebUI는 작업 검색, 호스트 및 상태 필터, 언어 선택, 사용자 응답과 실행 복구를 지원합니다. 모든 목표에는 통과한 인수 검증이 필요하며 기존 회귀 실패의 수락으로 대체할 수 없습니다. 저장된 상태를 읽을 때는 사용량을 기록하지 않습니다.
 
-등반에서 빌레이는 등반자가 경로를 선택하는 동안 확보자가 로프를 조절하고 추락을 막는 역할입니다. TaskBelay도 같은 방식으로 역할을 나눕니다. Agent가 기술적 판단을 내리고, TaskBelay는 승인된 범위와 검증 한도를 확인하며 실패하거나 결과가 불확실한 작업은 저장된 기록을 바탕으로 복구합니다. 샌드박스나 또 다른 코딩 Agent가 아닙니다.
+기술적 의문은 해결될 때까지 원래 식별자로 보관되며, 내용을 생략해도 사라지지 않습니다. 결과물의 제한 사항은 저장된 판단에서 도출합니다. 호스트 사용량은 미보고, 부분 보고, 보고 완료를 구분하고, 수집하지 못한 값은 알 수 없음으로 표시합니다. 메서드 도움말에는 입력·출력 예시와 오류 처리 방법이 포함되어 소스 코드를 볼 필요가 없습니다. 새 Task 브랜치는 업스트림을 암묵적으로 상속하지 않습니다.
 
-- **명확한 범위:** 실제 변경을 승인된 파일과 비교합니다. 계획 밖의 작업에는 별도 결정이 필요합니다.
-- **검증 한도:** 필요한 검사와 한도를 계획합니다. 검증을 늘리려면 구체적인 이유를 기록합니다.
-- **지속되는 상태:** 세션이 바뀌어도 로컬에 저장된 작업 상태를 기준으로 이어갑니다.
-- **안전한 복구:** 실패하거나 결과가 불확실하면 저장된 상태와 작업 기록을 확인한 뒤 재개나 재시도를 결정합니다.
+## 시작하기
 
-여러 세션에 걸치거나 파일 범위와 테스트 작업량을 명확히 정해야 하는 저장소 작업에 적합합니다.
-일회성 질문, 코드 설명, 진행 상황을 저장할 필요가 없는 작은 수정은 Codex, DeepSeek, Claude Code 또는 ZCode를 직접 쓰는 편이 간단합니다.
+Node.js >=24와 설치된 코딩 호스트가 필요합니다. 소스 개발에는 Go >=1.26과 pnpm >=11 <12도 필요합니다. 이 소스에는 호환성을 깨는 엔지니어링 업그레이드가 들어 있습니다. 배포된 패키지 버전과 안정 지원 기록은 바뀌지 않았습니다. 새 계약을 사용하려면 현재 소스를 빌드하세요. 이전 데이터는 보존하고 별도의 데이터 디렉터리를 명시적으로 선택합니다. 마이그레이션이나 자동 초기화는 없습니다.
 
-## 빠른 시작
-
-> Node.js `>=24`와 사용할 Host를 먼저 설치하세요. 필요한 버전과 검증된 플랫폼은 [지원 표](docs/SUPPORT-MATRIX_en.md)를 확인하세요.
-
-### 1. TaskBelay 설치
-
-TaskBelay를 설치한 다음 [Codex](docs/CODEX_en.md), [DeepSeek](docs/DEEPSEEK_en.md), [Claude Code](docs/CLAUDE_en.md), [ZCode](docs/ZCODE_en.md) 안내에 따라 사용할 Host를 활성화하세요. 패키지는 Windows x64와 macOS arm64를 대상으로 하며, macOS ZCode의 실제 환경 검증은 아직 남아 있습니다.
+공개 버전 설치:
 
 ```sh
 npm install -g taskbelay@latest
 taskbelay
 ```
 
-사용하는 설치 메뉴에서 해당 Host를 선택하세요. Codex는 `/hooks`에서 TaskBelay hook을 검토하고 신뢰하며, DeepSeek는 선택한 Profile을 다시 시작합니다. Claude Code는 플러그인을 다시 불러오거나 새 대화를 열고 권한 안내를 확인하세요.
+현재 소스를 로컬에서 빌드하고 설치:
 
-ZCode에서는 Settings → Plugins에서 플러그인을 설치하고 활성화한 뒤 새 대화를 시작해야 Hook이 적용됩니다. 로컬 패키지가 준비되었다고 해서 ZCode에서 로드되었다는 뜻은 아닙니다.
-
-### 2. 작업 시작
-
-해당 설치를 마친 뒤 Host 대화에 다음 메시지 중 하나를 보내세요.
-
-**Codex**
-
-```text
-$taskbelay-codex:taskbelay 로그인 실패 속도 제한을 추가하세요. 인증 관련 파일만 변경하고 대상 확인을 최대 4개 실행하세요.
+```sh
+pnpm install --frozen-lockfile --ignore-scripts
+node scripts/taskbelay-local.mjs install --host codex --yes
 ```
 
-**DeepSeek Harness**
+해당 [호스트 안내](packages/codex/README.md)에 따라 어댑터를 활성화한 뒤 명확한 범위의 결과를 요청합니다:
 
 ```text
-/taskbelay 로그인 실패 속도 제한을 추가하세요. 인증 관련 파일만 변경하고 대상 확인을 최대 4개 실행하세요.
+TaskBelay로 로그인 실패 요청 제한을 추가하세요. 공개 인증 API와 기존 사용자 데이터를 유지하고 계정 관리는 다시 설계하지 마세요. 관련 기존 테스트를 실행하고 실제 결과를 보고하세요.
 ```
 
-**Claude Code**
+원하는 결과와 필요한 제한을 설명합니다. 에이전트는 접근 방법을 설명하고 기존 승인 범위에서 작업합니다. 일반적인 구현이나 검사 방법 변경에는 재승인이 필요하지 않습니다. 목표나 명시된 제한을 바꿀 때는 사용자의 실제 결정이 필요합니다. 유효한 통과 결과는 재사용하며 사용량은 계속 기록합니다. 한도는 사용자가 설정한 경우에만 적용합니다. WebUI는 간결한 작업 목록과 상세 내용을 두 열로 표시하며 개요, 검사 기록, 요구 사항 및 사용량 탭을 제공합니다. 출력은 해당 검사 바로 아래에서 펼쳐지고 답변, 실행 복구, 보관을 지원합니다. 기록 업데이트는 저장된 내용을 읽고, 현재 코드 확인은 실제 조건을 다시 관찰합니다. 저장한 Task ID로 원래 작업 공간에서 재개합니다.
 
-```text
-/taskbelay-claude:taskbelay 로그인 실패 속도 제한을 추가하세요. 인증 관련 파일만 변경하고 대상 확인을 최대 4개 실행하세요.
-```
+에이전트는 디렉터리, 브랜치, 기존 변경 사항을 보여 주고 사용자가 선택했거나 문맥상 명확한 작업 공간을 사용합니다. 위치가 불명확하거나 충돌이 있거나 새로운 작업 공간 작업이 필요할 때만 질문합니다. 브랜치와 워크트리 생성, 업스트림 통합은 선택 사항이며 실제 승인에 따릅니다.
 
-**ZCode**
-
-입력창의 `/` → Skills에서 `taskbelay`를 선택한 뒤 작업을 설명하세요.
-
-```text
-TaskBelay를 사용해 로그인 실패 속도 제한을 추가하세요. 인증 관련 파일만 변경하고 대상 확인을 최대 4개 실행하세요.
-```
-
-이 메시지는 터미널이 아닌 대화창에 입력합니다. 목표, 인수 조건, 파일 범위와 테스트 한도를 구체적으로 적으세요.
-
-첫 응답은 요청을 평가하고 직접 개발할지 TaskBelay를 사용할지 묻습니다. TaskBelay를 선택하면 기본적으로
-현재 디렉터리에서 현재 HEAD를 기준으로 새 작업 브랜치를 만듭니다. 새 브랜치와 기존 미커밋 변경을 작업에
-포함할지 확인합니다. 의존성, 로컬 설정, 파일과 스테이징 상태를 유지하며, 모든 참여 디렉터리에 접근할 수
-있으면 현재 세션에서 계속합니다.
-
-현재 브랜치를 그대로 사용하거나 별도의 Git 작업 트리를 만들도록 명시적으로 선택할 수도 있습니다. 별도
-작업 트리는 로컬 또는 원격 소스와 시작 브랜치도 선택합니다. Codex는 호스트가 지원하면 새 디렉터리를 열고,
-DeepSeek와 Claude Code는 필요한 재시작 명령을 제공합니다.
-
-한 디렉터리에는 활성 Task가 하나만 있을 수 있습니다. 수동 편집이나 다른 도구의 로컬 변경도 확인 대상이며,
-작업 도중 브랜치를 바꾸면 진행이 일시 중지됩니다. 완료 후에도 로컬 디렉터리와 브랜치를 유지합니다.
-다음 작업을 시작할 때는 남아 있는 미커밋 변경을 어떻게 처리할지 확인해야 합니다.
-
-구현 전에 요구 사항, 설계, 작업 항목, 변경할 파일과 검증 계획을 확인하고 논의합니다. 전체 계획을 명시적으로 승인한 뒤 개발을 시작합니다. 계획을 수정하거나 파일 범위를 넓히면 다시 승인을 받습니다. TaskBelay나 워크트리 설정을 선택하는 것은 계획 승인과 별개입니다.
-
-### 3. 재개 및 진행 상황 확인
-
-세션을 다시 시작한 뒤 작업의 원래 작업 디렉터리로 돌아가 해당 작업을 계속해 달라고 명시적으로 요청하세요.
-TaskBelay는 저장된 진행 상황부터 이어갑니다. 원래 작업 디렉터리가 없어지거나 교체되었다면 이를 복구하거나
-작업을 명시적으로 포기할 때까지 일시 중지됩니다.
-
-DeepSeek Harness에서는 재개를 요청하는 메시지에도 `/taskbelay`를 포함하세요.
-
-Claude에서는 원래 작업 디렉터리와 대화로 돌아가 `/taskbelay-claude:taskbelay`로 저장된 작업을 계속한다고 명시하세요.
-
-ZCode에서는 원래 작업 디렉터리를 열고 TaskBelay Skill을 선택한 뒤 저장된 작업을 계속해 달라고 요청하세요. 새 디렉터리를 준비했다면 반환된 작업 공간 열기 안내를 따르세요.
-
-아래 명령은 설치된 전역 관리자를 사용합니다. 소스 설치에서는 안내서의 해당 실행 경로를 사용하세요.
-
-```bash
-# 설치된 연동 확인
-taskbelay status --host all
-
-# 로컬 작업 화면 열기
+```sh
 taskbelay webui start
 ```
 
-비대화형 설치, 사용자 지정 DSH Profile, 업그레이드, 복구와 제거는
-[명령어 참고서](docs/COMMANDS_en.md)를 확인하세요.
+## 한계
 
-## 데스크톱 펫
+구조화된 훅은 지원되는 쓰기 경로를 검사하고 shell 및 외부 편집은 검사 지점에서 관찰합니다. Core가 직접 실행한 검사만 Core 실행 증거를 갖습니다. 선언된 입력과 환경은 ignored 의존성, 데이터베이스, 원격 서비스를 자동 포함하지 않습니다. 의미 판단은 근거를 남기지만 정확성의 증명은 아닙니다. TaskBelay는 샌드박스나 또 다른 코딩 에이전트가 아닙니다.
 
-펫을 사용하려면 설정된 Adapter와 설치된 데스크톱 앱이 모두 필요합니다. Adapter만 설치하면 데스크톱 앱은 설치되지 않습니다.
+Core 비용은 실측합니다. 호스트 분석, 대기, token은 보고 값으로 불완전할 수 있습니다. 작은 기계적 작업은 보통 원래 에이전트만 사용하는 편이 단순합니다. 소스 테스트는 기능을 입증하지만 결함률이나 수동 감독 비용 감소를 입증하지 않습니다. 완료해도 파일은 남으며 Git, 배포, 삭제 권한은 추가되지 않습니다.
 
-데스크톱 펫은 여러 작업을 겹친 말풍선으로 표시하고 각 작업의 WebUI를 엽니다. 차단된 작업을 우선 표시하며, 작업이 완료되면 다른 미완료 작업으로 자동 전환합니다. 특정 작업을 고정할 수도 있습니다. 외형 변경, 애니메이션 제어, 크기 조절, 개별 시작과 중지를 지원합니다.
+## 더 알아보기
 
-```bash
-taskbelay pet start
-taskbelay pet stop
-```
-
-데스크톱 앱은 macOS arm64와 Windows 10/11 x64를 대상으로 합니다. 설치와 조작은
-[펫 안내서](docs/DESKTOP-PETS_en.md), 검증된 사용 가능 범위는[지원 범위](docs/SUPPORT-MATRIX_en.md)를 참고하세요.
-
-## 사용 제한
-
-TaskBelay는 작업 흐름을 관리하며 OS 권한을 관리하지 않습니다. 모든 파일 작업이나 셸 명령을 가로채지는 않습니다.
-
-전용 작업 트리는 코드 변경 사항을 분리합니다. 프로세스, 네트워크, 자격 증명과 외부 서비스는 현재 환경과 공유됩니다.
-
-작업이 완료되어도 코드 커밋, 푸시 또는 작업 트리 삭제는 자동으로 실행되지 않습니다. 이 작업에는 별도의 승인이 필요합니다.
-
-## 문서
-
-- **사용 방법:** [Codex](docs/CODEX_en.md) · [DeepSeek](docs/DEEPSEEK_en.md) · [Claude Code](docs/CLAUDE_en.md) · [ZCode](docs/ZCODE_en.md) · [명령어](docs/COMMANDS_en.md) · [Control Center](docs/WEBUI_en.md)
-- **프로젝트:** [제품 정의](docs/PRODUCT_en.md) · [지원 범위](docs/SUPPORT-MATRIX_en.md) · [보안](SECURITY.md)
-- **개발 및 기여:** [문서 목록](MANIFEST_en.md) · [기여 안내](CONTRIBUTING.md)
-
-## 커뮤니티
-
-[LINUX DO](https://linux.do/)
-
-## 라이선스
-
-[Apache License 2.0](LICENSE)
+[Product](docs/PRODUCT_en.md) · [Commands](docs/COMMANDS_en.md) · [Support and verification](docs/SUPPORT-MATRIX_en.md) · [Codex](packages/codex/README.md) · [DeepSeek](packages/deepseek/README.md) · [Claude Code](docs/CLAUDE_en.md) · [ZCode](docs/ZCODE_en.md)

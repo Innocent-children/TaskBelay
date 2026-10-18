@@ -1,59 +1,30 @@
 ---
 name: taskbelay
-description: "Assess bounded Codex software development requests before choosing direct work or TaskBelay, then prepare confirmed TaskBelay Tasks in new local branches by default, current branches, or dedicated Git worktrees. It may be selected implicitly or explicitly with $taskbelay-codex:taskbelay; the selector never skips assessment. Explicit Task resume and receipt-backed confirmed bootstrap bypass duplicate assessment."
+description: "Use TaskBelay for substantial development that benefits from saved progress, verification reuse or interruption recovery, or when explicitly requested. Reuse existing user authority. Skip ordinary questions and small mechanical edits unless requested."
 ---
 
 # TaskBelay for Codex
 
-Codex performs repository work and authorized Host operations. Go Core owns Task state, Actions,
-transitions, repository observation, verification, blockers and recovery.
+Read [engineering work](references/engineering.md) when starting or resuming a Task. Consult
+[protocol](references/protocol.md) for tool fields and recovery; read [workspaces](references/workspace.md)
+only for needed workspace operations. Load details as needed instead of reading every reference upfront.
 
-## Choose the entry
+Use tools actually exposed in this session. If unavailable, report the integration problem once and
+continue authorized work using native tools; do not claim TaskBelay recorded it. A CLI success does
+not prove the Host exposes MCP. Preserve data when troubleshooting storage or configuration.
 
-Use `$taskbelay-codex:taskbelay` or implicit selection for assessment. Reuse valid user choices;
-invocation alone does not authorize Git changes, Task creation or an unseen implementation plan.
-Read only the guide for the current operation:
+Start from the actual user request in the selected/current workspace. Reuse existing authority without
+an extra plan-confirmation step. Explain the approach; adjust implementation and checks within the same
+outcome and restrictions. Ask only for missing information or a real change to user boundaries.
 
-| Request or saved state | Next step |
-| --- | --- |
-| New development request | [Assess and prepare](references/admission.md); default to a new branch in the current directory after the user chooses TaskBelay. |
-| Saved launch/bootstrap | [Resume the launch](references/admission.md#continue-a-saved-launch); inspect its surface and phase before provisioning, creating or resuming Core. |
-| Explicit existing Task resume | Return to the original workspace and [connect/resume](references/connection.md); omit creation fields. |
-| Current Action | Follow [Action execution](references/node-payloads.md) and only the current node guide. |
-| Rejection, missing result or blocker | Read [response handling](references/tool-results.md), then its linked correction or recovery procedure. |
-| Relocation, cancellation, abandonment, cleanup or installation diagnosis | Read [Host lifecycle](references/host-lifecycle.md). |
-| Explanation, status question or design discussion | Answer or perform the authorized read; create no Task. Explicit review stays read-only until a later repair request. |
+The structured hook checks apply_patch paths. Other edits are observed at checkpoints. Native permissions
+still apply; hooks cannot authenticate conversation or judge future code semantics. This is not a sandbox.
 
-## Execute and continue
+Default responses summarize current work. Use get_task detail:true for full history and get_run for
+output. Keep operation identities after response loss; inspect saved results before repeating effects.
+Report completed work, actual checks and uncertainty honestly. Git, new chat, publication and deletion
+follow actual user authorization. Normal usage should not require reading plugin source.
 
-After provisioning or on Task resume, perform the [server handshake](references/connection.md#server-handshake)
-before other Core calls. Use actually visible tools through [Codex transport](references/transport.md).
-Keep complete responses, inspect `ok` before success fields, and handle recovery, blockers and outcome
-before the returned Action. A shortened display does not lose a retained original response.
+Maintainer implementation reference: `internal/protocol/handler.go`.
 
-The [Action procedure](references/node-payloads.md) covers planning discussion, saved-plan approval,
-current-node work, method steps, file preparation and submission. Before writes use
-[artifacts and the Hook](references/artifacts.md); for checks use [verification](references/verification.md).
-Only the current Core Action permits progress. Human approvals and comprehension verdicts must be real.
-Continue authorized work when no required input is missing; progress updates need no acknowledgment.
-
-## Repository and Host constraints
-
-Follow current user/repository instructions, including required project indexes. Confirm participating
-repositories before preparation; Scope is fixed after creation. Every needed root must remain within
-Codex's authorized directories. When no instruction overrides `host_preferences.codex.codebase_memory`,
-use an already usable index if preferred, otherwise ordinary Host search. An absent/incomplete index
-gets at most one notice and immediate fallback. Do not install or repair an index through this Skill.
-
-Choose `plain`, `spec-kit` or `openspec` from explicit intent, otherwise `plain`; retain an existing
-Task's profile. [Method profiles](references/method-profiles.md) map current steps to visible tools.
-A method result does not advance Core. A missing capability must be reported accurately.
-
-DONE/CANCELLED retains files and grants no commit, push, PR, publication or deletion authority.
-Use the lifecycle guide for separately authorized cleanup. Dedicated-worktree launch and discussion
-handoff are linked from admission and loaded only for those operations.
-
-Implementation: `packages/codex/lib/task-admission.mjs` — `validateSuitabilityAssessment`;
-`packages/codex/lib/task-launch.mjs` — `prepareTaskLaunch`;
-`packages/codex/lib/lifecycle.mjs` — `CODEX_MCP_INSTRUCTIONS`;
-`internal/workflow/standard_process.go` — `StandardProcess`.
+Run command checks with the native process tool using `taskbelay-codex check run`. Pass the RunRequest JSON on stdin and retain the native session for long commands. MCP reads and records results; it does not start commands.

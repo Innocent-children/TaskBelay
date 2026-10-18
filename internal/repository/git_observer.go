@@ -34,6 +34,9 @@ const (
 	gitShowIndexEntries
 	gitIsAncestor
 	gitShowMergeCommits
+	gitShowUpstream
+	gitShowRemotes
+	gitCompareUpstream
 )
 
 type GitObserver struct{ runner gitCommandRunner }
@@ -271,10 +274,25 @@ func (o *GitObserver) observe(ctx context.Context, repositoryPath string, select
 		return domain.WorkspaceOrigin{}, domain.RepositoryBinding{}, err
 	}
 	baseAncestor := baseAncestorResult.exitCode == 0
+	var upstream *string
+	if branch != nil {
+		observed, e := o.required(ctx, gitShowUpstream, canonicalRoot, *branch)
+		if e != nil {
+			return domain.WorkspaceOrigin{}, domain.RepositoryBinding{}, e
+		}
+		for _, line := range strings.Split(strings.TrimSpace(string(observed.stdout)), "\n") {
+			fields := strings.Split(line, "\x00")
+			if len(fields) >= 2 && fields[0] == "refs/heads/"+*branch && fields[1] != "" {
+				value := fields[1]
+				upstream = &value
+			}
+		}
+	}
 	binding := domain.RepositoryBinding{
 		WorktreeInstanceDigest: instance, IdentityDigest: identity, HistoryDigest: history, ContentDigest: content,
 		CurrentBranch: branch, Detached: detached, CurrentHead: head, HeadTree: headTree, HistoryRelation: relation,
 		BaseCommitAncestor: baseAncestor,
+		BranchUpstream:     upstream,
 		ChangedEntries:     changedEntries, TaskSurface: taskSurface, ObservedAt: time.Now().UTC(),
 	}
 	binding.BindingDigest = digestRepositoryBinding(binding)
@@ -525,6 +543,21 @@ func (command gitReadCommand) arguments(repositoryPath, value string) ([]string,
 		return left, right, ok && left != "" && right != ""
 	}
 	switch command {
+	case gitShowRemotes:
+		if value != "" {
+			return nil, false
+		}
+		return append(args, "remote"), true
+	case gitShowUpstream:
+		if value != "" && domain.ScopedPath(value) != nil {
+			return nil, false
+		}
+		return append(args, "for-each-ref", "--format=%(refname)%00%(upstream)%00%(upstream:remotename)%00%(upstream:remoteref)", "refs/heads/"+value), true
+	case gitCompareUpstream:
+		if !strings.HasPrefix(value, "refs/remotes/") || domain.ScopedPath(value) != nil {
+			return nil, false
+		}
+		return append(args, "rev-list", "--left-right", "--count", "HEAD..."+value), true
 	case gitShowWorktreeRoot:
 		if value != "" {
 			return nil, false

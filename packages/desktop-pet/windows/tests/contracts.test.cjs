@@ -14,6 +14,25 @@ const {
 const { Preferences } = require("../storage.cjs");
 const bundled = path.resolve(__dirname, "../../default-appearance");
 
+test("Windows launch accepts the current Core version identity and rejects obsolete or malformed identities", async () => {
+  const source = await fs.readFile(path.join(__dirname, "../main.cjs"), "utf8");
+  const start = source.indexOf("function parse(argv) {");
+  const end = source.indexOf("async function acknowledgeLaunch", start);
+  assert.ok(start >= 0 && end > start);
+  const context = vm.createContext({ path: path.win32 });
+  vm.runInContext(source.slice(start, end), context);
+  const version = (await fs.readFile(path.resolve(__dirname, "../../../../CORE_VERSION"), "utf8")).trim();
+  const args = identity => [
+    "run", "--core-path", "C:\\adapter\\taskbelay.exe", "--data-dir", "C:\\taskbelay\\data",
+    "--product-root", "C:\\taskbelay", "--core-identity", identity,
+    "--data-root-digest", "a".repeat(64), "--launch-id", "11111111-1111-4111-8111-111111111111",
+  ];
+  assert.equal(context.parse(args(version)).request.coreIdentity, version);
+  for (const identity of [`taskbelay/${version}`, "0.22", "00.22.0", "0..0", "0.22.0-extra"]) {
+    assert.throws(() => context.parse(args(identity)), /Incomplete desktop identity/);
+  }
+});
+
 test("empty bubble layout preserves the character anchor at every supported scale", async () => {
   const source = await fs.readFile(path.join(__dirname, "../main.cjs"), "utf8");
   const start = source.indexOf("  function layout(offset = 0) {");
@@ -54,7 +73,7 @@ test("presentation follows Core lifecycle and never replays completion after a d
   const task = {
     task_id: "task-a",
     lifecycle: "active",
-    current_node: "IMPLEMENT",
+    status: "active",
     archived: false,
   };
   const active = presentation(task, null);
@@ -79,9 +98,9 @@ test("presentation follows Core lifecycle and never replays completion after a d
     false,
   );
   assert.equal(
-    presentation({ ...task, current_node: "COMPREHENSION_REVIEW" }, active)
+    presentation({ ...task, status: "active" }, active)
       .clip,
-    "review",
+    "working",
   );
   assert.equal(
     presentation({ ...task, lifecycle: "blocked", blocker: "review" }, active)

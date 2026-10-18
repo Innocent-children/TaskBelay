@@ -31,28 +31,11 @@ test("plugin identity and injection surface are fixed", () => {
   assert.deepEqual(inject, ["skills", "tools"]);
   assert.equal(typeof apply, "function");
   assert.equal(TASKBELAY_TOOL_NAMESPACE_PREFIX, "mcp__taskbelay__");
-  assert.deepEqual(TASKBELAY_QUALIFIED_TOOL_NAMES, [
-    "mcp__taskbelay__taskbelay_server_info",
-    "mcp__taskbelay__taskbelay_open_task",
-    "mcp__taskbelay__taskbelay_get_task",
-    "mcp__taskbelay__taskbelay_get_next_action",
-    "mcp__taskbelay__taskbelay_submit_requirements",
-    "mcp__taskbelay__taskbelay_submit_design",
-    "mcp__taskbelay__taskbelay_submit_tasks",
-    "mcp__taskbelay__taskbelay_submit_implementation",
-    "mcp__taskbelay__taskbelay_submit_test",
-    "mcp__taskbelay__taskbelay_submit_comprehension",
-    "mcp__taskbelay__taskbelay_submit_refactor",
-    "mcp__taskbelay__taskbelay_submit_delivery",
-    "mcp__taskbelay__taskbelay_prepare_task_relocation",
-    "mcp__taskbelay__taskbelay_resolve_blocker",
-    "mcp__taskbelay__taskbelay_recover_action",
-    "mcp__taskbelay__taskbelay_cancel_task",
-    "mcp__taskbelay__taskbelay_abandon_task",
-  ]);
+  assert.equal(TASKBELAY_QUALIFIED_TOOL_NAMES.length,15);
+  assert.ok(TASKBELAY_QUALIFIED_TOOL_NAMES.includes("mcp__taskbelay__taskbelay_resolve_issue"));
 });
 
-test("registers one model-visible assessment Skill, guarded workspace coordinator, and the official MCP child config", async (t) => {
+test("registers one model-visible engineering Skill, guarded workspace coordinator, and the official MCP child config", async (t) => {
   const dataDirectory = await temporaryDirectory(t, "data");
   const packageRoot = await temporaryPackage(t, "integration package-工具");
   const fake = createFakeContext({ packageRoot, initialToolNames: TASKBELAY_QUALIFIED_TOOL_NAMES });
@@ -287,7 +270,7 @@ async function temporaryPackage(t, name) {
     version: currentVersion,
   })}\n`);
   await copyFile(join(sourcePackageRoot, "skills", "taskbelay", "SKILL.md"), join(skillRoot, "SKILL.md"));
-  for (const directory of ["references", "scripts"]) {
+  for (const directory of ["references"]) {
     await cp(join(sourcePackageRoot, "skills", "taskbelay", directory), join(skillRoot, directory), { recursive: true });
   }
   if (fixturePlatform === "win32") {

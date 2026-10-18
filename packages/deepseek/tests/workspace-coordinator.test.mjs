@@ -12,40 +12,11 @@ import {
   authorizeWorkspaceExecution,
   createWorkspaceCoordinator,
   runClosedCommand,
-  workspaceConfirmationText,
-  workspaceCleanupText,
-  workspaceResumeText,
 } from "../lib/workspace-coordinator.mjs";
 
 const execFile = promisify(execFileCallback);
 const fixedLaunchID = "11111111-1111-4111-8111-111111111111";
 
-test("workspace confirmation is bound to the current direct user turn", () => {
-  const repositories = [{
-    repository_key: "primary",
-    source_repository_path: "/workspace/source",
-    workspace_mode: "dedicated_worktree", source_type: "remote", carry_changes: false, remote_name: "origin",
-    base_branch: "main",
-    target_branch: "feature/proof",
-  }];
-  const expected = workspaceConfirmationText(repositories);
-  assert.equal(expected, "/taskbelay confirm-workspace\nrepository=primary;mode=dedicated_worktree;source=remote;carry=false;remote=origin;base=main;target=feature/proof");
-  assert.doesNotThrow(() => authorizeWorkspaceExecution(execution(expected, { operation: "provision", repositories })));
-  assert.throws(
-    () => authorizeWorkspaceExecution(execution("/taskbelay use it", { operation: "provision", repositories })),
-    /WORKTREE_CONFIRMATION_REQUIRED/u,
-  );
-  assert.doesNotThrow(() => authorizeWorkspaceExecution(execution(workspaceResumeText(fixedLaunchID), {
-    operation: "consume", launch_id: fixedLaunchID,
-  })));
-  const cleanup = { launchID: fixedLaunchID, repositoryKey: "primary", taskID: "task-cleanup", revision: 9 };
-  assert.doesNotThrow(() => authorizeWorkspaceExecution(execution(workspaceCleanupText("prepare_cleanup", cleanup), {
-    operation: "prepare_cleanup", launch_id: fixedLaunchID, repository_key: "primary", task_id: "task-cleanup", revision: 9,
-  })));
-  assert.doesNotThrow(() => authorizeWorkspaceExecution(execution(workspaceCleanupText("cleanup_worktree", cleanup), {
-    operation: "cleanup_worktree", launch_id: fixedLaunchID, repository_key: "primary", task_id: "task-cleanup", revision: 9,
-  })));
-});
 
 test("coordinator fetches a frozen base, excludes dirty source state, and emits a consumable relaunch", async (t) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "taskbelay-deepseek-workspace-")));
@@ -90,7 +61,7 @@ test("coordinator fetches a frozen base, excludes dirty source state, and emits 
   assert.equal(result.status, "relaunch_required");
   assert.deepEqual(result.relaunch, {
     command: "dsh",
-    arguments: ["--profile", "headless", `${workspaceResumeText(fixedLaunchID)}\nContinue the confirmed request exactly as assessed:\nCreate an isolated proof.`],
+    arguments: ["--profile", "headless", `Resume the authorized prepared workspace for launch ${fixedLaunchID}.\nContinue the current authorized request:\nCreate an isolated proof.`],
     cwd: result.workspace_root,
   });
   assert.deepEqual(result.source_dirty_paths.primary, ["README.md", "staged.txt", "untracked.txt"]);
@@ -113,9 +84,9 @@ test("coordinator fetches a frozen base, excludes dirty source state, and emits 
   const consumed = await relaunched.consume({ launchID: fixedLaunchID });
   assert.equal(consumed.status, "consumed");
   assert.deepEqual(Object.keys(consumed.open_task).sort(), [
-    "additional_repositories", "primary_repository_key", "repository_path", "workspace_origin",
+    "repositories",
   ]);
-  assert.deepEqual(consumed.open_task.workspace_origin, {
+  assert.deepEqual(consumed.open_task.repositories[0].workspace_origin, {
     mode: "dedicated_worktree", source_type: "remote", carry_changes: false, remote_name: "origin",
     base_branch: "main",
     base_commit: baseCommit,
@@ -125,17 +96,15 @@ test("coordinator fetches a frozen base, excludes dirty source state, and emits 
   assert.equal((await readProvisioningReceipt(data, fixedLaunchID)).operation_status, "consumed");
 
   const baseTerminalTask = {
-    task_id: "task-cleanup", revision: 9, current_cursor: "DONE", primary_repository_key: "primary",
-    workspace_origin: { ...consumed.open_task.workspace_origin, canonical_worktree_root: result.workspace_root },
-    repository: { current_head: baseCommit }, additional_repositories: [],
+    task_id: "task-cleanup", revision: 9, status:"done", repositories:[{key:"primary",workspace_origin:{ ...consumed.open_task.repositories[0].workspace_origin, canonical_worktree_root: result.workspace_root },binding:{ current_head: baseCommit }}],
   };
-  const activeCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => ({ ...baseTerminalTask, current_cursor: "IMPLEMENT" }) });
+  const activeCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => publicTask({ ...baseTerminalTask, status:"active" }) });
   await assert.rejects(activeCleanup.cleanupWorktree({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: baseTerminalTask.task_id, revision: baseTerminalTask.revision }), /not terminal/u);
-  const foreignCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => ({ ...baseTerminalTask, workspace_origin: { ...baseTerminalTask.workspace_origin, provisioning_receipt_id: "another-receipt" } }) });
+  const foreignCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => publicTask({ ...baseTerminalTask, repositories:[{...baseTerminalTask.repositories[0],workspace_origin:{...baseTerminalTask.repositories[0].workspace_origin,provisioning_receipt_id:"another-receipt"}}] }) });
   await assert.rejects(foreignCleanup.cleanupWorktree({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: baseTerminalTask.task_id, revision: baseTerminalTask.revision }), /does not match the receipt workspace/u);
-  const staleHeadCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => ({ ...baseTerminalTask, repository: { current_head: "f".repeat(40) } }) });
+  const staleHeadCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => publicTask({ ...baseTerminalTask, repositories:[{...baseTerminalTask.repositories[0],binding:{current_head:"f".repeat(40)}}] }) });
   await assert.rejects(staleHeadCleanup.cleanupWorktree({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: baseTerminalTask.task_id, revision: baseTerminalTask.revision }), /differs from the terminal Core observation/u);
-  const guardedCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => baseTerminalTask });
+  const guardedCleanup = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => publicTask(baseTerminalTask) });
   await assert.rejects(guardedCleanup.cleanupWorktree({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: baseTerminalTask.task_id, revision: baseTerminalTask.revision }), /unpushed task branch/u);
   await writeFile(join(result.workspace_root, "dirty.txt"), "dirty\n");
   await assert.rejects(guardedCleanup.cleanupWorktree({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: baseTerminalTask.task_id, revision: baseTerminalTask.revision }), /dirty terminal worktree/u);
@@ -147,19 +116,17 @@ test("coordinator fetches a frozen base, excludes dirty source state, and emits 
   await git(result.workspace_root, ["push", "-u", "origin", "HEAD"]);
   const terminalHead = (await git(result.workspace_root, ["rev-parse", "HEAD"])).stdout.trim();
   const terminalTask = {
-    task_id: "task-cleanup", revision: 9, current_cursor: "DONE", primary_repository_key: "primary",
-    workspace_origin: { ...consumed.open_task.workspace_origin, canonical_worktree_root: result.workspace_root },
-    repository: { current_head: terminalHead }, additional_repositories: [],
+    task_id: "task-cleanup", revision: 9, status:"done", repositories:[{key:"primary",workspace_origin:{ ...consumed.open_task.repositories[0].workspace_origin, canonical_worktree_root: result.workspace_root },binding:{ current_head: terminalHead }}],
   };
   const cleanupFromTask = createWorkspaceCoordinator({
-    dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => terminalTask,
+    dataDirectory: data, workspaceRoot: result.workspace_root, readTask: async () => publicTask(terminalTask),
   });
   const cleanupRelaunch = await cleanupFromTask.prepareCleanup({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: terminalTask.task_id, revision: terminalTask.revision, sourceRepositoryPath: source });
   assert.equal(cleanupRelaunch.status, "cleanup_relaunch_required");
   assert.equal(cleanupRelaunch.relaunch.cwd, source);
   assert.match(cleanupRelaunch.relaunch.arguments[2], /\/taskbelay resume-cleanup/u);
   assert.equal(JSON.stringify(await readProvisioningReceipt(data, fixedLaunchID)).includes(source), false);
-  const cleanupFromSource = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: source, readTask: async () => terminalTask });
+  const cleanupFromSource = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: source, readTask: async () => publicTask(terminalTask) });
   assert.equal(relative(source, result.workspace_root).startsWith(".."), true, "Task worktree must remain outside the relaunched fixed Workspace Root");
   const removedWorktree = await cleanupFromSource.cleanupWorktree({ launchID: fixedLaunchID, repositoryKey: "primary", taskID: terminalTask.task_id, revision: terminalTask.revision });
   assert.deepEqual(removedWorktree, { status: "worktree_removed", changed: true, launch_id: fixedLaunchID, repository_key: "primary", branch_retained: true });
@@ -281,8 +248,8 @@ for (const carry of [false, true]) test(`local coordinator works without a remot
   }
   const relaunched = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root });
   const consumed = await relaunched.consume({ launchID: fixedLaunchID });
-  assert.equal(consumed.open_task.workspace_origin.carry_changes, carry);
-  assert.equal(consumed.open_task.workspace_origin.source_type, "local");
+  assert.equal(consumed.open_task.repositories[0].workspace_origin.carry_changes, carry);
+  assert.equal(consumed.open_task.repositories[0].workspace_origin.source_type, "local");
 });
 
 test("snapshot rejects changed contents even when Git status is unchanged", async (t) => {
@@ -350,19 +317,18 @@ for (const mode of ["new_branch", "current_branch"]) {
     const repository = { repository_key: "primary", workspace_mode: mode, source_repository_path: source,
       source_type: "local", carry_changes: true, remote_name: "", base_branch: "main", target_branch: mode === "new_branch" ? "feature/local" : "main" };
     const choices = [repository];
-    assert.match(workspaceConfirmationText(choices), new RegExp(`mode=${mode}`));
     const options = { dataDirectory: data, workspaceRoot: source, launchID: () => fixedLaunchID, readTask: async () => assert.fail("local cleanup must stop before reading a terminal Task") };
-    const denied = createWorkspaceCoordinator({ ...options, checkWorkspaceAvailable: async (path) => ({ available: false, repository_path: path }) });
+    const denied = createWorkspaceCoordinator({ ...options, checkWorkspaceAvailable: async (path) => ({ available: false, repositories:[{key:"primary",repository_path:path,active_task_id:"existing-task"}] }) });
     await assert.rejects(denied.provision({ request: "Work locally", profile: "headless", repositories: choices }), /active TaskBelay Task/);
     assert.equal((await git(source, ["branch", "--show-current"])).stdout.trim(), "main");
-    const coordinator = createWorkspaceCoordinator({ ...options, checkWorkspaceAvailable: async (path) => ({ available: true, repository_path: path }) });
+    const coordinator = createWorkspaceCoordinator({ ...options, checkWorkspaceAvailable: async (path) => ({ available: true, repositories:[{key:"primary",repository_path:path,active_task_id:null}] }) });
     await assert.rejects(coordinator.provision({ request: "Work locally", profile: "headless", repositories: [{ ...repository, carry_changes: false }] }), /initial local changes/);
     const result = await coordinator.provision({ request: "Work locally", profile: "headless", repositories: choices });
     assert.equal(result.status, "ready");
     assert.equal(Object.hasOwn(result, "relaunch"), false);
     assert.equal(result.workspace_root, source);
-    assert.equal(result.open_task.repository_path, source);
-    assert.equal(result.open_task.workspace_origin.mode, mode);
+    assert.equal(result.open_task.repositories[0].repository_path, source);
+    assert.equal(result.open_task.repositories[0].workspace_origin.mode, mode);
     assert.equal((await git(source, ["branch", "--show-current"])).stdout.trim(), repository.target_branch);
     assert.equal((await git(source, ["status", "--porcelain=v2", "--untracked-files=all"])).stdout, status);
     assert.equal((await git(source, ["write-tree"])).stdout, index);
@@ -386,17 +352,19 @@ test("mixed local and dedicated repositories relaunch once with every directory 
       source_repository_path: source, source_type: "local", carry_changes: false, remote_name: "", base_branch: "main", target_branch: `feature/${key}` });
   }
   const coordinator = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: workspace, launchID: () => fixedLaunchID,
-    checkWorkspaceAvailable: async (path) => ({ available: true, repository_path: path }) });
+    checkWorkspaceAvailable: async (path) => ({ available: true, repositories:[{key:"primary",repository_path:path,active_task_id:null}] }) });
   const result = await coordinator.provision({ request: "Update API and documentation", profile: "web", repositories });
   assert.equal(result.status, "relaunch_required");
   assert.equal(result.relaunch.cwd, root);
   const destination = createWorkspaceCoordinator({ dataDirectory: data, workspaceRoot: result.workspace_root });
   const ready = await destination.consume({ launchID: result.launch_id });
-  assert.equal(ready.open_task.repository_path, join(workspace, "api"));
-  assert.equal(ready.open_task.workspace_origin.mode, "new_branch");
-  assert.equal(ready.open_task.additional_repositories[0].workspace_origin.mode, "dedicated_worktree");
-  const docs = ready.open_task.additional_repositories[0].repository_path;
+  assert.equal(ready.open_task.repositories[0].repository_path, join(workspace, "api"));
+  assert.equal(ready.open_task.repositories[0].workspace_origin.mode, "new_branch");
+  assert.equal(ready.open_task.repositories.slice(1)[0].workspace_origin.mode, "dedicated_worktree");
+  const docs = ready.open_task.repositories.slice(1)[0].repository_path;
   assert.equal(docs, join(root, ".taskbelay-worktrees", fixedLaunchID, "docs"));
   assert.notEqual(docs, join(workspace, "docs"));
   assert.equal((await git(join(workspace, "docs"), ["branch", "--show-current"])).stdout.trim(), "main");
 });
+
+function publicTask(task) { return {identity:{task_id:task.task_id,revision:task.revision},status:task.status,details:{repositories:task.repositories}}; }

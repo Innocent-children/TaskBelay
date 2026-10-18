@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { readSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { describeInterface, interfaceHelpRequest } from "../lib/interface-reference.mjs";
+import { fileURLToPath } from "node:url";
 import { core } from "../lib/runtime.mjs";
 import * as lifecycle from "../lib/lifecycle.mjs";
 import * as workspace from "../lib/workspace.mjs";
 import { runHook } from "../plugin/hooks/pre-tool-use.mjs";
 import { assertNoDuplicateJSONMembers } from "../lib/json.mjs";
-const operations = ["inspect", "prepare", "provision", "status", "scope", "bind-task", "launch", "retry-launch", "resume", "record-session", "relocate", "cleanup-worktree", "cleanup-branch"];
+const operations = ["freshness", "inspect", "prepare", "provision", "status", "scope", "bind-task", "launch", "retry-launch", "resume", "record-session", "cleanup-worktree", "cleanup-branch"];
 async function input() {
   const chunks = []; let size = 0;
   for (;;) {
@@ -25,12 +27,20 @@ async function input() {
   return value;
 }
 export async function runCLI(args) {
+  const help = interfaceHelpRequest(args);
+  if (help) {
+    const name = help.name ?? (help.operation ? `claude.${help.group}.${help.operation}` : undefined);
+    process.stdout.write(JSON.stringify(await describeInterface(fileURLToPath(new URL("../", import.meta.url)), name), null, 2) + "\n");
+    return 0;
+  }
+
   if (args.length === 0 || args.includes("--help")) {
-    process.stdout.write("taskbelay-claude status|setup|remove [--json]\ntaskbelay-claude --version\ntaskbelay-claude mcp\ntaskbelay-claude artifacts collect|prepare\ntaskbelay-claude host-check pre-file-write|workspace-available\ntaskbelay-claude hook pre-tool-use\ntaskbelay-claude host-launch " + operations.join("|") + "\nHost-launch input: one JSON object on closed stdin. inspect: {request,repositories:[{key,repository_path}]}; prepare: {request,assessment,user_choice,repositories:[{key,repository_path,workspace_mode,source_type,remote_name,base_branch,target_branch,carry_changes,worktree_path}],handoff}. Other operations: {launch_id,...operation inputs}. Read the Skill for exact operation contracts.\n");
+    process.stdout.write("taskbelay-claude status|setup|remove [--json]\ntaskbelay-claude --version\ntaskbelay-claude mcp\ntaskbelay-claude check run\ntaskbelay-claude host-check pre-file-write|workspace-available\ntaskbelay-claude hook pre-tool-use\ntaskbelay-claude host-launch " + operations.join("|") + "\nHost-launch input: one JSON object on closed stdin. inspect: {request,repositories:[{key,repository_path}]}; prepare: {request,authorization_ref,repositories:[{key,repository_path,workspace_mode,source_type,remote_name,base_branch,target_branch,carry_changes,worktree_path}],handoff}. Other operations: {launch_id,...operation inputs}. Use host-launch <operation> --help --json for complete schemas and examples.\n");
     return 0;
   }
   if (args.length === 1 && args[0] === "--version") { process.stdout.write((await core(["version"])).stdout); return 0; }
-  if (args.length === 1 && args[0] === "mcp") { await core(["mcp", "--stdio"], { stream: true }); return 0; }
+  if (args.length === 2 && (args[0] === "call" || args[0] === "check" && args[1] === "run")) { const result = await core(args, {stream:true}); return result?.code ?? 0; }
+  if (args.length === 1 && args[0] === "mcp") { return (await core(["mcp", "--stdio"], { stream: true })).code; }
   if (["status", "setup", "remove"].includes(args[0]) && (args.length === 1 || args.length === 2 && args[1] === "--json")) {
     process.stdout.write(JSON.stringify(await lifecycle[args[0]]()) + "\n"); return 0;
   }
@@ -38,21 +48,20 @@ export async function runCLI(args) {
     try { const result = await runHook(await input()); if (result) process.stdout.write(JSON.stringify(result)); return 0; }
     catch (e) { process.stderr.write("TaskBelay write check failed: " + e.message); return 2; }
   }
-  if (args.length === 2 && (args[0] === "artifacts" && ["collect", "prepare"].includes(args[1]) || args[0] === "host-check" && ["pre-file-write", "workspace-available"].includes(args[1]))) {
+  if (args.length === 2 && (args[0] === "host-check" && ["pre-file-write", "workspace-available"].includes(args[1]))) {
     try { process.stdout.write((await core(args, { input: await input() })).stdout); return 0; }
     catch (error) { if (error.stdout) { process.stdout.write(error.stdout); return error.code || 1; } throw error; }
   }
   if (args.length === 2 && args[0] === "host-launch" && operations.includes(args[1])) {
     const value = await input(), operation = args[1];
     let result;
-    if (["inspect", "prepare"].includes(operation)) result = await workspace[operation](value);
+    if (["freshness", "inspect", "prepare"].includes(operation)) result = await workspace[operation](value);
     else {
       const { launch_id, ...rest } = value;
       if (["status", "scope", "provision"].includes(operation)) {
         if (Object.keys(rest).length) throw new Error("Unknown operation fields");
         result = await workspace[operation](launch_id);
       } else if (operation === "bind-task") result = await workspace.bindTask(launch_id, rest);
-      else if (operation === "relocate") result = await workspace.relocate(launch_id, rest);
       else if (operation.startsWith("cleanup-")) result = await workspace.cleanup(launch_id, operation, rest);
       else result = await workspace.session(launch_id, operation, rest);
     }

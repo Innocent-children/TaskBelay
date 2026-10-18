@@ -1,162 +1,59 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="packages/webui/src/assets/taskbelay-wordmark-dark.svg" />
-    <img src="packages/webui/src/assets/taskbelay-wordmark.svg" width="360" height="180" alt="TaskBelay" />
-  </picture>
-</p>
+# TaskBelay
 
-<h1 align="center">TaskBelay</h1>
+[English](README.md) · [简体中文](README_zh-CN.md) · [繁體中文](README_zh-TW.md) · [日本語](README_ja.md) · [한국어](README_ko.md) · [Español](README_es.md) · [Français](README_fr.md) · [Deutsch](README_de.md) · [Português](README_pt-BR.md)
 
-<p align="center"><strong>Long-running AI coding, on belay.</strong></p>
+**Engineering control for real AI coding tasks.**
 
-<p align="center">
-  <a href="README.md">English</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_zh-TW.md">繁體中文</a> · <a href="README_ja.md">日本語</a> · <a href="README_ko.md">한국어</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_de.md">Deutsch</a> · <a href="README_pt-BR.md">Português (Brasil)</a>
-</p>
+TaskBelay works alongside Codex, DeepSeek Harness, Claude Code and ZCode. It keeps the authorized outcome, actual code changes and verification evidence together so an agent can continue across sessions with fewer repeated decisions. The agent remains responsible for coding and technical judgment.
 
-## What TaskBelay helps you do
+## What you can do
 
-Your coding agent decides what to do next.<br />
-TaskBelay keeps the task under control.
+- Keep goals, explicit non-goals and interface, data, dependency and design constraints active while developing. Inspect changes within files, not just their paths. Correct scope drift within existing authority; ask the user only when authority or an important choice must change.
+- Execute approved local checks and retain actual exit codes, inputs, environment conditions and results. Claims, process execution and acceptance conclusions remain distinct. Relevant changes expire evidence; justified independent checks can remain valid. Replanning never resets cumulative cost.
+- Alternate implementation and verification, revise requirements and resume from current work, failed attempts and unresolved executions. Recent history is bounded while live results and cumulative costs remain.
 
-Use it with Codex, DeepSeek, Claude Code or ZCode. The agent reasons about the code and chooses the technical action; TaskBelay keeps the scope, verification limits, state and recovery records around that work.
+Command checks run through the Host native process tool using `taskbelay check run`, with its permissions and environment. The WebUI supports task search, Host/status filters, language selection, user decisions and execution recovery. Every goal needs a passed acceptance check; accepting an existing regression failure does not replace it. Saved-state reads do not write metering data.
 
-In climbing, a belayer manages the rope while the climber chooses the route. TaskBelay applies that idea to coding: the agent makes technical decisions, while TaskBelay checks approved scope and verification limits and uses saved records to recover from failures or uncertain results. It is neither a sandbox nor another coding agent.
+Engineering questions keep their original identities until resolved; omitted text does not erase them. Delivery limitations come from those saved decisions. Host usage distinguishes unreported, partial and reported totals, and unavailable values remain unknown. Method help includes input/output examples and recovery rules without requiring source access. New task branches do not implicitly inherit an upstream.
 
-- **Explicit Scope:** Check actual changes against approved files. Work beyond the plan needs a decision.
-- **Bounded Verification:** Plan relevant checks and their limits. More verification needs a concrete reason.
-- **Durable State:** Keep the authoritative task state locally, across sessions.
-- **Safe Recovery:** Use saved state and operation records to resolve failures or uncertain results before retrying.
+## Start
 
-It suits repository work that spans sessions or needs explicit scope and testing limits. For one-off
-questions, code explanations, and small edits that need no saved progress, using Codex, DeepSeek, Claude Code or ZCode
-directly is usually simpler.
+Use Node.js >=24 and an installed coding Host. Source development additionally needs Go >=1.26 and pnpm >=11 <12. This checkout contains a breaking engineering upgrade; published package versions and stable support records are unchanged. Build this source to use the new contract. Preserve old data and select a separate explicit data directory; no migration or automatic reset is provided.
 
-## Quick start
-
-> Use Node.js `>=24` and install the Host you intend to use. Check Host versions and validated platforms in the [Support Matrix](docs/SUPPORT-MATRIX_en.md).
-
-### 1. Install TaskBelay
-
-Install TaskBelay, then follow the activation instructions for [Codex](docs/CODEX_en.md), [DeepSeek](docs/DEEPSEEK_en.md), [Claude Code](docs/CLAUDE_en.md), or [ZCode](docs/ZCODE_en.md). The package targets Windows x64 and macOS arm64; native macOS ZCode validation remains pending.
+Public installation:
 
 ```sh
 npm install -g taskbelay@latest
 taskbelay
 ```
 
-Choose your Host from the options offered by your installation entry. After setup, review and trust the TaskBelay hook in Codex `/hooks`, restart the selected DeepSeek Profile, or reload Claude plugins/start a new Claude session and review its permission prompts.
+Build and install the current source locally:
 
-In ZCode, install and enable the plugin in Settings → Plugins, then start a new session to activate its hooks. Local preparation does not confirm that ZCode has loaded the plugin.
-
-### 2. Start a task
-
-After completing the appropriate installation, send one of these messages in your Host conversation:
-
-**Codex**
-
-```text
-$taskbelay-codex:taskbelay Add failed-login rate limiting. Change only auth files and run at most 4 targeted checks.
+```sh
+pnpm install --frozen-lockfile --ignore-scripts
+node scripts/taskbelay-local.mjs install --host codex --yes
 ```
 
-**DeepSeek Harness**
+Enable the adapter using its [Host guide](packages/codex/README.md), then request a bounded outcome in the agent:
 
 ```text
-/taskbelay Add failed-login rate limiting. Change only auth files and run at most 4 targeted checks.
+Use TaskBelay to add login failure throttling. Preserve the public authentication API and stored user data; do not redesign account management. Run the relevant existing tests and report actual results.
 ```
 
-**Claude Code**
+State the outcome and necessary restrictions. The agent explains its approach and proceeds under your existing authorization. Routine implementation and check changes do not require another approval; changed outcomes or explicit restrictions need your actual decision. Relevant passing results are reused. Usage is recorded continuously, with limits only when you set them. The WebUI uses a compact task list beside Overview, Check records, and Requirements & usage tabs. Output expands below its check; answers, recovery and archiving remain available. Update records reads saved content, while Check current code re-observes actual conditions. Resume with the saved Task ID in its original workspace.
 
-```text
-/taskbelay-claude:taskbelay Add failed-login rate limiting. Change only auth files and run at most 4 targeted checks.
-```
+The agent shows the directory, branch and existing changes and uses the workspace you selected or made clear in context. It asks only for ambiguity, conflicts or a needed new workspace operation. Branch/worktree preparation and upstream integration are optional and follow actual authorization.
 
-**ZCode**
-
-Select `taskbelay` from the input’s `/` → Skills menu, then describe your task.
-
-```text
-Use TaskBelay to add failed-login rate limiting. Change only auth files and run at most 4 targeted checks.
-```
-
-Send these in the conversation, not a terminal. Describe your goal, acceptance conditions, file
-scope, and testing limit.
-
-The first reply assesses the request and asks whether to work directly or use TaskBelay. Choosing
-TaskBelay defaults to a new task branch from the current HEAD in the current directory. Confirm the
-new branch and whether existing uncommitted changes belong to the task. Your dependencies, local
-configuration, files and staged state stay in place; the current session continues when it can access
-all participating directories.
-
-You can explicitly choose to use the current branch or create a dedicated Git worktree. A dedicated
-worktree additionally selects a local or remote source and a starting branch. Codex opens the new
-directory when supported; DeepSeek and Claude Code provide a relaunch command.
-
-One directory supports one active Task. Local manual or external edits are also observed, and changing
-branches during a Task pauses progress. Local directories and branches remain after completion;
-uncommitted work must be accounted for when starting the next Task.
-
-Before implementation, review and discuss the requirements, design, work items, expected files and verification plan. Development starts after you explicitly approve the complete plan. Revisions or expanded file scope require approval again; choosing TaskBelay or a worktree does not replace plan approval.
-
-### 3. Resume and view progress
-
-After a session restart, return to the task's original directory and ask to continue it. TaskBelay
-resumes from the saved progress. If that directory is missing or replaced, the task pauses until you
-restore it or explicitly abandon the task.
-
-In DeepSeek Harness, include `/taskbelay` in the message asking to resume.
-
-For Claude, reopen the original workspace and conversation and invoke `/taskbelay-claude:taskbelay` to continue the saved task.
-
-For ZCode, reopen the original workspace, select the TaskBelay Skill and ask to continue the saved task. For a new directory, follow the returned workspace-opening instructions.
-
-These commands use an installed global manager. For source installations, use the corresponding entry in the source guide.
-
-```bash
-# Inspect installed integrations
-taskbelay status --host all
-
-# Open the local task view
+```sh
 taskbelay webui start
 ```
 
-For non-interactive installation, custom DSH Profiles, upgrades, repair, and removal, see the
-[Command Reference](docs/COMMANDS_en.md).
+## Boundaries
 
-## Desktop pet
+Structured hooks cover supported write paths; shell and external edits are observed at checkpoints. Only checks actually run by Core have Core execution provenance. Declared inputs and environment conditions do not automatically include ignored dependencies, databases or remote services. Semantic reasoning is explicit but does not prove correctness. TaskBelay is not a sandbox or another coding agent.
 
-The pet requires both a configured Adapter and an installed desktop application. Installing an Adapter alone does not install the desktop app.
+Core overhead is measured; Host analysis, waiting and tokens are reported and may be incomplete. Small mechanical tasks are often simpler with the native agent alone. The source tests demonstrate capabilities, not a measured reduction in defects or human supervision. Completion retains files and grants no Git, publication or deletion authority.
 
-The desktop pet shows multiple tasks in stacked bubbles and opens each task's WebUI. It prioritizes blocked tasks and automatically follows unfinished work after a task completes; you can also pin a task. Customize its appearance, control animations, resize it, and start or stop it independently.
+## Further help
 
-```bash
-taskbelay pet start
-taskbelay pet stop
-```
-
-Desktop applications target macOS arm64 and Windows 10/11 x64. See the
-[pet guide](docs/DESKTOP-PETS_en.md) for installation and controls, and the
-[Support Matrix](docs/SUPPORT-MATRIX_en.md) for verified availability.
-
-## Usage limits
-
-TaskBelay controls the task workflow, not OS permissions. It does not intercept every file operation or shell command.
-
-A dedicated worktree separates code changes. Processes, network access, credentials, and external
-services remain shared with your environment.
-
-Completing a task does not automatically commit, push, or delete its worktree. Those operations
-require your separate authorization.
-
-## Documentation
-
-- **Usage:** [Codex](docs/CODEX_en.md) · [DeepSeek](docs/DEEPSEEK_en.md) · [Claude Code](docs/CLAUDE_en.md) · [ZCode](docs/ZCODE_en.md) · [Commands](docs/COMMANDS_en.md) · [Control Center](docs/WEBUI_en.md)
-- **Project:** [Product](docs/PRODUCT_en.md) · [Support Matrix](docs/SUPPORT-MATRIX_en.md) · [Security](SECURITY.md)
-- **Development and contributions:** [Documentation index](MANIFEST_en.md) · [Contributing](CONTRIBUTING.md)
-
-## Community
-
-[LINUX DO](https://linux.do/)
-
-## License
-
-[Apache License 2.0](LICENSE)
+[Product](docs/PRODUCT_en.md) · [Commands](docs/COMMANDS_en.md) · [Support and verification](docs/SUPPORT-MATRIX_en.md) · [Codex](packages/codex/README.md) · [DeepSeek](packages/deepseek/README.md) · [Claude Code](docs/CLAUDE_en.md) · [ZCode](docs/ZCODE_en.md)

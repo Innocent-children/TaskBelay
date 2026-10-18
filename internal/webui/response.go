@@ -2,44 +2,38 @@ package webui
 
 import (
 	"encoding/json"
-	"errors"
-	"io"
 	"net/http"
+
+	"github.com/Innocent-children/taskbelay/internal/protocol"
 )
 
-const maxRequestBodyBytes = 1 << 20
-
-var ErrInvalidJSON = errors.New("invalid JSON request")
-
-func WriteJSON(w http.ResponseWriter, status int, value any) error {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+/**
+ * HTTP failures use the same error contract as Core tools, including whether a
+ * semantic action may already have happened. The status code is transport data.
+ */
+func WriteFailure(w http.ResponseWriter, status int, name string, err error) {
+	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
-	return json.NewEncoder(w).Encode(value)
+	_ = json.NewEncoder(w).Encode(protocol.ErrorEnvelope(name, err))
 }
 
-func DecodeJSON(r *http.Request, value any) error {
-	if r == nil || r.Body == nil || value == nil {
-		return ErrInvalidJSON
+func errorStatus(e protocol.Envelope) int {
+	if e.Error == nil {
+		return http.StatusInternalServerError
 	}
-	decoder := json.NewDecoder(io.LimitReader(r.Body, maxRequestBodyBytes+1))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(value); err != nil {
-		return ErrInvalidJSON
+	switch e.Error.Code {
+	case "TASK_NOT_FOUND", "RUN_NOT_FOUND":
+		return http.StatusNotFound
+	case "INVALID_ARGUMENT":
+		return http.StatusBadRequest
+	case "LOCAL_SESSION_REQUIRED", "HOST_REJECTED":
+		return http.StatusForbidden
+	case "STORAGE_UNAVAILABLE", "CONTROL_INITIALIZATION_FAILED":
+		return http.StatusServiceUnavailable
+	case "INTERNAL_ERROR":
+		return http.StatusInternalServerError
+	default:
+		return http.StatusConflict
 	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return ErrInvalidJSON
-	}
-	return nil
-}
-
-func WriteFailure(w http.ResponseWriter, status int, requestID, writeState string, failure ErrorResponse, recovery RecoveryAdvice) error {
-	return WriteJSON(w, status, FailureResponse{
-		OK:                 false,
-		RequestID:          requestID,
-		WorkflowWriteState: writeState,
-		Error:              failure,
-		Recovery:           recovery,
-	})
 }

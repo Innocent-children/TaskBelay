@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 
 import * as codexPlatform from "../../packages/codex/lib/platform.mjs";
@@ -44,17 +44,12 @@ test("package manifests expose complete test and runtime contracts", async () =>
   assert.match(webui.scripts.build, /tsc --noEmit && vite build/u);
 });
 
-test("repository validation has deterministic Core, contract, package, and release entrypoints", async () => {
+test("repository validation uses the current integrated engineering entrypoint", async () => {
   const validation = await readFile(join(repositoryRoot, "scripts/validate-repository.sh"), "utf8");
-  for (const command of [
-    "go vet ./...",
-    "go test -p 1 ./...",
-    "release/publish.test.mjs",
-    "tests/release_workflow.test.mjs",
-    "packages/taskbelay/tests/*.test.mjs",
-  ]) {
-    assert.match(validation, new RegExp(command.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "u"));
-  }
+  assert.match(validation, /exec node scripts\/validate-engineering.mjs/u);
+  const current = await readFile(join(repositoryRoot, "scripts/validate-engineering.mjs"), "utf8");
+  for (const contract of ["tests/journeys/engineering.test.mjs", "tests/host-engineering.test.mjs", "scripts/build-webui.mjs"])
+    assert.ok(current.includes(contract), contract);
 });
 
 test("publication remains manual and separate from product qualification", async () => {
@@ -86,7 +81,7 @@ test("Codex and DeepSeek structured admission boundaries are conservative", () =
     tool_input: { command: "*** Begin Patch\n*** Update File: src/a.go\n*** Add File: src/b.go\n*** End Patch" },
   });
   assert.equal(patch.path_parse_complete, true);
-  assert.deepEqual(patch.paths, ["/workspace/core/src/a.go", "/workspace/core/src/b.go"]);
+  assert.deepEqual(patch.paths, [resolve("/workspace/core/src/a.go"), resolve("/workspace/core/src/b.go")]);
   assert.match(patch.intent_digest, /^[0-9a-f]{64}$/u);
   assert.equal(preparedWriteFromHook({ hook_event_name: "PreToolUse", tool_name: "shell", cwd: "/workspace/core", tool_input: {} }), undefined);
   assert.equal(hookDecision({ decision: "allow" }), null);

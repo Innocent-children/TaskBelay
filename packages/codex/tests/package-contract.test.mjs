@@ -19,154 +19,11 @@ const repositoryRoot = dirname(dirname(packageRoot));
 const pluginRoot = join(packageRoot, "plugin");
 const execFile = promisify(execFileCallback);
 const currentVersion = (await readFile(join(repositoryRoot, "CORE_VERSION"), "utf8")).trim();
-const packageIconUrl = "https://raw.githubusercontent.com/Innocent-children/taskbelay/main/packages/webui/src/assets/taskbelay-app-icon-light.svg";
 
-const expectedPackageFiles = [
-  ".agents/plugins/marketplace.json",
-  "LICENSE",
-  "bin/taskbelay-codex.mjs",
-  "lib/command.mjs",
-  "lib/artifacts-help.mjs",
-  "lib/install-experience.mjs",
-  "lib/json.mjs",
-  "lib/lifecycle.mjs",
-  "lib/paths.mjs",
-  "lib/platform.mjs",
-  "lib/platform/macos/policies.mjs",
-  "lib/platform/windows/policies.mjs",
-  "lib/platform/macos/command.mjs",
-  "lib/platform/windows/command.mjs",
-  "lib/platform/macos/pet-installer.mjs",
-  "lib/provisioning-receipt.mjs",
-  "lib/task-admission.mjs",
-  "lib/task-handoff.mjs",
-  "lib/task-launch.mjs",
-  "lib/host-launch-contract.mjs",
-  "lib/worktree-lifecycle.mjs",
-  "lib/worktree-snapshot.mjs",
-  "plugin/.codex-plugin/plugin.json",
-  "plugin/.mcp.json",
-  "plugin/hooks/hooks.json",
-  "plugin/hooks/pre-tool-use.mjs",
-  "plugin/skills/taskbelay/SKILL.md",
-  "plugin/skills/taskbelay/references/admission.md",
-  "plugin/skills/taskbelay/references/artifact-contract.md",
-  "plugin/skills/taskbelay/references/artifacts.md",
-  "plugin/skills/taskbelay/references/connection-examples.md",
-  "plugin/skills/taskbelay/references/connection.md",
-  "plugin/skills/taskbelay/references/core-lifecycle-examples.md",
-  "plugin/skills/taskbelay/references/core-lifecycle.md",
-  "plugin/skills/taskbelay/references/host-lifecycle.md",
-  "plugin/skills/taskbelay/references/launch-examples.md",
-  "plugin/skills/taskbelay/references/lifecycle-examples.md",
-  "plugin/skills/taskbelay/references/method-profiles.md",
-  "plugin/skills/taskbelay/references/node-payloads.md",
-  "plugin/skills/taskbelay/references/nodes/comprehension-examples.md",
-  "plugin/skills/taskbelay/references/nodes/comprehension.md",
-  "plugin/skills/taskbelay/references/nodes/delivery-examples.md",
-  "plugin/skills/taskbelay/references/nodes/delivery.md",
-  "plugin/skills/taskbelay/references/nodes/design-examples.md",
-  "plugin/skills/taskbelay/references/nodes/design.md",
-  "plugin/skills/taskbelay/references/nodes/implementation-examples.md",
-  "plugin/skills/taskbelay/references/nodes/implementation.md",
-  "plugin/skills/taskbelay/references/nodes/refactor-examples.md",
-  "plugin/skills/taskbelay/references/nodes/refactor.md",
-  "plugin/skills/taskbelay/references/nodes/requirements-examples.md",
-  "plugin/skills/taskbelay/references/nodes/requirements.md",
-  "plugin/skills/taskbelay/references/nodes/tasks-examples.md",
-  "plugin/skills/taskbelay/references/nodes/tasks.md",
-  "plugin/skills/taskbelay/references/nodes/test-examples.md",
-  "plugin/skills/taskbelay/references/nodes/test.md",
-  "plugin/skills/taskbelay/references/recovery-examples.md",
-  "plugin/skills/taskbelay/references/recovery.md",
-  "plugin/skills/taskbelay/references/response-examples.md",
-  "plugin/skills/taskbelay/references/task-handoff.md",
-  "plugin/skills/taskbelay/references/tool-results.md",
-  "plugin/skills/taskbelay/references/transport.md",
-  "plugin/skills/taskbelay/references/verification.md",
-  "plugin/skills/taskbelay/references/worktree-launch.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_abandon_task-abandon.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_cancel_task-cancel.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_get_next_action-guarded-read.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_get_task-read.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_open_task-create.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_open_task-multiple.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_open_task-resume.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_prepare_task_relocation-prepare.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_recover_action-saved-operation.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_resolve_blocker-allow_once.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_resolve_blocker-expand_scope.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_resolve_blocker-history.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_resolve_blocker-reject.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_resolve_blocker-relocation.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_resolve_blocker-verification-or-recovery.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_server_info-handshake.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_comprehension-code_too_complex.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_comprehension-comprehension_passed.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_comprehension-design_too_complex.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_comprehension-evidence_insufficient.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_comprehension-implementation_defect.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_comprehension-requirement_unclear.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_delivery-delivery_complete.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_delivery-delivery_needs_comprehension.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_delivery-delivery_needs_design.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_delivery-delivery_needs_implementation.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_delivery-delivery_needs_requirements.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_delivery-delivery_needs_test.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_design-design_ready.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_design-design_requires_requirements.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_implementation-implementation_needs_refactor.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_implementation-implementation_ready_for_test.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_implementation-implementation_requires_design.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_implementation-implementation_requires_requirements.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_refactor-refactor_ready_for_test.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_refactor-refactor_requires_design.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_refactor-refactor_requires_requirements.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_requirements-requirements_ready.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_tasks-tasks_plan_saved.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_tasks-tasks_ready.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_tasks-tasks_require_design.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_tasks-tasks_require_requirements.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_test-tests_accepted_with_known_failures.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_test-tests_expose_design_issue.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_test-tests_expose_requirement_issue.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_test-tests_failed_implementation.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_test-tests_passed.md",
-  "plugin/skills/taskbelay/references/successes/taskbelay_submit_test-verification_budget_increased.md",
-  "plugin/skills/taskbelay/references/successes/host-bootstrap-managed.md",
-  "plugin/skills/taskbelay/references/successes/host-cleanup-branch-remove-branch.md",
-  "plugin/skills/taskbelay/references/successes/host-cleanup-decision-keep.md",
-  "plugin/skills/taskbelay/references/successes/host-cleanup-worktree-remove-worktree.md",
-  "plugin/skills/taskbelay/references/successes/host-cli-provision-single.md",
-  "plugin/skills/taskbelay/references/successes/host-dispatch-call-managed.md",
-  "plugin/skills/taskbelay/references/successes/host-dispatch-reconcile-lookup.md",
-  "plugin/skills/taskbelay/references/successes/host-dispatch-recover-not-called.md",
-  "plugin/skills/taskbelay/references/successes/host-dispatch-result-queued.md",
-  "plugin/skills/taskbelay/references/successes/host-dispatch-result-ready.md",
-  "plugin/skills/taskbelay/references/successes/host-dispatch-start-managed.md",
-  "plugin/skills/taskbelay/references/successes/host-handoff-result-record.md",
-  "plugin/skills/taskbelay/references/successes/host-handoff-start-start.md",
-  "plugin/skills/taskbelay/references/successes/host-handoff-status-pending.md",
-  "plugin/skills/taskbelay/references/successes/host-handoff-status-succeeded.md",
-  "plugin/skills/taskbelay/references/successes/host-inspect-single.md",
-  "plugin/skills/taskbelay/references/successes/host-local-provision-current-session.md",
-  "plugin/skills/taskbelay/references/successes/host-prepare-local-branch.md",
-  "plugin/skills/taskbelay/references/successes/host-prepare-local-managed.md",
-  "plugin/skills/taskbelay/references/successes/host-prepare-remote-cli.md",
-  "plugin/skills/taskbelay/references/successes/host-scope-multiple.md",
-  "plugin/skills/taskbelay/references/successes/host-scope-single.md",
-  "plugin/skills/taskbelay/references/successes/host-status-launch.md",
-  "plugin/skills/taskbelay/agents/openai.yaml",
-  "runtime/darwin-arm64/taskbelay",
-  "runtime/win32-x64/taskbelay.exe",
-];
+const expectedPackageFiles = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")).files;
 
 const expectedPackedFiles = ["README.md", "package.json", ...expectedPackageFiles].sort();
 
-test("package README displays the public TaskBelay icon", async () => {
-  const readme = await readFile(join(packageRoot, "README.md"), "utf8");
-  assert.match(readme, new RegExp(`<img src="${packageIconUrl}" width="112" height="112" alt="TaskBelay" \\/>`));
-});
 
 test("source package declares one public macOS arm64 and Windows x64 Codex product", async () => {
   const [coreVersion, manifest, plugin, marketplace, mcp] = await Promise.all([
@@ -226,9 +83,9 @@ test("source package declares one public macOS arm64 and Windows x64 Codex produ
 
 test("package metadata closes source, artifact, and development command surfaces", async () => {
   const manifest = await readJSON(join(packageRoot, "package.json"));
-  assert.deepEqual([...manifest.files].sort(), [...expectedPackageFiles].sort());
-  assert.equal(manifest.files.includes("plugin/skills/taskbelay/references/method-profiles.md"), true);
-  assert.equal(manifest.files.includes("plugin/skills/taskbelay/references/node-payloads.md"), true);
+  assert.ok(manifest.files.includes("plugin/skills/taskbelay/references/engineering.md"));
+  assert.equal(manifest.files.includes("plugin/skills/taskbelay/references/engineering.md"), true);
+  assert.equal(manifest.files.includes("plugin/skills/taskbelay/references/protocol.md"), true);
   assert.equal(manifest.files.some((path) => /[*?[\]{}]/u.test(path)), false);
   assert.deepEqual(manifest.bin, { "taskbelay-codex": "bin/taskbelay-codex.mjs" });
   assert.deepEqual(manifest.scripts, {
@@ -259,42 +116,7 @@ test("package metadata closes source, artifact, and development command surfaces
 
 });
 
-test("method-profile reference is one closed dependency-free packaged resource", async () => {
-  const manifest = await readJSON(join(packageRoot, "package.json"));
-  const referencePath = "plugin/skills/taskbelay/references/method-profiles.md";
-  const reference = await readFile(join(packageRoot, referencePath), "utf8");
 
-  assert.equal(manifest.files.filter((path) => path === referencePath).length, 1);
-  assert.equal((await stat(join(packageRoot, referencePath))).isFile(), true);
-  for (const field of [
-    "dependencies",
-    "optionalDependencies",
-    "peerDependencies",
-    "bundledDependencies",
-    "bundleDependencies",
-  ]) {
-    assert.equal(field in manifest, false, field);
-  }
-  assert.doesNotMatch(reference, /(?:^|\s)(?:\/Users\/|\/home\/|[A-Za-z]:\\\\)/u);
-  assert.doesNotMatch(reference, /(?:node_modules|tests?\/fixtures?|\.tmp|\.sqlite|\.db)(?:\/|\b)/iu);
-  assert.doesNotMatch(reference, /(?:process\.env|environment variable|token log|command log)/iu);
-});
-
-test("node-payload reference is one explicit closed packaged resource", async () => {
-  const manifest = await readJSON(join(packageRoot, "package.json"));
-  const referencePath = "plugin/skills/taskbelay/references/node-payloads.md";
-  const reference = await readFile(join(packageRoot, referencePath), "utf8");
-  assert.equal(manifest.files.filter((path) => path === referencePath).length, 1);
-  assert.equal((await stat(join(packageRoot, referencePath))).isFile(), true);
-  const links = [...reference.matchAll(/\]\((nodes\/[^)]+\.md)\)/gu)].map((match) => match[1]);
-  assert.equal(new Set(links).size, 8);
-  for (const link of links) {
-    assert.ok((await stat(join(packageRoot, "plugin/skills/taskbelay/references", link))).isFile());
-    assert.ok(manifest.files.includes(`plugin/skills/taskbelay/references/${link}`));
-  }
-  assert.doesNotMatch(reference, /(?:^|\s)(?:\/Users\/|\/home\/|[A-Za-z]:\\\\)/u);
-  assert.doesNotMatch(reference, /(?:node_modules|tests?\/fixtures?|\.tmp|\.sqlite|\.db)(?:\/|\b)/iu);
-});
 
 test("npm compatibility metadata rejects an unsupported OS and CPU", async () => {
   const manifest = await readJSON(join(packageRoot, "package.json"));
@@ -317,13 +139,8 @@ test("npm compatibility metadata rejects an unsupported OS and CPU", async () =>
   );
 });
 
-test("packaged resources contain no copied fixtures or workflow engine", async () => {
+test("packaged resources contain no tests or workflow engine", async () => {
   const manifest = await readJSON(join(packageRoot, "package.json"));
-  const sharedFixtureRoot = join(repositoryRoot, "protocol", "fixtures");
-  const fixtureFiles = (await walkFiles(sharedFixtureRoot)).filter((path) => path.endsWith(".json"));
-  const fixtureDigests = new Set(
-    await Promise.all(fixtureFiles.map((path) => sha256(readFile(join(sharedFixtureRoot, path))))),
-  );
 
   for (const declaredPath of manifest.files) {
     assert.equal(/(?:^|\/)(?:tests?|fixtures?)(?:\/|$)/iu.test(declaredPath), false, declaredPath);
@@ -334,7 +151,6 @@ test("packaged resources contain no copied fixtures or workflow engine", async (
     skipDirectories: new Set(["node_modules", "tests", "runtime"]),
   }))) {
     const contents = await readFile(join(packageRoot, path));
-    assert.equal(fixtureDigests.has(await sha256(contents)), false, path);
     if (/^(?:bin|lib)\/.*\.mjs$/u.test(path)) {
       const source = contents.toString("utf8");
       assert.doesNotMatch(source, /transitionTable|taskStates?|nextState|persistTask|sqlite/iu, path);
@@ -399,8 +215,8 @@ test("local package builder stages one exact non-final artifact in a temporary d
   }
 
   const handoff = await import(pathToFileURL(join(extractDirectory, "package", "lib", "task-handoff.mjs")));
-  const reference = await readFile(join(extractDirectory, "package", "plugin", "skills", "taskbelay", "references", "task-handoff.md"), "utf8");
-  const example = JSON.parse(reference.match(/<!-- task-handoff-example:start -->\n```json\n([\s\S]*?)\n```/u)[1]);
+  const {handoffFixture}=await import("./fixtures/task-handoff.mjs");
+  const example=handoffFixture("Retain complete authorized requirements in the standalone package");
   assert.deepEqual(handoff.validateTaskHandoff(example), example);
 
   if (process.platform === "darwin" && process.arch === "arm64") {
@@ -412,9 +228,7 @@ test("local package builder stages one exact non-final artifact in a temporary d
     });
     assert.equal(versionLine, `taskbelay ${currentVersion}\n`);
     const { stdout: help } = await execFile(runtime, ["help"], { cwd: extractDirectory, encoding: "utf8" });
-    for (const command of ["webui start", "webui open", "webui status", "webui stop"]) {
-      assert.match(help, new RegExp(command, "u"));
-    }
+    assert.match(help, /taskbelay webui start\|open\|status\|stop \[--no-open\] \[--json\|--plain\]/u);
   }
 });
 

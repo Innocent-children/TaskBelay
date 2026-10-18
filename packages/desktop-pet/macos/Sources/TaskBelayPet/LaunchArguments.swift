@@ -31,7 +31,7 @@ struct LaunchArgumentError: Error, Equatable {
 }
 
 enum LaunchArgumentParser {
-    private static let coreIdentityPattern = #"^taskbelay/(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"#
+    private static let coreIdentityPattern = #"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$"#
     private static let digestPattern = "^[0-9a-f]{64}$"
     /// The launcher and this process must agree on exactly these fields. An
     /// option outside the set means the two sides drifted apart, so the entry

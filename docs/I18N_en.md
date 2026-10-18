@@ -109,3 +109,5 @@ Check the affected document family:
 - ordinary installation examples use `@latest`;
 - non-English files contain no placeholder translation or whole-section English fallback;
 - changed command documentation matches current parsers, lifecycle tests, and the MCP catalog.
+
+The engineering design and acceptance family also maintains docs/ENGINEERING-CONTROL.md and docs/ENGINEERING-CONTROL_en.md with matching behavior and verification boundaries.

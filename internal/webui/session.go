@@ -9,6 +9,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+
+	"github.com/Innocent-children/taskbelay/internal/domain"
 )
 
 var ErrSessionUnavailable = errors.New("webui session unavailable")
@@ -69,10 +71,5 @@ func protectMutations(origin string, session Session, next http.Handler) http.Ha
 }
 
 func rejectLocalMutation(w http.ResponseWriter) {
-	_ = WriteFailure(w, http.StatusForbidden, "request-rejected", "not_committed", ErrorResponse{
-		Code:       "LOCAL_SESSION_REQUIRED",
-		Message:    "The mutation must originate from the current local WebUI session.",
-		FieldPaths: []string{},
-		GuardID:    nil,
-	}, RecoveryAdvice{Action: RecoveryNone, RetrySafe: false, Message: "Reload the local WebUI and retry from the current page."})
+	WriteFailure(w, http.StatusForbidden, "HTTP mutation", &domain.Error{Code: "LOCAL_SESSION_REQUIRED", Message: "The mutation must originate from the current local WebUI session with its current CSRF token.", Outcome: "not_applied"})
 }

@@ -1,151 +1,59 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="packages/webui/src/assets/taskbelay-wordmark-dark.svg" />
-    <img src="packages/webui/src/assets/taskbelay-wordmark.svg" width="360" height="180" alt="TaskBelay" />
-  </picture>
-</p>
+# TaskBelay
 
-<h1 align="center">TaskBelay</h1>
+[English](README.md) · [简体中文](README_zh-CN.md) · [繁體中文](README_zh-TW.md) · [日本語](README_ja.md) · [한국어](README_ko.md) · [Español](README_es.md) · [Français](README_fr.md) · [Deutsch](README_de.md) · [Português](README_pt-BR.md)
 
-<p align="center"><strong>長時 AI 程式開發，始終有人確保。</strong></p>
+**為真實 AI 程式開發任務提供工程控制。**
 
-<p align="center">
-  <a href="README.md">English</a> · <a href="README_zh-CN.md">简体中文</a> · <a href="README_zh-TW.md">繁體中文</a> · <a href="README_ja.md">日本語</a> · <a href="README_ko.md">한국어</a> · <a href="README_es.md">Español</a> · <a href="README_fr.md">Français</a> · <a href="README_de.md">Deutsch</a> · <a href="README_pt-BR.md">Português (Brasil)</a>
-</p>
+TaskBelay 配合 Codex、DeepSeek Harness、Claude Code 和 ZCode 使用，將授權目標、實際程式碼變化與驗證證據保存在一起，讓代理跨對話繼續工作時減少重複決定。編碼與技術判斷仍由代理負責。
 
-## TaskBelay 能幫你做什麼
+## 你能做什麼
 
-技術判斷，交給 Agent。<br />
-任務邊界，交給 TaskBelay。
+- 讓目標、明確非目標，以及介面、資料、依賴與設計約束在開發中持續有效。檢視檔案內的變化，而不只是路徑。範圍偏離優先在既有授權內修正；只有需要改變授權或作出重要取捨時才詢問使用者。
+- 執行已授權的本機檢查，保存真實結束代碼、輸入、環境條件與結果。代理聲明、程序執行與驗收結論分別記錄。相關變化使證據過期；有明確依賴依據的獨立檢查可以保留。重新規劃不重設累計投入。
+- 合理交替實作與驗證，修訂需求，並從目前成果、失敗嘗試與未確定執行恢復。近期歷史有界保存，有效結果與累計成本繼續保留。
 
-搭配 Codex、DeepSeek、Claude Code 或 ZCode 使用。
+命令檢查透過宿主原生程序工具呼叫 `taskbelay check run`，沿用宿主權限與環境。WebUI 支援任務搜尋、宿主/狀態篩選、語言選擇、使用者答覆與執行復原。每個目標都必須通過驗收檢查；接受既有迴歸失敗不能取代它。讀取已儲存狀態不寫入計量。
 
-Belay 是攀岩中的繩索確保：攀登者自行選擇路線，確保者控制繩索並在失誤時防止墜落。TaskBelay 沿用這個分工：Agent 做技術判斷，TaskBelay 核對已核准範圍和驗證額度，並依持久記錄處理失敗或結果不確定的操作。它不是沙箱，也不是另一個 Coding Agent。
+工程問題保留原始身分，直到明確處理，省略文字不能清除問題；交付限制來自這些處理記錄。宿主用量區分未回報、部分回報與已回報，無法取得的數值顯示未知。方法說明包含輸入輸出範例與失敗處理，不需要查看原始碼。新的 Task 分支不隱式繼承上游。
 
-- **範圍明確：** 依已確認的檔案核對修改。計畫外的工作，另作決定。
-- **驗證有度：** 檢查有計畫、有上限。增加驗證，先說明理由。
-- **狀態持久：** 任務以本機保存的狀態為準，不隨會話消失。
-- **安全復原：** 失敗或結果不明，先查記錄，再決定如何繼續。
+## 開始使用
 
-適合跨會話、需要明確檔案範圍和測試投入的儲存庫任務。一次性問答、程式說明與不需保存進度的
-小型修改，直接使用 Codex、DeepSeek、Claude Code 或 ZCode 通常更簡單。
+需要 Node.js >=24 及已安裝的編碼宿主。原始碼開發另需 Go >=1.26 和 pnpm >=11 <12。目前原始碼包含破壞性工程升級；已發行套件版本與穩定支援記錄沒有改變。使用新契約須建置目前原始碼。保留舊資料並明確選擇獨立資料目錄；不提供遷移或自動重設。
 
-## 快速開始
-
-> 使用 Node.js `>=24`，並先安裝所使用的 Host。版本要求與已驗證平台見[支援矩陣](docs/SUPPORT-MATRIX.md)。
-
-### 1. 安裝 TaskBelay
-
-安裝 TaskBelay 後，依 [Codex](packages/codex/README.md)、[DeepSeek](packages/deepseek/README.md)、[Claude Code](docs/CLAUDE.md) 或 [ZCode](docs/ZCODE.md) 指南啟用對應 Host。安裝套件面向 Windows x64 和 macOS arm64；macOS ZCode 實機驗證仍待完成。
+公開安裝入口：
 
 ```sh
 npm install -g taskbelay@latest
 taskbelay
 ```
 
-在所用安裝入口中選擇對應 Host。Codex 安裝後在 `/hooks` 檢查並信任 TaskBelay hook；DeepSeek 重新啟動所選 Profile；Claude Code 重新載入外掛或開始新會話，並依提示審閱權限。
+在本機建置並安裝目前原始碼：
 
-ZCode 需在 Settings → Plugins 完成外掛安裝與啟用，再開始新會話讓 Hook 生效。本機套件準備完成不代表 ZCode 已載入外掛。
-
-### 2. 啟動任務
-
-完成對應安裝後，在所用 Host 的對話中傳送以下訊息之一：
-
-**Codex**
-
-```text
-$taskbelay-codex:taskbelay 加入登入失敗限流。只修改驗證相關檔案，最多執行 4 項定向檢查。
+```sh
+pnpm install --frozen-lockfile --ignore-scripts
+node scripts/taskbelay-local.mjs install --host codex --yes
 ```
 
-**DeepSeek Harness**
+依相應[宿主指南](packages/codex/README.md)啟用配接器，再向代理描述範圍明確的結果：
 
 ```text
-/taskbelay 加入登入失敗限流。只修改驗證相關檔案，最多執行 4 項定向檢查。
+使用 TaskBelay 增加登入失敗限流。保留公開驗證介面與既有使用者資料，不重做帳號管理。執行相關既有測試，報告真實結果。
 ```
 
-**Claude Code**
+說明期望結果與必要限制。代理解釋實作思路，並在既有授權內推進。一般實作與檢查調整無須重複核准；改變目標或明確限制時才需要你的實際決定。仍適用的通過結果會重用，投入持續記錄，只有你設定的上限才會約束任務。WebUI 採用精簡任務清單與詳情雙欄，透過概覽、檢查紀錄、需求與投入查看任務；輸出在對應檢查下展開，支援答覆、復原與封存。「更新紀錄」讀取已儲存內容，「核對目前程式碼」重新觀察實際條件。恢復時提供 Task ID，返回原工作區。
 
-```text
-/taskbelay-claude:taskbelay 加入登入失敗限流。只修改驗證相關檔案，最多執行 4 項定向檢查。
-```
+代理展示目錄、分支及既有修改，沿用你已選擇或上下文明確的工作位置。只有位置不明、有衝突或需要新的工作區操作時才詢問。建立分支、工作樹與遠端整合均為選用操作，依實際授權執行。
 
-**ZCode**
-
-在輸入框的 `/` → Skills 選擇 `taskbelay`，再描述任務。
-
-```text
-使用 TaskBelay 加入登入失敗限流。只修改驗證相關檔案，最多執行 4 項定向檢查。
-```
-
-這些訊息傳送到對話中，不在終端機執行。請盡量寫清楚目標、驗收條件、檔案範圍與測試上限。
-
-首次回覆會評估請求，並詢問直接開發還是使用 TaskBelay。選擇 TaskBelay 後，預設從目前 HEAD
-在目前目錄建立新的任務分支。確認新分支及是否將既有未提交修改納入任務；現有相依套件、本機設定、
-檔案和暫存狀態都會保留。目前會話能存取所有參與目錄時，直接在原會話繼續。
-
-你也可以明確選擇使用目前分支，或建立獨立 Git 工作樹。獨立工作樹還需選擇本機或遠端來源及起始
-分支；Codex 在宿主支援時開啟新目錄，DeepSeek 和 Claude Code 提供對應的重新啟動命令。
-
-同一目錄只能有一個進行中的 Task。手動或其他工具的本機編輯也會被觀察，任務中切換分支會暫停流程。
-本機目錄和分支在任務結束後保留；開始下一個任務時仍需明確未提交修改的歸屬。
-
-實作前，先查看並討論需求、方案、任務、預計檔案和驗證安排。完整計畫得到你的明確認可後才開始開發；方案修訂或檔案範圍擴大後需要再次確認。選擇 TaskBelay 或工作樹參數不能取代方案確認。
-
-### 3. 恢復並查看進度
-
-會話重新啟動後，回到任務的原工作目錄，明確要求繼續該任務。TaskBelay 會從已儲存的進度繼續。
-原工作目錄遺失或被替換時，任務會暫停，直到你恢復它或明確放棄任務。
-
-在 DeepSeek Harness 中，繼續任務的訊息也要帶上 `/taskbelay`。
-
-Claude 使用者應回到原工作目錄與會話，使用 `/taskbelay-claude:taskbelay` 明確繼續已儲存的任務。
-
-ZCode 使用者應重新開啟原工作目錄，選擇 TaskBelay Skill 並要求繼續已儲存的任務；準備新目錄時依回傳的工作區開啟說明接續。
-
-下列命令使用已安裝的全域管理器；原始碼體驗請使用指南中的對應入口。
-
-```bash
-# 查看已安裝的整合
-taskbelay status --host all
-
-# 開啟本機任務介面
+```sh
 taskbelay webui start
 ```
 
-非互動安裝、自訂 DSH Profile、升級、修復與移除方式見[命令參考](docs/COMMANDS.md)。
+## 使用邊界
 
-## 桌面寵物
+結構化掛鉤涵蓋受支援的寫入路徑；shell 與外部編輯在檢查點觀察。只有 Core 實際啟動的檢查具有 Core 執行來源。聲明輸入與環境條件不會自動涵蓋 ignored 依賴、資料庫或遠端服務。語義推理明確保留，但不構成正確性證明。TaskBelay 不是沙箱，也不是另一個編碼代理。
 
-寵物需要已設定的 Adapter 與已安裝的桌面應用程式。只安裝 Adapter 不會安裝桌面應用程式。
+Core 開銷實際計量；宿主分析、等待與 token 來自報告，可能不完整。小型機械任務通常直接使用原生代理更簡單。原始碼測試證明具體能力，不證明缺陷率或人工監督成本已降低。完成保留檔案，不授予 Git、發行或刪除權限。
 
-桌面寵物透過堆疊氣泡顯示多個任務，並可分別開啟對應 WebUI。它優先顯示受阻任務，目前任務完成後會自動關注其他未完成任務，也支援固定關注。你可以自訂外觀、控制動畫、調整大小，以及獨立啟動或停止寵物。
+## 進一步了解
 
-```bash
-taskbelay pet start
-taskbelay pet stop
-```
-
-桌面應用程式面向 macOS arm64 和 Windows 10/11 x64。安裝與操作見[桌面寵物指南](docs/DESKTOP-PETS.md)，
-已驗證的可用範圍見[支援矩陣](docs/SUPPORT-MATRIX.md)。
-
-## 使用限制
-
-TaskBelay 管理任務流程，不接管系統權限，也不攔截每次檔案操作或命令執行。
-
-專屬工作樹用於分開程式碼修改。程序、網路、憑證和外部服務仍與目前環境共用。
-
-完成任務不會自動提交程式碼、推送或刪除工作樹；這些操作需要你另外授權。
-
-## 文件
-
-- **使用說明：** [Codex](packages/codex/README.md) · [DeepSeek](packages/deepseek/README.md) · [Claude Code](docs/CLAUDE_en.md) · [ZCode](docs/ZCODE_en.md) · [命令參考](docs/COMMANDS.md) · [Control Center](docs/WEBUI.md)
-- **專案資料：** [產品定義](docs/PRODUCT.md) · [支援矩陣](docs/SUPPORT-MATRIX.md) · [安全政策](SECURITY.md)
-- **開發與貢獻：** [文件目錄](MANIFEST.md) · [貢獻指南](CONTRIBUTING_zh-CN.md)
-
-## 社群
-
-[LINUX DO](https://linux.do/)
-
-## 授權條款
-
-[Apache License 2.0](LICENSE)
+[产品定义](docs/PRODUCT.md) · [命令](docs/COMMANDS.md) · [支持与验证](docs/SUPPORT-MATRIX.md) · [Codex](packages/codex/README.md) · [DeepSeek](packages/deepseek/README.md) · [Claude Code](docs/CLAUDE.md) · [ZCode](docs/ZCODE.md)

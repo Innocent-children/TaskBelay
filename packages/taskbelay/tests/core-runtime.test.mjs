@@ -34,7 +34,7 @@ test("shared Core validation rejects changed package identity and Core version b
   await assert.rejects(inspectCoreRuntime(candidate, { ...permissions, exec: async () => ({ stdout: "not a Core\n" }) }), /Core identity differs/);
 });
 
-test("shared Core validation rejects a substituted executable without starting it", async t => {
+test("shared Core validation rejects a substituted executable without starting it", {skip:process.platform==='win32'?'Windows cannot create unprivileged file symlinks':false}, async t => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "taskbelay-core-path-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "test-adapter", version: "1.0.0" }));

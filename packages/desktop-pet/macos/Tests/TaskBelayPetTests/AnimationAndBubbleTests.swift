@@ -345,25 +345,25 @@ final class AnimationAndBubbleTests: XCTestCase {
     // MARK: - Bubble text
 
     func testTheStageLineCarriesTheNodeLabelCoreReports() {
-        let summary = TestFixtures.summary(currentNode: "IMPLEMENT")
-        let chinese = content(phase: .working(node: "IMPLEMENT"), summary: summary, language: .chinese)
+        let summary = TestFixtures.summary(currentNode: "ACTIVE")
+        let chinese = content(phase: .working(node: "ACTIVE"), summary: summary, language: .chinese)
         XCTAssertEqual(chinese.title, "Add the desktop pet")
-        XCTAssertEqual(chinese.stage, "开发实现")
+        XCTAssertEqual(chinese.stage, "开发与验证")
         XCTAssertNil(chinese.blocker)
 
-        let english = content(phase: .working(node: "IMPLEMENT"), summary: summary, language: .english)
-        XCTAssertEqual(english.stage, "Implementation")
+        let english = content(phase: .working(node: "ACTIVE"), summary: summary, language: .english)
+        XCTAssertEqual(english.stage, "Development and verification")
     }
 
     func testTheWorkingThemeMakesNoClaimAboutTheHost() {
         // The stage line is the node Core reports, so an unverifiable narrative
         // such as "the host is executing" cannot appear in the working theme.
-        let summary = TestFixtures.summary(currentNode: "TEST")
+        let summary = TestFixtures.summary(currentNode: "ACTIVE")
         for language in [PetLanguage.chinese, .english] {
             let strings = PetStrings.forLanguage(language)
             XCTAssertEqual(
-                content(phase: .working(node: "TEST"), summary: summary, language: language).stage,
-                strings.nodeName("TEST")
+                content(phase: .working(node: "ACTIVE"), summary: summary, language: language).stage,
+                strings.nodeName("ACTIVE")
             )
         }
     }
@@ -392,7 +392,7 @@ final class AnimationAndBubbleTests: XCTestCase {
             clip: .disconnected,
             playIntro: false,
             useRestFrame: false,
-            summary: TestFixtures.summary(currentNode: "IMPLEMENT"),
+            summary: TestFixtures.summary(currentNode: "ACTIVE"),
             isStaleSummary: true,
             detailReadiness: nil
         )
@@ -434,8 +434,8 @@ final class AnimationAndBubbleTests: XCTestCase {
     func testReadOnlyIsAnAdditionalMarkAndNeverReplacesTheStage() {
         XCTAssertEqual(
             content(
-                phase: .working(node: "IMPLEMENT"),
-                summary: TestFixtures.summary(currentNode: "IMPLEMENT"),
+                phase: .working(node: "ACTIVE"),
+                summary: TestFixtures.summary(currentNode: "ACTIVE"),
                 detailReadiness: .readOnly,
                 language: .english
             ).stage,
@@ -472,8 +472,8 @@ final class AnimationAndBubbleTests: XCTestCase {
 
     func testTheTwoTimestampsStaySeparate() throws {
         let content = self.content(
-            phase: .working(node: "IMPLEMENT"),
-            summary: TestFixtures.summary(currentNode: "IMPLEMENT"),
+            phase: .working(node: "ACTIVE"),
+            summary: TestFixtures.summary(currentNode: "ACTIVE"),
             lastSyncAt: Date(timeIntervalSince1970: 1_788_000_500),
             language: .english
         )
@@ -546,7 +546,7 @@ final class AnimationAndBubbleTests: XCTestCase {
     func testLongBubbleContentKeepsABoundedHeight() {
         let view = PetBubbleView(frame: .zero)
         let longText = String(repeating: "long task description ", count: 500)
-        view.update(BubbleContent(title: longText, stage: "Implementation", summary: longText,
+        view.update(BubbleContent(title: longText, stage: "Development and verification", summary: longText,
                                   taskUpdated: "Task updated", lastSync: "Last sync", blocker: longText))
         view.setExpanded(true)
         XCTAssertLessThan(view.requiredHeight(width: 220), 300)
@@ -558,7 +558,7 @@ final class AnimationAndBubbleTests: XCTestCase {
         let tasks = PetTaskCollection()
         tasks.update([TestFixtures.summary(taskID: "hover")], readiness: .ready)
         window.content.bubble.update(cards: tasks.cards, pinned: nil, sync: nil, strings: .english, language: .english)
-        window.content.bubble.update(BubbleContent(title: "Hover transition", stage: "Implementation",
+        window.content.bubble.update(BubbleContent(title: "Hover transition", stage: "Development and verification",
             summary: "Hover transition details", taskUpdated: "Updated", lastSync: "Synced", blocker: nil))
         window.layout(atOrigin: CGPoint(x: 100, y: 100))
         window.orderFrontRegardless()

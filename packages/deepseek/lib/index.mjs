@@ -47,8 +47,8 @@ export async function activateDeepSeekIntegration(ctx, {
 
   ctx.skills.register(Object.freeze({
     name: "taskbelay",
-    description: "Assess bounded development requests, then use TaskBelay only after the developer confirms an isolated worktree launch.",
-    whenToUse: "Use for new development-request suitability assessment, explicit worktree confirmation, or an explicit TaskBelay Task resume.",
+    description: "Keep authorized outcomes, actual changes and verification evidence together.",
+    whenToUse: "Use for authorized development or recovery of an existing Task; retain existing authorization.",
     invocation: Object.freeze({
       modelInvocable: true,
       userInvocable: true,
@@ -56,7 +56,7 @@ export async function activateDeepSeekIntegration(ctx, {
     source: "bundled",
     provider: name,
     resourceBase: Object.freeze({ kind: "directory", path: skillDirectory }),
-    content: skillContent,
+    content: skillContent + "\nNative check invocation (use the Host native process tool, JSON stdin):\n" + JSON.stringify({ executable: runtime.runtimePath, args: ["check", "run"], environment: { TASKBELAY_DATA_DIR: dataSelection.dataDirectory } }),
     path: skillPath,
   }));
   registerTaskBelayGuard(ctx, { workspaceRoot });

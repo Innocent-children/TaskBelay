@@ -1,56 +1,30 @@
+---
+name: taskbelay
+description: "Use TaskBelay for substantial development that benefits from saved progress, verification reuse or interruption recovery, or when explicitly requested. Reuse existing user authority. Skip ordinary questions and small mechanical edits unless requested."
+---
+
 # TaskBelay for DeepSeek Harness
 
-DSH performs repository work and authorized workspace operations. Go Core owns Task state, Actions,
-transitions, verification, blockers and recovery.
+Read [engineering work](references/engineering.md) when starting or resuming a Task. Consult
+[protocol](references/protocol.md) for tool fields and recovery; read [workspaces](references/workspace.md)
+only for needed workspace operations. Load details as needed instead of reading every reference upfront.
 
-## Current-turn authorization
+Use tools actually exposed in this session. If unavailable, report the integration problem once and
+continue authorized work using native tools; do not claim TaskBelay recorded it. A CLI success does
+not prove the Host exposes MCP. Preserve data when troubleshooting storage or configuration.
 
-DSH may select this Skill implicitly for assessment. **Every Core call requires a whitespace-bounded
-`/taskbelay` in the current direct user message.** Earlier turns, assistant messages and Skill injection
-cannot supply it. Workspace operations also require their exact confirmation text. Ask only for the
-missing input and retain settled requirements and choices; see [DSH transport](references/transport.md).
+Start from the actual user request in the selected/current workspace. Reuse existing authority without
+an extra plan-confirmation step. Explain the approach; adjust implementation and checks within the same
+outcome and restrictions. Ask only for missing information or a real change to user boundaries.
 
-## Choose the entry
+The structured hook checks write/edit/str_replace_editor paths. Other edits are observed at checkpoints. Native permissions
+still apply; hooks cannot authenticate conversation or judge future code semantics. This is not a sandbox.
 
-| Request or saved state | Next step |
-| --- | --- |
-| New development request, including `/taskbelay` | [Assess and prepare](references/admission.md); default to a new branch in the current directory after TaskBelay selection. |
-| `resume-worktree` launch or an uncertain Core open | [Choose first launch or Task recovery](references/admission.md#first-launch-or-task-recovery). An existing/uncertain Task resumes without `consume` or creation fields. |
-| Explicit Task resume | Return to the original workspace with the current selector, then [connect/resume](references/connection.md). |
-| Current Action | Follow [Action execution](references/node-payloads.md) and only the current node guide. |
-| Rejection, missing result or blocker | Read [response handling](references/tool-results.md) and its linked recovery procedure. |
-| Cancellation, abandonment, cleanup or installation diagnosis | Read [Host lifecycle](references/host-lifecycle.md). Automatic DSH relocation is unavailable. |
-| Explanation, status question or design discussion | Answer or perform the authorized read; create no Task. Explicit review stays read-only until a later repair request. |
+Default responses summarize current work. Use get_task detail:true for full history and get_run for
+output. Keep operation identities after response loss; inspect saved results before repeating effects.
+Report completed work, actual checks and uncertainty honestly. Git, new chat, publication and deletion
+follow actual user authorization. Normal usage should not require reading plugin source.
 
-## Execute and continue
+Maintainer implementation reference: `internal/protocol/handler.go`.
 
-After provision/first-launch consumption or on resume, perform the
-[server handshake](references/connection.md#server-handshake) before other Core calls. Invoke the
-visible `mcp__taskbelay__` tool plus Core's raw name through the DSH transport. The handshake takes
-`{}`; other Core tools use `host:"deepseek"`.
-Retain complete responses and handle errors, recovery, blockers and outcome before the full Action.
-Codex orchestration helpers and host-launch commands are not DSH interfaces.
-
-The [Action procedure](references/node-payloads.md) covers planning discussion, saved-plan approval,
-method steps and submission. Use the packaged [artifact helper and write gate](references/artifacts.md)
-and [verification rules](references/verification.md). Approvals, checks and comprehension verdicts
-must come from actual work or user answers. Continue authorized work when no required input remains;
-progress updates need no acknowledgment.
-
-## Workspace and methods
-
-All repositories must remain within the canonical Workspace Root fixed at DSH startup and current
-Host permissions. Provisioning can return a relaunch; it cannot widen this session. Confirm Scope
-before creation and preserve original workspace identity on resume. Follow user/repository discovery
-rules, including required indexes; otherwise use `host_preferences.deepseek.codebase_memory` with
-visible tools. Missing/incomplete indexing gets one notice and immediate Host-search fallback,
-without installing or repairing an index.
-
-Use explicit `plain`/`spec-kit`/`openspec` intent, otherwise `plain`, and preserve an existing profile.
-[Method profiles](references/method-profiles.md) describe how to perform the current steps; only Core
-submissions advance Task state. DONE/CANCELLED preserves Git data and does not authorize publication
-or cleanup; follow the lifecycle guide and its exact current-turn confirmations.
-
-Implementation: `packages/deepseek/lib/index.mjs` — `activateDeepSeekIntegration`;
-`packages/deepseek/lib/authorization.mjs` — `authorizeTaskBelayExecution`;
-`packages/deepseek/lib/workspace-coordinator.mjs` — `authorizeWorkspaceExecution`.
+Run command checks with the native process tool using the bundled Core and TASKBELAY_DATA_DIR supplied at activation. Pass the RunRequest JSON on stdin and retain the native session for long commands. MCP reads and records results; it does not start commands.

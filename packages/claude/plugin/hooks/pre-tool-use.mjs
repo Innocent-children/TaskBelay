@@ -10,7 +10,7 @@ export function preparedWriteFromHook(event) {
     paths: complete ? [resolve(event.cwd, raw)] : [], path_parse_complete: complete,
     intent_digest: createHash("sha256").update(JSON.stringify({ tool_name: event.tool_name, tool_input: event.tool_input })).digest("hex") };
 }
-export async function runHook(event, check = input => coreJSON(["host-check", "pre-file-write"], input)) {
+export async function runHook(event, check = async input => (await coreJSON(["host-check", "pre-file-write"], input)).result) {
   const input = preparedWriteFromHook(event);
   if (!input) return null;
   const result = await check(input);

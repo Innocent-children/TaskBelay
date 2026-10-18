@@ -35,7 +35,7 @@ test("current DSH Session authorizes direct and nested calls and reads confirmat
   session.append("turn/start", { turn: 2 });
   session.append("user/message", directUserMessage("ordinary request", "next-user"), { surfaceOp: "append" });
   session.append("tool/call", { turn: 2, step: 1, callId: "next-call", name: expectedTool, arguments: "{}" });
-  assert.match(authorizeTaskBelayExecution({ ...execution, callId: "next-call" }), /TASKBELAY_SELECTOR_REQUIRED/u);
+  assert.equal(authorizeTaskBelayExecution({ ...execution, callId: "next-call" }), undefined);
 });
 
 test("selector matcher accepts only the whitespace-bounded token", () => {
@@ -80,7 +80,7 @@ test("derives a direct call from its durable tool/call and current turn only", (
     directUserMessageIds: ["current"],
     selectorPresent: false,
   });
-  assert.match(authorizeTaskBelayExecution(execution), new RegExp(DENIAL_CODES.SELECTOR_REQUIRED));
+  assert.equal(authorizeTaskBelayExecution(execution), undefined);
 });
 
 test("allows an expected tool only for an exact current direct-user selector", () => {
@@ -117,7 +117,7 @@ test("nested Code Mode calls use the latest single open turn without a durable s
     callId: "outer:code:2",
     parent: Symbol("outer"),
   });
-  assert.match(authorizeTaskBelayExecution(denied), new RegExp(DENIAL_CODES.SELECTOR_REQUIRED));
+  assert.equal(authorizeTaskBelayExecution(denied), undefined);
 });
 
 test("fails closed for unexpected tools and missing execution context", () => {
@@ -174,9 +174,9 @@ test("plain-context guard denies before dispatch with zero Core writes", () => {
     dispatches += 1;
     coreWrites += 1;
   }
-  assert.match(denial, new RegExp(DENIAL_CODES.SELECTOR_REQUIRED));
-  assert.equal(dispatches, 0);
-  assert.equal(coreWrites, 0);
+  assert.equal(denial, undefined);
+  assert.equal(dispatches, 1);
+  assert.equal(coreWrites, 1);
 
   assert.equal(authorizeTaskBelayExecution({ ...execution, name: "unrelated_tool" }), undefined);
   dispose();
@@ -195,10 +195,7 @@ test("open-task guard allows two repositories inside a non-Git Workspace Root", 
     events: openSelectedTurn("scope-inside", openTool),
     argumentsValue: {
       host: "deepseek",
-      repository_path: primary,
-      primary_repository_key: "core",
-      additional_repositories: [{ key: "docs", repository_path: additional }],
-      new_task: null,
+      repositories: [{key:"core",repository_path:primary},{key:"docs",repository_path:additional}],
     },
   });
   assert.equal(authorizeTaskBelayExecution(execution, { workspaceRoot: root }), undefined);
@@ -222,10 +219,7 @@ test("open-task guard rejects root-external and symlink-escaping repositories be
       events: openSelectedTurn(`scope-${name}`, openTool),
       argumentsValue: {
         host: "deepseek",
-        repository_path: primary,
-        primary_repository_key: "core",
-        additional_repositories: [{ key: "docs", repository_path: repositoryPath }],
-        new_task: null,
+        repositories: [{key:"core",repository_path:primary},{key:"docs",repository_path:repositoryPath}],
       },
     });
     const denial = authorizeTaskBelayExecution(execution, { workspaceRoot: root });

@@ -5,8 +5,8 @@ import Foundation
 /// desktop displays are asserted; the real responses carry more fields, which
 /// the models deliberately ignore.
 enum TestFixtures {
-    static let coreIdentity = "taskbelay/0.4.1"
-    static let otherCoreIdentity = "taskbelay/0.4.2"
+    static let coreIdentity = "0.4.1"
+    static let otherCoreIdentity = "0.4.2"
     static let dataRootDigest = String(repeating: "ab", count: 32)
     static let otherDataRootDigest = String(repeating: "cd", count: 32)
     static let origin = "http://127.0.0.1:51234"
@@ -27,7 +27,7 @@ enum TestFixtures {
         taskID: String = "task-1",
         requestSummary: String = "Add the desktop pet",
         originHost: String = "codex",
-        currentNode: String = "IMPLEMENT",
+        currentNode: String = "ACTIVE",
         lifecycle: String = "active",
         revision: UInt64 = 3,
         updatedAt: String = "2026-09-06T08:15:30.123456789Z",
@@ -37,13 +37,13 @@ enum TestFixtures {
         blocker: String? = nil
     ) -> String {
         let blockerValue = blocker.map { "\"\($0)\"" } ?? "null"
-        let keys = repositoryKeys.map { "\"\($0)\"" }.joined(separator: ",")
+        let repositories = repositoryKeys.map { "{\"key\":\"\($0)\",\"repository_path\":\"\(worktreePath)\",\"branch\":\"main\"}" }.joined(separator: ",")
         return """
-        {"task_id":"\(taskID)","request_summary":"\(requestSummary)","origin_host":"\(originHost)",\
-        "execution_host":"\(originHost)","current_node":"\(currentNode)","lifecycle":"\(lifecycle)",\
+        {"task_id":"\(taskID)","request_summary":"\(requestSummary)","host":"\(originHost)",\
+        "status":"\(currentNode.lowercased())","lifecycle":"\(lifecycle)",\
         "revision":\(revision),"updated_at":"\(updatedAt)","archived":\(archived),\
-        "repository_keys":[\(keys)],"repository_group_id":"group-1",\
-        "worktree_path":"\(worktreePath)","blocker":\(blockerValue),"outcome":null}
+        "repositories":[\(repositories)],\
+        "blocker":\(blockerValue),"outcome":""}
         """
     }
 
@@ -70,24 +70,23 @@ enum TestFixtures {
     }
 
     static func coreRuntimeStatus(
-        operation: String = "status",
         readiness: String = "ready",
         coreIdentity: String = TestFixtures.coreIdentity,
         dataRootDigest: String = TestFixtures.dataRootDigest,
         url: String = TestFixtures.origin,
         pid: Int? = 4242
     ) -> Data {
-        let pidValue = pid.map(String.init) ?? "null"
+        let pidMember = pid.map { ",\"pid\":\($0)" } ?? ""
         return json("""
-        {"operation":"\(operation)","readiness":"\(readiness)","core_identity":"\(coreIdentity)",\
-        "data_root_digest":"\(dataRootDigest)","url":"\(url)","pid":\(pidValue)}
+        {"readiness":"\(readiness)","core_identity":"\(coreIdentity)",\
+        "data_root_digest":"\(dataRootDigest)","url":"\(url)"\(pidMember)}
         """)
     }
 
     static func summary(
         taskID: String = "task-1",
         requestSummary: String = "Add the desktop pet",
-        currentNode: String = "IMPLEMENT",
+        currentNode: String = "ACTIVE",
         lifecycle: TaskLifecycle = .active,
         revision: UInt64 = 3,
         archived: Bool = false,

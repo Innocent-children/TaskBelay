@@ -5,7 +5,6 @@ import { constants as fsConstants } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { captureWorkspaceChanges, applyWorkspaceChanges } from "./worktree-snapshot.mjs";
-import { currentDirectUserText } from "./authorization.mjs";
 import {
   readProvisioningReceipt,
   validateProvisioningReceipt,
@@ -16,55 +15,17 @@ export const WORKSPACE_COORDINATOR_TOOL = "workspace_coordinator";
 const MAX_COMMAND_OUTPUT = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 120_000;
 
-export function workspaceConfirmationText(repositories) {
-  const rows = validateRepositoryRequests(repositories).map((repository) =>
-    `repository=${repository.repository_key};mode=${repository.workspace_mode};source=${repository.source_type};carry=${repository.carry_changes};remote=${repository.remote_name};base=${repository.base_branch};target=${repository.target_branch}`,
-  );
-  return ["/taskbelay confirm-workspace", ...rows].join("\n");
-}
 
-export function workspaceResumeText(launchID) {
-  assertLaunchID(launchID);
-  return `/taskbelay resume-worktree launch=${launchID}`;
-}
 
-export function workspaceCleanupText(operation, { launchID, repositoryKey, taskID, revision }) {
-  if (!new Set(["prepare_cleanup", "cleanup_worktree", "cleanup_branch"]).has(operation)) throw new Error("cleanup operation is invalid");
-  assertLaunchID(launchID);
-  if (typeof repositoryKey !== "string" || !/^[a-z0-9][a-z0-9._-]{0,127}$/u.test(repositoryKey)) throw new Error("cleanup repository key is invalid");
-  if (typeof taskID !== "string" || taskID.trim() === "" || /\s/u.test(taskID)) throw new Error("cleanup Task identity is invalid");
-  if (!Number.isInteger(revision) || revision < 1) throw new Error("cleanup Task revision is invalid");
-  return `/taskbelay ${operation.replace("_", "-")} launch=${launchID} repository=${repositoryKey} task=${taskID} revision=${revision}`;
-}
 
 export function authorizeWorkspaceExecution(execution) {
   if (execution?.name !== WORKSPACE_COORDINATOR_TOOL) return;
   const operation = execution.arguments?.operation;
-  const text = currentDirectUserText(execution);
-  if (operation === "provision") {
-    const expected = workspaceConfirmationText(execution.arguments?.repositories);
-    if (!text.includes(expected)) {
-      throw new Error(`TASKBELAY_WORKTREE_CONFIRMATION_REQUIRED: send this exact confirmation in the current direct user turn:\n${expected}`);
-    }
+  if (["provision","prepare_cleanup","cleanup_worktree","cleanup_branch"].includes(operation)) {
+    if (typeof execution.arguments?.authorization_ref !== "string" || !execution.arguments.authorization_ref.trim()) throw new Error("TASKBELAY_AUTHORIZATION_REQUIRED: retain an actual authorization reference for this operation");
     return;
   }
-  if (operation === "consume") {
-    const expected = workspaceResumeText(execution.arguments?.launch_id);
-    if (!text.includes(expected)) {
-      throw new Error(`TASKBELAY_WORKTREE_RELAUNCH_REQUIRED: the current direct user turn must include ${expected}`);
-    }
-    return;
-  }
-  if (operation === "prepare_cleanup" || operation === "cleanup_worktree" || operation === "cleanup_branch") {
-    const expected = workspaceCleanupText(operation, {
-      launchID: execution.arguments?.launch_id,
-      repositoryKey: execution.arguments?.repository_key,
-      taskID: execution.arguments?.task_id,
-      revision: execution.arguments?.revision,
-    });
-    if (!text.includes(expected)) throw new Error(`TASKBELAY_WORKSPACE_CLEANUP_CONFIRMATION_REQUIRED: the current direct user turn must include ${expected}`);
-    return;
-  }
+  if (["consume","freshness"].includes(operation)) return;
   throw new Error("TASKBELAY_WORKSPACE_OPERATION_INVALID: operation is not supported");
 }
 
@@ -105,9 +66,9 @@ export function createWorkspaceCoordinator({
             cwd: root, signal, env: { TASKBELAY_DATA_DIR: dataDirectory },
             input: `${JSON.stringify({ repository_path: root })}\n`,
           });
-          result = JSON.parse(output.stdout);
+          result = JSON.parse(output.stdout).result;
         }
-        if (result?.available !== true || result.repository_path !== root) throw new Error("workspace already has an active TaskBelay Task or could not be checked; resolve it before changing branches");
+        if (result?.available !== true || result.repositories?.length !== 1 || result.repositories[0].repository_path !== root) throw new Error("workspace already has an active TaskBelay Task or could not be checked; resolve it before changing branches");
       };
       for (const repository of requested) {
         const source = await observeSourceRepository(repository.source_repository_path, { command, signal });
@@ -178,7 +139,7 @@ export function createWorkspaceCoordinator({
           if (repository.workspace_mode === "dedicated_worktree") {
             await ensureTargetStillAvailable(source, repository, { command, signal });
             await git(source, [
-              "worktree", "add", "-b", repository.target_branch, repository.worktree_path, repository.base_commit,
+              "worktree", "add", "--no-track", "-b", repository.target_branch, repository.worktree_path, repository.base_commit,
             ], { command, signal, mutating: true });
             await verifyProvisionedRepository({ ...repository, carry_changes: false }, { command, signal, sourceRepositoryPath: source });
             await applyWorkspaceChanges(repository.worktree_path, repository.snapshot_commit, snapshotRunner(command, signal));
@@ -187,7 +148,7 @@ export function createWorkspaceCoordinator({
             await validateBranchSelection(source, repository, { command, signal });
             const before = await observeLocalBranch(source, { command, signal });
             if (before.head !== repository.base_commit || before.identity !== repository.source_repository_identity) throw new Error("local workspace changed after preparation");
-            if (repository.workspace_mode === "new_branch") await git(source, ["switch", "-c", repository.target_branch, repository.base_commit], { command, signal, mutating: true });
+            if (repository.workspace_mode === "new_branch") await git(source, ["switch", "--no-track", "-c", repository.target_branch, repository.base_commit], { command, signal, mutating: true });
             await verifyProvisionedRepository(repository, { command, signal });
             const after = await observeSourceRepository(source, { command, signal });
             if (after.gitDir !== before.gitDir || after.statusDigest !== before.statusDigest) throw new Error("local branch preparation changed workspace state; inspect the retained directory");
@@ -219,7 +180,7 @@ export function createWorkspaceCoordinator({
         await writeProvisioningReceipt(dataDirectory, receipt);
         return workspaceOpenResult(receipt, "ready");
       }
-      const prompt = `${workspaceResumeText(receipt.launch_id)}\nContinue the confirmed request exactly as assessed:\n${request}`;
+      const prompt = `Resume the authorized prepared workspace for launch ${receipt.launch_id}.\nContinue the current authorized request:\n${request}`;
       return Object.freeze({
         status: "relaunch_required",
         launch_id: receipt.launch_id,
@@ -262,8 +223,8 @@ export function createWorkspaceCoordinator({
       const prompt = [
         `/taskbelay resume-cleanup launch=${id} repository=${repositoryKey} task=${taskID} revision=${revision}`,
         "The receipt-owned source checkout is now the fixed DSH Workspace Root.",
-        `Ask the developer to send exactly: ${workspaceCleanupText("cleanup_worktree", { launchID: id, repositoryKey, taskID, revision })}`,
-        "Do not delete the worktree or branch in this relaunch turn.",
+        "Retain the actual cleanup authorization reference. Verify the current terminal Task, original receipt, clean worktree and pushed branch before separately authorized cleanup.",
+        "A relaunch does not itself authorize worktree or branch deletion.",
       ].join("\n");
       return Object.freeze({ status: "cleanup_relaunch_required", changed: false, launch_id: id, repository_key: repositoryKey, relaunch: Object.freeze({ command: dshExecutable, arguments: Object.freeze(["--profile", state.receipt.profile, prompt]), cwd: source.root }) });
     },
@@ -322,8 +283,7 @@ function workspaceOpenResult(receipt, status) {
     status, launch_id: receipt.launch_id, request_digest: receipt.request_digest,
     workspace_root: receipt.workspace_root,
     open_task: Object.freeze({
-      repository_path: primary.repository_path, primary_repository_key: primary.key,
-      workspace_origin: primary.workspace_origin, additional_repositories: additional,
+      repositories: [primary, ...additional],
     }),
   });
 }
@@ -437,15 +397,12 @@ async function cleanupState({ dataDirectory, launchID, repositoryKey, taskID, re
   if (!repository) throw new Error("cleanup repository is not owned by the receipt");
   if (repository.workspace_mode !== "dedicated_worktree") throw new Error("local Task directories and branches are retained; workspace cleanup does not apply");
   const task = await readTask({ taskID, signal, execution });
-  if (task === null || typeof task !== "object" || !new Set(["DONE", "CANCELLED"]).has(task.current_cursor)) {
+  if (task === null || typeof task !== "object" || !new Set(["done", "cancelled"]).has(task.status)) {
     throw new Error("Core Task is not terminal");
   }
-  if (task.task_id !== taskID || task.revision !== revision) throw new Error("terminal Core Task identity or revision changed");
-  const primaryKey = task.primary_repository_key ?? "primary";
-  const taskRepository = repositoryKey === primaryKey
-    ? { origin: task.workspace_origin, binding: task.repository }
-    : (task.additional_repositories ?? []).filter((entry) => entry.key === repositoryKey)
-      .map((entry) => ({ origin: entry.workspace_origin, binding: entry.repository }))[0];
+  if (task.identity?.task_id !== taskID || task.identity?.revision !== revision) throw new Error("terminal Core Task identity or revision changed");
+  const entry = task.details?.repositories?.find(entry => entry.key === repositoryKey);
+  const taskRepository = entry ? {origin:entry.workspace_origin,binding:entry.binding} : undefined;
   if (!taskRepository || taskRepository.origin?.provisioning_receipt_id !== launchID ||
       taskRepository.origin?.canonical_worktree_root !== repository.worktree_path ||
       taskRepository.origin?.task_branch !== repository.target_branch ||

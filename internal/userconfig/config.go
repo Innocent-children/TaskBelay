@@ -13,14 +13,14 @@ import (
 const MaxConfigBytes = 16 * 1024
 
 type HostPreferences struct {
-	CodebaseMemory bool `json:"codebase_memory"`
+	CodebaseMemory bool `json:"codebase_memory" description:"是否启用对应偏好；false不应自动安装索引服务。"`
 }
 
 type Preferences struct {
-	Codex    HostPreferences `json:"codex"`
-	DeepSeek HostPreferences `json:"deepseek"`
-	Claude   HostPreferences `json:"claude"`
-	ZCode    HostPreferences `json:"zcode"`
+	Codex    HostPreferences `json:"codex" description:"Codex对应的配置项。"`
+	DeepSeek HostPreferences `json:"deepseek" description:"DeepSeek对应的配置项。"`
+	Claude   HostPreferences `json:"claude" description:"Claude对应的配置项。"`
+	ZCode    HostPreferences `json:"zcode" description:"ZCode对应的配置项。"`
 }
 
 func Load(homeDirectory string) (Preferences, error) {

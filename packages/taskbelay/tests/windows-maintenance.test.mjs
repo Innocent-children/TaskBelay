@@ -38,7 +38,7 @@ test("Windows maintenance simulation installs and repairs only the selected Clau
         events.push("claude.install"); installed = true; return { stdout: "" };
       }
       assert.equal(executable, "taskbelay-claude");
-      if (args[0] === "setup") { events.push("claude.setup"); ready = true; return { stdout: "{}" }; }
+      if (args[0] === "setup") { events.push("claude.setup"); ready = true; return { stdout: JSON.stringify({status:"ready",package_version:"0.2.0"}) }; }
       assert.equal(args[0], "status");
       if (!ready) throw Object.assign(new Error("registration not ready"), { code: "ENOENT" });
       return { stdout: JSON.stringify({ status: "ready", package_version: "0.2.0", core_version: "0.6.0", registration: { receipt: true } }) };

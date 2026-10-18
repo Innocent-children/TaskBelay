@@ -9,8 +9,8 @@ import (
 )
 
 func TestCoreSemanticPackagesContainNoOperatingSystemDecision(t *testing.T) {
-	root := currentStorageRepositoryRoot(t)
-	for _, directory := range []string{"internal/domain", "internal/workflow", "internal/application", "internal/recovery"} {
+	root := contractRepositoryRoot(t)
+	for _, directory := range []string{"internal/domain", "internal/application"} {
 		err := filepath.WalkDir(filepath.Join(root, directory), func(path string, entry os.DirEntry, err error) error {
 			if err != nil {
 				return err
@@ -34,7 +34,7 @@ func TestCoreSemanticPackagesContainNoOperatingSystemDecision(t *testing.T) {
 }
 
 func TestNodeConsumersUseClosedPlatformImplementations(t *testing.T) {
-	root := currentStorageRepositoryRoot(t)
+	root := contractRepositoryRoot(t)
 	for _, relative := range []string{
 		"packages/codex/lib/platform.mjs",
 		"packages/deepseek/lib/platform.mjs",
@@ -108,7 +108,7 @@ func TestNodeConsumersUseClosedPlatformImplementations(t *testing.T) {
 }
 
 func TestHostPlatformImplementationsRemainSeparate(t *testing.T) {
-	root := currentStorageRepositoryRoot(t)
+	root := contractRepositoryRoot(t)
 	for _, surface := range []struct {
 		directory    string
 		requiredFile string
@@ -150,7 +150,7 @@ func TestHostPlatformImplementationsRemainSeparate(t *testing.T) {
 }
 
 func TestRuntimeBuildHasOneClosedTargetCatalog(t *testing.T) {
-	root := currentStorageRepositoryRoot(t)
+	root := contractRepositoryRoot(t)
 	raw, err := os.ReadFile(filepath.Join(root, "scripts", "build-core-runtimes.mjs"))
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +167,7 @@ func TestRuntimeBuildHasOneClosedTargetCatalog(t *testing.T) {
 	if !strings.Contains(source, `CGO_ENABLED: "0"`) {
 		t.Error("runtime builder does not disable CGo")
 	}
-	for _, relative := range []string{"scripts/taskbelay-local.mjs", "tests/journeys/deepseek/multi-repository-runner.mjs"} {
+	for _, relative := range []string{"scripts/taskbelay-local.mjs"} {
 		consumer, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
 		if readErr != nil {
 			t.Fatal(readErr)

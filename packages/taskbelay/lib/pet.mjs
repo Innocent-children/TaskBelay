@@ -1,3 +1,4 @@
+import { describeInterface } from "./interface-reference.mjs";
 import { execFile as execFileCallback } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -20,7 +21,7 @@ const packageRoot = fileURLToPath(new URL("../", import.meta.url));
 
 const CORE_INVOCATION_TIMEOUT_MILLISECONDS = 10_000;
 const SERVICE_TIMEOUT_MILLISECONDS = 3_000;
-const CORE_IDENTITY_PATTERN = /^taskbelay\/(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
+const CORE_IDENTITY_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const DATA_ROOT_DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const LOOPBACK_ORIGIN_PATTERN = /^http:\/\/127\.0\.0\.1:(\d{1,5})$/u;
 const READINESS_VALUES = Object.freeze(["ready", "read_only", "incompatible", "unavailable"]);
@@ -43,6 +44,10 @@ export async function runPet(arguments_, dependencies = {}) {
   const arch = dependencies.arch ?? process.arch;
   const messages = messagesForLanguage(dependencies.language ?? resolveLanguage(environment)).pet;
   try {
+    if (arguments_[0] === "pet" && arguments_[2] === "--help" && (arguments_.length === 3 || arguments_.length === 4 && arguments_[3] === "--json")) {
+      stdout.write(JSON.stringify(await describeInterface(packageRoot,"taskbelay.pet."+arguments_[1]),null,2)+"\n");
+      return { code:0, signal:null };
+    }
     const command = parsePetArguments(arguments_, messages);
     assertSupportedPlatform(platform, arch, messages);
     const text = command === "start"
@@ -279,7 +284,9 @@ function validatedRuntimeState(output, messages) {
     throw invalid("the data directory digest is invalid");
   }
   if (typeof state.url !== "string") throw invalid("the Core reported an invalid service address");
-  if (!Number.isInteger(state.pid) || state.pid < 0) throw invalid("the Core reported an invalid service process");
+  if (state.pid !== undefined && (!Number.isInteger(state.pid) || state.pid < 0)) {
+    throw invalid("the Core reported an invalid service process");
+  }
   return Object.freeze({
     readiness: state.readiness,
     core_identity: state.core_identity,

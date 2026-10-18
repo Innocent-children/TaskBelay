@@ -4,7 +4,7 @@
   "scripts": {
     "build:webui": "node ./scripts/build-webui.mjs",
     "taskbelay:local": "node ./scripts/taskbelay-local.mjs",
-    "validate": "./scripts/validate-repository.sh",
+    "validate": "node ./scripts/validate-engineering.mjs",
     "validate:contracts": "go test ./tests/contract",
     "versions:check": "node ./scripts/check-versions.mjs",
     "release:codex": "node ./scripts/release-codex.mjs",

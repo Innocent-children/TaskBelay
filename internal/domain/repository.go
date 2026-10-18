@@ -46,17 +46,17 @@ func (m WorkspaceMode) IsValid() bool {
 // supplies the selection fields and Core fills the three observed location
 // fields before the Task is created.
 type WorkspaceOrigin struct {
-	Mode                        WorkspaceMode `json:"mode"`
-	SourceType                  string        `json:"source_type"`
-	CarryChanges                bool          `json:"carry_changes"`
-	RemoteName                  string        `json:"remote_name"`
-	BaseBranch                  string        `json:"base_branch"`
-	BaseCommit                  string        `json:"base_commit"`
-	TaskBranch                  string        `json:"task_branch"`
-	SourceRepositoryGroupDigest Digest        `json:"source_repository_group_digest"`
-	CanonicalWorktreeRoot       string        `json:"canonical_worktree_root"`
-	WorktreeGitDirDigest        Digest        `json:"worktree_git_dir_digest"`
-	ProvisioningReceiptID       ID            `json:"provisioning_receipt_id"`
+	Mode                        WorkspaceMode `json:"mode" description:"current_branch/new_branch/dedicated_worktree。"`
+	SourceType                  string        `json:"source_type" description:"local/remote，说明冻结来源。"`
+	CarryChanges                bool          `json:"carry_changes" description:"是否按原选择携带本地变动，remote来源不得为true。"`
+	RemoteName                  string        `json:"remote_name" description:"remote来源的真实远端名；local来源为空。"`
+	BaseBranch                  string        `json:"base_branch" description:"原来源分支，不自行换成main。"`
+	BaseCommit                  string        `json:"base_commit" description:"冻结的精确来源提交。"`
+	TaskBranch                  string        `json:"task_branch" description:"本任务实际目标分支。"`
+	SourceRepositoryGroupDigest Digest        `json:"source_repository_group_digest" description:"Observed identity of the original shared Git repository."`
+	CanonicalWorktreeRoot       string        `json:"canonical_worktree_root" description:"实际规范工作树根。"`
+	WorktreeGitDirDigest        Digest        `json:"worktree_git_dir_digest" description:"Observed worktree Git-directory identity."`
+	ProvisioningReceiptID       ID            `json:"provisioning_receipt_id" description:"Core绑定的原准备收据身份，用于确认清理归属。"`
 }
 
 func (o WorkspaceOrigin) Validate() error {
@@ -145,17 +145,17 @@ func (t RepositoryChangeType) IsValid() bool {
 // RepositoryChangedEntry is a bounded path observation. ContentDigest
 // identifies the current path state, including deletion, without file bytes.
 type RepositoryChangedEntry struct {
-	Path                  string               `json:"path"`
-	ChangeType            RepositoryChangeType `json:"change_type"`
-	FileMode              string               `json:"file_mode"`
-	Gitlink               bool                 `json:"gitlink"`
-	BaseMode              string               `json:"base_mode"`
-	BaseContentDigest     Digest               `json:"base_content_digest"`
-	IndexMode             string               `json:"index_mode"`
-	IndexContentDigest    Digest               `json:"index_content_digest"`
-	WorktreeMode          string               `json:"worktree_mode"`
-	WorktreeContentDigest Digest               `json:"worktree_content_digest"`
-	ContentDigest         Digest               `json:"content_digest"`
+	Path                  string               `json:"path" description:"输入错误用arguments路径；审查/缺口使用限定仓库路径或具体记录位置。"`
+	ChangeType            RepositoryChangeType `json:"change_type" description:"Observed addition, modification, deletion or replacement."`
+	FileMode              string               `json:"file_mode" description:"Observed Git file mode."`
+	Gitlink               bool                 `json:"gitlink" description:"Whether this entry is a Git submodule link."`
+	BaseMode              string               `json:"base_mode" description:"Git file mode at the frozen base."`
+	BaseContentDigest     Digest               `json:"base_content_digest" description:"来源内容摘要。"`
+	IndexMode             string               `json:"index_mode" description:"Git mode in the index."`
+	IndexContentDigest    Digest               `json:"index_content_digest" description:"Staged content digest, separate from worktree content."`
+	WorktreeMode          string               `json:"worktree_mode" description:"Current file mode in the worktree."`
+	WorktreeContentDigest Digest               `json:"worktree_content_digest" description:"当前工作树内容摘要。"`
+	ContentDigest         Digest               `json:"content_digest" description:"当前内容摘要。"`
 }
 
 func (e RepositoryChangedEntry) Validate() error {
@@ -169,29 +169,39 @@ func (e RepositoryChangedEntry) Validate() error {
 
 // RepositoryBinding is one immutable observation of a provisioned Task worktree.
 type RepositoryBinding struct {
-	WorktreeInstanceDigest Digest                    `json:"worktree_instance_digest"`
-	IdentityDigest         Digest                    `json:"identity_digest"`
-	HistoryDigest          Digest                    `json:"history_digest"`
-	ContentDigest          Digest                    `json:"content_digest"`
-	CurrentBranch          *string                   `json:"current_branch"`
-	Detached               bool                      `json:"detached"`
-	CurrentHead            string                    `json:"current_head"`
-	HeadTree               string                    `json:"head_tree"`
-	HistoryRelation        RepositoryHistoryRelation `json:"history_relation"`
-	BaseCommitAncestor     bool                      `json:"base_commit_ancestor"`
-	ChangedEntries         []RepositoryChangedEntry  `json:"changed_entries"`
-	TaskSurface            []RepositoryChangedEntry  `json:"task_surface"`
-	ObservedAt             time.Time                 `json:"observed_at"`
-	BindingDigest          Digest                    `json:"binding_digest"`
+	WorktreeInstanceDigest Digest                    `json:"worktree_instance_digest" description:"Physical workspace instance; replacing a directory at the same path changes it."`
+	IdentityDigest         Digest                    `json:"identity_digest" description:"Observed repository/worktree identity digest."`
+	HistoryDigest          Digest                    `json:"history_digest" description:"Digest of the observed history relation to frozen source."`
+	ContentDigest          Digest                    `json:"content_digest" description:"当前内容摘要。"`
+	CurrentBranch          *string                   `json:"current_branch" description:"Actual observed branch; null for detached HEAD."`
+	BranchUpstream         *string                   `json:"branch_upstream" description:"Observed task-branch upstream, distinct from the frozen source upstream; null means none."`
+	Detached               bool                      `json:"detached" description:"Whether the worktree has detached HEAD."`
+	CurrentHead            string                    `json:"current_head" description:"实际观察到的HEAD提交。"`
+	HeadTree               string                    `json:"head_tree" description:"Actual HEAD tree object identity."`
+	HistoryRelation        RepositoryHistoryRelation `json:"history_relation" description:"Actual history relationship; use the reported gap for unsupported divergence."`
+	BaseCommitAncestor     bool                      `json:"base_commit_ancestor" description:"Whether the frozen base is still an ancestor of actual HEAD."`
+	ChangedEntries         []RepositoryChangedEntry  `json:"changed_entries" description:"Actual staged and worktree entries reported by Git."`
+	TaskSurface            []RepositoryChangedEntry  `json:"task_surface" description:"实际任务变化路径与逐文件观察。"`
+	ObservedAt             time.Time                 `json:"observed_at" description:"UTC time of the repository observation."`
+	BindingDigest          Digest                    `json:"binding_digest" description:"Digest of the complete observed workspace binding."`
 }
 
 type RepositoryScopeEntry struct {
-	Key     RepositoryKey     `json:"key"`
-	Origin  WorkspaceOrigin   `json:"workspace_origin"`
-	Binding RepositoryBinding `json:"binding"`
+	Key            RepositoryKey     `json:"key" description:"仓库稳定key，1..128个小写ASCII字母数字及._-，以字母数字开头。"`
+	Origin         WorkspaceOrigin   `json:"workspace_origin" description:"由真实准备操作/观察生成的工作区来源。"`
+	Binding        RepositoryBinding `json:"binding" description:"只读仓库绑定观察。"`
+	RemoteBaseline *RemoteFreshness  `json:"remote_baseline,omitempty" description:"Verified remote observation retained at open; omitted means not checked."`
+	RemoteLatest   *RemoteFreshness  `json:"remote_latest,omitempty" description:"Latest verified observation of the original source selection."`
 }
 
 func (e RepositoryScopeEntry) Validate() error {
+	for _, f := range []*RemoteFreshness{e.RemoteBaseline, e.RemoteLatest} {
+		if f != nil {
+			if err := f.Validate(); err != nil {
+				return err
+			}
+		}
+	}
 	if !e.Key.IsValid() || e.Origin.Validate() != nil || e.Binding.Validate() != nil {
 		return ErrInvalidArgument
 	}
@@ -311,6 +321,7 @@ func (b RepositoryBinding) Validate() error {
 
 func (b RepositoryBinding) Clone() RepositoryBinding {
 	b.CurrentBranch = cloneStringPointer(b.CurrentBranch)
+	b.BranchUpstream = cloneStringPointer(b.BranchUpstream)
 	b.ChangedEntries = append([]RepositoryChangedEntry(nil), b.ChangedEntries...)
 	b.TaskSurface = append([]RepositoryChangedEntry(nil), b.TaskSurface...)
 	return b

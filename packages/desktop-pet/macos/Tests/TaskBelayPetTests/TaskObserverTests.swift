@@ -32,7 +32,7 @@ final class TaskObserverTests: XCTestCase {
 
         let last = context.collector.snapshot.last
         XCTAssertEqual(last?.connection, .connected(url: TestFixtures.origin))
-        XCTAssertEqual(last?.presentation.phase, .working(node: "IMPLEMENT"))
+        XCTAssertEqual(last?.presentation.phase, .working(node: "ACTIVE"))
         XCTAssertEqual(last?.presentation.clip, .working)
         XCTAssertFalse(last?.presentation.playIntro ?? true)
         XCTAssertEqual(last?.selectedTaskID, "task-1")
@@ -59,7 +59,7 @@ final class TaskObserverTests: XCTestCase {
     func testLateResponseForASupersededTaskIsDropped() async {
         let context = makeContext(selectedTaskID: "task-a")
         context.client.holdDetail(taskID: "task-a")
-        context.client.setDetail(taskID: "task-b", .value(TestDetails.detail(taskID: "task-b", currentNode: "TEST")))
+        context.client.setDetail(taskID: "task-b", .value(TestDetails.detail(taskID: "task-b", currentNode: "ACTIVE")))
         let observer = context.observer
 
         await observer.restoreSelectionFromPreferences()
@@ -78,7 +78,7 @@ final class TaskObserverTests: XCTestCase {
         await assertEventually { context.collector.count >= 2 }
         let phases = context.collector.snapshot.map(\.presentation.phase)
         XCTAssertFalse(phases.contains(.completed), "the late response for task-a was displayed")
-        XCTAssertEqual(context.collector.snapshot.last?.presentation.phase, .working(node: "TEST"))
+        XCTAssertEqual(context.collector.snapshot.last?.presentation.phase, .working(node: "ACTIVE"))
         XCTAssertFalse(context.collector.snapshot.contains { $0.presentation.playIntro })
         XCTAssertEqual(context.client.recordedRequests.filter { $0.hasPrefix("detail:") }, ["detail:task-a", "detail:task-b"])
     }
@@ -90,7 +90,7 @@ final class TaskObserverTests: XCTestCase {
         stale.holdDetail(taskID: "task-1")
         let current = ScriptedWebUIClient(origin: "http://127.0.0.1:60001")
         current.setSystemStatus(.value(TestDetails.liveStatus(url: "http://127.0.0.1:60001")))
-        current.setDetail(taskID: "task-1", .value(TestDetails.detail(currentNode: "TEST")))
+        current.setDetail(taskID: "task-1", .value(TestDetails.detail(currentNode: "ACTIVE")))
 
         // Reconnecting reads the Core status again and finds the service on a
         // new port, which supersedes the connection still holding a read.
@@ -120,7 +120,7 @@ final class TaskObserverTests: XCTestCase {
         await assertEventually {
             collector.snapshot.contains { $0.connection == .connected(url: "http://127.0.0.1:60001") }
         }
-        await assertEventually { collector.snapshot.last?.presentation.phase == .working(node: "TEST") }
+        await assertEventually { collector.snapshot.last?.presentation.phase == .working(node: "ACTIVE") }
         let phases = collector.snapshot.map(\.presentation.phase)
         XCTAssertFalse(phases.contains(.completed), "the late response from the old connection was displayed")
         XCTAssertFalse(collector.snapshot.contains { $0.presentation.playIntro })
@@ -227,7 +227,7 @@ final class TaskObserverTests: XCTestCase {
         await context.observer.refreshNow()
         await assertEventually { context.collector.snapshot.last?.selectedTaskID == "created-later" }
         XCTAssertNil(context.preferences.current.selectedTask(for: TestFixtures.dataRootDigest))
-        XCTAssertEqual(context.collector.snapshot.last?.presentation.phase, .working(node: "IMPLEMENT"))
+        XCTAssertEqual(context.collector.snapshot.last?.presentation.phase, .working(node: "ACTIVE"))
 
         context.client.setList(lifecycle: .blocked, .value(TestDetails.list(summaries: [
             TestFixtures.summary(taskID: "new-blocked", lifecycle: .blocked),
@@ -283,7 +283,7 @@ final class TaskObserverTests: XCTestCase {
         first.setDetail(taskID: "task-1", .failure(.unreachable))
         let recovered = ScriptedWebUIClient(origin: "http://127.0.0.1:60001")
         recovered.setSystemStatus(.value(TestDetails.liveStatus(url: "http://127.0.0.1:60001")))
-        recovered.setDetail(taskID: "task-1", .value(TestDetails.detail(currentNode: "TEST")))
+        recovered.setDetail(taskID: "task-1", .value(TestDetails.detail(currentNode: "ACTIVE")))
 
         let runner = RecordingProcessRunner(outcomes: [
             readyOutcome(url: "http://127.0.0.1:51234"),
@@ -316,7 +316,7 @@ final class TaskObserverTests: XCTestCase {
 
         await observer.refreshNow()
         await assertEventually { collector.snapshot.last?.connection == .connected(url: "http://127.0.0.1:60001") }
-        await assertEventually { collector.snapshot.last?.presentation.phase == .working(node: "TEST") }
+        await assertEventually { collector.snapshot.last?.presentation.phase == .working(node: "ACTIVE") }
         XCTAssertFalse(runner.calls.contains { $0.arguments.contains("start") })
         XCTAssertEqual(factory.requestedOrigins, ["http://127.0.0.1:51234", "http://127.0.0.1:60001"])
     }
@@ -389,7 +389,7 @@ final class TaskObserverTests: XCTestCase {
             ["webui", "status", "--json"],
             ["webui", "start", "--no-open", "--json"],
         ])
-        await assertEventually { collector.snapshot.last?.presentation.phase == .working(node: "IMPLEMENT") }
+        await assertEventually { collector.snapshot.last?.presentation.phase == .working(node: "ACTIVE") }
     }
 
     // MARK: - Exit conditions

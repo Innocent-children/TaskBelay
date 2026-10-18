@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { statSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 
-import { deriveCurrentTurn } from "./authorization.mjs";
 
 const SUPPORTED_TOOLS = new Set(["write", "edit", "str_replace_editor"]);
 const MAX_OUTPUT_BYTES = 1024 * 1024;
@@ -18,7 +17,7 @@ export function registerFileScopeGate(ctx, {
     throw new Error("file-scope gate paths are required");
   }
   return ctx.on("tools/pre-execute", async (execution, next) => {
-    if (!SUPPORTED_TOOLS.has(execution?.name) || deriveCurrentTurn(execution)?.selectorPresent !== true) {
+    if (!SUPPORTED_TOOLS.has(execution?.name)) {
       return next();
     }
     if (execution.name === "str_replace_editor" && execution.arguments?.command === "view") {
@@ -113,7 +112,9 @@ async function runCoreCheck(request, { runtimePath, dataDirectory, spawnImpl }) 
   if (status.code !== 0 || status.signal !== null || outputBytes > MAX_OUTPUT_BYTES) {
     throw new Error(Buffer.concat(stderr).toString("utf8") || "Core host check failed");
   }
-  return JSON.parse(Buffer.concat(stdout).toString("utf8"));
+  const envelope = JSON.parse(Buffer.concat(stdout).toString("utf8"));
+  if (envelope.ok !== true) throw new Error(envelope.error?.message ?? "Core rejected preflight");
+  return envelope.result;
 }
 
 function stableJSON(value) {

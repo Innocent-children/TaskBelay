@@ -127,7 +127,7 @@ final class LaunchAndInstanceTests: XCTestCase {
     }
 
     func testRejectsAnUnverifiedIdentityOrDigestShape() {
-        for identity in ["0.4.1", "taskbelay/0.4", "taskbelay/04.1.0", "taskbelay/0.4.1-extra", ""] {
+        for identity in ["taskbelay/0.4.1", "0.4", "04.1.0", "0.4.1-extra", ""] {
             assertArgumentFailure([
                 "run", "--core-path", "/runtime/taskbelay", "--data-dir", "/data", "--product-root", "/product",
                 "--core-identity", identity, "--data-root-digest", digest,

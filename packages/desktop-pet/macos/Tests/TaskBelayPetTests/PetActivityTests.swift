@@ -137,7 +137,7 @@ final class PetActivityTests: XCTestCase {
     }
 
     func testTaskAlertsImmediatelyInterruptIdleAndWalking() throws {
-        for (phase, clip) in [(DisplayPhase.blocked(node: "IMPLEMENT"), AnimationClip.blocked), (.disconnected, .disconnected)] {
+        for (phase, clip) in [(DisplayPhase.blocked(node: "ACTIVE"), AnimationClip.blocked), (.disconnected, .disconnected)] {
             enterIdleWithoutGreeting()
             clock.time = try XCTUnwrap(activities.nextDeadline)
             activities.tick()
@@ -151,7 +151,7 @@ final class PetActivityTests: XCTestCase {
     }
 
     func testCompletionFinishesBeforeTheThreeSecondRestAndDoesNotReplay() throws {
-        update(.working(node: "IMPLEMENT"), .working)
+        update(.working(node: "ACTIVE"), .working)
         update(.completed, .complete, intro: true)
         let celebration = activities.playback
         XCTAssertEqual(celebration?.playback, .onceThenRest(lastFrameIndex: 1, restFrame: 0))
@@ -203,11 +203,11 @@ final class PetActivityTests: XCTestCase {
         update(.noSelection, .idle)
         XCTAssertEqual(activities.playback?.clip, .idle)
         XCTAssertNil(activities.nextDeadline)
-        update(.working(node: "COMPREHENSION_REVIEW"), .review)
+        update(.working(node: "ACTIVE"), .working)
         XCTAssertEqual(activities.playback?.clip, .working)
         activities.configure(catalog: catalog())
-        update(.working(node: "COMPREHENSION_REVIEW"), .review)
-        XCTAssertEqual(activities.playback?.clip, .review)
+        update(.working(node: "ACTIVE"), .working)
+        XCTAssertEqual(activities.playback?.clip, .working)
         XCTAssertNil(activities.nextDeadline)
     }
 
@@ -224,7 +224,7 @@ final class PetActivityTests: XCTestCase {
     }
 
     func testUnreadableCelebrationReleasesTheCompletionWait() {
-        update(.working(node: "IMPLEMENT"), .working)
+        update(.working(node: "ACTIVE"), .working)
         update(.completed, .complete, intro: true)
         activities.playbackFailed(.complete)
         XCTAssertEqual(activities.nextDeadline, 3)
@@ -243,7 +243,7 @@ final class PetActivityTests: XCTestCase {
     }
 
     private func enterIdleWithoutGreeting() {
-        update(.working(node: "IMPLEMENT"), .working)
+        update(.working(node: "ACTIVE"), .working)
         update(.noSelection, .idle)
     }
 

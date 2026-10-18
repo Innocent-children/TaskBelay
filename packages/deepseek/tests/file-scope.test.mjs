@@ -50,14 +50,14 @@ test("DeepSeek stops invalid parent paths before dispatch or Core lookup", async
 test("DeepSeek pre-execute gate blocks a selected TaskBelay write before dispatch", async () => {
   let listener;
   const ctx = { on: (event, callback) => { assert.equal(event, "tools/pre-execute"); listener = callback; return () => undefined; } };
-  registerFileScopeGate(ctx, { runtimePath: "/runtime/taskbelay", dataDirectory: "/data", workspaceRoot: "/workspace", spawnImpl: fakeSpawn({ decision: "deny", reason: "Choose allow_once, expand_scope or reject." }) });
+  registerFileScopeGate(ctx, { runtimePath: "/runtime/taskbelay", dataDirectory: "/data", workspaceRoot: "/workspace", spawnImpl: fakeSpawn({ decision: "deny", reason: "Target path violates the actual user restriction." }) });
   let dispatched = 0;
   const result = await listener(selectedExecution("write", { file_path: "/workspace/config.yml", content: "x" }), async () => { dispatched += 1; return { kind: "allow" }; });
-  assert.deepEqual(result, { kind: "deny", reason: "Choose allow_once, expand_scope or reject." });
+  assert.deepEqual(result, { kind: "deny", reason: "Target path violates the actual user restriction." });
   assert.equal(dispatched, 0);
 });
 
-test("DeepSeek gate ignores ordinary turns and read-only editor calls", async () => {
+test("DeepSeek gate retains scope checks across ordinary follow-ups and bypasses read-only calls", async () => {
   let listener;
   let spawns = 0;
   const ctx = { on: (_event, callback) => { listener = callback; return () => undefined; } };
@@ -66,7 +66,7 @@ test("DeepSeek gate ignores ordinary turns and read-only editor calls", async ()
   await listener(selectedExecution("str_replace_editor", { command: "view", path: "/workspace/file" }), async () => { dispatched += 1; return { kind: "allow" }; });
   await listener(ordinaryExecution("write", { file_path: "/workspace/file", content: "x" }), async () => { dispatched += 1; return { kind: "allow" }; });
   assert.equal(dispatched, 2);
-  assert.equal(spawns, 0);
+  assert.equal(spawns, 1);
 });
 
 function selectedExecution(name, argumentsValue, text = "/taskbelay continue") {
@@ -101,7 +101,7 @@ function fakeSpawn(result) {
     child.stderr = new PassThrough();
     child.kill = () => undefined;
     child.stdin = { end: () => queueMicrotask(() => {
-      child.stdout.write(`${JSON.stringify(result)}\n`);
+      child.stdout.write(`${JSON.stringify({ok:true,result})}\n`);
       child.stdout.end();
       child.emit("exit", 0, null);
     }) };
