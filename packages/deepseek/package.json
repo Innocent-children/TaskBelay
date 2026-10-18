@@ -1,6 +1,6 @@
 {
   "name": "taskbelay-deepseek",
-  "version": "0.10.5",
+  "version": "0.10.6",
   "private": false,
   "description": "TaskBelay local engineering control and evidence for deepseek.",
   "license": "Apache-2.0",
