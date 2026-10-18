@@ -95,6 +95,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           pnpm install --frozen-lockfile --ignore-scripts
 
+      - name: Build the dual-runtime local packages on Windows
+        shell: pwsh
+        run: node scripts/taskbelay-local.mjs help
+
       - name: Build native Windows x64 Core
         shell: pwsh
         run: |
@@ -139,10 +143,6 @@ jobs:
           $env:TASKBELAY_ZCODE_TEST_CORE = $env:TASKBELAY_WINDOWS_CORE
           pnpm --dir packages/zcode test
           exit $LASTEXITCODE
-
-      - name: Build the dual-runtime local packages on Windows
-        shell: pwsh
-        run: node scripts/taskbelay-local.mjs help
 
       - name: Check Windows pet renderer logic with simulated DOM and IPC
         shell: pwsh
