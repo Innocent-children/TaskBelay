@@ -1,4 +1,10 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 
 type Language = "en" | "zh";
 const LanguageContext = createContext<{
@@ -18,8 +24,10 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   function setLanguage(value: Language) {
     select(value);
     localStorage.setItem("taskbelay-language", value);
-    document.documentElement.lang = value === "zh" ? "zh-CN" : "en";
   }
+  useEffect(() => {
+    document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+  }, [language]);
   return (
     <LanguageContext.Provider value={{ language, setLanguage }}>
       {children}

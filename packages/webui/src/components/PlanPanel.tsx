@@ -1,130 +1,179 @@
-import { useLanguage } from "../lib/i18n";
 import type { View } from "../lib/api";
+import { useLanguage } from "../lib/i18n";
+import { dateTime } from "../lib/presentation";
+import { StatusBadge } from "./UI";
 
 export function PlanPanel({ view }: { view: View }) {
-  const { label } = useLanguage();
+  const { label, language } = useLanguage();
   const { plan, authorization } = view.context;
-  const names: Record<string, string> = {
-    runs: label("Executions", "执行次数"),
-    execution_ms: label("Command time", "命令时间"),
-    core_ms: label("Core work time", "Core 工作时间"),
-    host_ms: label("Reported work and wait", "报告的工作与等待"),
-    tokens: "Tokens",
-  };
-  const value = (name: string, n: number | null) =>
-    n === null ? label("Unknown", "未知") :
-    name.endsWith("_ms") ? `${Math.round(n / 1000)} s` : String(n);
   return (
-    <details className="task-details">
-      <summary>
-        {label(
-          "Approach, workspace and verification",
-          "实施思路、工作位置与验证",
-        )}
-      </summary>
-      <p>{plan.approach}</p>
-      <p>{plan.verification_basis}</p>
-      {view.details.repositories.map((r) => (
-        <p key={r.key}>
-          <strong>{r.key}</strong> ·{" "}
-          <code>{r.workspace_origin.canonical_worktree_root}</code> ·{" "}
-          {r.workspace_origin.task_branch}
-        </p>
-      ))}
-      <p>
-        {label("Allowed paths: ", "允许改动范围：")}
-        {authorization.allowed_paths?.join(", ") ||
-          label("Bound repositories", "已绑定仓库")}
-      </p>
-      {!!authorization.forbidden_paths?.length && (
-        <p>
-          {label("Forbidden paths: ", "禁止改动范围：")}
-          {authorization.forbidden_paths.join(", ")}
-        </p>
-      )}
-      {!!plan.expected_paths?.length && (
-        <p>
-          {label("Predicted paths: ", "预计路径：")}
-          {plan.expected_paths.join(", ")}
-        </p>
-      )}
-      <ul>
-        {plan.checks.map((c) => (
-          <li key={c.id}>
-            <strong>{c.id}</strong> · {c.rationale} · {c.conditions}
-          </li>
+    <>
+      <section className="content-section">
+        <h2>{label("Original request and goals", "原始需求与目标")}</h2>
+        <p className="request-text">{authorization.request}</p>
+        {authorization.goals.map((goal) => (
+          <div className="goal-definition" key={goal.id}>
+            <div className="section-heading">
+              <strong>{goal.statement}</strong>
+              <StatusBadge
+                status={
+                  view.progress.find((progress) => progress.goal_id === goal.id)
+                    ?.status || "planned"
+                }
+              />
+            </div>
+            <span className="help-text">{goal.id}</span>
+          </div>
         ))}
-      </ul>
-      {authorization.dependencies?.map((p) => (
-        <p key={p.path}>
-          {label("Dependency restriction: ", "依赖限制：")}
-          <code>{p.path}</code> ·{" "}
-          {p.allowed.join(", ") || label("No changes allowed", "不允许变更")}
-        </p>
-      ))}
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>{label("Cost", "投入")}</th>
-              <th>{label("Actual", "实际")}</th>
-              <th>{label("Reserved", "预留")}</th>
-              <th>{label("Uncertain", "未确定")}</th>
-              <th>{label("Maximum", "上限")}</th>
-              <th>{label("Remaining", "剩余")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.budget.limits.map((b) => (
-              <tr key={b.name}>
-                <td>{names[b.name]}</td>
-                <td>{value(b.name, b.actual)}</td>
-                <td>{value(b.name, b.reserved)}</td>
-                <td>{value(b.name, b.uncertain)}</td>
-                <td>
-                  {b.limited
-                    ? value(b.name, b.limit)
-                    : label("Not set", "未设置")}
-                </td>
-                <td>{b.limited ? value(b.name, b.remaining) : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {view.budget.checks
-        .filter((c) => c.required && !c.startable)
-        .map((c) => (
-          <p key={c.check_id} className="finding">
-            {c.check_id} ·{" "}
-            {label(
-              "Current limits cannot reserve this check.",
-              "当前额度无法预留此检查。",
+      </section>
+      <section className="content-section">
+        <h2>{label("Approach and verification", "实施思路与验证安排")}</h2>
+        <p>{plan.approach}</p>
+        <p className="muted">{plan.verification_basis}</p>
+        {!!plan.expected_paths?.length && (
+          <p className="help-text">
+            {label("Predicted paths: ", "预计路径：")}
+            <code>{plan.expected_paths.join(", ")}</code>
+          </p>
+        )}
+      </section>
+      <section className="content-section">
+        <h2>{label("Workspace and boundaries", "工作位置与明确限制")}</h2>
+        {view.context.repositories.map((repository) => (
+          <div className="repository-detail" key={repository.key}>
+            <div className="section-heading">
+              <strong>{repository.key}</strong>
+              <span className="repository-branch">{repository.branch}</span>
+            </div>
+            <code>{repository.repository_path}</code>
+            {repository.upstream && (
+              <p className="help-text">
+                {label("Upstream: ", "上游：")}
+                {repository.upstream}
+              </p>
             )}
+            {repository.changed_paths.length > 0 && (
+              <details className="technical-details">
+                <summary>
+                  {label("Observed changed paths", "已观察到的改动路径")}
+                </summary>
+                {repository.changed_paths.map((path) => (
+                  <code className="path-line" key={path}>
+                    {path}
+                  </code>
+                ))}
+              </details>
+            )}
+          </div>
+        ))}
+        <p>
+          {label("Allowed paths: ", "允许改动范围：")}
+          {authorization.allowed_paths?.join(", ") ||
+            label("Bound repositories", "已绑定仓库")}
+        </p>
+        {!!authorization.forbidden_paths?.length && (
+          <p>
+            {label("Forbidden paths: ", "禁止改动范围：")}
+            <code>{authorization.forbidden_paths.join(", ")}</code>
+          </p>
+        )}
+        {authorization.constraints?.map((constraint) => (
+          <p key={constraint.id}>{constraint.statement}</p>
+        ))}
+        {authorization.dependencies?.map((dependency) => (
+          <p key={dependency.path}>
+            {label("Dependency restriction: ", "依赖限制：")}
+            <code>{dependency.path}</code> ·{" "}
+            {dependency.allowed.join(", ") ||
+              label("No changes allowed", "不允许变更")}
           </p>
         ))}
-      {view.budget.warnings.map((w) => (
-        <p className="finding" key={w}>
-          {w}
-        </p>
-      ))}
-      <p>
-        {label(
-          "Core and reported work time overlap; do not add them.",
-          "Core 与报告工作时间可能重叠，不能直接相加。",
+      </section>
+      <details className="disclosure">
+        <summary>
+          {label("Check definitions", "完整检查定义")}
+          <span className="disclosure-count">{plan.checks.length}</span>
+        </summary>
+        {plan.checks.map((check) => (
+          <div className="check-definition" key={check.id}>
+            <strong>{check.id}</strong>
+            <p>{check.rationale}</p>
+            <p className="muted">{check.conditions}</p>
+            {check.argv?.length ? <pre>{check.argv.join(" ")}</pre> : null}
+            <p className="help-text">
+              {label("Inputs: ", "输入：")}
+              <code>{check.inputs?.join(", ") || "."}</code>
+            </p>
+            <p className="help-text">
+              {label("Goals: ", "对应目标：")}
+              {check.goal_ids.join(", ")}
+            </p>
+          </div>
+        ))}
+      </details>
+      {view.concerns.length > 0 && (
+        <details className="disclosure">
+          <summary>
+            {label(
+              "Engineering questions and resolutions",
+              "工程问题与处理情况",
+            )}
+            <span className="disclosure-count">{view.concerns.length}</span>
+          </summary>
+          {view.concerns.map((concern) => (
+            <div className="check-definition" key={concern.id}>
+              <strong>{concern.summary}</strong>
+              <p>
+                {concern.resolution?.basis || label("Unresolved", "尚未解决")}
+              </p>
+              <p className="help-text">{concern.reason}</p>
+            </div>
+          ))}
+        </details>
+      )}
+      <details className="disclosure">
+        <summary>
+          {label("Recent decisions and changes", "近期决定与调整")}
+        </summary>
+        {view.details.changes.length ? (
+          <ol className="change-timeline">
+            {view.details.changes.map((change) => (
+              <li key={change.revision + ":" + change.at}>
+                <span className="help-text">
+                  #{change.revision} · {dateTime(change.at, language)}
+                </span>
+                <p>{change.summary}</p>
+                <details className="technical-details">
+                  <summary>{label("Record details", "记录详情")}</summary>
+                  <code>{change.kind}</code>
+                  {change.user_ref && (
+                    <p className="help-text">{change.user_ref}</p>
+                  )}
+                </details>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="muted">
+            {label("No recent changes recorded.", "还没有近期调整记录。")}
+          </p>
         )}
-      </p>
-      <details>
+      </details>
+      <details className="disclosure">
         <summary>
           {label(
-            "Complete requirements and check definitions",
-            "完整需求与检查定义",
+            "Raw requirements and Core observations",
+            "原始需求数据与 Core 检查事项",
           )}
         </summary>
         <pre>
-          {JSON.stringify({ authorization, checks: plan.checks }, null, 2)}
+          {JSON.stringify(
+            { authorization, checks: plan.checks, gaps: view.decision.gaps },
+            null,
+            2,
+          )}
         </pre>
       </details>
-    </details>
+    </>
   );
 }
