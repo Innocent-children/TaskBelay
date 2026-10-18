@@ -1,6 +1,6 @@
 {
   "name": "taskbelay-codex",
-  "version": "0.10.5",
+  "version": "0.10.6",
   "private": false,
   "description": "TaskBelay local engineering control and evidence for codex.",
   "license": "Apache-2.0",

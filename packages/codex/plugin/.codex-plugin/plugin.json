@@ -1,6 +1,6 @@
 {
   "name": "taskbelay-codex",
-  "version": "0.10.5",
+  "version": "0.10.6",
   "description": "TaskBelay tasks in local branches or dedicated worktrees for Codex.",
   "author": {
     "name": "TaskBelay"
