@@ -67,7 +67,8 @@ func Start(ctx context.Context, dataDirectory, coreIdentity string, noOpen bool)
 	go func() { exited <- command.Wait() }()
 	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
-		state, _ = Status(ctx, dataDirectory, coreIdentity)
+		// The child owns storage initialization until it publishes its runtime receipt.
+		state, _ = runtimeStatus(ctx, dataDirectory, coreIdentity, false)
 		if state.Readiness == ReadinessReady {
 			if !noOpen {
 				if err := OpenBrowser(state.URL); err != nil {
@@ -91,6 +92,10 @@ func Start(ctx context.Context, dataDirectory, coreIdentity string, noOpen bool)
 }
 
 func Status(ctx context.Context, dataDirectory, coreIdentity string) (RuntimeState, error) {
+	return runtimeStatus(ctx, dataDirectory, coreIdentity, true)
+}
+
+func runtimeStatus(ctx context.Context, dataDirectory, coreIdentity string, inspectStoppedStorage bool) (RuntimeState, error) {
 	digest, err := DataRootDigest(dataDirectory)
 	if err != nil {
 		return RuntimeState{Readiness: ReadinessUnavailable, CoreIdentity: coreIdentity}, err
@@ -98,7 +103,10 @@ func Status(ctx context.Context, dataDirectory, coreIdentity string) (RuntimeSta
 	base := RuntimeState{Readiness: ReadinessUnavailable, CoreIdentity: coreIdentity, DataRootDigest: digest}
 	receipt, err := ReadReceipt(dataDirectory)
 	if errors.Is(err, os.ErrNotExist) {
-		return classifyStoppedStorage(ctx, dataDirectory, base), nil
+		if inspectStoppedStorage {
+			base = classifyStoppedStorage(ctx, dataDirectory, base)
+		}
+		return base, nil
 	}
 	if err != nil {
 		return base, err
@@ -107,7 +115,10 @@ func Status(ctx context.Context, dataDirectory, coreIdentity string) (RuntimeSta
 	base.PID = receipt.PID
 	if !receiptProcessMatches(receipt) {
 		_ = removeReceipt(dataDirectory, receipt)
-		return classifyStoppedStorage(ctx, dataDirectory, base), nil
+		if inspectStoppedStorage {
+			base = classifyStoppedStorage(ctx, dataDirectory, base)
+		}
+		return base, nil
 	}
 	if receipt.DataRootDigest != digest {
 		base.Readiness = ReadinessIncompatible

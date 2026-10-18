@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { execPortableCommand } from "../packages/taskbelay/lib/command.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const go = process.env.GO_EXECUTABLE ?? "go";
@@ -73,6 +74,15 @@ const tests = [
 ];
 for (const host of ["codex", "deepseek", "claude", "zcode", "taskbelay"])
   tests.push(...testFiles(`packages/${host}/tests`));
+process.stdout.write("Installing locked Windows desktop test dependencies.\n");
+await execPortableCommand("npm", [
+  "ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund",
+], {
+  cwd: join(root, "packages/desktop-pet/windows"),
+  env: process.env,
+  encoding: "utf8",
+  timeout: 120_000,
+});
 tests.push(...testFiles("packages/desktop-pet/windows/tests", ".test.cjs"));
 run(process.execPath, ["--test", ...tests], { ENGINEERING_CORE: executable });
 process.stdout.write(

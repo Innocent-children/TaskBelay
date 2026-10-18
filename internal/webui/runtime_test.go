@@ -11,11 +11,50 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if os.Getenv("TASKBELAY_WEBUI_STARTUP_FIXTURE") == "exit" && len(os.Args) > 2 && os.Args[1] == "webui" && os.Args[2] == "serve" {
-		fmt.Fprintln(os.Stderr, "isolated fixture: storage was unavailable before serving")
-		os.Exit(7)
+	if len(os.Args) > 2 && os.Args[1] == "webui" && os.Args[2] == "serve" {
+		switch os.Getenv("TASKBELAY_WEBUI_STARTUP_FIXTURE") {
+		case "exit":
+			fmt.Fprintln(os.Stderr, "isolated fixture: storage was unavailable before serving")
+			os.Exit(7)
+		case "initializing":
+			root := os.Getenv("TASKBELAY_DATA_DIR")
+			file := filepath.Join(root, databaseFileName)
+			// Keep a new SQLite file visible before its schema is committed.
+			if err := os.WriteFile(file, nil, 0600); err != nil {
+				panic(err)
+			}
+			time.Sleep(500 * time.Millisecond)
+			if err := os.Remove(file); err != nil {
+				panic(err)
+			}
+			if err := Serve(context.Background(), root, "startup-fixture"); err != nil {
+				panic(err)
+			}
+			os.Exit(0)
+		}
 	}
 	os.Exit(m.Run())
+}
+
+func TestStartWaitsForChildStorageInitialization(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("TASKBELAY_WEBUI_STARTUP_FIXTURE", "initializing")
+	t.Setenv("TASKBELAY_DATA_DIR", root)
+	t.Cleanup(func() {
+		if _, err := Stop(context.Background(), root, "startup-fixture"); err != nil {
+			t.Error(err)
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	state, err := Start(ctx, root, "startup-fixture", true)
+	if err != nil || state.Readiness != ReadinessReady {
+		t.Fatal("unfinished child storage was classified before service readiness", state, err)
+	}
+	state, err = Status(ctx, root, "startup-fixture")
+	if err != nil || state.Readiness != ReadinessReady {
+		t.Fatal("initialized service is unavailable", state, err)
+	}
 }
 
 func TestStartReportsActualChildExitAndRetainsOriginalLog(t *testing.T) {

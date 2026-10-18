@@ -4,6 +4,8 @@
 
 After configuring an adapter, run taskbelay webui start; status inspects the instance, open opens it, and stop ends the UI service. Lists support request/task-ID search, Host and lifecycle filters, archived visibility and pagination. Filtering precedes paging. The browser retains language selection; /tasks/{id} opens a task directly.
 
+The service child process initializes storage. Startup waits for the process and service readiness without classifying an unfinished database as incompatible; an early child exit reports the exit result and retains the runtime log. A separate status query for a stopped instance still checks existing database compatibility.
+
 Desktop uses a compact task list beside task details. The list shows a request excerpt, repository names, Host and state; full requests and paths remain in details. Search and filters survive task changes. Narrow screens show the list and details separately, preserving filters and list position on return.
 
 Details have Overview, Check records, and Requirements & usage tabs. Overview prioritizes pending user decisions, uncertain executions, current results, goal progress and remaining problems; empty problem sections are omitted. Checks show actual results and applicability, with output expanded directly below the selected check. Requirements, approach, workspace, explicit constraints, check definitions, cumulative usage and recent changes have their own sections.
