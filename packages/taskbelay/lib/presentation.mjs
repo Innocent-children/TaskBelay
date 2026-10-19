@@ -57,6 +57,7 @@ const chinese = {
     action_required: "需要在 Host 中操作",
     confirmation_required: "等待确认",
     failed: "失败",
+    cancelled: "已取消，未执行",
   },
   pet: {
     install: "更新桌面宠物程序",
@@ -119,7 +120,7 @@ const english = {
   hosts: { taskbelay: "TaskBelay launcher", codex: "codex", deepseek: "deepseek", claude: "Claude Code", zcode: "ZCode", all: "all" },
   statuses: Object.fromEntries([
     "ready", "absent", "partial", "incompatible", "conflicted", "unknown", "restart_required",
-    "confirmation_required", "action_required", "failed",
+    "confirmation_required", "action_required", "failed", "cancelled",
   ].map((status) => [status, status])),
   pet: {
     install: "Update desktop pet application",
@@ -151,10 +152,11 @@ export function messagesForLanguage(language) {
   return language === "zh-CN" ? chinese : english;
 }
 
-export function renderResult(result, { mode = "plain", language = resolveLanguage() } = {}) {
+export function renderResult(result, { mode = "plain", language = resolveLanguage(), detailed = true } = {}) {
   if (mode === "json") return `${JSON.stringify(result)}\n`;
   const messages = messagesForLanguage(language);
   const zh = language === "zh-CN";
+  if (result.status === "cancelled") return language === "zh-CN" ? "\n已取消，未执行。\n" : "\nCancelled; nothing was executed.\n";
   const good = ["ready", "absent", "restart_required"].includes(result.status);
   const heading = `${good ? "✓" : "!"} ${messages.operations[result.operation] ?? result.operation}: ${messages.statuses[result.status] ?? result.status}`;
   const lines = ["", mode === "rich" ? `\u001b[1;${good ? "36" : "33"}m${heading}\u001b[0m` : heading,
@@ -162,31 +164,35 @@ export function renderResult(result, { mode = "plain", language = resolveLanguag
   for (const target of result.targets ?? []) {
     lines.push(`  ${messages.hosts[target.host] ?? target.host}${target.profile ? `/${target.profile}` : ""} · ${messages.statuses[target.state] ?? target.state}`);
     if (target.package_version) lines.push(`    Adapter ${target.package_version}${target.core_version ? ` · Core ${target.core_version}` : ""}`);
-    if (target.host_available === false) lines.push(`    ! ${zh ? "未找到可用的 Host，请先安装 Host 并确认 PATH。" : "Host unavailable; install the Host and check PATH."}`);
+    const optional = target.state === "absent" && !target.package_installed && !target.package_version;
+    if (target.host_available === false) lines.push(`    ${optional ? "–" : "!"} ${zh ? "未检测到 Agent" : "Agent not detected"}`);
     for (const issue of target.issues ?? []) {
-      lines.push(`    ! ${issue.message}`);
-      if (issue.detail) lines.push(`      ${issue.detail}`);
-      if (issue.command) lines.push(`      ${issue.command}`);
+      if (optional || ["host_missing", "host_action_required", "host_removal_required"].includes(issue.code)) continue;
+      lines.push(`    ! ${issueText(issue, zh, detailed)}`);
+      if (detailed && issue.detail) lines.push(`      ${issue.detail}`);
+      if (detailed && issue.command && issue.command !== result.next_step) lines.push(`      ${issue.command}`);
     }
   }
-  if (result.launcher) lines.push(`  TaskBelay ${result.launcher.packageVersion} · ${result.launcher.channel} · ${result.launcher.packageRoot}`);
-  if (result.installation) for (const [name, path] of Object.entries(result.installation)) lines.push(`  ${name}: ${path}`);
-  for (const check of result.checks ?? []) lines.push(`  ${check.status === "passed" ? "✓" : check.status === "not_installed" ? "–" : "!"} ${check.name}: ${check.message}`);
+  if (result.launcher) lines.push(`  TaskBelay ${result.launcher.packageVersion} · ${result.launcher.channel}${detailed ? ` · ${result.launcher.packageRoot}` : ""}`);
+  if (detailed && result.installation) for (const [name, path] of Object.entries(result.installation)) lines.push(`  ${name}: ${path}`);
+  const targetNames = new Set((result.targets ?? []).map(target => `${target.host}${target.profile ? `/${target.profile}` : ""}`));
+  for (const check of result.checks ?? []) {
+    if (targetNames.has(check.name)) continue;
+    if (!detailed && check.status === "passed") continue;
+    const name = zh ? ({ configuration: "配置", "default-data": "默认数据", "explicit-data": "指定数据" }[check.name] ?? check.name) : check.name;
+    const message = zh && check.message === "Default preferences apply; configuration is absent." ? "使用默认设置，尚未创建配置文件。" : check.message;
+    lines.push(`  ${check.status === "passed" ? "✓" : check.status === "not_installed" ? "–" : "!"} ${name}: ${message}`);
+  }
   if (result.error) {
     lines.push(`${zh ? "原因" : "Reason"}: ${result.error.message}`);
     if (result.error.detail) lines.push(result.error.detail);
   }
-  if (result.operation_id) lines.push(`${zh ? "操作记录" : "Operation"}: ${result.operation_id}`);
+  if (detailed && result.operation_id) lines.push(`${zh ? "操作记录" : "Operation"}: ${result.operation_id}`);
   if (result.failed_action) lines.push(`${zh ? "失败步骤" : "Failed step"}: ${result.failed_action}`);
   if (result.error && result.completed_actions?.length) lines.push(`${zh ? "已完成" : "Completed"}: ${result.completed_actions.join(", ")}`);
   if (result.data?.trash_root) lines.push(`${zh ? "数据保存位置" : "Recovered data"}: ${result.data.trash_root}`);
   const steps = [...new Set([...(result.next_steps ?? []), ...(result.restart_requirements ?? [])])];
-  for (const step of steps) {
-    const restart = /^Restart DeepSeek Profile (.+)$/u.exec(step);
-    const text = zh && restart ? `停止并重新启动 DeepSeek Profile ${restart[1]}，再使用 /taskbelay。`
-      : zh && step.startsWith("Open Codex /hooks") ? "在 Codex /hooks 中审核并信任 TaskBelay hook，再开启新对话。" : step;
-    lines.push(`${messages.next}: ${text}`);
-  }
+  for (const step of steps) lines.push(`${messages.next}: ${translateNextStep(step, zh)}`);
   if (result.changed && good && ["install", "reinstall", "repair", "upgrade"].includes(result.operation)) {
     if (result.targets?.some(t => t.host === "codex" && t.state === "ready")) lines.push("  $taskbelay-codex:taskbelay <task description>");
     if (result.targets?.some(t => t.host === "deepseek" && ["ready", "restart_required"].includes(t.state))) lines.push("  /taskbelay <task description>");
@@ -197,6 +203,33 @@ export function renderResult(result, { mode = "plain", language = resolveLanguag
     : result.operation === "delete-data" ? "Plugins and registrations are retained; restart Agent sessions after data cleanup." : "Launcher and desktop application are retained; inspect the result for plugin and data removal.");
   if (result.next_step) lines.push(`${messages.next}: ${result.next_step}`);
   return `${lines.join("\n")}\n`;
+}
+
+function issueText(issue, zh, detailed) {
+  if (!zh) return issue.message;
+  const text = { registration_incomplete: "插件注册不完整，请修复安装。", adapter_check_failed: "插件检查失败。",
+    core_check_failed: "Core 运行检查失败。", unmanaged_profile: "该 Profile 中有未由 TaskBelay 管理的插件。",
+    package_check_failed: "无法确认插件包状态。", registration_check_failed: "无法确认注册状态。", adapter_missing: "尚未安装插件。" }[issue.code];
+  return text ? detailed ? `${text} ${issue.message}` : text : issue.message;
+}
+
+function translateNextStep(step, zh) {
+  if (!zh) return step;
+  const restart = /^Restart DeepSeek Profile (.+)$/u.exec(step);
+  if (restart) return `停止并重新启动 DeepSeek Profile ${restart[1]}，再使用 /taskbelay。`;
+  if (step.startsWith("Open Codex /hooks")) return "在 Codex /hooks 中审核并信任 TaskBelay hook，再开启新对话。";
+  const marketplace = /^Open a ZCode workspace, then Settings > Plugins > Create > Add marketplace and select (.+)\.$/u.exec(step);
+  if (marketplace) return `打开 ZCode 工作区，在 Settings > Plugins > Create > Add marketplace 中选择 ${marketplace[1]}。`;
+  if (step.startsWith("Install and enable taskbelay-zcode from Personal.")) return "在 Personal 中安装并启用 taskbelay-zcode；更新本地包后刷新来源，同版本替换需先卸载再安装插件，以更新缓存。";
+  if (step.startsWith("Start a new ZCode session.")) return "开启新的 ZCode 会话，确认 TaskBelay Skill、MCP 和 Write/Edit Hook 已加载；命令行无法读取 ZCode 内的加载状态。";
+  if (step.startsWith("In ZCode Settings > Plugins > Manage installed,")) return "在 ZCode Settings > Plugins > Manage installed 中卸载 taskbelay-zcode，然后从 Marketplace sources 移除 taskbelay-zcode-local。";
+  if (step.startsWith("In ZCode Settings > Plugins, uninstall")) return "在 ZCode Settings > Plugins 中卸载 taskbelay-zcode，并移除 taskbelay-zcode-local 来源；开启新会话以卸载旧工具和 Hook。";
+  if (step.startsWith("Close affected ZCode sessions")) return "关闭相关 ZCode 会话并开启新会话，以清除旧插件和 Hook 快照；命令行无法验证 ZCode 缓存中的插件是否已移除。";
+  if (step === "Task data, Git workspaces and unrelated ZCode settings are retained.") return "任务数据、Git 工作区和无关 ZCode 设置均保留。";
+  if (step.startsWith("After the user confirms the plugin")) return "确认 ZCode 中的插件和来源已移除，并关闭相关会话后，运行 taskbelay-zcode remove --confirm-host-removed --json，再运行 taskbelay uninstall --host zcode --yes。";
+  if (step.startsWith("After confirming Host removal,")) return "确认 Agent 中已移除插件后，运行 taskbelay uninstall --host zcode --yes 卸载插件包。";
+  if (step === "Run taskbelay again to use the updated launcher.") return "重新运行 taskbelay 使用更新后的命令入口。";
+  return step;
 }
 
 export function selectInteractivePresentationMode(output, environment = process.env) {

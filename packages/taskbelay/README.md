@@ -23,7 +23,7 @@ The manager targets macOS arm64 and Windows 10/11 desktop x64. Other OS/CPU comb
 
 Run `taskbelay` for an operation-first keyboard menu: **Upgrade**, **Install into Agents**, **Check and repair**, **Open Control Center**, **Desktop pet**, **Installation information**, **Uninstall and delete data**, and **Exit**. Arrows move, Enter confirms, Space toggles multiple selections, A selects all, Esc goes back with choices retained, and Ctrl+C exits. `NO_COLOR` keeps keyboard navigation; non-TTY use never prompts. Results remain visible until the next choice.
 
-Upgrade resolves each installed component separately and shows current and target versions. Lookup errors remain errors, not “up to date”. V selects a version, L selects a local launcher distribution. Install accepts any Agent subset; DeepSeek then offers multiple Profiles and N to enter another name. Diagnosis runs on entry and offers relevant next steps; reinstall remains a secondary repair action.
+Upgrade resolves each installed component separately and shows current and target versions. Lookup errors remain errors, not “up to date”. When everything is current, choose Home or Check again. R rechecks; V chooses one component and then its version. Only local installations offer L for a complete launcher distribution. Text fields support cursor movement, Ctrl+U and inline validation; cancelling confirmation runs nothing and prints no approval command. Install accepts any Agent subset; DeepSeek then offers multiple Profiles and N to enter another name. Diagnosis shows a concise summary with optional details and relevant next steps; reinstall remains a secondary repair action.
 
 ```sh
 taskbelay status --host all

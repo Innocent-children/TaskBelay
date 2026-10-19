@@ -18,7 +18,11 @@ func processStartIdentity(pid int) (string, error) {
 	if pid <= 0 {
 		return "", fmt.Errorf("invalid process identity")
 	}
-	output, err := exec.Command("ps", "-o", "lstart=", "-p", strconv.Itoa(pid)).Output()
+	command := exec.Command("/bin/ps", "-o", "lstart=", "-p", strconv.Itoa(pid))
+	// ps formats lstart using the caller's locale. Persist the same identity
+	// when another terminal or the desktop app inspects this process.
+	command.Env = append(os.Environ(), "LC_ALL=C")
+	output, err := command.Output()
 	if err != nil {
 		return "", err
 	}

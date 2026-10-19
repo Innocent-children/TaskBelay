@@ -71,8 +71,10 @@
     "lib/interface-reference.mjs",
     "contracts/interfaces.json",
     "lib/menu.mjs",
+    "lib/upgrade-menu.mjs",
     "lib/launcher.mjs",
-    "lib/cleanup.mjs"
+    "lib/cleanup.mjs",
+    "lib/pet-files.mjs"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",

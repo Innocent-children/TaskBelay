@@ -17,8 +17,8 @@ import {
 } from "./ownership.mjs";
 import { supportsDesktopPet, loadPetInstaller, loadPetPlatform, loadMaintenancePlatform } from "./platform.mjs";
 
-import { runPet, stopPetForCore } from "./pet.mjs";
-import { createLifecyclePlan, isInstalled, targetKey, compareVersions } from "./plan.mjs";
+import { runPet, stopPetForCore, observePetState } from "./pet.mjs";
+import { createLifecyclePlan, isInstalled, targetKey } from "./plan.mjs";
 import { renderPlan, renderProgress, renderResult, resolveLanguage } from "./presentation.mjs";
 import { createTerminalSession, BACK, CANCEL } from "./terminal.mjs";
 import { formatCommand } from "./command.mjs";
@@ -42,6 +42,7 @@ export async function runMain(arguments_, dependencies = {}) {
   let request;
   let session;
   const menuState = {};
+  let menuObservation;
   const cancellation = new AbortController();
   const signalSource = dependencies.signalSource ?? process;
   const interrupt = () => {
@@ -58,26 +59,34 @@ export async function runMain(arguments_, dependencies = {}) {
     if (!arguments_.length && !isTTY) { output.write(renderHelp(null, language)); return { code: 0 }; }
     request = parseArguments(arguments_, { isTTY, noColor: Object.hasOwn(environment, "NO_COLOR") });
     if (request.help) { output.write(renderHelp(request.help, language)); return { code: 0 }; }
-    if (interactive) session = dependencies.session ?? createTerminalSession(input, output, { language, environment });
+    if (isTTY && request.outputMode !== "json") session = dependencies.session ?? createTerminalSession(input, output, { language, environment });
     do {
       try {
         if (interactive) {
-          output.write(language === "zh-CN" ? "正在检查安装…\n" : "Checking installation…\n");
-          let observation;
-          try {
-            observation = (await runLifecycle(parseArguments(["status", "--host", "all", "--all-known-profiles"], { isTTY: false }), { ...dependencies, signal: cancellation.signal })).result;
-          } catch (error) { observation = failureResult("status", error); }
+          if (!menuObservation) {
+            output.write(language === "zh-CN" ? "正在检查安装…\n" : "Checking installation…\n");
+            try {
+              menuObservation = (await runLifecycle(parseArguments(["status", "--host", "all", "--all-known-profiles"], { isTTY: false }), { ...dependencies, signal: cancellation.signal })).result;
+            } catch (error) { menuObservation = failureResult("status", error); }
+          }
+          let observation = menuObservation;
           if (cancellation.signal.aborted) return { code: 130 };
           request = await (dependencies.promptForRequest ?? promptForRequest)({ input, output, language, environment,
             platform: dependencies.platform, arch: dependencies.arch, observation, session, state: menuState, petState: observation?.pet_state ?? "unknown",
-            inspectUpgrade: options => inspectUpgradeOptions(options, { ...dependencies, signal: cancellation.signal }) });
+            inspectUpgrade: async options => {
+              if (options.refresh) {
+                observation = menuObservation = (await runLifecycle(parseArguments(["status", "--host", "all", "--all-known-profiles"], { isTTY: false }), { ...dependencies, signal: cancellation.signal })).result;
+              }
+              return inspectUpgradeOptions(options, { ...dependencies, observation, signal: cancellation.signal });
+            } });
         }
         if (request.cancelled) return { code: cancellation.signal.aborted ? 130 : 0 };
         if (request.pet || request.webui) {
           const options = { ...dependencies, stdout: output, stderr: errorOutput, environment, language };
           const result = request.pet
             ? await (dependencies.runPet ?? runPet)(["pet", request.pet], options)
-            : await (dependencies.runTaskBelay ?? runTaskBelay)(["webui", request.webui], options);
+            : await (dependencies.runTaskBelay ?? runTaskBelay)(["webui", request.webui, "--plain"], options);
+          menuObservation = null;
           if (!interactive || cancellation.signal.aborted) return { code: cancellation.signal.aborted ? 130 : result.code };
           if (!await promptAfterResult({ operation: request.pet ? "pet" : "webui", status: result.code ? "failed" : "ready" }, { session, state: menuState, language })) return { code: result.code };
           continue;
@@ -85,18 +94,22 @@ export async function runMain(arguments_, dependencies = {}) {
         const onProgress = request.outputMode === "json" ? undefined : event => output.write(renderProgress(event, { language }));
         const result = await runLifecycle(request, { ...dependencies, input, output, environment, language, session, onProgress, signal: cancellation.signal });
         if (result.back) continue;
-        output.write(renderResult(result.result, { mode: request.outputMode, language }));
+        if (["status", "doctor"].includes(request.operation)) menuObservation = result.result;
+        else if (result.result.changed !== false) menuObservation = null;
+        output.write(renderResult(result.result, { mode: request.outputMode, language, detailed: !interactive || request.operation === "status" }));
+        if (session?.cancelled) return { code: 130 };
         if (cancellation.signal.aborted) return { code: 130 };
         if (!interactive || result.result.completed_actions?.includes("taskbelay.upgrade")) return { code: result.code };
-        if (!await promptAfterResult(result.result, { session, state: menuState, language })) return { code: result.code };
+        if (!await promptAfterResult(result.result, { session, state: menuState, language, output })) return { code: result.code };
       } catch (error) {
         if (cancellation.signal.aborted) error.interrupted = true;
+        menuObservation = null;
         const result = failureResult(request?.operation ?? "status", error);
         const mode = request?.outputMode === "json" || arguments_.includes("--json") ? "json" : "plain";
-        (mode === "json" ? output : errorOutput).write(renderResult(result, { mode, language }));
+        (mode === "json" ? output : errorOutput).write(renderResult(result, { mode, language, detailed: !interactive }));
         if (cancellation.signal.aborted) return { code: 130 };
         if (!interactive || error.failedAction === "taskbelay.upgrade" || (error.completedSteps?.includes("taskbelay.install_package") || error.completedSteps?.includes("taskbelay.upgrade"))) return { code: error.exitCode ?? 1 };
-        if (!await promptAfterResult(result, { session, state: menuState, language })) return { code: error.exitCode ?? 1 };
+        if (!await promptAfterResult(result, { session, state: menuState, language, output })) return { code: error.exitCode ?? 1 };
       }
     } while (interactive && !session.cancelled);
     return { code: 0 };
@@ -145,7 +158,7 @@ export async function runLifecycle(request, dependencies = {}) {
   const launcherTarget = request.self ? await launcher.resolveTarget({ targetVersion: request.targetVersion ?? "latest", selfPackage: request.selfPackage }) : null;
   const petPlatform = usesArtifacts && supportsDesktopPet(paths.platform, paths.arch)
     ? await loadPetPlatform(paths.platform, paths.arch) : null;
-  const installDesktopPet = petPlatform !== null && await petPlatform.isBundledPetApplicationAvailable(petPlatform.bundledPetExecutable(packageRoot));
+  const installDesktopPet = petPlatform !== null && await petPlatform.needsPetInstallation(packageRoot, paths.petDirectory);
   const plan = createLifecyclePlan(request, observed, {
     targetVersions, launcherTarget,
     planId: dependencies.planId,
@@ -160,7 +173,7 @@ export async function runLifecycle(request, dependencies = {}) {
   if (["status", "doctor"].includes(request.operation)) {
     const result = resultFromObservation(request.operation, observed);
     result.launcher = observed.launcher;
-    result.pet_state = (await inspectResource(join(paths.petDirectory, "runtime.json"), "pet-runtime")).exists ? "unknown" : "stopped";
+    result.pet_state = await (dependencies.observePetState ?? observePetState)({ paths, packageRoot, environment });
     result.installation = { configuration: paths.configurationPath, data: paths.explicitDataDirectory ?? paths.defaultDataDirectory, pet: paths.petDirectory, manager: paths.managerRoot };
     if (request.operation === "doctor") {
       result.checks = await diagnoseInstallation(observed, { host: request.hosts.length === 1 ? request.hosts[0] : "all", paths, environment, validateConfiguration: dependencies.validateConfiguration });
@@ -179,6 +192,7 @@ export async function runLifecycle(request, dependencies = {}) {
     session: dependencies.session,
   });
   if (confirmed === BACK) return { back: true };
+  if (confirmed === CANCEL) return { code: dependencies.session?.cancelled ? 130 : 0, plan, result: cancelledResult(request, observed) };
   if (!confirmed) {
     return {
       code: 3,
@@ -202,6 +216,7 @@ export async function runLifecycle(request, dependencies = {}) {
           { value: false, label: dependencies.language === "zh-CN" ? "返回，不删除" : "Back, do not delete" },
           { value: true, label: dependencies.language === "zh-CN" ? "我已关闭 ZCode 全部窗口和会话" : "I closed all ZCode windows and sessions" },
         ]);
+        if (closed === CANCEL) return { code: dependencies.session.cancelled ? 130 : 0, plan, result: cancelledResult(request, observed) };
         if (closed !== true) return { back: true };
         request = { ...request, zcodeClosed: true };
       } else {
@@ -213,9 +228,11 @@ export async function runLifecycle(request, dependencies = {}) {
   for (const target of plan.cleanupTargets.filter(target => target.requiresExplicitConfirmation && !request.confirmedExplicitData.includes(target.path))) {
     const path = target.path;
     if (request.fromMenu && dependencies.session) {
-      const answer = await dependencies.session.question(`${dependencies.language === "zh-CN" ? "输入完整路径确认清理" : "Type the full path to confirm cleanup"}: ${path}\n> `);
+      const answer = await dependencies.session.question(`${dependencies.language === "zh-CN" ? "输入完整路径确认清理" : "Type the full path to confirm cleanup"}: ${path}`, {
+        validate: value => value === path ? null : dependencies.language === "zh-CN" ? "路径不匹配；重新输入，或按 Esc 返回。" : "Path does not match; try again or press Esc to return.",
+      });
       if (answer === BACK) return { back: true };
-      if (answer !== path) return { code: 3, plan, result: confirmationResult(request, plan, paths.platform) };
+      if (answer !== path) return { code: dependencies.session.cancelled ? 130 : 0, plan, result: cancelledResult(request, observed) };
       request = { ...request, confirmedExplicitData: [...request.confirmedExplicitData, path] };
     } else {
       const error = new Error(`explicit Task data requires exact --confirm-explicit-data ${path}`);
@@ -375,19 +392,21 @@ export async function observeLifecycle(request, { paths, drivers, includeCleanup
     ? [...new Set([...knownDeepSeekProfiles, ...request.profiles])]
     : request.profiles;
   if (request.hosts.includes("deepseek") && profiles.length === 0 && ["install", "upgrade", "repair", "reinstall", "status", "doctor"].includes(request.operation)) profiles = ["web"];
-  const [codexState, deepseekStates, configuration, defaultData, pet, explicitData] = await Promise.all([
+  const [codexState, deepseekStates, configuration, defaultData, pet, explicitData, claudeState, zcodeState] = await Promise.all([
     request.hosts.includes("codex") ? codex.observe() : Promise.resolve(null),
     Promise.all(profiles.map((profile) => deepseek.observe(profile))),
     inspectResource(paths.configurationPath, "configuration"),
     inspectResource(paths.defaultDataDirectory, "default-data"),
     inspectResource(paths.petDirectory, "pet"),
     paths.explicitDataDirectory ? inspectResource(paths.explicitDataDirectory, "explicit-data") : Promise.resolve(null),
+    request.hosts.includes("claude") ? claude.observe() : Promise.resolve(null),
+    request.hosts.includes("zcode") ? zcode.observe() : Promise.resolve(null),
   ]);
   const resources = { configuration, defaultData, pet, explicitData };
   return {
     codex: codexState,
-    claude: request.hosts.includes("claude") ? await claude.observe() : null,
-    zcode: request.hosts.includes("zcode") ? await zcode.observe() : null,
+    claude: claudeState,
+    zcode: zcodeState,
     deepseek: deepseekStates,
     knownDeepSeekProfiles,
     resources: isDataDeletion(request.operation) && includeCleanup ? await observeCleanupResources(paths, resources) : resources,
@@ -530,6 +549,11 @@ function resultFromObservation(operation, observed, {
   };
 }
 
+function cancelledResult(request, observed) {
+  return { ...resultFromObservation(request.operation, observed), status: "cancelled", changed: false,
+    confirmation: null, next_step: null, next_steps: [], restart_requirements: [] };
+}
+
 function confirmationResult(request, plan, platform = process.platform) {
   const args = ["taskbelay", ...requestArguments(request)];
   if (isDataDeletion(request.operation) && plan.targets.some(target => target.host === "zcode" && target.packageInstalled) && !request.zcodeClosed) args.push("--confirm-zcode-closed");
@@ -582,37 +606,46 @@ function failureResult(operation, error) {
  * Resolve each update independently so an unavailable registry cannot turn a
  * failed lookup into "up to date" or prevent selecting other installed plugins.
  */
-export async function inspectUpgradeOptions({ targetVersion = "latest", selfPackage = null } = {}, dependencies = {}) {
+export async function inspectUpgradeOptions({ targetVersion = "latest", selfPackage = null, component = null } = {}, dependencies = {}) {
   const environment = dependencies.environment ?? process.env;
   const zh = resolveLanguage(environment) === "zh-CN";
   const packageRoot = dependencies.packageRoot ?? installedPackageRoot;
   const localPackages = dependencies.localPackages ?? await readLocalPackages(packageRoot);
   const paths = await (dependencies.resolveManagerPaths ?? resolveManagerPaths)({ homeDirectory: dependencies.homeDirectory, environment, platform: dependencies.platform, arch: dependencies.arch });
   const drivers = (dependencies.createHostDrivers ?? createHostDrivers)({ ...dependencies, paths, environment, localPackages });
-  const request = parseArguments(["status", "--host", "all", "--all-known-profiles"], { isTTY: false });
-  const observed = await observeLifecycle(request, { paths, drivers });
   const launcher = dependencies.launcherDriver ?? createLauncherDriver({ packageRoot, environment, signal: dependencies.signal });
-  const currentLauncher = await launcher.observe();
-  const choices = [];
-  try {
-    const next = await launcher.resolveTarget({ targetVersion, selfPackage });
-    choices.push({ value: "self", label: zh ? "TaskBelay 命令入口" : "TaskBelay launcher", hint: `${currentLauncher.packageVersion} → ${next.version}${next.channel === "local" ? zh ? "（本地分发包）" : " (local distribution)" : ""}`,
-      disabled: next.channel !== "local" && compareVersions(currentLauncher.packageVersion, next.version) === 0 });
-  } catch (error) {
-    choices.push({ value: "self", label: zh ? "TaskBelay 命令入口" : "TaskBelay launcher", hint: currentLauncher.channel === "local" && !selfPackage ? zh ? "本地安装：按 L 选择完整分发包" : "Local install: press L for a distribution" : `${zh ? "检查失败" : "Check failed"}: ${error.message}`, disabled: true });
+  let targets, currentLauncher;
+  if (dependencies.observation && !dependencies.observation.error) {
+    targets = dependencies.observation.targets.map(target => ({ host: target.host, profile: target.profile, state: target.state,
+      packageVersion: target.package_version, packageInstalled: target.package_installed, hostAvailable: target.host_available }));
+    currentLauncher = dependencies.observation.launcher;
+  } else {
+    const request = parseArguments(["status", "--host", "all", "--all-known-profiles"], { isTTY: false });
+    const observed = await observeLifecycle(request, { paths, drivers });
+    targets = [observed.codex, ...observed.deepseek, observed.claude, observed.zcode].filter(Boolean);
   }
-  for (const target of [observed.codex, ...observed.deepseek, observed.claude, observed.zcode].filter(target => target && (isInstalled(target) || ["partial", "unknown", "conflicted"].includes(target.state)))) {
-    const option = { value: target.profile ? `deepseek:${target.profile}` : target.host, host: target.host, profile: target.profile,
-      label: `${target.host}${target.profile ? ` / ${target.profile}` : ""}` };
+  currentLauncher ??= await launcher.observe();
+  const options = [{ value: "self", channel: currentLauncher.channel, label: zh ? "TaskBelay 命令入口" : "TaskBelay launcher" },
+    ...targets.filter(target => isInstalled(target) || ["partial", "unknown", "conflicted"].includes(target.state)).map(target => ({
+      value: target.profile ? `deepseek:${target.profile}` : target.host, host: target.host, profile: target.profile,
+      channel: localPackages ? "local" : "npm", label: `${target.host}${target.profile ? ` / ${target.profile}` : ""}`, target,
+    }))].filter(option => !component || option.value === component);
+  return await Promise.all(options.map(async ({ target, ...option }) => {
     try {
-      if (!isInstalled(target)) throw new Error(zh ? "无法确认安装状态，先检查安装" : "Installation state is uncertain; inspect it first");
-      if (target.hostAvailable === false) throw new Error(zh ? "Agent 不可用，先检查安装" : "Agent unavailable; inspect installation first");
-      const next = await drivers[target.host].resolveTargetVersion(targetVersion);
-      const equal = target.packageVersion === next;
-      option.hint = equal && !localPackages ? `${next} · ${zh ? "已是目标版本" : "Already at target version"}` : `${target.packageVersion ?? "?"} → ${next}${localPackages ? zh ? "（本地包）" : " (local package)" : ""}`;
-      option.disabled = equal && !localPackages && ["ready", "action_required"].includes(target.state);
-    } catch (error) { option.disabled = true; option.hint = `${zh ? "检查失败" : "Check failed"}: ${error.message}`; }
-    choices.push(option);
-  }
-  return choices;
+      if (option.value === "self" && currentLauncher.channel === "local" && !selfPackage) {
+        return { ...option, disabled: true, status: "local", hint: zh ? "本地安装：选择完整分发包" : "Local install: choose a complete distribution" };
+      }
+      if (target && !isInstalled(target)) throw new Error(zh ? "无法确认安装状态，先检查安装" : "Installation state is uncertain; inspect it first");
+      if (target?.hostAvailable === false) throw new Error(zh ? "Agent 不可用，先检查安装" : "Agent unavailable; inspect installation first");
+      const next = target ? await drivers[target.host].resolveTargetVersion(targetVersion)
+        : (await launcher.resolveTarget({ targetVersion, selfPackage })).version;
+      const current = target ? target.packageVersion : currentLauncher.packageVersion;
+      const equal = current === next && option.channel !== "local" && (!target || ["ready", "action_required"].includes(target.state));
+      return { ...option, disabled: equal, status: equal ? "current" : "available", hint: equal
+        ? `${next} · ${zh ? "已是目标版本" : "Already at target version"}`
+        : `${current ?? "?"} → ${next}${option.channel === "local" ? zh ? "（本地包）" : " (local package)" : ""}` };
+    } catch (error) {
+      return { ...option, disabled: true, status: "failed", hint: `${zh ? "检查失败" : "Check failed"}: ${error.message}` };
+    }
+  }));
 }

@@ -78,6 +78,13 @@ enum NativeProcess {
         getuid()
     }
 
+    /**
+     * ESRCH proves a process is gone; permission errors do not.
+     */
+    static func isGone(pid: Int32) -> Bool {
+        pid > 0 && kill(pid, 0) != 0 && errno == ESRCH
+    }
+
     /// Hands a page to the macOS default browser. Only the confirmed loopback
     /// origin is accepted, and a failure leaves the current picture untouched so
     /// the user can click again.

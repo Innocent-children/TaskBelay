@@ -1,6 +1,7 @@
 import { AGENTS, parseArguments, validateProfile, isDataDeletion } from "./cli.mjs";
 import { BACK, CANCEL, createTerminalSession } from "./terminal.mjs";
-import { messagesForLanguage, resolveLanguage, selectInteractivePresentationMode } from "./presentation.mjs";
+import { renderResult, messagesForLanguage, resolveLanguage, selectInteractivePresentationMode } from "./presentation.mjs";
+import { promptForUpgrade } from "./upgrade-menu.mjs";
 import { supportsDesktopPet } from "./platform.mjs";
 
 /**
@@ -70,35 +71,17 @@ export async function promptForRequest({ input = process.stdin, output = process
         return makeRequest(operation, mode === "permanent" ? ["--permanent"] : []);
       }
       if (operation === "upgrade") {
-        let choices;
-        try { choices = await inspectUpgrade({ targetVersion: state.targetVersion ?? "latest", selfPackage: state.selfPackage ?? null }); }
-        catch (error) { output.write(`${label("检查升级失败", "Update check failed")}: ${error.message}\n`); choices = []; }
-        const selection = await terminal.multiselect(label("升级：选择更新项", "Upgrade: select updates"), choices.length ? choices : [
-          { value: "unavailable", label: label("没有可用的更新项", "No updates are available"), disabled: true },
-        ], { initial: state.selections.upgrade ?? choices.filter(choice => !choice.disabled).map(choice => choice.value),
-          onChange: values => { state.selections.upgrade = values; }, shortcuts: { v: label("指定版本 / latest", "Version / latest"), l: label("本地命令入口分发包", "Local launcher distribution") } });
+        const selection = await promptForUpgrade({ terminal, output, state, inspectUpgrade, language });
         if (selection === BACK) continue;
         if (selection === CANCEL) return { cancelled: true };
-        if (selection.action) {
-          state.selections.upgrade = selection.selected;
-          const version = selection.action === "v";
-          const value = await terminal.question(version ? label("目标版本（latest 或 x.y.z）", "Target version (latest or x.y.z)") : label("本地完整分发包的绝对路径（.tgz）", "Absolute local distribution path (.tgz)"), { initial: version ? state.targetVersion ?? "latest" : state.selfPackage ?? "" });
-          if (value === CANCEL) return { cancelled: true };
-          if (value !== BACK) {
-            if (version && !/^(latest|\d+\.\d+\.\d+)$/u.test(value)) output.write(label("版本格式无效。\n", "Invalid version.\n"));
-            else { state[version ? "targetVersion" : "selfPackage"] = value; delete state.selections.upgrade; }
-          }
-          state.nextOperation = "upgrade"; continue;
-        }
-        state.selections.upgrade = selection;
-        const chosen = choices.filter(choice => selection.includes(choice.value));
+        const chosen = selection.choices;
         const args = [];
         for (const host of [...new Set(chosen.map(choice => choice.host).filter(Boolean))]) args.push("--host", host);
         for (const item of chosen.filter(choice => choice.profile)) args.push("--profile", item.profile);
-        if (selection.includes("self")) {
-          args.push("--self"); if (state.selfPackage) args.push("--self-package", state.selfPackage);
+        if (chosen.some(choice => choice.value === "self")) {
+          args.push("--self"); if (selection.selfPackage) args.push("--self-package", selection.selfPackage);
         }
-        if (state.targetVersion) args.push("--version", state.targetVersion);
+        if (selection.targetVersion) args.push("--version", selection.targetVersion);
         state.nextOperation = "upgrade";
         return makeRequest("upgrade", args);
       }
@@ -108,6 +91,12 @@ export async function promptForRequest({ input = process.stdin, output = process
           hint: target?.host_available === false ? label("未检测到 Agent", "Agent unavailable") : target?.package_version ? label("已安装，保留当前版本", "Installed, keep version") : label("尚未安装", "Not installed") };
       }) : installed.map(target => ({ value: target.profile ? `deepseek:${target.profile}` : target.host,
         label: `${messages.hosts[target.host]}${target.profile ? ` / ${target.profile}` : ""}`, hint: target.package_version ?? messages.statuses[target.state] }));
+      if (!available.some(choice => !choice.disabled)) {
+        output.write(label("没有可操作的插件。\n", "No plugins are available for this operation.\n"));
+        const value = await terminal.select(label("下一步", "Next"), [entry("home", "返回首页", "Home")]);
+        if (value === CANCEL) return { cancelled: true };
+        continue;
+      }
       const selection = await terminal.multiselect(label(operation === "install" ? "安装到 Agent" : operation === "uninstall" ? "卸载插件（保留数据）" : operation === "repair" ? "修复当前安装" : "重新安装当前版本", operation), available.length ? available : [{ value: "empty", label: label("没有已安装插件", "No installed plugins"), disabled: true }], { initial: state.selections[operation] ?? [], onChange: values => { state.selections[operation] = values; } });
       if (selection === BACK) { if (operation === "uninstall") state.nextOperation = "cleanup"; continue; }
       if (selection === CANCEL) return { cancelled: true };
@@ -143,7 +132,7 @@ export async function promptForRequest({ input = process.stdin, output = process
   } finally { if (!session) terminal.close(); }
 }
 
-export async function promptAfterResult(result, { session, state, language = "en" }) {
+export async function promptAfterResult(result, { session, state, language = "en", output = process.stdout }) {
   delete state.nextOperation;
   const zh = language === "zh-CN";
   const choices = [{ value: "home", label: zh ? "返回首页" : "Home" }];
@@ -154,8 +143,13 @@ export async function promptAfterResult(result, { session, state, language = "en
   } else if (["failed", "partial", "action_required", "restart_required"].includes(result.status)) choices.push({ value: "doctor", label: zh ? "检查当前状态" : "Check current state" });
   if (result.operation === "status") choices.push({ value: "upgrade", label: zh ? "前往升级" : "Upgrade" });
   if (result.operation === "delete-all" && result.status === "absent") choices.push({ value: "install", label: zh ? "安装到 Agent" : "Install into Agents" });
+  if (result.targets?.length && result.operation !== "status") choices.push({ value: "details", label: zh ? "查看详细信息" : "Show details" });
   choices.push({ value: "exit", label: zh ? "退出" : "Exit" });
-  const value = await session.select(zh ? "下一步" : "Next", choices, { back: false });
+  let value;
+  do {
+    value = await session.select(zh ? "下一步" : "Next", choices, { back: false });
+    if (value === "details") output.write(renderResult(result, { language, detailed: true }));
+  } while (value === "details");
   if (value === CANCEL || value === "exit") return false;
   if (value !== "home" && value !== BACK) state.nextOperation = value;
   return true;

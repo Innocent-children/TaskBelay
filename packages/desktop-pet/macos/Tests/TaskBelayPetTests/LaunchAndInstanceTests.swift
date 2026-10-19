@@ -53,6 +53,31 @@ final class LaunchAndInstanceTests: XCTestCase {
         XCTAssertNil(NativeProcess.processStartIdentity(pid: pid))
     }
 
+    func testReadOnlyStatusVerifiesProcessAndRetainsRecords() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertEqual(PetInstanceRuntime.status(productRoot: root.path), "stopped")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
+        let pet = root.appendingPathComponent("pet")
+        try FileManager.default.createDirectory(at: pet, withIntermediateDirectories: true)
+        let live = try XCTUnwrap(NativeProcess.currentIdentity())
+        let record = makeRecord(pid: Int(live.pid), processStartIdentity: live.startIdentity, executablePath: live.executablePath)
+        let path = pet.appendingPathComponent("runtime.json")
+        let bytes = try record.encoded()
+        try bytes.write(to: path)
+        XCTAssertEqual(PetInstanceRuntime.status(productRoot: root.path), "running")
+        XCTAssertEqual(try Data(contentsOf: path), bytes)
+        let stale = makeRecord(pid: Int(live.pid), processStartIdentity: "recycled", executablePath: live.executablePath)
+        try stale.encoded().write(to: path)
+        XCTAssertEqual(PetInstanceRuntime.status(productRoot: root.path), "stopped")
+        try Data("broken".utf8).write(to: path)
+        XCTAssertEqual(PetInstanceRuntime.status(productRoot: root.path), "unknown")
+        XCTAssertEqual(try String(contentsOf: path), "broken")
+        let arguments = try LaunchArgumentParser.parse(["status", "--product-root", root.path])
+        XCTAssertEqual(arguments.mode, .status)
+        XCTAssertThrowsError(try LaunchArgumentParser.parse(["status", "--product-root", root.path, "--core-path", "/core"]))
+    }
+
     // MARK: - Launch arguments
 
     func testParsesTheRunEntry() throws {
@@ -88,7 +113,7 @@ final class LaunchAndInstanceTests: XCTestCase {
 
     func testRejectsAMissingOrUnsupportedEntry() {
         assertArgumentFailure([])
-        assertArgumentFailure(["status", "--product-root", "/product"])
+        assertArgumentFailure(["unknown", "--product-root", "/product"])
         assertArgumentFailure(["run"])
     }
 

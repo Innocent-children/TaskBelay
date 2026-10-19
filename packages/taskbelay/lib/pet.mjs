@@ -2,6 +2,8 @@ import { describeInterface } from "./interface-reference.mjs";
 import { execFile as execFileCallback } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { lstat } from "node:fs/promises";
+import { join } from "node:path";
 
 import { resolveManagerPaths } from "./ownership.mjs";
 import { supportsDesktopPet, loadPetPlatform, loadPetInstaller } from "./platform.mjs";
@@ -25,6 +27,18 @@ const CORE_IDENTITY_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 const DATA_ROOT_DIGEST_PATTERN = /^[0-9a-f]{64}$/u;
 const LOOPBACK_ORIGIN_PATTERN = /^http:\/\/127\.0\.0\.1:(\d{1,5})$/u;
 const READINESS_VALUES = Object.freeze(["ready", "read_only", "incompatible", "unavailable"]);
+
+/**
+ * Runtime state is observed by the platform implementation; missing records
+ * mean stopped, while unavailable native observation remains unknown.
+ */
+export async function observePetState({ paths, packageRoot: root = packageRoot, environment = process.env }) {
+  if (!supportsDesktopPet(paths.platform, paths.arch)) return "unknown";
+  try { const info = await lstat(join(paths.petDirectory, "runtime.json")); if (!info.isFile() || info.isSymbolicLink()) return "unknown"; }
+  catch (error) { return error.code === "ENOENT" ? "stopped" : "unknown"; }
+  const platform = await loadPetPlatform(paths.platform, paths.arch);
+  return await platform.observePetState({ executable: platform.bundledPetExecutable(root), productRoot: paths.productRoot, environment });
+}
 
 export class PetRequestError extends Error {
   constructor(message, exitCode = 1) {

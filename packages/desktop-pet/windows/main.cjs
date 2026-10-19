@@ -748,7 +748,9 @@ async function boot() {
           const message = JSON.parse(data);
           if (message.token !== token)
             throw new Error("Desktop identity changed");
-          if (message.operation === "stop") {
+          if (message.operation === "status") {
+            socket.end(JSON.stringify({ result: "running" }) + "\n");
+          } else if (message.operation === "stop") {
             if (
               message.corePath &&
               path.resolve(message.corePath).toLowerCase() !==

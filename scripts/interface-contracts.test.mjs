@@ -11,6 +11,7 @@ import { freshnessOutputSchema } from '../contracts/freshness-output.mjs';
 const root=resolve(import.meta.dirname,'..');
 const all=JSON.parse(await readFile(join(root,'contracts/interfaces.json'),'utf8'));
 function described(schema,path) {
+  if (Array.isArray(schema.type)) assert.ok(schema.type.length > 0, `${path} has an invalid empty JSON Schema type`);
   for(const [key,value] of Object.entries(schema.properties??{})) {
     assert.ok(typeof value.description==='string'&&value.description.trim().length>0,`${path}.${key} lacks usable field notes`);
     assert.ok(!value.description.startsWith('Returned '),`${path}.${key} has placeholder notes`);

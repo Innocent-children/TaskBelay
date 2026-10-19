@@ -8,7 +8,9 @@ Public entry: npm install -g taskbelay@latest; taskbelay. Installation/status/do
 
 ### Interactive menu and maintenance
 
-A no-argument TTY uses arrows, Enter, Space for multiple selection, A for all, and Esc to go back. V changes the upgrade version, L selects a local launcher distribution, and N adds a DeepSeek Profile. Left/right do not navigate menus during text entry; Ctrl+C exits. NO_COLOR disables color, not keyboard selection. Non-TTY execution never prompts; no arguments print help.
+Without arguments, a TTY uses arrows, Enter, Space for multiple selection, A for all and Esc to go back. Upgrade shows progress while checking; an all-current result offers Home and Check again without requiring a selection. R rechecks, V chooses one component before its version, and only a local installation offers L for a complete distribution; an empty path clears the previous choice. N adds a DeepSeek Profile. Text fields support left/right, Home/End, Ctrl+A/E, Ctrl+U/K/W, Backspace and Delete; invalid input stays in the field. Ctrl+C exits. Cancelling confirmation reports that nothing ran and does not print a command with approval flags. Missing noninteractive confirmation still returns confirmation_required. NO_COLOR disables colors but preserves keyboard navigation. Non-TTY use never prompts; no arguments print help.
+
+Menu diagnostics show a summary with a Show details action. Optional absent Agents are informational. Installation information includes paths; Control Center opens with human-readable output, while scripts can still request --json.
 
 | Command | Behavior |
 | --- | --- |

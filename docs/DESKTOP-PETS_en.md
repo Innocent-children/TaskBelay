@@ -89,7 +89,9 @@ taskbelay repair --host codex --yes
 taskbelay pet start
 ```
 
-Choose the configured Host; DeepSeek uses `--host deepseek --profile <name>`. `install`, `upgrade`, `repair` and `reinstall` include a pet update even when the Adapter itself needs no changes. The plan lists that operation before confirmation. It stops the running pet, stages the new application, and replaces only the application directory. A stop or copy failure stops maintenance; a staging failure preserves the previous application. Settings and imported appearances remain in their separate directories.
+Choose the configured Host; DeepSeek uses `--host deepseek --profile <name>`. `install`, `upgrade`, `repair` and `reinstall` compare bundled and installed application files, updating the pet only when files are missing or differ, including local builds with the same version. Identical applications are not stopped or copied merely because a plugin is already current. Launcher self-update installs the desktop application from the new package. The plan lists actual changes before confirmation. Updates stop the pet, stage and replace the application directory; stop/copy failure halts maintenance and staging failure preserves the old app. Settings and appearances stay in separate directories.
+
+Menu runtime status uses platform verification: macOS checks kernel creation identity, executable path and user; Windows verifies a reply over the instance-token pipe. runtime.json alone does not mean running. Unverifiable state stays unknown; observation starts or stops nothing.
 
 Installing the npm package alone updates its bundled application. Refresh an existing user-directory copy with the maintenance command above. Reimport an appearance from its source folder to update artwork; application updates do not invent missing animations.
 

@@ -33727,7 +33727,7 @@
             "status": "ready",
             "changed": false,
             "package_version": "0.10.5",
-            "core_version": "0.26.3",
+            "core_version": "0.26.4",
             "receipt_path": "/example/hosts/codex.json",
             "registration": {
               "receipt": true,

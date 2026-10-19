@@ -42445,7 +42445,7 @@
               "profile": null,
               "state": "ready",
               "packageInstalled": true,
-              "packageVersion": "0.3.7",
+              "packageVersion": "0.3.8",
               "packageRoot": "/package/taskbelay/packages/taskbelay",
               "channel": "npm"
             },
@@ -43073,7 +43073,7 @@
               "profile": null,
               "state": "ready",
               "packageInstalled": true,
-              "packageVersion": "0.3.7",
+              "packageVersion": "0.3.8",
               "packageRoot": "/package/taskbelay/packages/taskbelay",
               "channel": "npm"
             },
@@ -43191,7 +43191,10 @@
               "additionalProperties": false,
               "properties": {
                 "operation_id": {
-                  "type": "string",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
                 },
                 "operation": {
@@ -43349,7 +43352,9 @@
                     "null"
                   ],
                   "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-                  "additionalProperties": true
+                  "additionalProperties": true,
+                  "properties": {},
+                  "required": []
                 },
                 "next_step": {
                   "type": [
@@ -43650,6 +43655,54 @@
           "stderr": ""
         },
         "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "success_cancelled",
+        "input": {
+          "argv": [
+            "install",
+            "--host",
+            "codex",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "install",
+            "status": "cancelled",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_installed": true,
+                "package_version": "0.8.0",
+                "core_version": null,
+                "state": "ready",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Simulated interactive cancellation returned to the actual lifecycle serializer. It executes no maintenance, creates no operation record and provides no approval command. JSON clients without confirmation still receive confirmation_required."
       }
     ],
     "implementation": [
@@ -43792,8 +43845,7 @@
                       "type": "array",
                       "description": "用户显式指定的数据目录，只按精确实际确认处理。",
                       "items": {
-                        "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method.",
-                        "type": []
+                        "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
                       }
                     },
                     "trash_root": {
@@ -44460,6 +44512,54 @@
           "stderr": ""
         },
         "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "success_cancelled",
+        "input": {
+          "argv": [
+            "upgrade",
+            "--host",
+            "codex",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "upgrade",
+            "status": "cancelled",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_installed": true,
+                "package_version": "0.8.0",
+                "core_version": null,
+                "state": "ready",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Simulated interactive cancellation returned to the actual lifecycle serializer. It executes no maintenance, creates no operation record and provides no approval command. JSON clients without confirmation still receive confirmation_required."
       }
     ],
     "implementation": [
@@ -44666,7 +44766,9 @@
                     "null"
                   ],
                   "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-                  "additionalProperties": true
+                  "additionalProperties": true,
+                  "properties": {},
+                  "required": []
                 },
                 "next_step": {
                   "type": [
@@ -44964,6 +45066,54 @@
           "stderr": ""
         },
         "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "success_cancelled",
+        "input": {
+          "argv": [
+            "repair",
+            "--host",
+            "codex",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "repair",
+            "status": "cancelled",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_installed": true,
+                "package_version": "0.8.0",
+                "core_version": null,
+                "state": "ready",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Simulated interactive cancellation returned to the actual lifecycle serializer. It executes no maintenance, creates no operation record and provides no approval command. JSON clients without confirmation still receive confirmation_required."
       }
     ],
     "implementation": [
@@ -45010,7 +45160,10 @@
               "additionalProperties": false,
               "properties": {
                 "operation_id": {
-                  "type": "string",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
                 },
                 "operation": {
@@ -45168,7 +45321,9 @@
                     "null"
                   ],
                   "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-                  "additionalProperties": true
+                  "additionalProperties": true,
+                  "properties": {},
+                  "required": []
                 },
                 "next_step": {
                   "type": [
@@ -45469,6 +45624,54 @@
           "stderr": ""
         },
         "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "success_cancelled",
+        "input": {
+          "argv": [
+            "reinstall",
+            "--host",
+            "codex",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "reinstall",
+            "status": "cancelled",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_installed": true,
+                "package_version": "0.8.0",
+                "core_version": null,
+                "state": "ready",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Simulated interactive cancellation returned to the actual lifecycle serializer. It executes no maintenance, creates no operation record and provides no approval command. JSON clients without confirmation still receive confirmation_required."
       }
     ],
     "implementation": [
@@ -45515,7 +45718,10 @@
               "additionalProperties": false,
               "properties": {
                 "operation_id": {
-                  "type": "string",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
                 },
                 "operation": {
@@ -45675,7 +45881,9 @@
                     "null"
                   ],
                   "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-                  "additionalProperties": true
+                  "additionalProperties": true,
+                  "properties": {},
+                  "required": []
                 },
                 "next_step": {
                   "type": [
@@ -45974,6 +46182,54 @@
           "stderr": ""
         },
         "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "success_cancelled",
+        "input": {
+          "argv": [
+            "uninstall",
+            "--host",
+            "codex",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "uninstall",
+            "status": "cancelled",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Simulated interactive cancellation returned to the actual lifecycle serializer. It executes no maintenance, creates no operation record and provides no approval command. JSON clients without confirmation still receive confirmation_required."
       }
     ],
     "implementation": [
@@ -46020,7 +46276,10 @@
               "additionalProperties": false,
               "properties": {
                 "operation_id": {
-                  "type": "string",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
                 },
                 "operation": {
@@ -46084,8 +46343,7 @@
                         "type": "array",
                         "description": "安装或实际用户待决定问题；按所在对象结构解释。",
                         "items": {
-                          "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method.",
-                          "type": []
+                          "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
                         }
                       }
                     },
@@ -46130,7 +46388,10 @@
                       }
                     },
                     "trash_root": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "description": "实际移入回收区位置；null表示未移入。"
                     }
                   },
@@ -46178,7 +46439,9 @@
                     "null"
                   ],
                   "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-                  "additionalProperties": true
+                  "additionalProperties": true,
+                  "properties": {},
+                  "required": []
                 },
                 "next_step": {
                   "type": [
@@ -46579,7 +46842,7 @@
             "all",
             "--json",
             "--confirm-delete",
-            "DELETE-DATA-E7A4E2"
+            "DELETE-DATA-FFA0AD"
           ]
         },
         "output": {
@@ -46637,15 +46900,15 @@
               "default_data": "present",
               "pet": "absent",
               "explicit_data": [],
-              "trash_root": "/example/manager/.Trash/taskbelay-2026-10-19T02-39-40-073Z-4ad35b71f4e8"
+              "trash_root": "/example/manager/.Trash/taskbelay-2026-10-19T04-04-24-571Z-dc68a87b2a80"
             },
             "completed_actions": [
               "manager.cleanup",
               "manager.trash.default-data",
-              "manager.trash.run-53d3f438-8986-4735-91d8-55a88c606707",
-              "manager.trash.run-9c1e7e1c-ee63-443e-81d3-20e6d580b525",
-              "manager.trash.run-b6360e50-9b46-4126-a57e-112e3a62b265",
-              "manager.trash.run-b754cf5d-a76a-42df-ab36-433e7aac095b",
+              "manager.trash.run-99fa2868-531a-44af-9c33-d09862d7a4d1",
+              "manager.trash.run-9ea2c9cf-d951-4025-8926-b610069167e2",
+              "manager.trash.run-bac4a7b4-f7d8-437a-9c9f-d6b11c33a96d",
+              "manager.trash.run-fe09117c-bcc7-4f66-bee8-115f22c8353e",
               "manager.initialize",
               "manager.initialize_configuration",
               "manager.initialize_data"
@@ -46760,8 +47023,8 @@
             "restart_requirements": [],
             "confirmation": {
               "class": "delete",
-              "plan_id": "plan-e7a4e2b2744a5ff1a742",
-              "token": "DELETE-DATA-E7A4E2",
+              "plan_id": "plan-ffa0ad2095d8c0586c74",
+              "token": "DELETE-DATA-FFA0AD",
               "permanent_token": null,
               "impacts": [
                 "Preserve plugins, Agent registrations and installation records",
@@ -46777,20 +47040,20 @@
                   "path": "/example/manager/.taskbelay/data"
                 },
                 {
-                  "label": "run-53d3f438-8986-4735-91d8-55a88c606707",
-                  "path": "/example/manager/.taskbelay/runs/53d3f438-8986-4735-91d8-55a88c606707.json"
+                  "label": "run-99fa2868-531a-44af-9c33-d09862d7a4d1",
+                  "path": "/example/manager/.taskbelay/runs/99fa2868-531a-44af-9c33-d09862d7a4d1.json"
                 },
                 {
-                  "label": "run-9c1e7e1c-ee63-443e-81d3-20e6d580b525",
-                  "path": "/example/manager/.taskbelay/runs/9c1e7e1c-ee63-443e-81d3-20e6d580b525.json"
+                  "label": "run-9ea2c9cf-d951-4025-8926-b610069167e2",
+                  "path": "/example/manager/.taskbelay/runs/9ea2c9cf-d951-4025-8926-b610069167e2.json"
                 },
                 {
-                  "label": "run-b6360e50-9b46-4126-a57e-112e3a62b265",
-                  "path": "/example/manager/.taskbelay/runs/b6360e50-9b46-4126-a57e-112e3a62b265.json"
+                  "label": "run-bac4a7b4-f7d8-437a-9c9f-d6b11c33a96d",
+                  "path": "/example/manager/.taskbelay/runs/bac4a7b4-f7d8-437a-9c9f-d6b11c33a96d.json"
                 },
                 {
-                  "label": "run-b754cf5d-a76a-42df-ab36-433e7aac095b",
-                  "path": "/example/manager/.taskbelay/runs/b754cf5d-a76a-42df-ab36-433e7aac095b.json"
+                  "label": "run-fe09117c-bcc7-4f66-bee8-115f22c8353e",
+                  "path": "/example/manager/.taskbelay/runs/fe09117c-bcc7-4f66-bee8-115f22c8353e.json"
                 }
               ],
               "actions": [
@@ -46812,11 +47075,89 @@
                 }
               ]
             },
-            "next_step": "taskbelay delete-data --host all --all-known-profiles --confirm-delete DELETE-DATA-E7A4E2"
+            "next_step": "taskbelay delete-data --host all --all-known-profiles --confirm-delete DELETE-DATA-FFA0AD"
           },
           "stderr": ""
         },
         "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "success_cancelled",
+        "input": {
+          "argv": [
+            "delete-data",
+            "--host",
+            "all",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "delete-data",
+            "status": "cancelled",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "deepseek",
+                "profile": "web",
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "claude",
+                "profile": null,
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "zcode",
+                "profile": null,
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "present",
+              "default_data": "present",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Simulated interactive cancellation returned to the actual lifecycle serializer. It executes no maintenance, creates no operation record and provides no approval command. JSON clients without confirmation still receive confirmation_required."
       }
     ],
     "implementation": [
@@ -46863,7 +47204,10 @@
               "additionalProperties": false,
               "properties": {
                 "operation_id": {
-                  "type": "string",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
                   "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
                 },
                 "operation": {
@@ -46927,8 +47271,7 @@
                         "type": "array",
                         "description": "安装或实际用户待决定问题；按所在对象结构解释。",
                         "items": {
-                          "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method.",
-                          "type": []
+                          "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method."
                         }
                       }
                     },
@@ -46973,7 +47316,10 @@
                       }
                     },
                     "trash_root": {
-                      "type": "string",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
                       "description": "实际移入回收区位置；null表示未移入。"
                     }
                   },
@@ -47021,7 +47367,9 @@
                     "null"
                   ],
                   "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-                  "additionalProperties": true
+                  "additionalProperties": true,
+                  "properties": {},
+                  "required": []
                 },
                 "next_step": {
                   "type": [
@@ -47422,7 +47770,7 @@
             "all",
             "--json",
             "--confirm-delete",
-            "DELETE-ALL-D0835B"
+            "DELETE-ALL-AEC722"
           ]
         },
         "output": {
@@ -47480,7 +47828,7 @@
               "default_data": "absent",
               "pet": "absent",
               "explicit_data": [],
-              "trash_root": "/example/manager/.Trash/taskbelay-2026-10-19T02-39-40-078Z-a613efaf4128"
+              "trash_root": "/example/manager/.Trash/taskbelay-2026-10-19T04-04-24-576Z-abdddd5ba7b9"
             },
             "completed_actions": [
               "manager.cleanup",
@@ -47597,8 +47945,8 @@
             "restart_requirements": [],
             "confirmation": {
               "class": "delete",
-              "plan_id": "plan-d0835ba7d1bb0a88b5bd",
-              "token": "DELETE-ALL-D0835B",
+              "plan_id": "plan-aec722b9c786bc3ed3f3",
+              "token": "DELETE-ALL-AEC722",
               "permanent_token": null,
               "impacts": [
                 "Remove every installed Adapter before shared data cleanup",
@@ -47629,11 +47977,89 @@
                 }
               ]
             },
-            "next_step": "taskbelay delete-all --host all --all-known-profiles --confirm-delete DELETE-ALL-D0835B"
+            "next_step": "taskbelay delete-all --host all --all-known-profiles --confirm-delete DELETE-ALL-AEC722"
           },
           "stderr": ""
         },
         "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "success_cancelled",
+        "input": {
+          "argv": [
+            "delete-all",
+            "--host",
+            "all",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": null,
+            "operation": "delete-all",
+            "status": "cancelled",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "deepseek",
+                "profile": "web",
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "claude",
+                "profile": null,
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "zcode",
+                "profile": null,
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Simulated interactive cancellation returned to the actual lifecycle serializer. It executes no maintenance, creates no operation record and provides no approval command. JSON clients without confirmation still receive confirmation_required."
       }
     ],
     "implementation": [
@@ -47816,7 +48242,7 @@
             "status": "partial",
             "changed": false,
             "package_version": "0.1.0",
-            "core_version": "0.26.3",
+            "core_version": "0.26.4",
             "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
             "registration": {
               "receipt": false,
@@ -48029,7 +48455,7 @@
             "status": "action_required",
             "changed": true,
             "package_version": "0.1.0",
-            "core_version": "0.26.3",
+            "core_version": "0.26.4",
             "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
             "registration": {
               "receipt": true,
@@ -48244,7 +48670,7 @@
             "status": "action_required",
             "changed": true,
             "package_version": "0.1.0",
-            "core_version": "0.26.3",
+            "core_version": "0.26.4",
             "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
             "registration": {
               "receipt": true,
@@ -48443,7 +48869,7 @@
             "status": "partial",
             "changed": false,
             "package_version": "0.1.4",
-            "core_version": "0.26.3",
+            "core_version": "0.26.4",
             "receipt_path": "/example/hosts/.taskbelay/registrations/claude.json",
             "registration": {
               "receipt": false,
@@ -48640,7 +49066,7 @@
             "status": "ready",
             "changed": true,
             "package_version": "0.1.4",
-            "core_version": "0.26.3",
+            "core_version": "0.26.4",
             "receipt_path": "/example/hosts/.taskbelay/registrations/claude.json",
             "registration": {
               "receipt": true,
@@ -48978,7 +49404,7 @@
             "status": "ready",
             "changed": false,
             "package_version": "0.10.5",
-            "core_version": "0.26.3",
+            "core_version": "0.26.4",
             "receipt_path": "/example/hosts/codex.json",
             "registration": {
               "receipt": true,

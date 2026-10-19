@@ -43,12 +43,12 @@ test("install supports arbitrary Agent and Profile subsets and retains choices o
   assert.equal(state.nextOperation, "install");
 });
 
-test("upgrade submits only selected installed components and offers secondary version input", async () => {
+test("upgrade submits only selected installed components and scopes an explicit version to one independently released component", async () => {
   const choices = [{ value: "self", label: "CLI" }, { value: "codex", label: "Codex", host: "codex" }, { value: "deepseek:work", label: "work", host: "deepseek", profile: "work" }];
   const state = {};
-  const request = await promptForRequest({ output: output(), state, session: scripted(["upgrade", { action: "v", selected: [] }, "1.2.3", ["self", "deepseek:work"]]), inspectUpgrade: async options => { assert.ok(["latest", "1.2.3"].includes(options.targetVersion)); return choices; } });
+  const request = await promptForRequest({ output: output(), state, session: scripted(["upgrade", { action: "v", selected: [] }, "deepseek:work", "1.2.3"]), inspectUpgrade: async options => { assert.ok(["latest", "1.2.3"].includes(options.targetVersion)); return choices; } });
   assert.deepEqual(request.hosts, ["deepseek"]); assert.deepEqual(request.profiles, ["work"]);
-  assert.equal(request.self, true); assert.equal(request.targetVersion, "1.2.3");
+  assert.equal(request.self, false); assert.equal(request.targetVersion, "1.2.3");
 });
 
 test("terminal arrows skip disabled rows, Space toggles, Enter submits and raw mode restores", async () => {
@@ -89,4 +89,46 @@ test("JSON output stays exactly one object while Chinese plans describe data ret
   assert.match(text, /删除数据（保留插件）/); assert.match(text, /在原位置准备空数据目录/);
   assert.equal(resolveLanguage({ LANG: "zh_CN.UTF-8" }), "zh-CN");
   assert.match(renderProgress({ type: "action_start", action: { operation: "cleanup", host: "manager" } }, { language: "zh-CN" }), /删除已确认的数据/);
+});
+
+test("all-current upgrade offers home and recheck without an empty multiselect or npm local archive", async () => {
+  const out = output(); let checks = 0;
+  const session = scripted(["upgrade", "r", "home", "exit"], (_message, entries, options) => {
+    assert.ok(entries.every(entry => !entry.disabled));
+    assert.equal(options?.shortcuts?.l, undefined);
+  });
+  session.multiselect = () => { throw new Error("no selectable updates"); };
+  await promptForRequest({ output: out, language: "zh-CN", session, inspectUpgrade: async () => {
+    checks++; return [{ value: "self", label: "CLI", channel: "npm", status: "current", disabled: true, hint: "0.3.8" }];
+  } });
+  assert.equal(checks, 2); assert.match(out.text, /正在检查更新/);
+});
+
+test("failed lookups are not labeled current and backing out of version input does not requery", async () => {
+  const out = output(); let checks = 0; const titles = [];
+  await promptForRequest({ output: out, language: "zh-CN", session: scripted(["upgrade", "v", "self", BACK, "home", "exit"], title => titles.push(title)),
+    inspectUpgrade: async () => { checks++; return [{ value: "self", label: "CLI", channel: "npm", status: "failed", disabled: true, hint: "registry unavailable" }]; } });
+  assert.equal(checks, 1); assert.ok(titles.some(title => title.includes("检查失败"))); assert.ok(titles.every(title => !title.includes("已是最新")));
+});
+
+test("terminal text editing and invalid input stay in the field", async () => {
+  const input = new PassThrough(), out = output(), session = createTerminalSession(input, out, { language: "zh-CN" });
+  const value = session.question("Version", { initial: "latest", validate: text => /^\d+\.\d+\.\d+$/.test(text) ? null : "invalid version" });
+  input.write("\r"); assert.match(out.text, /invalid version/);
+  input.write("\u00150.3.9\u001b[D\u001b[3~8\r");
+  assert.equal(await value, "0.3.8");
+  const words = session.question("Words", { initial: "first second" });
+  input.write("\u0017third\u0001X\u0005!\r"); assert.equal(await words, "Xfirst third!");
+  session.close();
+});
+
+test("diagnostics show optional Agents neutrally and ZCode instructions only once", () => {
+  const step = "Start a new ZCode session. Check the TaskBelay Skill, plugin MCP server and Write/Edit Hook in ZCode before starting a Task. This CLI cannot observe their loaded state.";
+  const result = { operation: "doctor", status: "action_required", changed: false, targets: [
+    { host: "claude", state: "absent", host_available: false, issues: [{ code: "host_missing", message: "missing Claude" }] },
+    { host: "zcode", state: "action_required", issues: [{ code: "host_action_required", message: step }] }],
+    checks: [{ name: "zcode", status: "action_required", message: step }], next_steps: [step], installation: { data: "/private/data" } };
+  const text = renderResult(result, { language: "zh-CN", detailed: false });
+  assert.equal(text.split("开启新的 ZCode 会话").length, 2);
+  assert.doesNotMatch(text, /Start a new|missing Claude|! 未检测到|private/);
 });

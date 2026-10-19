@@ -6,7 +6,7 @@ export function mergeSchema(left, right) {
   if (!left) return right;
   if (!right) return left;
   const types = [...new Set([...(Array.isArray(left.type) ? left.type : [left.type]), ...(Array.isArray(right.type) ? right.type : [right.type])])].filter(Boolean);
-  const value = { ...left, type: types.length === 1 ? types[0] : types };
+  const value = { ...left, ...(types.length ? { type: types.length === 1 ? types[0] : types } : {}) };
   if (types.includes('object')) {
     value.properties = { ...left.properties };
     for (const [name, child] of Object.entries(right.properties ?? {})) value.properties[name] = mergeSchema(value.properties[name], child);

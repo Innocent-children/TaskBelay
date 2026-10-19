@@ -1,5 +1,7 @@
+import { petApplicationsDiffer } from "../../pet-files.mjs";
 import { execPortableCommand } from "../../command.mjs";
 import { randomUUID } from "node:crypto";
+import { connect } from "node:net";
 import { readFile, unlink } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import { spawn } from "node:child_process";
@@ -23,6 +25,41 @@ export const LAUNCH_CONFIRMATIONS = Object.freeze(["ready", "restored"]);
 export const LAUNCH_TIMEOUT_MILLISECONDS = 10_000;
 // The native shutdown entry waits at most five seconds for an orderly exit.
 export const SHUTDOWN_TIMEOUT_MILLISECONDS = 15_000;
+
+/**
+ * A status reply must come from the per-instance token on its named pipe.
+ * The runtime file alone never establishes that the desktop is running.
+ */
+export async function observePetState({ productRoot, connectImpl = connect }) {
+  let record;
+  try { record = JSON.parse(await readFile(join(productRoot, "pet", "runtime.json"), "utf8")); }
+  catch (error) { return error.code === "ENOENT" ? "stopped" : "unknown"; }
+  if (typeof record.pipe !== "string" || !record.pipe.startsWith("\\\\.\\pipe\\taskbelay-pet-") || typeof record.token !== "string" || !record.token) return "unknown";
+  return await new Promise(resolvePromise => {
+    const socket = connectImpl(record.pipe);
+    let data = "";
+    const finish = state => { socket.destroy(); resolvePromise(state); };
+    socket.setTimeout(1000);
+    socket.on("connect", () => socket.write(JSON.stringify({ token: record.token, operation: "status" }) + "\n"));
+    socket.on("data", chunk => {
+      data += chunk;
+      if (data.length > 4096) return finish("unknown");
+      if (!data.includes("\n")) return;
+      try { finish(JSON.parse(data).result === "running" ? "running" : "unknown"); }
+      catch { finish("unknown"); }
+    });
+    socket.on("timeout", () => finish("unknown"));
+    socket.on("error", error => finish(["ENOENT", "ECONNREFUSED"].includes(error.code) ? "stopped" : "unknown"));
+    socket.on("end", () => finish("unknown"));
+  });
+}
+
+export async function needsPetInstallation(packageRoot, petDirectory) {
+  const source = join(resolve(packageRoot), "runtime", PET_RUNTIME_DIRECTORY, PET_APPLICATION_NAME);
+  if (!await isBundledPetApplicationAvailable(bundledPetExecutable(packageRoot))) return false;
+  if (!await isBundledPetApplicationAvailable(installedPetExecutable(petDirectory))) return true;
+  return await petApplicationsDiffer(source, join(resolve(petDirectory), PET_APPLICATION_NAME));
+}
 
 // The installed application location inside ~/.taskbelay/pet/.
 export function installedPetExecutable(petDirectory) {

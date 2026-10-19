@@ -71,3 +71,28 @@ test("Windows pet installation preserves an existing app, settings and appearanc
   assert.equal(await readFile(first.targetExecutable,"utf8"),"new fixture executable");
   assert.equal(await readFile(join(petDirectory,"settings.json"),"utf8"),"retained");
 });
+
+test("pet status requires a native identity or a token-verified live pipe", async t => {
+  const { observePetState: macStatus } = await import("../lib/platform/macos/pet.mjs");
+  assert.equal(await macStatus({ executable: "/pet", productRoot: "/product", exec: async (_command, args) => {
+    assert.deepEqual(args, ["status", "--product-root", "/product"]); return { stdout: "running\n" };
+  } }), "running");
+  assert.equal(await macStatus({ exec: async () => { throw new Error("unavailable"); } }), "unknown");
+  const { observePetState } = await import("../lib/platform/windows/pet.mjs");
+  const { EventEmitter } = await import("node:events");
+  const root = await mkdtemp(join(tmpdir(), "taskbelay-pet-status-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.equal(await observePetState({ productRoot: root }), "stopped");
+  await mkdir(join(root, "pet"));
+  const record = join(root, "pet/runtime.json");
+  await writeFile(record, JSON.stringify({ pipe: "\\\\.\\pipe\\taskbelay-pet-fixture", token: "secret" }));
+  for (const answer of ["running", "wrong"]) {
+    const state = await observePetState({ productRoot: root, connectImpl: () => {
+      const socket = new EventEmitter(); socket.setTimeout = () => {}; socket.destroy = () => {};
+      socket.write = text => { assert.deepEqual(JSON.parse(text), { token: "secret", operation: "status" }); socket.emit("data", JSON.stringify({ result: answer }) + "\n"); };
+      queueMicrotask(() => socket.emit("connect")); return socket;
+    } });
+    assert.equal(state, answer === "running" ? "running" : "unknown");
+  }
+  assert.match(await readFile(record, "utf8"), /secret/);
+});

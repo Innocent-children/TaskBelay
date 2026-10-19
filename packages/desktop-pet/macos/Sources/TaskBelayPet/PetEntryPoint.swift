@@ -27,6 +27,8 @@ enum PetEntryPoint {
         }
 
         switch arguments.mode {
+        case .status:
+            print(PetInstanceRuntime.status(productRoot: arguments.productRoot))
         case .stop:
             exit(PetStopRequest.run(productRoot: arguments.productRoot, corePath: arguments.corePath))
         case .run:

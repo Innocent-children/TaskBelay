@@ -1,4 +1,6 @@
+import { petApplicationsDiffer } from "../../pet-files.mjs";
 import { spawn } from "node:child_process";
+import { execPortableCommand } from "../../command.mjs";
 import { access, constants as fsConstants, lstat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
@@ -19,6 +21,25 @@ export const LAUNCH_CONFIRMATIONS = Object.freeze(["ready", "restored"]);
 export const LAUNCH_TIMEOUT_MILLISECONDS = 10_000;
 // The native shutdown entry waits at most five seconds for an orderly exit.
 export const SHUTDOWN_TIMEOUT_MILLISECONDS = 15_000;
+
+/**
+ * The bundled native observer verifies the saved kernel identity without
+ * opening a window, acquiring the instance lock or starting Core.
+ */
+export async function observePetState({ executable, productRoot, environment = process.env, exec = execPortableCommand }) {
+  try {
+    const { stdout } = await exec(executable, ["status", "--product-root", productRoot], { env: environment, encoding: "utf8", timeout: 3000, maxBuffer: 4096 });
+    const state = stdout.trim();
+    return ["running", "stopped", "unknown"].includes(state) ? state : "unknown";
+  } catch { return "unknown"; }
+}
+
+export async function needsPetInstallation(packageRoot, petDirectory) {
+  const source = join(resolve(packageRoot), "runtime", PET_RUNTIME_DIRECTORY, PET_APPLICATION_NAME);
+  if (!await isBundledPetApplicationAvailable(bundledPetExecutable(packageRoot))) return false;
+  if (!await isBundledPetApplicationAvailable(installedPetExecutable(petDirectory))) return true;
+  return await petApplicationsDiffer(source, join(resolve(petDirectory), PET_APPLICATION_NAME));
+}
 
 // The installed application location inside ~/.taskbelay/pet/.
 export function installedPetExecutable(petDirectory) {

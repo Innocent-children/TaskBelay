@@ -7,6 +7,24 @@ import Foundation
 /// record whose process no longer matches, found while the lock is free, is
 /// discarded instead of being trusted by PID or application name.
 final class PetInstanceRuntime {
+    /**
+     * Read-only status uses the existing kernel identity check. An unreadable
+     * record or process remains unknown; observation never removes the record.
+     */
+    static func status(productRoot: String) -> String {
+        let path = PetPaths(productRoot: productRoot).runtimeRecord
+        do {
+            guard let data = try OwnedStorage.readBoundedData(path) else { return "stopped" }
+            guard let record = InstanceRecord.decode(data), let pid = Int32(exactly: record.pid) else { return "unknown" }
+            guard let identity = NativeProcess.identity(pid: pid) else {
+                return NativeProcess.isGone(pid: pid) ? "stopped" : "unknown"
+            }
+            let decision = InstanceRules.decideStop(record: record, liveIdentity: identity,
+                currentUserID: NativeProcess.currentUserID(), requestedExecutablePath: nil, requestedCorePath: nil)
+            return decision == .terminate(pid: pid) ? "running" : "stopped"
+        } catch { return "unknown" }
+    }
+
     let paths: PetPaths
 
     private let lock: InstanceLock

@@ -1,3 +1,4 @@
+import { CANCEL } from "../packages/taskbelay/lib/terminal.mjs";
 import { EventEmitter } from "node:events";
 import { mkdtemp, mkdir, readFile, writeFile, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -77,6 +78,11 @@ async function lifecycle() {
       const launcherDriver={observe:async()=>({host:'taskbelay',profile:null,state:'ready',packageInstalled:true,packageVersion:launcherVersion,packageRoot:'/example/global/taskbelay',channel:'npm'}),resolveTarget:async()=>({version:'0.3.1',artifact:'taskbelay@0.3.1',channel:'npm',packageRoot:'/example/global/taskbelay'}),execute:async()=>{launcherVersion='0.3.1';return {changed:true,completedSteps:['taskbelay.upgrade']}}};
       const selfResult=await captured(({stdout,stderr})=>runMain(selfArgs,{...dependencies,output:stdout,errorOutput:stderr,launcherDriver,petInstaller:{ensurePetInstalled:async()=>({installed:false})},stopPetForCore:async()=>({stopped:false})}));
       extra.push(example('success_launcher',{argv:selfArgs},selfResult));
+    }
+    if(!['status','doctor'].includes(operation)) {
+      const cancelArgs=[operation,'--host',isDataDeletion(operation)?'all':'codex','--json'];
+      const cancelled=await captured(({stdout,stderr})=>runMain(cancelArgs,{...dependencies,output:stdout,errorOutput:stderr,confirmPlan:async()=>CANCEL}));
+      extra.push(example('success_cancelled',{argv:cancelArgs},cancelled,'Simulated interactive cancellation returned to the actual lifecycle serializer. It executes no maintenance, creates no operation record and provides no approval command. JSON clients without confirmation still receive confirmation_required.'));
     }
     const bad=[operation,'--unexpected','--json'];
     add('taskbelay.lifecycle.'+operation,

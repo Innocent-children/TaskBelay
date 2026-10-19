@@ -12,6 +12,7 @@ struct LaunchArguments: Equatable {
     enum Mode: String, Equatable {
         case run
         case stop
+        case status
     }
 
     let mode: Mode
@@ -46,12 +47,12 @@ enum LaunchArgumentParser {
     /// before starting this process.
     static func parse(_ rawArguments: [String]) throws -> LaunchArguments {
         guard let modeRaw = rawArguments.first else {
-            throw LaunchArgumentError("missing native entry; expected run or stop")
+            throw LaunchArgumentError("missing native entry; expected run, stop or status")
         }
         guard let mode = LaunchArguments.Mode(rawValue: modeRaw) else {
             throw LaunchArgumentError("unsupported native entry \(modeRaw)")
         }
-        let allowedFields = mode == .run ? runFields : stopFields
+        let allowedFields = mode == .run ? runFields : mode == .status ? ["product-root"] : stopFields
         var values: [String: String] = [:]
         var index = 1
         while index < rawArguments.count {
@@ -73,7 +74,7 @@ enum LaunchArgumentParser {
 
         let productRoot = try requiredAbsolutePath(values, field: "product-root", option: "--product-root")
         switch mode {
-        case .stop:
+        case .stop, .status:
             let corePath = try optionalAbsolutePath(values, field: "core-path", option: "--core-path")
             return LaunchArguments(
                 mode: mode,

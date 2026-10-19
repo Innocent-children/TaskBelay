@@ -72,7 +72,7 @@ taskbelay pet stop
 
 本地分发包的 `--host all` 包含 ZCode；其 `action_required` 提示仍需在 ZCode UI 完成插件安装和启用，见 [ZCode 指南](ZCODE.md)。宠物能够读取 Core 不代表 ZCode 模型会话已经可用。
 
-productRoot 默认是 %LOCALAPPDATA%\taskbelay。已安装桌面目录为 productRoot/pet/TaskBelayPet，入口为 TaskBelayPet.exe；优先使用此目录，其次使用包内 runtime/win32-x64/TaskBelayPet。settings.json、appearances/ 与程序目录分开保存。统一入口通过 taskbelay install、upgrade、repair、reinstall 更新程序副本；统一入口先停止需要维护的实例，再暂存并替换程序目录，保留 settings.json 与 appearances/。单独 pet start 不重装已有程序。普通退出和卸载保留这些数据，确认的 delete-data 或 delete-all 清理宠物偏好和导入形象，保留已安装的桌面程序。
+productRoot 默认是 %LOCALAPPDATA%\taskbelay。已安装桌面目录为 productRoot/pet/TaskBelayPet，入口为 TaskBelayPet.exe；优先使用此目录，其次使用包内 runtime/win32-x64/TaskBelayPet。settings.json、appearances/ 与程序目录分开保存。统一入口在程序缺失或文件变化时通过 taskbelay install、upgrade、repair、reinstall 更新程序副本；统一入口先停止需要维护的实例，再暂存并替换程序目录，保留 settings.json 与 appearances/。单独 pet start 不重装已有程序。普通退出和卸载保留这些数据，确认的 delete-data 或 delete-all 清理宠物偏好和导入形象，保留已安装的桌面程序。
 
 Windows 使用受限渲染器、当前用户范围的本地单实例通道与确认消息，不按进程名或仅凭 PID 停止程序。每轮和点击跳转前核对同一 Core 与数据目录；连接失败保留最后记录并标注断连，任务更新与同步时间分别显示。隐藏/睡眠取消读取和动画，恢复后不重放历史完成提示。
 
@@ -89,7 +89,9 @@ taskbelay repair --host codex --yes
 taskbelay pet start
 ```
 
-选择已配置的 Host；DeepSeek 使用 `--host deepseek --profile <name>`。`install`、`upgrade`、`repair`、`reinstall` 即使无需修改 Adapter，也会包含宠物更新。确认前的计划显示该操作。执行时先停止宠物，再暂存新应用并替换应用目录；停止或复制失败会中止维护，暂存失败保留原应用。设置和导入形象保存在独立目录中。
+选择已配置的 Host；DeepSeek 使用 `--host deepseek --profile <name>`。`install`、`upgrade`、`repair`、`reinstall` 比较包内与已安装应用的文件，缺失或内容变化时才包含宠物更新；同版本本地构建也按内容判断。应用相同时不因插件已就绪而停止或复制宠物。命令入口自更新负责安装新包携带的桌面程序。计划在确认前列出实际需要的操作。更新先停止宠物，再暂存并替换应用目录；停止或复制失败会中止维护，暂存失败保留原应用。设置和导入形象保存在独立目录中。
+
+菜单的运行状态由平台验证：macOS 核对内核启动身份、可执行路径和用户，Windows 通过实例令牌确认本地管道响应。仅有 runtime.json 不代表正在运行；无法验证时显示未知，读取状态不启动或停止程序。
 
 单独安装 npm 包只更新包内应用；已有用户目录副本通过上述维护命令更新。更新形象时从原始文件夹重新导入，程序更新不会补造缺少的动作。
 

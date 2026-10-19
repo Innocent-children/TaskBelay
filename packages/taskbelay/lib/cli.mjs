@@ -129,17 +129,19 @@ export async function confirmPlan(plan, request, { input = process.stdin, output
     if (deletion || plan.confirmationClass === "downgrade") {
       const tokens = deletion ? [plan.confirmationToken, ...(request.permanent ? [plan.permanentToken] : [])] : [plan.downgradeToken];
       for (const token of tokens) {
-        const answer = await terminal.question(zh ? `输入 ${token} 确认${deletion ? operationDescription(request.operation, language) : "降级"}：` : `Type ${token} to confirm ${deletion ? request.operation : "downgrade"}:`);
+        const answer = await terminal.question(zh ? `输入 ${token} 确认${deletion ? operationDescription(request.operation, language) : "降级"}：` : `Type ${token} to confirm ${deletion ? request.operation : "downgrade"}:`, {
+          validate: value => value === token ? null : zh ? "确认文字不匹配；重新输入，或按 Esc 返回。" : "Confirmation does not match; try again or press Esc to return.",
+        });
         if (answer === BACK) return BACK;
-        if (answer !== token) return false;
+        if (answer !== token) return CANCEL;
       }
       return true;
     }
     const answer = await terminal.select(zh ? "确认本次操作" : "Confirm this operation", [
       { value: true, label: zh ? "开始执行" : "Start" }, { value: BACK, label: zh ? "返回修改选择" : "Back to selection" },
-      { value: false, label: zh ? "取消" : "Cancel" },
+      { value: CANCEL, label: zh ? "取消" : "Cancel" },
     ]);
-    return answer === CANCEL ? false : answer;
+    return answer;
   } finally { if (!session) terminal.close(); }
 }
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { CANCEL } from "../lib/terminal.mjs";
 import { runLifecycle } from "../lib/lifecycle.mjs";
 import { resolveManagerPaths } from "../lib/ownership.mjs";
 
@@ -133,7 +134,7 @@ function request(operation) {
   return { operation, hosts: ["codex"], profiles: [], targetVersion: "latest", allKnownProfiles: false, adopt: false, permanent: false, yes: true, confirmationToken: null, permanentToken: null, downgradeToken: null, confirmedExplicitData: [], outputMode: "json" };
 }
 
-test("bundled pet maintenance runs even when the Adapter is current and preserves user data", async t => {
+test("pet is installed when missing but a healthy installed app is left alone", async t => {
   const fixture = await maintenanceFixture(t);
   const packageRoot = join(fixture.root, "package");
   const app = join(packageRoot, "runtime/darwin-arm64/TaskBelayPet.app/Contents/MacOS");
@@ -152,15 +153,21 @@ test("bundled pet maintenance runs even when the Adapter is current and preserve
       codexDriver: { ...fixture.dependencies.codexDriver, execute: async () => ({ changed: false }) },
     });
     assert.equal(result.code, 0);
-    assert.equal(result.plan.actions.at(-1).actionId, "pet.install");
-    assert.equal(result.result.changed, true);
-    assert.ok(result.result.completed_actions.includes("pet.install"));
-    assert.deepEqual(fixture.events, ["pet.stop:null"]);
+    const installedPet = operation === "install";
+    assert.equal(result.plan.actions.some(action => action.actionId === "pet.install"), installedPet);
+    assert.equal(result.result.completed_actions.includes("pet.install"), installedPet);
+    assert.deepEqual(fixture.events, installedPet ? ["pet.stop:null"] : []);
     assert.equal(await readFile(join(fixture.paths.petDirectory, "TaskBelayPet.app/Contents/MacOS/TaskBelayPet"), "utf8"), "new application");
     assert.equal(await readFile(join(fixture.paths.petDirectory, "settings.json"), "utf8"), "settings");
     assert.equal(await readFile(join(fixture.paths.petDirectory, "appearances/custom"), "utf8"), "appearance");
   }
+  await writeFile(join(app, "TaskBelayPet"), "changed application at same version");
+  const changedApp = await runLifecycle({ ...request("repair"), targetVersion: "0.7.0" }, { ...fixture.dependencies, packageRoot });
+  assert.equal(changedApp.result.completed_actions.includes("pet.install"), true);
+  assert.equal(await readFile(join(fixture.paths.petDirectory, "TaskBelayPet.app/Contents/MacOS/TaskBelayPet"), "utf8"), "changed application at same version");
   fixture.events.length = 0;
+  const { rm } = await import("node:fs/promises");
+  await rm(join(fixture.paths.petDirectory, "TaskBelayPet.app"), { recursive: true });
   const declined = await runLifecycle({ ...request("repair"), targetVersion: "0.7.0" }, {
     ...fixture.dependencies, packageRoot, confirmPlan: async () => false,
   });
@@ -284,4 +291,24 @@ test("all-Host diagnostics do not classify an unused absent Adapter as a broken 
   assert.equal(result.result.status, 'ready');
   assert.equal(result.result.next_step, null);
   assert.equal(result.result.checks.find(check => check.name === 'deepseek/web').status, 'not_installed');
+});
+
+test("interactive cancellation never creates maintenance records or an armed approval command", async t => {
+  const fixture = await maintenanceFixture(t);
+  const result = await runLifecycle(request("reinstall"), { ...fixture.dependencies, confirmPlan: async () => CANCEL });
+  assert.equal(result.code, 0); assert.equal(result.result.status, "cancelled");
+  assert.equal(result.result.changed, false); assert.equal(result.result.next_step, null);
+  assert.equal(result.result.confirmation, null); assert.equal(result.result.operation_id, null);
+  assert.deepEqual(fixture.events, []);
+});
+
+test("menu opens Control Center with human output and reuses installation observation on cancel", async t => {
+  const { runMain } = await import("../lib/lifecycle.mjs");
+  const { Readable } = await import("node:stream");
+  const fixture = await maintenanceFixture(t); let text = "", inspected = 0;
+  const answers = ["webui", "home", "exit"];
+  const result = await runMain([], { ...fixture.dependencies, input: Readable.from([]), isTTY: true,
+    session: { select: async () => answers.shift(), close() {} }, output: { write: value => { text += value; } },
+    runTaskBelay: async args => { assert.deepEqual(args, ["webui", "start", "--plain"]); inspected++; return { code: 0 }; } });
+  assert.equal(result.code, 0); assert.equal(inspected, 1);
 });

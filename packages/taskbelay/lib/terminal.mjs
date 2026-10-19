@@ -106,23 +106,49 @@ export function createTerminalSession(input, output, { language = "en", environm
     multiselect: (message, entries, options) => choose(message, entries, { ...options, multiple: true }),
     question(message, { initial = "", validate = () => null, onChange = () => {} } = {}) {
       return prompt(() => {
-        let value = initial;
-        output.write(message + "\n> " + value);
+        let chars = Array.from(initial), position = chars.length, previousLines = 0, error = "";
+        const draw = () => {
+          if (previousLines && cursor) output.write(`\u001b[${previousLines}A\r\u001b[0J`);
+          const width = Math.max(16, (output.columns ?? 80) - 4);
+          let start = position;
+          while (start > 0 && cellWidth(chars.slice(start - 1, position).join("")) < width - 2) start--;
+          const prefix = start ? "…" : "";
+          const visible = prefix + fitLine(chars.slice(start).join(""), width - cellWidth(prefix));
+          const lines = [fitLine(message, (output.columns ?? 80) - 1),
+            zh ? "←→ 移动 · Ctrl+U 清空行首 · Enter 确认 · Esc 返回" : "←→ move · Ctrl+U clear to start · Enter confirm · Esc back",
+            ...(error ? [fitLine(error, (output.columns ?? 80) - 1)] : []), "> " + visible];
+          output.write(lines.map(line => fitLine(line, (output.columns ?? 80) - 1)).join("\n"));
+          if (cursor) output.write(`\r\u001b[${3 + cellWidth(prefix + chars.slice(start, position).join(""))}G\u001b[?25h`);
+          // The input row has no trailing newline; repaint starts at its title.
+          previousLines = lines.length - 1;
+        };
         pending.key = (text, key) => {
           if (key.name === "escape") { finish(BACK); return; }
           if (key.name === "return") {
-            const error = validate(value);
-            if (!error) { finish(value); return; }
-            output.write(`\n${error}\n> ${value}`);
-          } else if (key.name === "backspace") {
-            const chars = Array.from(value);
-            chars.pop(); value = chars.join(""); onChange(value);
-            output.write(cursor ? `\r\u001b[2K> ${fitLine(value, Math.max(16, (output.columns ?? 80) - 3))}` : `\n> ${value}`);
-          } else if (text && !key.ctrl && !key.meta && !/[\u0000-\u001f\u007f-\u009f]/u.test(text)) {
-            value += text; onChange(value);
-            output.write(cursor ? `\r\u001b[2K> ${fitLine(value, Math.max(16, (output.columns ?? 80) - 3))}` : text);
-          }
+            error = validate(chars.join(""));
+            if (!error) { finish(chars.join("")); return; }
+          } else if (key.name === "home" || key.ctrl && key.name === "a") position = 0;
+          else if (key.name === "end" || key.ctrl && key.name === "e") position = chars.length;
+          else if (key.name === "left") position = Math.max(0, position - 1);
+          else if (key.name === "right") position = Math.min(chars.length, position + 1);
+          else if (key.ctrl && key.name === "u") { chars.splice(0, position); position = 0; }
+          else if (key.ctrl && key.name === "k") chars.splice(position);
+          else if (key.ctrl && key.name === "w") {
+            const begin = chars.slice(0, position).join("").replace(/\S+\s*$/u, "");
+            const start = Array.from(begin).length;
+            chars.splice(start, position - start); position = start;
+          } else if (key.name === "backspace" && position) chars.splice(--position, 1);
+          else if (key.name === "delete") chars.splice(position, 1);
+          else if (text && !key.ctrl && !key.meta && !/[\u0000-\u001f\u007f-\u009f]/u.test(text)) {
+            const inserted = Array.from(text);
+            chars.splice(position, 0, ...inserted); position += inserted.length;
+            error = "";
+          } else return;
+          onChange(chars.join(""));
+          if (!cursor) output.write("\n");
+          draw();
         };
+        draw();
       });
     },
     close() {
@@ -140,10 +166,16 @@ export function createTerminalSession(input, output, { language = "en", environm
 function fitLine(value, width) {
   let result = "", cells = 0;
   for (const char of String(value).replace(/[\u0000-\u001f\u007f-\u009f]/gu, " ")) {
-    const point = char.codePointAt(0);
-    const size = /\p{Mark}/u.test(char) ? 0 : point >= 0x1100 && (point <= 0x115f || point >= 0x2e80 && point <= 0xa4cf || point >= 0xac00 && point <= 0xd7a3 || point >= 0xf900 && point <= 0xfaff || point >= 0xfe10 && point <= 0xfe6f || point >= 0xff01 && point <= 0xff60 || point >= 0x1f300) ? 2 : 1;
+    const size = cellWidth(char);
     if (cells + size > width - 1) return result + "…";
     result += char; cells += size;
   }
   return result;
+}
+
+function cellWidth(value) {
+  return Array.from(value).reduce((width, char) => {
+    const point = char.codePointAt(0);
+    return width + (/\p{Mark}/u.test(char) ? 0 : point >= 0x1100 && (point <= 0x115f || point >= 0x2e80 && point <= 0xa4cf || point >= 0xac00 && point <= 0xd7a3 || point >= 0xf900 && point <= 0xfaff || point >= 0xfe10 && point <= 0xfe6f || point >= 0xff01 && point <= 0xff60 || point >= 0x1f300) ? 2 : 1);
+  }, 0);
 }
