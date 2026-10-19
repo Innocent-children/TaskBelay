@@ -1,5 +1,5 @@
 import { lstat, unlink } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve, relative, sep } from "node:path";
 import { execPortableCommand } from "./command.mjs";
 import { adapterCoreRuntimePath, inspectMaintainedCore } from "./core-runtime.mjs";
 import { ensureManagerDirectories, readOwnedJSON, writeOwnedJSON } from "./ownership.mjs";
@@ -8,7 +8,7 @@ import { ensureManagerDirectories, readOwnedJSON, writeOwnedJSON } from "./owner
  * Keep pre-uninstall Core locations across failed resets until data cleanup succeeds.
  * WebUI owns its runtime receipt; platform implementations own process identity and signals.
  */
-export async function stopManagedCores({ targets, dataDirectories, paths, environment, processes, run = execPortableCommand }) {
+export async function stopManagedCores({ targets, dataDirectories, paths, environment, processes, run = execPortableCommand, assertNoPendingRuns = assertNoPendingTaskRuns }) {
   const retained = await readResetRecord(paths);
   const candidates = new Map();
   for (const target of targets) {
@@ -47,6 +47,7 @@ export async function stopManagedCores({ targets, dataDirectories, paths, enviro
     }
   };
   await verifyStopped();
+  await assertNoPendingRuns(directories, runtimes, { environment, run });
   const completeCleanup = async () => {
     const current = await readResetRecord(paths);
     if (current === null) return;
@@ -110,5 +111,41 @@ async function hasWebUIReceipt(directory) {
   } catch (error) {
     if (error.code === "ENOENT") return false;
     throw error;
+  }
+}
+
+/**
+ * A stopped Core can leave an external check running or its outcome unresolved.
+ * Read through Core's public saved-state API before removing the task database.
+ */
+export async function assertNoPendingTaskRuns(directories, runtimes, { environment, run }) {
+  for (const directory of directories) {
+    const database = await lstat(join(directory, "taskbelay.db")).catch(error => { if (error.code !== "ENOENT") throw error; });
+    if (!database) continue;
+    if (!database.isFile() || database.isSymbolicLink()) throw new Error("Task database must be a regular file before cleanup");
+    const runtime = runtimes[0];
+    if (!runtime) throw new Error(`Cannot inspect unresolved executions in ${directory}; install a compatible TaskBelay plugin before deleting its data`);
+    const call = async (tool, input) => {
+      const output = await run(runtime.runtimePath, ["call", tool], { env: { ...environment, TASKBELAY_DATA_DIR: directory }, cwd: runtime.packageRoot,
+        input: JSON.stringify(input), encoding: "utf8", timeout: 10000, maxBuffer: 8 * 1024 * 1024, windowsHide: true });
+      const response = JSON.parse(output.stdout);
+      if (response.ok !== true) throw new Error(response.error?.message ?? "Core could not inspect saved executions");
+      return response.result;
+    };
+    for (let page = 1; ; page++) {
+      const tasks = await call("taskbelay_list_tasks", { page, page_size: 100, include_archived: true });
+      if (!Array.isArray(tasks.items)) throw new Error("Core returned an invalid task list before cleanup");
+      for (const task of tasks.items) {
+        for (const repository of task.repositories ?? []) {
+          const offset = relative(directory, repository.repository_path);
+          if (offset === "" || offset !== ".." && !offset.startsWith(`..${sep}`) && !isAbsolute(offset)) throw new Error(`Task data directory contains project code: ${repository.repository_path}`);
+        }
+        if (task.status && task.status !== "active") continue;
+        const view = await call("taskbelay_get_task", { task_id: task.task_id, refresh: false });
+        if (!Array.isArray(view.decision?.pending_runs)) throw new Error("Core did not report pending executions before cleanup");
+        if (view.decision.pending_runs.length) throw new Error(`Task ${task.task_id} has running or unresolved executions; recover them before deleting data`);
+      }
+      if (!tasks.has_next) break;
+    }
   }
 }

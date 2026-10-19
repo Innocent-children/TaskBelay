@@ -51,12 +51,12 @@ export function createZCodeDriver({ paths, environment = process.env, run = defa
       return [{ source: "zcode", packageName, packageVersion: receipt.product.version,
         expectedCoreVersion: receipt.product.core_version, packageRoot: receipt.paths.package_root, runtimePath: receipt.paths.runtime_path }];
     },
-    async maintenanceTargets({ observed, operation }) {
+    async maintenanceTargets({ observed, operation, agentClosed = false }) {
       const receipt = await readReceipt();
       // ZCode copies plugins into a private cache. There is no supported cache/process
       // inventory API, so a data reset cannot prove that every cached Core is stopped.
-      if (operation === "factory-reset" && (observed.packageInstalled || receipt !== null)) {
-        throw new Error("ZCode plugin caches cannot be verified automatically. Remove the ZCode plugin and close its sessions before resetting shared Task data; ordinary uninstall preserves that data.");
+      if (["delete-data", "delete-all"].includes(operation) && (observed.packageInstalled || receipt !== null) && !agentClosed) {
+        throw new Error("ZCode plugin caches cannot be verified automatically. Close every ZCode window and session, then explicitly confirm --confirm-zcode-closed before deleting shared Task data.");
       }
       let installedRuntime = null;
       if (observed.packageInstalled) {

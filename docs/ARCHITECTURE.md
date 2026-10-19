@@ -19,6 +19,9 @@
 
 Host 工作区操作使用私有原子收据记录固定请求、绑定工作树与逐仓整合结果；它不是第二个 Task。修改前保存意图，响应丢失按原身份读取；只读恢复核对当前 Git，保留未知命令结果，不回退已应用仓库或继续剩余动作。Core 仍只观察 Git，并核对不可变来源选择。调用计量按存储、进程查询与其他初始化责任保留原始错误；查询拒绝不证明进程已停止。
 
+
+统一管理器 packages/taskbelay 的 terminal.mjs 管理按键和输入模式；menu.mjs 只保存未提交的用户选择；cli.mjs 将命令和菜单选择归一为同一请求。plan.mjs 生成一次确认的多 Agent 维护计划，lifecycle.mjs 编排实际操作，launcher.mjs 处理保持渠道的入口自更新，cleanup.mjs 枚举用户数据并重建空目录。注册信息、桌面程序和清理目标分别处理；操作日志保留当前结果和未解决记录。进程关闭留在各平台实现，数据中的未确定执行通过 Core 只读接口检查；管理器不直接解析 SQLite，也不保存第二份 Task。
+
 ## 当前契约与控制
 
 Task 保存 authorization、plan、budget_decision、exceptions、archived、changes、repositories、assessment、progress、issue、evidence、attempts、facts、usage、acceptance、revision 和时间。没有固定开发节点。生命周期出边只有 active→done（完整验收）、active→cancelled（明确取消且无未确定执行）和 active→active（检查点、修订、执行、观察、恢复）；终态没有回边。控制建议由当前事实推导为 continue/review/self_correct/verify/stop/ask_user，不是第二状态机。

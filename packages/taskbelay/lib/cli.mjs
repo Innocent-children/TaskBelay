@@ -1,293 +1,153 @@
-import { createTerminalSession } from "./terminal.mjs";
+import { BACK, CANCEL, createTerminalSession } from "./terminal.mjs";
+import { resolveLanguage } from "./presentation.mjs";
+export { promptForRequest } from "./menu.mjs";
 
-import { supportsDesktopPet } from "./platform.mjs";
-import { messagesForLanguage, resolveLanguage, selectInteractivePresentationMode } from "./presentation.mjs";
-
-export const OPERATIONS = Object.freeze([
-  "status",
-  "doctor",
-  "install",
-  "upgrade",
-  "repair",
-  "reinstall",
-  "uninstall",
-  "factory-reset",
+export const AGENTS = Object.freeze(["codex", "deepseek", "claude", "zcode"]);
+export const OPERATIONS = Object.freeze(["status", "doctor", "install", "upgrade", "repair", "reinstall", "uninstall", "delete-data", "delete-all"]);
+export const isDataDeletion = operation => ["delete-data", "delete-all"].includes(operation);
+const versioned = ["install", "upgrade", "repair", "reinstall"];
+const stableVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
+const booleans = new Map([
+  ["--all-known-profiles", "allKnownProfiles"], ["--adopt", "adopt"], ["--self", "self"],
+  ["--confirm-zcode-closed", "zcodeClosed"], ["--permanent", "permanent"],
+  ["--yes", "yes"], ["--plain", "plain"], ["--json", "json"],
 ]);
-export const HOSTS = Object.freeze(["codex", "deepseek", "claude", "zcode", "all"]);
-
-const booleanOptions = new Map([
-  ["--all-known-profiles", "allKnownProfiles"],
-  ["--adopt", "adopt"],
-  ["--reinstall", "reinstallAfterReset"],
-  ["--permanent", "permanent"],
-  ["--yes", "yes"],
-  ["--plain", "plain"],
-  ["--json", "json"],
-]);
-const valueOptions = new Map([
-  ["--host", "host"],
-  ["--profile", "profiles"],
-  ["--version", "targetVersion"],
-  ["--confirm-reset", "confirmationToken"],
-  ["--confirm-permanent", "permanentToken"],
-  ["--confirm-downgrade", "downgradeToken"],
+const values = new Map([
+  ["--host", "hosts"], ["--profile", "profiles"], ["--version", "targetVersion"],
+  ["--self-package", "selfPackage"], ["--confirm-delete", "confirmationToken"],
+  ["--confirm-permanent", "permanentToken"], ["--confirm-downgrade", "downgradeToken"],
   ["--confirm-explicit-data", "confirmedExplicitData"],
 ]);
-const repeatableOptions = new Set(["profiles", "confirmedExplicitData"]);
-const mutationOperations = new Set(OPERATIONS.filter((operation) => !["status", "doctor"].includes(operation)));
-const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
+const repeatable = new Set(["hosts", "profiles", "confirmedExplicitData"]);
 
-export function parseArguments(arguments_, {
-  isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY),
-  noColor = process.env.NO_COLOR !== undefined,
-} = {}) {
-  if (!Array.isArray(arguments_) || arguments_.some((value) => typeof value !== "string" || value.includes("\0"))) {
-    throw new CLIError("arguments must be closed strings");
-  }
-  if (arguments_.length === 0) {
+export function parseArguments(arguments_, { isTTY = Boolean(process.stdin.isTTY && process.stdout.isTTY), noColor = process.env.NO_COLOR !== undefined } = {}) {
+  if (!Array.isArray(arguments_) || arguments_.some(value => typeof value !== "string" || value.includes("\0"))) throw new CLIError("arguments must be closed strings");
+  if (!arguments_.length) {
     if (!isTTY) throw new CLIError("an operation is required outside a TTY");
     return Object.freeze({ interactive: true, outputMode: noColor ? "plain" : "rich" });
   }
-
   const [operation, ...rest] = arguments_;
-  if (OPERATIONS.includes(operation) && rest.length === 1 && ["--help", "-h"].includes(rest[0])) return Object.freeze({ help: operation });
   if (!OPERATIONS.includes(operation)) throw new CLIError(`unknown operation ${operation}`);
-  const parsed = {
-    operation,
-    host: null,
-    profiles: [],
-    targetVersion: null,
-    allKnownProfiles: false,
-    adopt: false,
-    reinstallAfterReset: false,
-    permanent: false,
-    yes: false,
-    plain: false,
-    json: false,
-    confirmationToken: null,
-    permanentToken: null,
-    downgradeToken: null,
-    confirmedExplicitData: [],
-  };
+  if (rest.length === 1 && ["--help", "-h"].includes(rest[0])) return Object.freeze({ help: operation });
+  const parsed = { operation, hosts: [], profiles: [], targetVersion: null, selfPackage: null,
+    allKnownProfiles: false, adopt: false, self: false, zcodeClosed: false, permanent: false,
+    yes: false, plain: false, json: false, confirmationToken: null, permanentToken: null,
+    downgradeToken: null, confirmedExplicitData: [] };
   const seen = new Set();
-  for (let index = 0; index < rest.length; index += 1) {
-    const option = rest[index];
-    if (booleanOptions.has(option)) {
-      const field = booleanOptions.get(option);
-      if (seen.has(field)) throw new CLIError(`duplicate option ${option}`);
-      seen.add(field);
-      parsed[field] = true;
-      continue;
-    }
-    if (!valueOptions.has(option)) throw new CLIError(`unknown option ${option}`);
-    const field = valueOptions.get(option);
-    const value = rest[index + 1];
-    if (value === undefined || value.startsWith("--")) throw new CLIError(`${option} requires a value`);
-    index += 1;
-    if (!repeatableOptions.has(field) && seen.has(field)) throw new CLIError(`duplicate option ${option}`);
+  for (let index = 0; index < rest.length; index++) {
+    const option = rest[index], field = booleans.get(option) ?? values.get(option);
+    if (!field) throw new CLIError(`unknown option ${option}`);
+    if (seen.has(field) && !repeatable.has(field)) throw new CLIError(`duplicate option ${option}`);
     seen.add(field);
-    if (repeatableOptions.has(field)) parsed[field].push(value);
-    else parsed[field] = value;
+    if (booleans.has(option)) { parsed[field] = true; continue; }
+    const value = rest[++index];
+    if (value === undefined || value.startsWith("--")) throw new CLIError(`${option} requires a value`);
+    if (repeatable.has(field)) parsed[field].push(value); else parsed[field] = value;
   }
-
-  if (parsed.host === null) {
-    if (mutationOperations.has(operation) && !isTTY) throw new CLIError("--host is required for non-interactive mutation");
-    parsed.host = "all";
-  }
-  if (!HOSTS.includes(parsed.host)) throw new CLIError(`invalid Host ${parsed.host}`);
+  if (parsed.hosts.some(host => ![...AGENTS, "all"].includes(host))) throw new CLIError("invalid Agent in --host");
+  if (parsed.hosts.includes("all") && parsed.hosts.length !== 1) throw new CLIError("--host all cannot be combined with other Agents");
+  if (isDataDeletion(operation)) {
+    if (parsed.hosts.length && parsed.hosts[0] !== "all") throw new CLIError("shared data deletion requires all Agents; omit --host or use --host all");
+    if (seen.has("profiles")) throw new CLIError("shared data deletion covers every known Profile");
+    parsed.hosts = [...AGENTS]; parsed.allKnownProfiles = true;
+  } else if (!parsed.hosts.length) {
+    if (!["status", "doctor"].includes(operation) && !parsed.self && !isTTY) throw new CLIError("--host or --self is required for non-interactive mutation");
+    if (!parsed.self) parsed.hosts = [...AGENTS];
+  } else if (parsed.hosts[0] === "all") parsed.hosts = [...AGENTS];
+  parsed.hosts = AGENTS.filter(host => parsed.hosts.includes(host));
   parsed.profiles = [...new Set(parsed.profiles.map(validateProfile))];
   parsed.confirmedExplicitData = [...new Set(parsed.confirmedExplicitData)];
-  if ((parsed.host === "deepseek" || parsed.host === "all") && parsed.profiles.length === 0 && !parsed.allKnownProfiles) {
-    parsed.profiles = ["web"];
-  }
-  if (["codex", "claude", "zcode"].includes(parsed.host) && (parsed.profiles.length > 0 || parsed.allKnownProfiles || parsed.adopt)) {
-    throw new CLIError("DeepSeek Profile options require --host deepseek or all");
-  }
-  if (parsed.targetVersion !== null && parsed.targetVersion !== "latest" && !semverPattern.test(parsed.targetVersion)) {
-    throw new CLIError("--version must equal latest or a stable semantic version");
-  }
-  if (operation !== "factory-reset" && (parsed.reinstallAfterReset || parsed.permanent || parsed.confirmationToken || parsed.permanentToken || parsed.confirmedExplicitData.length > 0)) {
-    throw new CLIError("reset options require factory-reset");
-  }
-  if (!["install", "upgrade", "repair", "reinstall"].includes(operation) && seen.has("targetVersion")) {
-    throw new CLIError("--version is not supported for this operation");
-  }
-  if (parsed.adopt && !["install", "repair"].includes(operation)) {
-    throw new CLIError("--adopt requires install or repair");
-  }
-  if (parsed.json && parsed.plain) throw new CLIError("--json and --plain conflict");
+  if (!parsed.hosts.includes("deepseek") && (parsed.profiles.length || parsed.allKnownProfiles || parsed.adopt)) throw new CLIError("DeepSeek Profile options require --host deepseek or all");
+  if (parsed.hosts.includes("deepseek") && !parsed.profiles.length && !parsed.allKnownProfiles) parsed.profiles = ["web"];
+  if (parsed.targetVersion !== null && parsed.targetVersion !== "latest" && !stableVersion.test(parsed.targetVersion)) throw new CLIError("--version must equal latest or a stable semantic version");
+  if (seen.has("targetVersion") && !versioned.includes(operation)) throw new CLIError("--version is not supported for this operation");
+  if (!isDataDeletion(operation) && (parsed.permanent || parsed.confirmationToken || parsed.permanentToken || parsed.confirmedExplicitData.length || parsed.zcodeClosed)) throw new CLIError("data deletion options require delete-data or delete-all");
   if (parsed.permanentToken && !parsed.permanent) throw new CLIError("--confirm-permanent requires --permanent");
-  if (parsed.downgradeToken && !["install", "upgrade", "repair", "reinstall"].includes(operation)) throw new CLIError("--confirm-downgrade requires a versioned operation");
-
-  return Object.freeze({
-    ...parsed,
-    interactive: false,
-    outputMode: parsed.json ? "json" : parsed.plain || noColor || !isTTY ? "plain" : "rich",
-  });
+  if (parsed.self && operation !== "upgrade") throw new CLIError("--self requires upgrade");
+  if (parsed.selfPackage && !parsed.self) throw new CLIError("--self-package requires --self");
+  if (parsed.adopt && !["install", "repair"].includes(operation)) throw new CLIError("--adopt requires install or repair");
+  if (parsed.downgradeToken && !versioned.includes(operation)) throw new CLIError("--confirm-downgrade requires a versioned operation");
+  if (parsed.json && parsed.plain) throw new CLIError("--json and --plain conflict");
+  return Object.freeze({ ...parsed, interactive: false, outputMode: parsed.json ? "json" : parsed.plain || noColor || !isTTY ? "plain" : "rich" });
 }
 
-export async function promptForRequest({
-  input = process.stdin, output = process.stdout, language = resolveLanguage(),
-  environment = process.env, platform = process.platform, arch = process.arch,
-  observation = null, session = null,
-} = {}) {
-  const messages = messagesForLanguage(language);
-  const terminal = session ?? createTerminalSession(input, output);
-  const zh = language === "zh-CN";
-  const choose = async (prompt, entries, back = false) => {
-    entries.forEach((entry, index) => output.write(`  ${index + 1}. ${entry.label ?? entry}\n`));
-    output.write(`  0. ${zh ? back ? "返回" : "退出" : back ? "Back" : "Exit"}\n`);
-    while (true) {
-      const value = await terminal.question(prompt);
-      if (value === null || ["0", "q", "quit"].includes(value.trim().toLowerCase())) return null;
-      try { return selectNumber(value, entries, "menu"); }
-      catch { output.write(zh ? "请输入列表中的数字，或输入 0。\n" : "Enter a listed number, or 0.\n"); }
-    }
-  };
-  try {
-    while (true) {
-      const title = selectInteractivePresentationMode(output, environment) === "rich" ? `\u001b[1;36m${messages.title}\u001b[0m` : messages.title;
-      output.write(`\n${title}\n${"─".repeat(Math.max(12, Math.min(48, (output.columns ?? 38) - 2)))}\n`);
-      for (const target of observation?.targets ?? []) {
-        output.write(`  ${target.host}${target.profile ? `/${target.profile}` : ""} · ${messages.statuses[target.state] ?? target.state}${target.package_version ? ` · ${target.package_version}` : ""}\n`);
-        for (const issue of target.issues ?? []) output.write(`    ! ${issue.message}\n`);
-      }
-      if (observation?.next_step) output.write(`  ${messages.next}: ${observation.next_step}\n`);
-      output.write("\n");
-      const home = await choose(messages.choose, [
-        { label: messages.installCodex, host: "codex" },
-        { label: messages.installDeepSeek, host: "deepseek" },
-        { label: language === "zh-CN" ? "安装 Claude Code Adapter" : "Install Claude Code Adapter", host: "claude" },
-        { label: language === "zh-CN" ? "安装 ZCode Adapter" : "Install ZCode Adapter", host: "zcode" },
-        { label: messages.installAll, host: "all" },
-        { label: messages.manage, host: null },
-        ...(supportsDesktopPet(platform, arch) ? [
-          { label: messages.pet.menuStart, pet: "start" }, { label: messages.pet.menuStop, pet: "stop" },
-        ] : []),
-        { label: zh ? "打开 Control Center" : "Open Control Center", webui: "start" },
-      ]);
-      if (!home) return { cancelled: true };
-      if (home.pet || home.webui) return home.pet ? { pet: home.pet } : { webui: home.webui };
-      let operation = "install";
-      let host = home.host;
-      if (host === null) {
-        output.write(`\n${messages.manage}\n`);
-        const selected = await choose(messages.operationPrompt, OPERATIONS.map(value => ({ value, label: `${messages.operations[value]} — ${operationDescription(value, language)}` })), true);
-        if (!selected) continue;
-        operation = selected.value;
-        if (operation === "factory-reset") host = "all";
-        else {
-          const selectedHost = await choose(messages.hostPrompt, HOSTS.map(value => ({ value, label: messages.hosts[value] })), true);
-          if (!selectedHost) continue;
-          host = selectedHost.value;
-        }
-      }
-      const options = [operation, "--host", host];
-      if (operation === "factory-reset") options.push("--all-known-profiles");
-      else if (["deepseek", "all"].includes(host)) {
-        const profiles = observation?.targets?.filter(t => t.host === "deepseek").map(t => t.profile) ?? [];
-        if (profiles.length) output.write(`${zh ? "已知 Profile" : "Known Profiles"}: ${profiles.join(", ")}\n`);
-        const prompt = zh ? "DeepSeek Profile [web]，输入 * 选择全部，0 返回：" : "DeepSeek Profile [web], * for all, 0 to go back: ";
-        let profile;
-        while (true) {
-          const value = await terminal.question(prompt);
-          if (value === null || value.trim() === "0") break;
-          if (value.trim() === "*") { profile = "*"; break; }
-          try { profile = validateProfile(value.trim() || "web"); break; }
-          catch { output.write(zh ? "Profile 只可使用字母、数字、点、下划线和连字符。\n" : "Use letters, numbers, dots, underscores and hyphens for a Profile.\n"); }
-        }
-        if (!profile) continue;
-        if (profile === "*") options.push("--all-known-profiles");
-        else options.push("--profile", profile);
-      }
-      return Object.freeze({ ...parseArguments(options, { isTTY: true }), fromMenu: true,
-        outputMode: selectInteractivePresentationMode(output, environment) });
-    }
-  } finally { if (!session) terminal.close(); }
+export function requestArguments(request) {
+  const args = [request.operation];
+  if (request.hosts.length === AGENTS.length) args.push("--host", "all");
+  else for (const host of request.hosts) args.push("--host", host);
+  for (const profile of request.profiles) args.push("--profile", profile);
+  if (request.allKnownProfiles) args.push("--all-known-profiles");
+  if (request.targetVersion) args.push("--version", request.targetVersion);
+  if (request.selfPackage) args.push("--self-package", request.selfPackage);
+  for (const [flag, field] of booleans) if (!["allKnownProfiles", "yes", "plain", "json"].includes(field) && request[field]) args.push(flag);
+  return args;
 }
 
 export function operationDescription(operation, language = "en") {
-  const descriptions = language === "zh-CN" ? {
-    status: "查看安装和版本", doctor: "检查故障并给出处理命令", install: "补齐 Adapter，保留已有版本",
-    upgrade: "更新 Adapter 到目标版本", repair: "修复当前版本", reinstall: "重新安装当前版本",
-    uninstall: "移除 Adapter，保留用户数据", "factory-reset": "移除全部 Adapter 并清理已确认数据",
-  } : {
-    status: "Show installation and versions", doctor: "Diagnose failures and suggest commands", install: "Complete installation, keep existing versions",
-    upgrade: "Update Adapters to the target version", repair: "Repair the current version", reinstall: "Reinstall the current version",
-    uninstall: "Remove Adapters, keep user data", "factory-reset": "Remove all Adapters and confirmed data",
-  };
-  return descriptions[operation];
+  const zh = language === "zh-CN";
+  return ({ status: zh ? "查看版本、路径和安装状态" : "Show versions, paths and installation state",
+    doctor: zh ? "检查问题并给出对应处理步骤" : "Inspect failures and show relevant actions",
+    install: zh ? "安装到 Agent，保留已有版本" : "Install into Agents, keeping existing versions",
+    upgrade: zh ? "升级已安装插件；--self 更新命令入口" : "Upgrade installed plugins; --self updates the launcher",
+    repair: zh ? "修复当前安装，保留版本和数据" : "Repair the current installation, retaining version and data",
+    reinstall: zh ? "重新安装当前版本，保留数据" : "Reinstall the current version, retaining data",
+    uninstall: zh ? "卸载插件（保留数据）" : "Uninstall plugins (keep data)",
+    "delete-data": zh ? "删除数据（保留插件）" : "Delete data (keep plugins)",
+    "delete-all": zh ? "删除所有数据（插件+数据）" : "Delete everything (plugins + data)",
+  })[operation];
 }
 
 export function renderHelp(operation = null, language = "en") {
   const zh = language === "zh-CN";
-  const operations = operation ? [operation] : OPERATIONS;
-  return ["TaskBelay", "", ...operations.map(value => `  taskbelay ${value} — ${operationDescription(value, language)}`),
+  return ["TaskBelay", "", ...(operation ? [operation] : OPERATIONS).map(value => `  taskbelay ${value} — ${operationDescription(value, language)}`),
     "", "  taskbelay webui start|open|status|stop [--plain|--json]", "  taskbelay pet start|stop", "  taskbelay version", "",
-    zh ? "生命周期参数：" : "Lifecycle options:",
-    "  --host codex|deepseek|claude|zcode|all", "  --profile <name>  --all-known-profiles",
-    "  --version latest|<x.y.z>  --confirm-downgrade <token>",
-    "  --yes  --plain  --json  --help", "  --adopt (install/repair, DeepSeek)",
-    "  factory-reset: --confirm-reset <token> [--reinstall]",
-    "                 --confirm-explicit-data <absolute-path>",
-    "                 --permanent --confirm-permanent <token>", "",
-    zh ? "install/repair/reinstall 默认保留已安装版本；upgrade 默认 latest。缺失项使用 latest。" : "install/repair/reinstall keep installed versions; upgrade defaults to latest. Missing installations use latest.",
-    zh ? "非交互修改必须指定 --host；--yes 只确认普通维护。JSON 模式不询问，返回确认命令。" : "Non-interactive changes require --host; --yes confirms ordinary maintenance only. JSON never prompts and returns confirmation commands.",
-    zh ? "--all-known-profiles 用于全部受管 Profile；安装时没有已知 Profile 则使用 web。" : "--all-known-profiles selects managed Profiles; install uses web when none exist.",
-    zh ? "维护对象是 TaskBelay Adapter；更新公共入口：npm install -g taskbelay@latest" : "Commands maintain TaskBelay Adapters; update this launcher with npm install -g taskbelay@latest",
-    "", "  taskbelay install --host codex --yes", "  taskbelay repair --host deepseek --profile web --yes", "  taskbelay factory-reset --host all --all-known-profiles", "",
+    "  --host codex|deepseek|claude|zcode|all  (repeatable)", "  --profile <name>  --all-known-profiles",
+    "  --version latest|<x.y.z>  --confirm-downgrade <token>", "  upgrade: --self [--self-package <absolute-local-distribution.tgz>]",
+    "  --yes  --plain  --json  --help  --adopt (install/repair, DeepSeek)",
+    "  delete-data / delete-all: --confirm-delete <token>", "    --confirm-explicit-data <absolute-path>  --confirm-zcode-closed",
+    "    --permanent --confirm-permanent <token>", "",
+    zh ? "方向键选择，回车确认，空格多选，A 全选，Esc 返回，Ctrl+C 退出。" : "Arrows select, Enter confirms, Space toggles, A selects all, Esc goes back, Ctrl+C exits.",
+    zh ? "升级只处理已安装项，默认最新稳定版；安装/修复/重装保留已有版本。" : "Upgrade selects installed items only and defaults to latest; install/repair/reinstall keep current versions.",
+    zh ? "数据删除作用于全部 Agent 共用的确认目录；保留命令入口、桌面程序及项目代码。" : "Data deletion covers confirmed shared directories; it keeps the launcher, desktop application and project code.",
+    zh ? "--yes 不确认数据删除、永久删除或降级；JSON 模式不询问，返回准确确认命令。" : "--yes does not approve data deletion, permanent deletion or downgrade; JSON never prompts and returns the exact confirmation command.",
+    zh ? "本地开发安装保持原渠道；更新命令入口须提供新的本地完整分发包。" : "Local development installations retain their channel; updating the launcher requires a new complete local distribution.", "",
+    "  taskbelay install --host codex --host claude --yes", "  taskbelay upgrade --host all --all-known-profiles --self --yes",
+    "  taskbelay delete-data --json", "  taskbelay delete-all --json", "",
   ].join("\n");
 }
 
 export async function confirmPlan(plan, request, { input = process.stdin, output = process.stdout, language = resolveLanguage(), session = null } = {}) {
-  const messages = messagesForLanguage(language);
   if (plan.confirmationClass === "none") return true;
   if (plan.confirmationClass === "mutation" && request.yes) return true;
   if (plan.confirmationClass === "downgrade" && request.downgradeToken === plan.downgradeToken) return true;
-  if (plan.confirmationClass === "reset" || plan.confirmationClass === "permanent_reset") {
-    if (request.confirmationToken === plan.confirmationToken &&
-        (plan.confirmationClass !== "permanent_reset" || request.permanentToken === plan.permanentToken)) return true;
-    if (!input.isTTY) return false;
-  } else if (!input.isTTY) {
-    return false;
-  }
-  if (request.outputMode === "json") return false;
-  const terminal = session ?? createTerminalSession(input, output);
+  const deletion = ["delete", "permanent_delete"].includes(plan.confirmationClass);
+  if (deletion && request.confirmationToken === plan.confirmationToken && (!request.permanent || request.permanentToken === plan.permanentToken)) return true;
+  if (!input.isTTY || request.outputMode === "json") return false;
+  const terminal = session ?? createTerminalSession(input, output, { language });
+  const zh = language === "zh-CN";
   try {
-    if (plan.confirmationClass === "reset" || plan.confirmationClass === "permanent_reset") {
-      const token = await terminal.question(language === "zh-CN" ? `输入 ${plan.confirmationToken} 确认恢复出厂设置：` : `Type ${plan.confirmationToken} to confirm reset: `);
-      if (token !== plan.confirmationToken) return false;
-      if (plan.confirmationClass === "permanent_reset") {
-        return await terminal.question(language === "zh-CN" ? `输入 ${plan.permanentToken} 确认永久删除：` : `Type ${plan.permanentToken} to confirm permanent removal: `) === plan.permanentToken;
+    if (deletion || plan.confirmationClass === "downgrade") {
+      const tokens = deletion ? [plan.confirmationToken, ...(request.permanent ? [plan.permanentToken] : [])] : [plan.downgradeToken];
+      for (const token of tokens) {
+        const answer = await terminal.question(zh ? `输入 ${token} 确认${deletion ? operationDescription(request.operation, language) : "降级"}：` : `Type ${token} to confirm ${deletion ? request.operation : "downgrade"}:`);
+        if (answer === BACK) return BACK;
+        if (answer !== token) return false;
       }
       return true;
     }
-    if (plan.confirmationClass === "downgrade") {
-      return await terminal.question(language === "zh-CN" ? `输入 ${plan.downgradeToken} 确认降级：` : `Type ${plan.downgradeToken} to confirm downgrade: `) === plan.downgradeToken;
-    }
-    return /^(?:y(?:es)?|是)$/iu.test((await terminal.question(messages.continuePrompt) ?? "").trim());
-  } finally {
-    if (!session) terminal.close();
-  }
+    const answer = await terminal.select(zh ? "确认本次操作" : "Confirm this operation", [
+      { value: true, label: zh ? "开始执行" : "Start" }, { value: BACK, label: zh ? "返回修改选择" : "Back to selection" },
+      { value: false, label: zh ? "取消" : "Cancel" },
+    ]);
+    return answer === CANCEL ? false : answer;
+  } finally { if (!session) terminal.close(); }
 }
 
 export class CLIError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "CLIError";
-    this.exitCode = 2;
-  }
+  constructor(message) { super(message); this.name = "CLIError"; this.exitCode = 2; }
 }
 
-function validateProfile(value) {
-  if (!value || value === "." || value === ".." || /[\\/\0]/u.test(value) || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u.test(value)) {
-    throw new CLIError(`invalid DeepSeek Profile ${JSON.stringify(value)}`);
-  }
+export function validateProfile(value) {
+  if (!value || value === "." || value === ".." || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u.test(value)) throw new CLIError(`invalid DeepSeek Profile ${JSON.stringify(value)}`);
   return value;
-}
-
-function selectNumber(value, entries, label) {
-  const index = Number(value) - 1;
-  if (!Number.isInteger(index) || index < 0 || index >= entries.length) throw new CLIError(`invalid ${label} selection`);
-  return entries[index];
 }

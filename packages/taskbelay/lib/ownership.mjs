@@ -194,14 +194,21 @@ export async function moveTargetsToTrash(paths, targets, { now = () => new Date(
 export async function permanentlyRemoveTargets(targets, { allowedPaths }) {
   const allowed = new Set(allowedPaths.map(path => resolve(path)));
   const removed = [];
-  for (const target of targets) {
-    if (!target.exists) continue;
-    if (!allowed.has(resolve(target.path))) throw new OwnershipError(`${target.label} is not in the confirmed cleanup set`);
-    await assertResourceUnchanged(target);
-    await rm(target.path, { recursive: target.kind === "directory", force: false });
-    removed.push({ label: target.label, path: target.path });
+  try {
+    for (const target of targets) {
+      if (!target.exists) continue;
+      if (!allowed.has(resolve(target.path))) throw new OwnershipError(`${target.label} is not in the confirmed cleanup set`);
+      await assertResourceUnchanged(target);
+      await rm(target.path, { recursive: target.kind === "directory", force: false });
+      removed.push({ label: target.label, path: target.path });
+    }
+    return removed;
+  } catch (error) {
+    error.changed = removed.length > 0;
+    error.completedSteps = removed.map(entry => `manager.remove.${entry.label}`);
+    if (removed.length) error.exitCode = 5;
+    throw error;
   }
-  return removed;
 }
 
 export function planDigest(value) {

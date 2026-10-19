@@ -72,7 +72,7 @@ Replace `<local-package>.tgz` with the filename identified by tarball in desktop
 
 The local distribution's `--host all` includes ZCode. Its `action_required` result still requires plugin installation and enablement in the ZCode UI; see the [ZCode guide](ZCODE_en.md). The pet reading Core does not establish an available ZCode model session.
 
-productRoot defaults to %LOCALAPPDATA%\taskbelay. The installed app directory is productRoot/pet/TaskBelayPet, with TaskBelayPet.exe as its entry; it takes precedence over runtime/win32-x64/TaskBelayPet in the package. settings.json and appearances/ are stored separately. The unified entry refreshes the app copy through taskbelay install, upgrade, repair or reinstall. The launcher stops maintained instances, stages the replacement, and retains settings.json and appearances/. Running pet start alone does not reinstall an existing app. Ordinary quit and uninstall preserve these files; confirmed factory-reset clears the whole pet directory under the existing rules.
+productRoot defaults to %LOCALAPPDATA%\taskbelay. The installed app directory is productRoot/pet/TaskBelayPet, with TaskBelayPet.exe as its entry; it takes precedence over runtime/win32-x64/TaskBelayPet in the package. settings.json and appearances/ are stored separately. The unified entry refreshes the app copy through taskbelay install, upgrade, repair or reinstall. The launcher stops maintained instances, stages the replacement, and retains settings.json and appearances/. Running pet start alone does not reinstall an existing app. Ordinary quit and uninstall preserve these files; confirmed delete-data or delete-all clears pet preferences and imported appearances while keeping the installed desktop application.
 
 Windows uses a restricted renderer and a local per-user single-instance channel with acknowledgments. It does not stop processes by name or PID alone. Each poll and navigation rechecks the same Core and data directory. Disconnection keeps and marks the last record, with separate task-update and last-sync timestamps. Hiding or sleeping cancels reads and animation; resuming does not replay historical completion prompts.
 
@@ -180,7 +180,7 @@ The complete converted pack must pass the same validation used when loading, ins
 Failed validation preserves the installed appearance and selection. Task and appearance choices are stored independently; switching preserves the watched task and does not replay old completion prompts.
 
 User artwork lives in `productRoot/pet/appearances/<id>`; pet settings store `selected_appearance`. Upgrades and ordinary uninstall preserve packs
-and selection. Confirmed factory-reset clears them with the pet directory. A missing or invalid saved pack is reported, and the bundled character
+and selection. Confirmed delete-data or delete-all clears them while retaining the application. A missing or invalid saved pack is reported, and the bundled character
 is used until the user imports or selects an appearance again.
 
 ## TaskBelay static appearance

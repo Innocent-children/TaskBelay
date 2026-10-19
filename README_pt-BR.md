@@ -27,6 +27,10 @@ npm install -g taskbelay@latest
 taskbelay
 ```
 
+Execute `taskbelay` para abrir o menu de atualização, instalação em Agents, diagnóstico e reparo, central de controle, mascote de desktop, informações da instalação e desinstalação ou exclusão de dados. Use as setas para navegar, Enter para confirmar, Espaço para selecionar vários itens, A para selecionar todos e Esc para voltar mantendo a seleção. A atualização mostra as versões atuais e de destino do inicializador e dos plugins instalados; instalações locais de desenvolvimento mantêm seu canal.
+
+A desinstalação preserva os dados. `delete-data` exclui registros de tarefas, configurações e preferências do mascote, preserva plugins e registros de instalação e prepara diretórios vazios nos caminhos originais. `delete-all` remove todos os plugins gerenciados e os dados confirmados. Ambos preservam o inicializador, o aplicativo de desktop, o código do projeto e o histórico de conversas do Agent. Os dados compartilhados são confirmados por diretório e, por padrão, movidos para um local recuperável; a exclusão permanente exige confirmação adicional. Resolva primeiro execuções em andamento ou com resultado incerto e confirme expressamente que todas as janelas e sessões do ZCode estão fechadas. Consulte a [referência de comandos](docs/COMMANDS_en.md). Essas alterações descrevem o código-fonte atual, não uma nova publicação do pacote.
+
 Compilar e instalar o código atual localmente:
 
 ```sh

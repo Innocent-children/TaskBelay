@@ -1,7 +1,9 @@
+import { EventEmitter } from "node:events";
 import { mkdtemp, mkdir, readFile, writeFile, rm, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { OPERATIONS, isDataDeletion } from '../packages/taskbelay/lib/cli.mjs';
 import { runMain } from '../packages/taskbelay/lib/lifecycle.mjs';
 import { runPet } from '../packages/taskbelay/lib/pet.mjs';
 import { exampleSchema, mergeSchema, inputObject, field } from './interface-schema.mjs';
@@ -30,7 +32,7 @@ function normal(value,key='') {
   return value;
 }
 function add(name,description,inputSchema,examples,transport='argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.') {
-  const success=examples.filter(e=>e.name==='success');
+  const success=examples.filter(e=>e.name==='success'||e.name.startsWith('success_'));
   records.push({name,description,transport,input_schema:inputSchema,output_schema:success.reduce((s,e)=>mergeSchema(s,exampleSchema(e.output,notes)),undefined),examples:normal(examples)});
 }
 const argvSchema=inputObject({argv:field('Exact command arguments after the executable; each option is a separate string.','array',{items:field('One literal argument.')} )});
@@ -46,15 +48,39 @@ async function lifecycle() {
   const home=join(parent,'manager');await mkdir(home);
   const states={codex:'absent',deepseek:'absent',claude:'absent',zcode:'absent'};
   const driver=host=>({maintenanceTargets:async()=>({registeredCorePaths:[],installedRuntime:null}),knownProfiles:async()=>host==='deepseek'?['web']:[],resolveTargetVersion:async()=> '0.8.0',observe:async()=>({host,profile:host==='deepseek'?'web':null,hostAvailable:true,hostVersion:'1.0.0',state:states[host],packageVersion:states[host]!=='absent'?'0.8.0':null,coreVersion:null,receipt:states[host]!=='absent'?{}:null}),execute:async operation=>{states[host]=operation==='uninstall'?'absent':'ready';return {changed:true,completedSteps:[host+'.'+operation]}}});
-  const dependencies={homeDirectory:home,environment:{LANG:'en'},platform:'darwin',arch:'arm64',codexDriver:driver('codex'),deepseekDriver:driver('deepseek'),claudeDriver:driver('claude'),zcodeDriver:driver('zcode'),confirmPlan:async()=>true,isTTY:false};
-  for(const operation of ['status','doctor','install','upgrade','repair','reinstall','uninstall','factory-reset']) {
-    const args=[operation,'--host',operation==='factory-reset'?'all':'codex','--json',...(['status','doctor'].includes(operation)?[]:['--yes'])];
+  const dependencies={homeDirectory:home,environment:{LANG:'en'},platform:'darwin',arch:'arm64',codexDriver:driver('codex'),deepseekDriver:driver('deepseek'),claudeDriver:driver('claude'),zcodeDriver:driver('zcode'),isTTY:false};
+  for(const operation of OPERATIONS) {
+    let args=[operation,'--host',isDataDeletion(operation)?'all':'codex','--json',...(['status','doctor'].includes(operation)||isDataDeletion(operation)?[]:['--yes'])];
     const invoke=args=>captured(({stdout,stderr})=>runMain(args,{...dependencies,output:stdout,errorOutput:stderr}));
+    let unconfirmed;
+    if(isDataDeletion(operation)) {
+      await mkdir(join(home,'.taskbelay/data'),{recursive:true});
+      await writeFile(join(home,'.taskbelay/data','example-record'),'isolated example');
+      unconfirmed=await invoke(args);
+      if(unconfirmed.exit_code!==3)throw new Error('Expected real deletion confirmation');
+      args=[...args,'--confirm-delete',unconfirmed.stdout.confirmation.token];
+    }
     const good=await invoke(args);
     if(good.stdout?.error)throw new Error(operation+': '+JSON.stringify(good));
+    const extra=[];
+    if(operation==='upgrade') {
+      const signalSource=new EventEmitter();
+      const saved=states.codex;states.codex='partial';
+      const interrupted=await captured(({stdout,stderr})=>runMain(args,{...dependencies,signalSource,output:stdout,errorOutput:stderr,
+        codexDriver:{...driver('codex'),execute:async()=>{signalSource.emit('SIGINT');throw new Error('Operation interrupted during package replacement');}}}));
+      states.codex=saved;
+      extra.push(example('interrupted',{argv:args},interrupted,'Simulated SIGINT during a package replacement; the real serializer retains the operation ID and reports unknown changes without replaying the operation.'));
+    }
+    if(operation==='upgrade') {
+      let launcherVersion='0.3.0';
+      const selfArgs=['upgrade','--self','--yes','--json'];
+      const launcherDriver={observe:async()=>({host:'taskbelay',profile:null,state:'ready',packageInstalled:true,packageVersion:launcherVersion,packageRoot:'/example/global/taskbelay',channel:'npm'}),resolveTarget:async()=>({version:'0.3.1',artifact:'taskbelay@0.3.1',channel:'npm',packageRoot:'/example/global/taskbelay'}),execute:async()=>{launcherVersion='0.3.1';return {changed:true,completedSteps:['taskbelay.upgrade']}}};
+      const selfResult=await captured(({stdout,stderr})=>runMain(selfArgs,{...dependencies,output:stdout,errorOutput:stderr,launcherDriver,petInstaller:{ensurePetInstalled:async()=>({installed:false})},stopPetForCore:async()=>({stopped:false})}));
+      extra.push(example('success_launcher',{argv:selfArgs},selfResult));
+    }
     const bad=[operation,'--unexpected','--json'];
     add('taskbelay.lifecycle.'+operation,
-      ({status:'Read current installed resources and retained operation outcomes.',doctor:'Read the same installation and return concrete diagnostics.',install:'Install the selected Host adapter under existing explicit installation authority.',upgrade:'Update the selected owned adapter to the requested target.',repair:'Restore missing or inconsistent owned registration and package resources.',reinstall:'Replace the selected owned adapter after the requested reinstall decision.',uninstall:'Remove selected owned adapter resources while retaining Task data.', 'factory-reset':'Reset explicitly selected owned installation/data resources only after the plan-specific confirmation. --yes alone never supplies reset, permanent deletion or explicit-data confirmation.'})[operation]+' Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.',argvSchema,[example('success',{argv:args},good),example('invalid_option',{argv:bad},await invoke(bad))]);
+      ({status:'Read current installed resources and retained operation outcomes.',doctor:'Read the same installation and return concrete diagnostics.',install:'Install the selected Host adapter under existing explicit installation authority.',upgrade:'Update the selected owned adapter to the requested target.',repair:'Restore missing or inconsistent owned registration and package resources.',reinstall:'Replace the selected owned adapter after the requested reinstall decision.',uninstall:'Remove selected owned adapter resources while retaining Task data.', 'delete-data':'Delete confirmed TaskBelay user data and reset preferences while retaining plugin files, Agent registrations and installation records. Recreate empty data directories at their original paths. --yes never approves deletion.', 'delete-all':'Remove every managed plugin and delete only the confirmed shared data, keeping the launcher and desktop application. Pending removals or unresolved executions stop cleanup. --yes never approves deletion.'})[operation]+' Repeat --host for an Agent subset, or use all; --profile is repeatable for DeepSeek. Upgrade only updates installed plugins; --self includes the global launcher and --self-package supplies a complete local distribution without changing channels. Shared data deletion covers all Agents and uses --confirm-delete plus --confirm-permanent for permanent deletion, --confirm-explicit-data for extra paths and --confirm-zcode-closed when ZCode is installed. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.',argvSchema,[example('success',{argv:args},good),example('invalid_option',{argv:bad},await invoke(bad)),...(unconfirmed?[example('confirmation_required',{argv:args.slice(0,-2)},unconfirmed)]:[]),...extra]);
   }
 }
 async function hostLifecycle() {

@@ -15,13 +15,14 @@ export async function execPortableCommand(executable, arguments_, options = {}) 
   return execFileWithClosedInput(invocation.executable, [...invocation.prefixArguments, ...(invocation.arguments ?? arguments_)], options);
 }
 
-function execFileWithClosedInput(executable, arguments_, options) {
+function execFileWithClosedInput(executable, arguments_, { input, ...options }) {
   return new Promise((resolvePromise, reject) => {
     const child = execFileCallback(executable, arguments_, options, (error, stdout, stderr) => {
       if (error) { error.stdout = stdout; error.stderr = stderr; reject(error); }
       else resolvePromise({ stdout, stderr });
     });
-    child.stdin?.end();
+    child.stdin?.on("error", () => {});
+    child.stdin?.end(input);
   });
 }
 

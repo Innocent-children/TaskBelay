@@ -112,7 +112,7 @@ test("ZCode refuses shared reset while cached Host processes cannot be verified"
   const f = await fixture(t);
   await f.driver.execute("install", { targetVersion: "0.1.0", observed: await f.driver.observe() });
   const before = f.calls.length;
-  await assert.rejects(f.driver.maintenanceTargets({ operation: "factory-reset", observed: await f.driver.observe() }), /cannot be verified automatically/u);
+  await assert.rejects(f.driver.maintenanceTargets({ operation: "delete-all", observed: await f.driver.observe() }), /cannot be verified automatically/u);
   assert.equal(f.calls.slice(before).some(call => ["uninstall", "remove"].includes(call[1])), false);
   assert.equal(JSON.parse(await readFile(f.receiptPath, "utf8")).phase, "prepared");
 });

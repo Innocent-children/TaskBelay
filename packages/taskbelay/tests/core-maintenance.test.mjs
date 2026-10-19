@@ -138,3 +138,20 @@ test("reset rejects invalid or linked private maintenance records before process
   await symlink(outside, recordPath);
   await assert.rejects(stopManagedCores(f.options), /permissions are unsafe|bounded regular file/);
 });
+
+test("cleanup reads every active task through Core and refuses unresolved executions", async t => {
+  const f = await fixture(t);
+  await writeFile(join(f.data, "taskbelay.db"), "database bytes interpreted only by Core");
+  const { assertNoPendingTaskRuns } = await import("../lib/core-maintenance.mjs");
+  const calls = [];
+  const run = async (_exe, args, options) => {
+    const input = JSON.parse(options.input); calls.push({ tool: args[1], input });
+    assert.equal(options.env.TASKBELAY_DATA_DIR, f.data);
+    const result = args[1] === "taskbelay_list_tasks" ? { items: [{ task_id: "task-a" }], has_next: false }
+      : { decision: { pending_runs: ["run-a"] } };
+    return { stdout: JSON.stringify({ ok: true, result }) };
+  };
+  await assert.rejects(assertNoPendingTaskRuns([f.data], [f.runtime], { environment: {}, run }), /task-a.*unresolved/);
+  assert.deepEqual(calls[1], { tool: "taskbelay_get_task", input: { task_id: "task-a", refresh: false } });
+  await assert.rejects(assertNoPendingTaskRuns([f.data], [], { environment: {}, run }), /compatible TaskBelay plugin/);
+});

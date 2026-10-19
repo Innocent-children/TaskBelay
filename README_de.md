@@ -27,6 +27,10 @@ npm install -g taskbelay@latest
 taskbelay
 ```
 
+Mit `taskbelay` öffnest du das Menü für Updates, die Installation in Agents, Prüfung und Reparatur, das Kontrollzentrum, das Desktop-Haustier, Installationsinformationen sowie Deinstallation und Datenlöschung. Mit den Pfeiltasten navigierst du, mit Enter bestätigst du, mit der Leertaste wählst du mehrere Einträge und mit A alle Einträge aus. Esc führt zurück und behält die Auswahl. Die Updateansicht zeigt die tatsächlichen aktuellen und gewünschten Versionen des Launchers und der installierten Plugins. Lokale Entwicklungsinstallationen behalten ihren Vertriebskanal.
+
+Eine Deinstallation behält Daten. `delete-data` entfernt Aufgabenaufzeichnungen, Konfiguration und Haustiereinstellungen, behält aber Plugins und Registrierungen und erstellt leere Datenverzeichnisse an den ursprünglichen Pfaden. `delete-all` entfernt alle verwalteten Plugins und bestätigten Daten. Beide behalten den Launcher, die Desktop-Anwendung, den Projektcode und den Gesprächsverlauf des Agents. Gemeinsame Daten werden nach Verzeichnis bestätigt und standardmäßig an einen wiederherstellbaren Ort verschoben; endgültiges Löschen erfordert eine weitere Bestätigung. Kläre zuerst laufende oder ungewisse Ausführungen und bestätige ausdrücklich, dass alle ZCode-Fenster und -Sitzungen geschlossen sind. Siehe die [Befehlsreferenz](docs/COMMANDS_en.md). Diese Änderungen beschreiben den aktuellen Quellcode, keine neue Paketveröffentlichung.
+
 Aktuelle Quellen lokal bauen und installieren:
 
 ```sh

@@ -1,7 +1,7 @@
 [
   {
     "name": "taskbelay.lifecycle.status",
-    "description": "Read current installed resources and retained operation outcomes. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "description": "Read current installed resources and retained operation outcomes. Repeat --host for an Agent subset, or use all; --profile is repeatable for DeepSeek. Upgrade only updates installed plugins; --self includes the global launcher and --self-package supplies a complete local distribution without changing channels. Shared data deletion covers all Agents and uses --confirm-delete plus --confirm-permanent for permanent deletion, --confirm-explicit-data for extra paths and --confirm-zcode-closed when ZCode is installed. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
     "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
     "input_schema": {
       "type": "object",
@@ -72,6 +72,10 @@
                     ],
                     "description": "DeepSeek Profile名；其它Host为null。"
                   },
+                  "package_installed": {
+                    "type": "boolean",
+                    "description": "Whether this Agent plugin has installed package files or retained ownership records."
+                  },
                   "package_version": {
                     "type": [
                       "string",
@@ -105,6 +109,7 @@
                 "required": [
                   "host",
                   "profile",
+                  "package_installed",
                   "package_version",
                   "core_version",
                   "state",
@@ -167,11 +172,10 @@
             },
             "failed_action": {
               "type": [
-                "object",
+                "string",
                 "null"
               ],
-              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-              "additionalProperties": true
+              "description": "失败的具体安装动作；null表示无。"
             },
             "next_steps": {
               "type": "array",
@@ -198,6 +202,86 @@
             "next_step": {
               "type": "string",
               "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            },
+            "launcher": {
+              "type": "object",
+              "description": "Observed TaskBelay command-entry installation; its version and channel are independent from Agent plugins.",
+              "additionalProperties": false,
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                },
+                "profile": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "DeepSeek Profile名；其它Host为null。"
+                },
+                "state": {
+                  "type": "string",
+                  "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                },
+                "packageInstalled": {
+                  "type": "boolean",
+                  "description": "Whether package files are installed even when registration is missing."
+                },
+                "packageVersion": {
+                  "type": "string",
+                  "description": "Observed installed package version, not an inferred latest version."
+                },
+                "packageRoot": {
+                  "type": "string",
+                  "description": "Canonical installed npm package directory that provides this executable."
+                },
+                "channel": {
+                  "type": "string",
+                  "description": "Current installation channel: npm or local. Upgrade must retain it."
+                }
+              },
+              "required": [
+                "host",
+                "profile",
+                "state",
+                "packageInstalled",
+                "packageVersion",
+                "packageRoot",
+                "channel"
+              ]
+            },
+            "pet_state": {
+              "type": "string",
+              "description": "Desktop observation: stopped when no runtime record exists, otherwise unknown until a native action confirms its state."
+            },
+            "installation": {
+              "type": "object",
+              "description": "Absolute local configuration, active data, desktop and maintenance paths for inspection.",
+              "additionalProperties": false,
+              "properties": {
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "安装管理对自有配置和数据的处理结果。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "manager": {
+                  "type": "string",
+                  "description": "Directory containing owned installation and maintenance records. It is not a whole-directory deletion target."
+                }
+              },
+              "required": [
+                "configuration",
+                "data",
+                "pet",
+                "manager"
+              ]
             }
           },
           "required": [
@@ -212,7 +296,10 @@
             "next_steps",
             "restart_requirements",
             "confirmation",
-            "next_step"
+            "next_step",
+            "launcher",
+            "pet_state",
+            "installation"
           ]
         },
         "stderr": {
@@ -248,6 +335,7 @@
               {
                 "host": "codex",
                 "profile": null,
+                "package_installed": false,
                 "package_version": null,
                 "core_version": null,
                 "state": "absent",
@@ -268,7 +356,23 @@
             "next_steps": [],
             "restart_requirements": [],
             "confirmation": null,
-            "next_step": "taskbelay install --host codex --yes"
+            "next_step": "taskbelay install --host codex --yes",
+            "launcher": {
+              "host": "taskbelay",
+              "profile": null,
+              "state": "ready",
+              "packageInstalled": true,
+              "packageVersion": "0.3.7",
+              "packageRoot": "/package/taskbelay/packages/taskbelay",
+              "channel": "npm"
+            },
+            "pet_state": "stopped",
+            "installation": {
+              "configuration": "/example/manager/.taskbelay/config.json",
+              "data": "/example/manager/.taskbelay/data",
+              "pet": "/example/manager/.taskbelay/pet",
+              "manager": "/example/manager/.taskbelay"
+            }
           },
           "stderr": ""
         },
@@ -318,7 +422,7 @@
   },
   {
     "name": "taskbelay.lifecycle.doctor",
-    "description": "Read the same installation and return concrete diagnostics. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "description": "Read the same installation and return concrete diagnostics. Repeat --host for an Agent subset, or use all; --profile is repeatable for DeepSeek. Upgrade only updates installed plugins; --self includes the global launcher and --self-package supplies a complete local distribution without changing channels. Shared data deletion covers all Agents and uses --confirm-delete plus --confirm-permanent for permanent deletion, --confirm-explicit-data for extra paths and --confirm-zcode-closed when ZCode is installed. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
     "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
     "input_schema": {
       "type": "object",
@@ -389,6 +493,10 @@
                     ],
                     "description": "DeepSeek Profile名；其它Host为null。"
                   },
+                  "package_installed": {
+                    "type": "boolean",
+                    "description": "Whether this Agent plugin has installed package files or retained ownership records."
+                  },
                   "package_version": {
                     "type": [
                       "string",
@@ -422,6 +530,7 @@
                 "required": [
                   "host",
                   "profile",
+                  "package_installed",
                   "package_version",
                   "core_version",
                   "state",
@@ -484,11 +593,10 @@
             },
             "failed_action": {
               "type": [
-                "object",
+                "string",
                 "null"
               ],
-              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-              "additionalProperties": true
+              "description": "失败的具体安装动作；null表示无。"
             },
             "next_steps": {
               "type": "array",
@@ -515,6 +623,86 @@
             "next_step": {
               "type": "string",
               "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            },
+            "launcher": {
+              "type": "object",
+              "description": "Observed TaskBelay command-entry installation; its version and channel are independent from Agent plugins.",
+              "additionalProperties": false,
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                },
+                "profile": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "DeepSeek Profile名；其它Host为null。"
+                },
+                "state": {
+                  "type": "string",
+                  "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                },
+                "packageInstalled": {
+                  "type": "boolean",
+                  "description": "Whether package files are installed even when registration is missing."
+                },
+                "packageVersion": {
+                  "type": "string",
+                  "description": "Observed installed package version, not an inferred latest version."
+                },
+                "packageRoot": {
+                  "type": "string",
+                  "description": "Canonical installed npm package directory that provides this executable."
+                },
+                "channel": {
+                  "type": "string",
+                  "description": "Current installation channel: npm or local. Upgrade must retain it."
+                }
+              },
+              "required": [
+                "host",
+                "profile",
+                "state",
+                "packageInstalled",
+                "packageVersion",
+                "packageRoot",
+                "channel"
+              ]
+            },
+            "pet_state": {
+              "type": "string",
+              "description": "Desktop observation: stopped when no runtime record exists, otherwise unknown until a native action confirms its state."
+            },
+            "installation": {
+              "type": "object",
+              "description": "Absolute local configuration, active data, desktop and maintenance paths for inspection.",
+              "additionalProperties": false,
+              "properties": {
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "安装管理对自有配置和数据的处理结果。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "manager": {
+                  "type": "string",
+                  "description": "Directory containing owned installation and maintenance records. It is not a whole-directory deletion target."
+                }
+              },
+              "required": [
+                "configuration",
+                "data",
+                "pet",
+                "manager"
+              ]
             },
             "checks": {
               "type": "array",
@@ -558,6 +746,9 @@
             "restart_requirements",
             "confirmation",
             "next_step",
+            "launcher",
+            "pet_state",
+            "installation",
             "checks"
           ]
         },
@@ -594,6 +785,7 @@
               {
                 "host": "codex",
                 "profile": null,
+                "package_installed": false,
                 "package_version": null,
                 "core_version": null,
                 "state": "absent",
@@ -615,6 +807,22 @@
             "restart_requirements": [],
             "confirmation": null,
             "next_step": "taskbelay install --host codex --yes",
+            "launcher": {
+              "host": "taskbelay",
+              "profile": null,
+              "state": "ready",
+              "packageInstalled": true,
+              "packageVersion": "0.3.7",
+              "packageRoot": "/package/taskbelay/packages/taskbelay",
+              "channel": "npm"
+            },
+            "pet_state": "stopped",
+            "installation": {
+              "configuration": "/example/manager/.taskbelay/config.json",
+              "data": "/example/manager/.taskbelay/data",
+              "pet": "/example/manager/.taskbelay/pet",
+              "manager": "/example/manager/.taskbelay"
+            },
             "checks": [
               {
                 "name": "codex",
@@ -681,7 +889,7 @@
   },
   {
     "name": "taskbelay.lifecycle.install",
-    "description": "Install the selected Host adapter under existing explicit installation authority. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "description": "Install the selected Host adapter under existing explicit installation authority. Repeat --host for an Agent subset, or use all; --profile is repeatable for DeepSeek. Upgrade only updates installed plugins; --self includes the global launcher and --self-package supplies a complete local distribution without changing channels. Shared data deletion covers all Agents and uses --confirm-delete plus --confirm-permanent for permanent deletion, --confirm-explicit-data for extra paths and --confirm-zcode-closed when ZCode is installed. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
     "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
     "input_schema": {
       "type": "object",
@@ -749,6 +957,10 @@
                     ],
                     "description": "DeepSeek Profile名；其它Host为null。"
                   },
+                  "package_installed": {
+                    "type": "boolean",
+                    "description": "Whether this Agent plugin has installed package files or retained ownership records."
+                  },
                   "package_version": {
                     "type": "string",
                     "description": "对应Host包版本，不等于Core版本。"
@@ -779,6 +991,7 @@
                 "required": [
                   "host",
                   "profile",
+                  "package_installed",
                   "package_version",
                   "core_version",
                   "state",
@@ -842,11 +1055,10 @@
             },
             "failed_action": {
               "type": [
-                "object",
+                "string",
                 "null"
               ],
-              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-              "additionalProperties": true
+              "description": "失败的具体安装动作；null表示无。"
             },
             "next_steps": {
               "type": "array",
@@ -928,6 +1140,7 @@
               {
                 "host": "codex",
                 "profile": null,
+                "package_installed": true,
                 "package_version": "0.8.0",
                 "core_version": null,
                 "state": "ready",
@@ -1003,7 +1216,7 @@
   },
   {
     "name": "taskbelay.lifecycle.upgrade",
-    "description": "Update the selected owned adapter to the requested target. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "description": "Update the selected owned adapter to the requested target. Repeat --host for an Agent subset, or use all; --profile is repeatable for DeepSeek. Upgrade only updates installed plugins; --self includes the global launcher and --self-package supplies a complete local distribution without changing channels. Shared data deletion covers all Agents and uses --confirm-delete plus --confirm-permanent for permanent deletion, --confirm-explicit-data for extra paths and --confirm-zcode-closed when ZCode is installed. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
     "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
     "input_schema": {
       "type": "object",
@@ -1074,6 +1287,10 @@
                     ],
                     "description": "DeepSeek Profile名；其它Host为null。"
                   },
+                  "package_installed": {
+                    "type": "boolean",
+                    "description": "Whether this Agent plugin has installed package files or retained ownership records."
+                  },
                   "package_version": {
                     "type": "string",
                     "description": "对应Host包版本，不等于Core版本。"
@@ -1101,15 +1318,7 @@
                     }
                   }
                 },
-                "required": [
-                  "host",
-                  "profile",
-                  "package_version",
-                  "core_version",
-                  "state",
-                  "host_available",
-                  "issues"
-                ]
+                "required": []
               }
             },
             "data": {
@@ -1137,7 +1346,8 @@
                   "type": "array",
                   "description": "用户显式指定的数据目录，只按精确实际确认处理。",
                   "items": {
-                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
+                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method.",
+                    "type": []
                   }
                 },
                 "trash_root": {
@@ -1161,16 +1371,16 @@
               "type": "array",
               "description": "已完成的安装动作，发生后失败仍须保留。",
               "items": {
-                "description": "已完成的安装动作，发生后失败仍须保留。 Empty in this example; state-dependent records are described by the owning method."
+                "description": "已完成的安装动作，发生后失败仍须保留。 Empty in this example; state-dependent records are described by the owning method.",
+                "type": "string"
               }
             },
             "failed_action": {
               "type": [
-                "object",
+                "string",
                 "null"
               ],
-              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-              "additionalProperties": true
+              "description": "失败的具体安装动作；null表示无。"
             },
             "next_steps": {
               "type": "array",
@@ -1184,7 +1394,8 @@
               "type": "array",
               "description": "需重载或重启的实际Host要求。",
               "items": {
-                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method."
+                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method.",
+                "type": "string"
               }
             },
             "confirmation": {
@@ -1193,7 +1404,9 @@
                 "null"
               ],
               "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-              "additionalProperties": true
+              "additionalProperties": true,
+              "properties": {},
+              "required": []
             },
             "next_step": {
               "type": [
@@ -1201,6 +1414,53 @@
                 "null"
               ],
               "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            },
+            "launcher": {
+              "type": "object",
+              "description": "Observed TaskBelay command-entry installation; its version and channel are independent from Agent plugins.",
+              "additionalProperties": false,
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                },
+                "profile": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "DeepSeek Profile名；其它Host为null。"
+                },
+                "state": {
+                  "type": "string",
+                  "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                },
+                "packageInstalled": {
+                  "type": "boolean",
+                  "description": "Whether package files are installed even when registration is missing."
+                },
+                "packageVersion": {
+                  "type": "string",
+                  "description": "Observed installed package version, not an inferred latest version."
+                },
+                "packageRoot": {
+                  "type": "string",
+                  "description": "Canonical installed npm package directory that provides this executable."
+                },
+                "channel": {
+                  "type": "string",
+                  "description": "Current installation channel: npm or local. Upgrade must retain it."
+                }
+              },
+              "required": [
+                "host",
+                "profile",
+                "state",
+                "packageInstalled",
+                "packageVersion",
+                "packageRoot",
+                "channel"
+              ]
             }
           },
           "required": [
@@ -1252,6 +1512,7 @@
               {
                 "host": "codex",
                 "profile": null,
+                "package_installed": true,
                 "package_version": "0.8.0",
                 "core_version": null,
                 "state": "ready",
@@ -1319,12 +1580,106 @@
           "stderr": ""
         },
         "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "interrupted",
+        "input": {
+          "argv": [
+            "upgrade",
+            "--host",
+            "codex",
+            "--json",
+            "--yes"
+          ]
+        },
+        "output": {
+          "exit_code": 130,
+          "stdout": {
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "operation": "upgrade",
+            "error": {
+              "code": "OPERATION_FAILED",
+              "message": "Operation interrupted during package replacement",
+              "detail": ""
+            },
+            "status": "partial",
+            "changed": null,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "unknown",
+              "default_data": "unknown",
+              "pet": "unknown",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": "codex.default.upgrade",
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay doctor --host all --all-known-profiles"
+          },
+          "stderr": "\nStopping; completed steps are retained. Inspect current state before retrying.\n"
+        },
+        "preconditions": "Simulated SIGINT during a package replacement; the real serializer retains the operation ID and reports unknown changes without replaying the operation."
+      },
+      {
+        "name": "success_launcher",
+        "input": {
+          "argv": [
+            "upgrade",
+            "--self",
+            "--yes",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "operation": "upgrade",
+            "status": "ready",
+            "changed": true,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [
+              "taskbelay.upgrade"
+            ],
+            "failed_action": null,
+            "next_steps": [
+              "Run taskbelay again to use the updated launcher."
+            ],
+            "restart_requirements": [
+              "Run taskbelay again to use the updated launcher."
+            ],
+            "confirmation": null,
+            "next_step": "taskbelay install --host codex --yes",
+            "launcher": {
+              "host": "taskbelay",
+              "profile": null,
+              "state": "ready",
+              "packageInstalled": true,
+              "packageVersion": "0.3.1",
+              "packageRoot": "/example/global/taskbelay",
+              "channel": "npm"
+            }
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
       }
     ]
   },
   {
     "name": "taskbelay.lifecycle.repair",
-    "description": "Restore missing or inconsistent owned registration and package resources. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "description": "Restore missing or inconsistent owned registration and package resources. Repeat --host for an Agent subset, or use all; --profile is repeatable for DeepSeek. Upgrade only updates installed plugins; --self includes the global launcher and --self-package supplies a complete local distribution without changing channels. Shared data deletion covers all Agents and uses --confirm-delete plus --confirm-permanent for permanent deletion, --confirm-explicit-data for extra paths and --confirm-zcode-closed when ZCode is installed. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
     "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
     "input_schema": {
       "type": "object",
@@ -1395,6 +1750,10 @@
                     ],
                     "description": "DeepSeek Profile名；其它Host为null。"
                   },
+                  "package_installed": {
+                    "type": "boolean",
+                    "description": "Whether this Agent plugin has installed package files or retained ownership records."
+                  },
                   "package_version": {
                     "type": "string",
                     "description": "对应Host包版本，不等于Core版本。"
@@ -1425,6 +1784,7 @@
                 "required": [
                   "host",
                   "profile",
+                  "package_installed",
                   "package_version",
                   "core_version",
                   "state",
@@ -1487,11 +1847,10 @@
             },
             "failed_action": {
               "type": [
-                "object",
+                "string",
                 "null"
               ],
-              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-              "additionalProperties": true
+              "description": "失败的具体安装动作；null表示无。"
             },
             "next_steps": {
               "type": "array",
@@ -1573,6 +1932,7 @@
               {
                 "host": "codex",
                 "profile": null,
+                "package_installed": true,
                 "package_version": "0.8.0",
                 "core_version": null,
                 "state": "ready",
@@ -1645,7 +2005,7 @@
   },
   {
     "name": "taskbelay.lifecycle.reinstall",
-    "description": "Replace the selected owned adapter after the requested reinstall decision. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "description": "Replace the selected owned adapter after the requested reinstall decision. Repeat --host for an Agent subset, or use all; --profile is repeatable for DeepSeek. Upgrade only updates installed plugins; --self includes the global launcher and --self-package supplies a complete local distribution without changing channels. Shared data deletion covers all Agents and uses --confirm-delete plus --confirm-permanent for permanent deletion, --confirm-explicit-data for extra paths and --confirm-zcode-closed when ZCode is installed. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
     "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
     "input_schema": {
       "type": "object",
@@ -1713,6 +2073,10 @@
                     ],
                     "description": "DeepSeek Profile名；其它Host为null。"
                   },
+                  "package_installed": {
+                    "type": "boolean",
+                    "description": "Whether this Agent plugin has installed package files or retained ownership records."
+                  },
                   "package_version": {
                     "type": "string",
                     "description": "对应Host包版本，不等于Core版本。"
@@ -1743,6 +2107,7 @@
                 "required": [
                   "host",
                   "profile",
+                  "package_installed",
                   "package_version",
                   "core_version",
                   "state",
@@ -1806,11 +2171,10 @@
             },
             "failed_action": {
               "type": [
-                "object",
+                "string",
                 "null"
               ],
-              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-              "additionalProperties": true
+              "description": "失败的具体安装动作；null表示无。"
             },
             "next_steps": {
               "type": "array",
@@ -1892,6 +2256,7 @@
               {
                 "host": "codex",
                 "profile": null,
+                "package_installed": true,
                 "package_version": "0.8.0",
                 "core_version": null,
                 "state": "ready",
@@ -1967,7 +2332,7 @@
   },
   {
     "name": "taskbelay.lifecycle.uninstall",
-    "description": "Remove selected owned adapter resources while retaining Task data. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "description": "Remove selected owned adapter resources while retaining Task data. Repeat --host for an Agent subset, or use all; --profile is repeatable for DeepSeek. Upgrade only updates installed plugins; --self includes the global launcher and --self-package supplies a complete local distribution without changing channels. Shared data deletion covers all Agents and uses --confirm-delete plus --confirm-permanent for permanent deletion, --confirm-explicit-data for extra paths and --confirm-zcode-closed when ZCode is installed. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
     "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
     "input_schema": {
       "type": "object",
@@ -2035,6 +2400,10 @@
                     ],
                     "description": "DeepSeek Profile名；其它Host为null。"
                   },
+                  "package_installed": {
+                    "type": "boolean",
+                    "description": "Whether this Agent plugin has installed package files or retained ownership records."
+                  },
                   "package_version": {
                     "type": [
                       "string",
@@ -2068,6 +2437,7 @@
                 "required": [
                   "host",
                   "profile",
+                  "package_installed",
                   "package_version",
                   "core_version",
                   "state",
@@ -2131,11 +2501,10 @@
             },
             "failed_action": {
               "type": [
-                "object",
+                "string",
                 "null"
               ],
-              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-              "additionalProperties": true
+              "description": "失败的具体安装动作；null表示无。"
             },
             "next_steps": {
               "type": "array",
@@ -2216,6 +2585,7 @@
               {
                 "host": "codex",
                 "profile": null,
+                "package_installed": false,
                 "package_version": null,
                 "core_version": null,
                 "state": "absent",
@@ -2288,8 +2658,8 @@
     ]
   },
   {
-    "name": "taskbelay.lifecycle.factory-reset",
-    "description": "Reset explicitly selected owned installation/data resources only after the plan-specific confirmation. --yes alone never supplies reset, permanent deletion or explicit-data confirmation. Use --host codex|deepseek|claude|zcode|all; --profile is repeatable for DeepSeek. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "name": "taskbelay.lifecycle.delete-data",
+    "description": "Delete confirmed TaskBelay user data and reset preferences while retaining plugin files, Agent registrations and installation records. Recreate empty data directories at their original paths. --yes never approves deletion. Repeat --host for an Agent subset, or use all; --profile is repeatable for DeepSeek. Upgrade only updates installed plugins; --self includes the global launcher and --self-package supplies a complete local distribution without changing channels. Shared data deletion covers all Agents and uses --confirm-delete plus --confirm-permanent for permanent deletion, --confirm-explicit-data for extra paths and --confirm-zcode-closed when ZCode is installed. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
     "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
     "input_schema": {
       "type": "object",
@@ -2323,10 +2693,7 @@
           "additionalProperties": false,
           "properties": {
             "operation_id": {
-              "type": [
-                "string",
-                "null"
-              ],
+              "type": "string",
               "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
             },
             "operation": {
@@ -2359,6 +2726,10 @@
                       "null"
                     ],
                     "description": "DeepSeek Profile名；其它Host为null。"
+                  },
+                  "package_installed": {
+                    "type": "boolean",
+                    "description": "Whether this Agent plugin has installed package files or retained ownership records."
                   },
                   "package_version": {
                     "type": [
@@ -2394,6 +2765,7 @@
                 "required": [
                   "host",
                   "profile",
+                  "package_installed",
                   "package_version",
                   "core_version",
                   "state",
@@ -2431,10 +2803,7 @@
                   }
                 },
                 "trash_root": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
+                  "type": "string",
                   "description": "实际移入回收区位置；null表示未移入。"
                 }
               },
@@ -2451,16 +2820,16 @@
               "type": "array",
               "description": "已完成的安装动作，发生后失败仍须保留。",
               "items": {
-                "description": "已完成的安装动作，发生后失败仍须保留。 Empty in this example; state-dependent records are described by the owning method."
+                "type": "string",
+                "description": "已完成的安装动作，发生后失败仍须保留。"
               }
             },
             "failed_action": {
               "type": [
-                "object",
+                "string",
                 "null"
               ],
-              "description": "失败的具体安装动作；null表示无。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
-              "additionalProperties": true
+              "description": "失败的具体安装动作；null表示无。"
             },
             "next_steps": {
               "type": "array",
@@ -2523,24 +2892,26 @@
         "name": "success",
         "input": {
           "argv": [
-            "factory-reset",
+            "delete-data",
             "--host",
             "all",
             "--json",
-            "--yes"
+            "--confirm-delete",
+            "DELETE-DATA-E7A4E2"
           ]
         },
         "output": {
           "exit_code": 0,
           "stdout": {
-            "operation_id": null,
-            "operation": "factory-reset",
-            "status": "absent",
-            "changed": false,
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "operation": "delete-data",
+            "status": "ready",
+            "changed": true,
             "targets": [
               {
                 "host": "codex",
                 "profile": null,
+                "package_installed": false,
                 "package_version": null,
                 "core_version": null,
                 "state": "absent",
@@ -2550,6 +2921,7 @@
               {
                 "host": "deepseek",
                 "profile": "web",
+                "package_installed": false,
                 "package_version": null,
                 "core_version": null,
                 "state": "absent",
@@ -2559,6 +2931,7 @@
               {
                 "host": "claude",
                 "profile": null,
+                "package_installed": false,
                 "package_version": null,
                 "core_version": null,
                 "state": "absent",
@@ -2568,6 +2941,7 @@
               {
                 "host": "zcode",
                 "profile": null,
+                "package_installed": false,
                 "package_version": null,
                 "core_version": null,
                 "state": "absent",
@@ -2576,14 +2950,24 @@
               }
             ],
             "data": {
-              "policy": "preserve",
-              "configuration": "absent",
-              "default_data": "absent",
+              "policy": "recoverable_delete",
+              "configuration": "present",
+              "default_data": "present",
               "pet": "absent",
               "explicit_data": [],
-              "trash_root": null
+              "trash_root": "/example/manager/.Trash/taskbelay-2026-10-19T02-39-40-073Z-4ad35b71f4e8"
             },
-            "completed_actions": [],
+            "completed_actions": [
+              "manager.cleanup",
+              "manager.trash.default-data",
+              "manager.trash.run-53d3f438-8986-4735-91d8-55a88c606707",
+              "manager.trash.run-9c1e7e1c-ee63-443e-81d3-20e6d580b525",
+              "manager.trash.run-b6360e50-9b46-4126-a57e-112e3a62b265",
+              "manager.trash.run-b754cf5d-a76a-42df-ab36-433e7aac095b",
+              "manager.initialize",
+              "manager.initialize_configuration",
+              "manager.initialize_data"
+            ],
             "failed_action": null,
             "next_steps": [],
             "restart_requirements": [],
@@ -2598,7 +2982,7 @@
         "name": "invalid_option",
         "input": {
           "argv": [
-            "factory-reset",
+            "delete-data",
             "--unexpected",
             "--json"
           ]
@@ -2607,7 +2991,7 @@
           "exit_code": 2,
           "stdout": {
             "operation_id": null,
-            "operation": "factory-reset",
+            "operation": "delete-data",
             "error": {
               "code": "INVALID_ARGUMENT",
               "message": "unknown option --unexpected",
@@ -2629,6 +3013,579 @@
             "restart_requirements": [],
             "confirmation": null,
             "next_step": "taskbelay help"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "confirmation_required",
+        "input": {
+          "argv": [
+            "delete-data",
+            "--host",
+            "all",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 3,
+          "stdout": {
+            "operation_id": null,
+            "operation": "delete-data",
+            "status": "confirmation_required",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent"
+              },
+              {
+                "host": "deepseek",
+                "profile": "web",
+                "package_version": null,
+                "core_version": null,
+                "state": "absent"
+              },
+              {
+                "host": "claude",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent"
+              },
+              {
+                "host": "zcode",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent"
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "preserved",
+              "default_data": "preserved",
+              "pet": "preserved",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": {
+              "class": "delete",
+              "plan_id": "plan-e7a4e2b2744a5ff1a742",
+              "token": "DELETE-DATA-E7A4E2",
+              "permanent_token": null,
+              "impacts": [
+                "Preserve plugins, Agent registrations and installation records",
+                "Clear current default Task data",
+                "Clear completed maintenance records; retain the current operation result",
+                "Preserve the launcher, desktop application, project code and Agent conversation history",
+                "Move confirmed data to macOS Trash",
+                "Create empty data directories at the original paths and restore default preferences"
+              ],
+              "resources": [
+                {
+                  "label": "default-data",
+                  "path": "/example/manager/.taskbelay/data"
+                },
+                {
+                  "label": "run-53d3f438-8986-4735-91d8-55a88c606707",
+                  "path": "/example/manager/.taskbelay/runs/53d3f438-8986-4735-91d8-55a88c606707.json"
+                },
+                {
+                  "label": "run-9c1e7e1c-ee63-443e-81d3-20e6d580b525",
+                  "path": "/example/manager/.taskbelay/runs/9c1e7e1c-ee63-443e-81d3-20e6d580b525.json"
+                },
+                {
+                  "label": "run-b6360e50-9b46-4126-a57e-112e3a62b265",
+                  "path": "/example/manager/.taskbelay/runs/b6360e50-9b46-4126-a57e-112e3a62b265.json"
+                },
+                {
+                  "label": "run-b754cf5d-a76a-42df-ab36-433e7aac095b",
+                  "path": "/example/manager/.taskbelay/runs/b754cf5d-a76a-42df-ab36-433e7aac095b.json"
+                }
+              ],
+              "actions": [
+                {
+                  "actionId": "manager.cleanup",
+                  "owner": "manager",
+                  "operation": "cleanup",
+                  "host": "manager",
+                  "profile": null,
+                  "targetVersion": null
+                },
+                {
+                  "actionId": "manager.initialize",
+                  "owner": "manager",
+                  "operation": "initialize",
+                  "host": "manager",
+                  "profile": null,
+                  "targetVersion": null
+                }
+              ]
+            },
+            "next_step": "taskbelay delete-data --host all --all-known-profiles --confirm-delete DELETE-DATA-E7A4E2"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      }
+    ]
+  },
+  {
+    "name": "taskbelay.lifecycle.delete-all",
+    "description": "Remove every managed plugin and delete only the confirmed shared data, keeping the launcher and desktop application. Pending removals or unresolved executions stop cleanup. --yes never approves deletion. Repeat --host for an Agent subset, or use all; --profile is repeatable for DeepSeek. Upgrade only updates installed plugins; --self includes the global launcher and --self-package supplies a complete local distribution without changing channels. Shared data deletion covers all Agents and uses --confirm-delete plus --confirm-permanent for permanent deletion, --confirm-explicit-data for extra paths and --confirm-zcode-closed when ZCode is installed. --json returns the complete operation result; status/action_required/partial are not interchangeable with ready. Read next_steps and retained operation_id after uncertainty.",
+    "transport": "argv array, not a shell string. For JSON commands parse stdout and retain exit_code; stderr is a separate diagnostic stream.",
+    "input_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "type": "array",
+          "description": "Exact command arguments after the executable; each option is a separate string.",
+          "items": {
+            "type": "string",
+            "description": "One literal argument."
+          }
+        }
+      },
+      "required": [
+        "argv"
+      ]
+    },
+    "output_schema": {
+      "type": "object",
+      "description": "Complete method result.",
+      "additionalProperties": false,
+      "properties": {
+        "exit_code": {
+          "type": "integer",
+          "description": "CLI进程或运行实际退出码；CLI的0不代替run.status。"
+        },
+        "stdout": {
+          "type": "object",
+          "description": "实际标准输出文本；CLI展示中为空字符串表示没有输出。",
+          "additionalProperties": false,
+          "properties": {
+            "operation_id": {
+              "type": "string",
+              "description": "稳定逻辑操作身份；同一已提交身份不能用于不同请求。"
+            },
+            "operation": {
+              "type": "string",
+              "description": "恢复中为reuse/replace/read_before_retry/none；其它位置为实际执行的命令分支。"
+            },
+            "status": {
+              "type": "string",
+              "description": "对象状态；Task、Run、工作区、安装结果各有独立枚举，见公共状态表。"
+            },
+            "changed": {
+              "type": "boolean",
+              "description": "本次是否改变所述资源，不等于整批操作成功。"
+            },
+            "targets": {
+              "type": "array",
+              "description": "安装管理所检查/操作的Host与Profile集合。",
+              "items": {
+                "type": "object",
+                "description": "安装管理所检查/操作的Host与Profile集合。",
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string",
+                    "description": "Task处为Host枚举；usage.host为Host用量对象；安装registration.host说明实际核对程度。"
+                  },
+                  "profile": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "DeepSeek Profile名；其它Host为null。"
+                  },
+                  "package_installed": {
+                    "type": "boolean",
+                    "description": "Whether this Agent plugin has installed package files or retained ownership records."
+                  },
+                  "package_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "对应Host包版本，不等于Core版本。"
+                  },
+                  "core_version": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "包内实际Core版本，不凭npm版本推定。"
+                  },
+                  "state": {
+                    "type": "string",
+                    "description": "远端观察为current/ahead/behind/diverged/not_checked/not_fetched/no_upstream/fetch_failed等；安装target为安装状态。"
+                  },
+                  "host_available": {
+                    "type": "boolean",
+                    "description": "CLI能否确认Host可用；null表示无法核对。"
+                  },
+                  "issues": {
+                    "type": "array",
+                    "description": "安装或实际用户待决定问题；按所在对象结构解释。",
+                    "items": {
+                      "description": "安装或实际用户待决定问题；按所在对象结构解释。 Empty in this example; state-dependent records are described by the owning method.",
+                      "type": []
+                    }
+                  }
+                },
+                "required": [
+                  "host",
+                  "profile",
+                  "package_installed",
+                  "package_version",
+                  "core_version",
+                  "state",
+                  "host_available",
+                  "issues"
+                ]
+              }
+            },
+            "data": {
+              "type": "object",
+              "description": "安装管理对自有配置和数据的处理结果。",
+              "additionalProperties": false,
+              "properties": {
+                "policy": {
+                  "type": "string",
+                  "description": "preserve/trash/remove等实际数据处理规则，不能从普通卸载推导删除授权。"
+                },
+                "configuration": {
+                  "type": "string",
+                  "description": "自有配置是否存在/保留/未知。"
+                },
+                "default_data": {
+                  "type": "string",
+                  "description": "默认Task数据目录存在/保留/未知状态。"
+                },
+                "pet": {
+                  "type": "string",
+                  "description": "本机宠物资源状态，不属于开发Task。"
+                },
+                "explicit_data": {
+                  "type": "array",
+                  "description": "用户显式指定的数据目录，只按精确实际确认处理。",
+                  "items": {
+                    "description": "用户显式指定的数据目录，只按精确实际确认处理。 Empty in this example; state-dependent records are described by the owning method."
+                  }
+                },
+                "trash_root": {
+                  "type": "string",
+                  "description": "实际移入回收区位置；null表示未移入。"
+                }
+              },
+              "required": [
+                "policy",
+                "configuration",
+                "default_data",
+                "pet",
+                "explicit_data",
+                "trash_root"
+              ]
+            },
+            "completed_actions": {
+              "type": "array",
+              "description": "已完成的安装动作，发生后失败仍须保留。",
+              "items": {
+                "type": "string",
+                "description": "已完成的安装动作，发生后失败仍须保留。"
+              }
+            },
+            "failed_action": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "失败的具体安装动作；null表示无。"
+            },
+            "next_steps": {
+              "type": "array",
+              "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。",
+              "items": {
+                "description": "实际需要执行的后续步骤数组；空数组表示没有额外步骤。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "restart_requirements": {
+              "type": "array",
+              "description": "需重载或重启的实际Host要求。",
+              "items": {
+                "description": "需重载或重启的实际Host要求。 Empty in this example; state-dependent records are described by the owning method."
+              }
+            },
+            "confirmation": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "已有管理CLI产生的精确确认计划；普通开发不新增批准步骤。 Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.",
+              "additionalProperties": true
+            },
+            "next_step": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "下一步可用操作或需要用户完成的动作；不得当成授权。"
+            }
+          },
+          "required": [
+            "operation_id",
+            "operation",
+            "status",
+            "changed",
+            "targets",
+            "data",
+            "completed_actions",
+            "failed_action",
+            "next_steps",
+            "restart_requirements",
+            "confirmation",
+            "next_step"
+          ]
+        },
+        "stderr": {
+          "type": "string",
+          "description": "独立诊断文本；不与stdout合并后解析JSON。"
+        }
+      },
+      "required": [
+        "exit_code",
+        "stdout",
+        "stderr"
+      ]
+    },
+    "examples": [
+      {
+        "name": "success",
+        "input": {
+          "argv": [
+            "delete-all",
+            "--host",
+            "all",
+            "--json",
+            "--confirm-delete",
+            "DELETE-ALL-D0835B"
+          ]
+        },
+        "output": {
+          "exit_code": 0,
+          "stdout": {
+            "operation_id": "00000000-0000-4000-8000-000000000001",
+            "operation": "delete-all",
+            "status": "absent",
+            "changed": true,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "deepseek",
+                "profile": "web",
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "claude",
+                "profile": null,
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              },
+              {
+                "host": "zcode",
+                "profile": null,
+                "package_installed": false,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent",
+                "host_available": true,
+                "issues": []
+              }
+            ],
+            "data": {
+              "policy": "recoverable_delete",
+              "configuration": "absent",
+              "default_data": "absent",
+              "pet": "absent",
+              "explicit_data": [],
+              "trash_root": "/example/manager/.Trash/taskbelay-2026-10-19T02-39-40-078Z-a613efaf4128"
+            },
+            "completed_actions": [
+              "manager.cleanup",
+              "manager.trash.configuration",
+              "manager.trash.default-data"
+            ],
+            "failed_action": null,
+            "next_steps": [],
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": null
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "invalid_option",
+        "input": {
+          "argv": [
+            "delete-all",
+            "--unexpected",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 2,
+          "stdout": {
+            "operation_id": null,
+            "operation": "delete-all",
+            "error": {
+              "code": "INVALID_ARGUMENT",
+              "message": "unknown option --unexpected",
+              "detail": ""
+            },
+            "status": "failed",
+            "changed": false,
+            "targets": [],
+            "data": {
+              "policy": "preserve",
+              "configuration": "unknown",
+              "default_data": "unknown",
+              "pet": "unknown",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": null,
+            "next_step": "taskbelay help"
+          },
+          "stderr": ""
+        },
+        "preconditions": "Actual serializer using isolated temporary paths and simulated external Host drivers. It does not establish a real installation, session, or native desktop action."
+      },
+      {
+        "name": "confirmation_required",
+        "input": {
+          "argv": [
+            "delete-all",
+            "--host",
+            "all",
+            "--json"
+          ]
+        },
+        "output": {
+          "exit_code": 3,
+          "stdout": {
+            "operation_id": null,
+            "operation": "delete-all",
+            "status": "confirmation_required",
+            "changed": false,
+            "targets": [
+              {
+                "host": "codex",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent"
+              },
+              {
+                "host": "deepseek",
+                "profile": "web",
+                "package_version": null,
+                "core_version": null,
+                "state": "absent"
+              },
+              {
+                "host": "claude",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent"
+              },
+              {
+                "host": "zcode",
+                "profile": null,
+                "package_version": null,
+                "core_version": null,
+                "state": "absent"
+              }
+            ],
+            "data": {
+              "policy": "preserve",
+              "configuration": "preserved",
+              "default_data": "preserved",
+              "pet": "preserved",
+              "explicit_data": [],
+              "trash_root": null
+            },
+            "completed_actions": [],
+            "failed_action": null,
+            "restart_requirements": [],
+            "confirmation": {
+              "class": "delete",
+              "plan_id": "plan-d0835ba7d1bb0a88b5bd",
+              "token": "DELETE-ALL-D0835B",
+              "permanent_token": null,
+              "impacts": [
+                "Remove every installed Adapter before shared data cleanup",
+                "Clear TaskBelay user configuration",
+                "Clear current default Task data",
+                "Clear completed maintenance records; retain the current operation result",
+                "Preserve the launcher, desktop application, project code and Agent conversation history",
+                "Move confirmed data to macOS Trash"
+              ],
+              "resources": [
+                {
+                  "label": "configuration",
+                  "path": "/example/manager/.taskbelay/config.json"
+                },
+                {
+                  "label": "default-data",
+                  "path": "/example/manager/.taskbelay/data"
+                }
+              ],
+              "actions": [
+                {
+                  "actionId": "manager.cleanup",
+                  "owner": "manager",
+                  "operation": "cleanup",
+                  "host": "manager",
+                  "profile": null,
+                  "targetVersion": null
+                }
+              ]
+            },
+            "next_step": "taskbelay delete-all --host all --all-known-profiles --confirm-delete DELETE-ALL-D0835B"
           },
           "stderr": ""
         },
@@ -2782,7 +3739,7 @@
             "status": "partial",
             "changed": false,
             "package_version": "0.1.0",
-            "core_version": "0.26.0",
+            "core_version": "0.26.3",
             "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
             "registration": {
               "receipt": false,
@@ -2962,7 +3919,7 @@
             "status": "action_required",
             "changed": true,
             "package_version": "0.1.0",
-            "core_version": "0.26.0",
+            "core_version": "0.26.3",
             "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
             "registration": {
               "receipt": true,
@@ -3144,7 +4101,7 @@
             "status": "action_required",
             "changed": true,
             "package_version": "0.1.0",
-            "core_version": "0.26.0",
+            "core_version": "0.26.3",
             "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
             "registration": {
               "receipt": true,
@@ -3309,8 +4266,8 @@
             "operation": "status",
             "status": "partial",
             "changed": false,
-            "package_version": "0.1.3",
-            "core_version": "0.26.0",
+            "package_version": "0.1.4",
+            "core_version": "0.26.3",
             "receipt_path": "/example/hosts/.taskbelay/registrations/claude.json",
             "registration": {
               "receipt": false,
@@ -3473,8 +4430,8 @@
             "operation": "setup",
             "status": "ready",
             "changed": true,
-            "package_version": "0.1.3",
-            "core_version": "0.26.0",
+            "package_version": "0.1.4",
+            "core_version": "0.26.3",
             "receipt_path": "/example/hosts/.taskbelay/registrations/claude.json",
             "registration": {
               "receipt": true,
@@ -3746,7 +4703,7 @@
             "status": "ready",
             "changed": false,
             "package_version": "0.10.5",
-            "core_version": "0.26.0",
+            "core_version": "0.26.3",
             "receipt_path": "/example/hosts/codex.json",
             "registration": {
               "receipt": true,

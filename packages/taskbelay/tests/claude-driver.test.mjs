@@ -121,14 +121,14 @@ test("Claude reset includes the owned user plugin cache Core before uninstall", 
   const replacement = await driver.maintenanceTargets({ observed, operation: "upgrade" });
   assert.deepEqual(replacement.registeredCorePaths, [runtimePath]);
   assert.equal(calls.length, 1);
-  const reset = await driver.maintenanceTargets({ observed, operation: "factory-reset" });
+  const reset = await driver.maintenanceTargets({ observed, operation: "delete-all" });
   assert.deepEqual(reset.registeredCorePaths, [runtimePath, join(cachedRoot, "runtime", "darwin-arm64", "taskbelay")]);
   assert.equal(reset.installedRuntime.runtimePath, runtimePath);
   marketplacePath = join(root, "foreign-source");
-  await assert.rejects(driver.maintenanceTargets({ observed, operation: "factory-reset" }), /ownership changed/);
+  await assert.rejects(driver.maintenanceTargets({ observed, operation: "delete-all" }), /ownership changed/);
   marketplacePath = packageRoot;
   scope = "project";
-  await assert.rejects(driver.maintenanceTargets({ observed, operation: "factory-reset" }), /Other plugin scopes/);
+  await assert.rejects(driver.maintenanceTargets({ observed, operation: "delete-all" }), /Other plugin scopes/);
   scope = "user"; installPath = "relative-cache";
-  await assert.rejects(driver.maintenanceTargets({ observed, operation: "factory-reset" }), /path is unavailable/);
+  await assert.rejects(driver.maintenanceTargets({ observed, operation: "delete-all" }), /path is unavailable/);
 });

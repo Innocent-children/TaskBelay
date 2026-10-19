@@ -57,7 +57,7 @@ export function createClaudeDriver({ environment = process.env, run = defaultRun
           { host: "claude", profile: null, packageName: "taskbelay-claude" });
       }
       const registeredCorePaths = typeof recorded === "string" && recorded !== "" ? [recorded] : [];
-      if (operation === "factory-reset" && (observed.packageInstalled || observed.receipt)) {
+      if (["delete-data", "delete-all"].includes(operation) && (observed.packageInstalled || observed.receipt)) {
         const [marketResult, pluginResult] = await Promise.all([
           call("claude", ["plugin", "marketplace", "list", "--json"]),
           call("claude", ["plugin", "list", "--json"]),

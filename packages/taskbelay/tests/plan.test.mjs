@@ -19,7 +19,7 @@ test("downgrade and reset use stable plan-bound confirmations", () => {
   assert.equal(downgrade.confirmationClass, "downgrade");
   assert.match(downgrade.downgradeToken, /^DOWNGRADE-/u);
 
-  const resetRequest = { ...request("factory-reset", "all"), allKnownProfiles: true };
+  const resetRequest = { ...request("delete-all", "all"), allKnownProfiles: true };
   const first = createLifecyclePlan(resetRequest, observed({ codexState: "ready", deepseekState: "ready" }));
   const second = createLifecyclePlan(resetRequest, observed({ codexState: "ready", deepseekState: "ready" }));
   assert.equal(first.planId, second.planId);
@@ -27,33 +27,30 @@ test("downgrade and reset use stable plan-bound confirmations", () => {
   assert.equal(first.actions.at(-1).operation, "cleanup");
 });
 
-test("factory reset blocks a partial Host selection and unknown manager Profile", () => {
-  assert.throws(() => createLifecyclePlan(request("factory-reset", "codex"), observed({})), /requires --host all/u);
-  const reset = { ...request("factory-reset", "all"), profiles: ["web"], allKnownProfiles: false };
-  assert.throws(() => createLifecyclePlan(reset, observed({ known: ["web", "other"] })), /every manager-owned/u);
+test("delete-all blocks a partial Host selection and unknown manager Profile", () => {
+  assert.throws(() => createLifecyclePlan(request("delete-all", "codex"), observed({})), /requires all Agents/u);
+  const reset = { ...request("delete-all", "all"), profiles: ["web"], allKnownProfiles: false };
+  assert.throws(() => createLifecyclePlan(reset, observed({ known: ["web", "other"] })), /every known Profile/u);
 });
 
-test("uninstall and factory reset retain an installed Codex package after registration loss", () => {
+test("uninstall and delete-all retain an installed Codex package after registration loss", () => {
   const current = observed({ codexState: "absent", codexVersion: "0.7.3", codexPackageInstalled: true });
   const uninstall = createLifecyclePlan(request("uninstall", "codex"), current);
   assert.deepEqual(uninstall.actions.map((action) => action.actionId), ["codex.default.uninstall"]);
 
-  const reset = createLifecyclePlan({ ...request("factory-reset", "all"), allKnownProfiles: true }, current);
+  const reset = createLifecyclePlan({ ...request("delete-all", "all"), allKnownProfiles: true }, current);
   assert.deepEqual(reset.actions.map((action) => action.actionId), ["codex.default.uninstall", "manager.cleanup"]);
-  assert.deepEqual(reset.impacts, [
-    "factory-reset codex Adapter",
-    "Remove every installed Adapter before shared data cleanup",
-  ]);
+  assert.ok(reset.impacts.includes("Remove every installed Adapter before shared data cleanup"));
 });
 
-test("factory reset reports one exact no-op impact when Adapters and data are absent", () => {
-  const plan = createLifecyclePlan({ ...request("factory-reset", "all"), allKnownProfiles: true }, observed());
+test("delete-all reports one exact no-op impact when Adapters and data are absent", () => {
+  const plan = createLifecyclePlan({ ...request("delete-all", "all"), allKnownProfiles: true }, observed());
   assert.deepEqual(plan.actions, []);
   assert.equal(plan.confirmationClass, "none");
   assert.deepEqual(plan.impacts, ["No installed Adapter or active TaskBelay data was found"]);
 });
 
-test("Windows factory reset previews the product recovery directory instead of macOS Trash", () => {
+test("Windows delete-all previews the product recovery directory instead of macOS Trash", () => {
   const current = observed();
   current.resources.defaultData = {
     label: "default-data",
@@ -62,7 +59,7 @@ test("Windows factory reset previews the product recovery directory instead of m
     identity: "volume:file:directory:0:0",
   };
   const plan = createLifecyclePlan(
-    { ...request("factory-reset", "all"), allKnownProfiles: true },
+    { ...request("delete-all", "all"), allKnownProfiles: true },
     current,
     {
       platformKey: "win32-x64",
@@ -73,18 +70,16 @@ test("Windows factory reset previews the product recovery directory instead of m
   assert.equal(plan.impacts.some((impact) => impact.includes("macOS Trash")), false);
 });
 
-test("factory reset reports the pet directory as a confirmed cleanup impact", () => {
+test("delete-all reports the pet directory as a confirmed cleanup impact", () => {
   const current = observed();
   current.resources.pet = { label: "pet", path: "/tmp/pet", exists: true, identity: "volume:file:directory:0:0" };
-  const plan = createLifecyclePlan({ ...request("factory-reset", "all"), allKnownProfiles: true }, current);
-  assert.deepEqual(plan.impacts, [
-    "Clear desktop pet records, preferences, and imported appearances",
-    "Move confirmed data to macOS Trash",
-  ]);
+  current.resources.petData = [current.resources.pet];
+  const plan = createLifecyclePlan({ ...request("delete-all", "all"), allKnownProfiles: true }, current);
+  assert.ok(plan.impacts.includes("Clear desktop pet records, preferences, and imported appearances"));
 });
 
 function request(operation, host) {
-  return { operation, host, profiles: host === "codex" ? [] : ["web"], targetVersion: "latest", allKnownProfiles: false, adopt: false, reinstallAfterReset: false, permanent: false };
+  return { operation, hosts: host === "all" ? ["codex", "deepseek", "claude", "zcode"] : [host], profiles: host === "codex" ? [] : ["web"], targetVersion: "latest", allKnownProfiles: false, adopt: false, permanent: false };
 }
 
 function observed({ codexState = "absent", codexVersion = null, codexPackageInstalled = false, deepseekState = "absent", known = ["web"] } = {}) {
@@ -116,10 +111,10 @@ test("reset plan shares one cleanup target for the same observed canonical direc
   const current = observed();
   current.resources.defaultData = { label: "default-data", path: "/same/data", exists: true, kind: "directory", identity: "same" };
   current.resources.explicitData = { ...current.resources.defaultData, label: "explicit-data" };
-  const plan = createLifecyclePlan({ ...request("factory-reset", "all"), allKnownProfiles: true }, current);
+  const plan = createLifecyclePlan({ ...request("delete-all", "all"), allKnownProfiles: true }, current);
   assert.equal(plan.cleanupTargets.length, 1);
   assert.equal(plan.cleanupTargets[0].requiresExplicitConfirmation, true);
   assert.deepEqual(plan.resources, [{ label: "default-data", path: "/same/data" }]);
   current.resources.explicitData.identity = "changed";
-  assert.throws(() => createLifecyclePlan({ ...request("factory-reset", "all"), allKnownProfiles: true }, current), /changed during observation/);
+  assert.throws(() => createLifecyclePlan({ ...request("delete-all", "all"), allKnownProfiles: true }, current), /changed during observation/);
 });

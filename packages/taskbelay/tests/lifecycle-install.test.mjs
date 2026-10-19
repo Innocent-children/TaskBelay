@@ -56,5 +56,5 @@ function fakeDriver(host, states, profile) {
 }
 
 function makeRequest(operation) {
-  return { operation, host: "all", profiles: ["web"], targetVersion: "latest", allKnownProfiles: true, adopt: false, reinstallAfterReset: false, permanent: false, yes: true, confirmationToken: null, permanentToken: null, downgradeToken: null, confirmedExplicitData: [], outputMode: "json" };
+  return { operation, hosts: ["codex", "deepseek", "claude", "zcode"], profiles: ["web"], targetVersion: "latest", allKnownProfiles: true, adopt: false, permanent: false, yes: true, confirmationToken: null, permanentToken: null, downgradeToken: null, confirmedExplicitData: [], outputMode: "json" };
 }

@@ -371,5 +371,14 @@
   "worktree_instance_digest": "Identity digest of this concrete worktree, distinct from its shared Git group.",
   "remote_baseline": "Corresponding upstream observation at the start of this operation.",
   "remote_latest": "Most recent corresponding-upstream observation, not an automatic fetch or integration.",
-  "isError": "True when the Host tool failed; inspect the original operation record before repeating possible effects."
+  "isError": "True when the Host tool failed; inspect the original operation record before repeating possible effects.",
+  "launcher": "Observed TaskBelay command-entry installation; its version and channel are independent from Agent plugins.",
+  "packageRoot": "Canonical installed npm package directory that provides this executable.",
+  "packageVersion": "Observed installed package version, not an inferred latest version.",
+  "packageInstalled": "Whether package files are installed even when registration is missing.",
+  "package_installed": "Whether this Agent plugin has installed package files or retained ownership records.",
+  "channel": "Current installation channel: npm or local. Upgrade must retain it.",
+  "installation": "Absolute local configuration, active data, desktop and maintenance paths for inspection.",
+  "manager": "Directory containing owned installation and maintenance records. It is not a whole-directory deletion target.",
+  "pet_state": "Desktop observation: stopped when no runtime record exists, otherwise unknown until a native action confirms its state."
 }

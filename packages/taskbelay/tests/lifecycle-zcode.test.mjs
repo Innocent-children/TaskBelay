@@ -80,7 +80,7 @@ test("ZCode uninstall retains package and data until Host removal is confirmed",
 test("ZCode reset preflight refusal preserves shared data before any Adapter mutation", async t => {
   for (const phase of ["prepared", "package_only"]) {
     const fixture = await lifecycleFixture(t, phase);
-    await assert.rejects(runLifecycle(request("factory-reset", "all"), fixture.dependencies), /ZCode cache shutdown is unverified/);
+    await assert.rejects(runLifecycle({ ...request("delete-all", "all"), zcodeClosed: true }, fixture.dependencies), /ZCode cache shutdown is unverified/);
     assert.deepEqual(fixture.operations, []);
     assert.equal(await readFile(fixture.paths.configurationPath, "utf8"), "configuration bytes\n");
     assert.equal(await readFile(join(fixture.paths.defaultDataDirectory, "taskbelay.db"), "utf8"), "Task bytes\n");
@@ -92,7 +92,7 @@ async function lifecycleFixture(t, phase = "absent") {
   t.after(() => rm(root, { recursive: true, force: true }));
   const home = join(root, "home"), packageRoot = join(root, "manager");
   await mkdir(home); await mkdir(packageRoot);
-  await writeFile(join(packageRoot, "package.json"), '{"name":"taskbelay"}\n');
+  await writeFile(join(packageRoot, "package.json"), '{"name":"taskbelay","version":"0.1.0"}\n');
   const paths = await resolveManagerPaths({ homeDirectory: home, environment: {}, platform: process.platform, arch: process.arch });
   await mkdir(paths.configurationDirectory, { recursive: true });
   await mkdir(paths.defaultDataDirectory, { recursive: true });
@@ -113,7 +113,7 @@ async function lifecycleFixture(t, phase = "absent") {
     },
     resolveTargetVersion: async () => { versionLookups++; return "0.1.0"; },
     maintenanceTargets: async ({ operation }) => {
-      if (operation === "factory-reset" && state.phase !== "absent") throw new Error("ZCode cache shutdown is unverified");
+      if (operation === "delete-all" && state.phase !== "absent") throw new Error("ZCode cache shutdown is unverified");
       return { registeredCorePaths: [], installedRuntime: null };
     },
     execute: async operation => {
@@ -143,7 +143,7 @@ async function lifecycleFixture(t, phase = "absent") {
 }
 
 function request(operation, host = "zcode") {
-  return { operation, host, profiles: host === "all" ? ["web"] : [], targetVersion: null,
-    allKnownProfiles: host === "all", adopt: false, reinstallAfterReset: false, permanent: false, yes: true,
+  return { operation, hosts: host === "all" ? ["codex", "deepseek", "claude", "zcode"] : [host], profiles: host === "all" ? ["web"] : [], targetVersion: null,
+    allKnownProfiles: host === "all", adopt: false, permanent: false, yes: true,
     confirmationToken: null, permanentToken: null, downgradeToken: null, confirmedExplicitData: [], outputMode: "json" };
 }

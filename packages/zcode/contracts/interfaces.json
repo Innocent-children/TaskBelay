@@ -31744,7 +31744,7 @@
             "status": "partial",
             "changed": false,
             "package_version": "0.1.0",
-            "core_version": "0.26.0",
+            "core_version": "0.26.3",
             "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
             "registration": {
               "receipt": false,
@@ -31957,7 +31957,7 @@
             "status": "action_required",
             "changed": true,
             "package_version": "0.1.0",
-            "core_version": "0.26.0",
+            "core_version": "0.26.3",
             "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
             "registration": {
               "receipt": true,
@@ -32172,7 +32172,7 @@
             "status": "action_required",
             "changed": true,
             "package_version": "0.1.0",
-            "core_version": "0.26.0",
+            "core_version": "0.26.3",
             "receipt_path": "/example/hosts/.taskbelay/registrations/zcode.json",
             "registration": {
               "receipt": true,

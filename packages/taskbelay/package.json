@@ -69,7 +69,10 @@
     "runtime/darwin-arm64/TaskBelayPet.app",
     "runtime/win32-x64/TaskBelayPet",
     "lib/interface-reference.mjs",
-    "contracts/interfaces.json"
+    "contracts/interfaces.json",
+    "lib/menu.mjs",
+    "lib/launcher.mjs",
+    "lib/cleanup.mjs"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",

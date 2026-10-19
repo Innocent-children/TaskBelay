@@ -6,6 +6,37 @@
 
 公开入口：npm install -g taskbelay@latest；taskbelay。统一安装、status、doctor、upgrade、uninstall 等生命周期选项仍由 packages/taskbelay/lib/cli.mjs 定义。源码新契约须在仓库使用 node scripts/taskbelay-local.mjs install --host codex --yes 构建安装，宿主可换 deepseek、claude、zcode；这不发布版本。
 
+### 交互菜单与维护
+
+不带参数的 TTY 使用方向键、Enter、空格多选、A 全选和 Esc 返回。升级页的 V 修改目标版本，L 选择本地命令入口分发包；DeepSeek Profile 页的 N 输入其他 Profile。输入期间左右键不导航菜单；Ctrl+C 退出。NO_COLOR 关闭颜色，不关闭键盘选择；非 TTY 不弹出交互，空参数打印帮助。
+
+| 命令 | 行为 |
+| --- | --- |
+| `status` | 显示插件、Core、命令入口的实际版本、状态和本地路径 |
+| `doctor` | 只读检查安装与配置，提供对应下一步 |
+| `install` | 安装到所选 Agent，保留已有版本 |
+| `upgrade` | 只更新已安装插件，默认最新稳定版；`--self` 同时或单独更新命令入口 |
+| `repair` / `reinstall` | 修复安装或替换当前版本的文件，保留用户数据 |
+| `uninstall` | 卸载所选插件及注册，保留数据 |
+| `delete-data` | 清空任务记录、配置和宠物偏好，保留插件、注册和安装记录，在原路径重建空目录 |
+| `delete-all` | 移除全部受管插件及确认的数据，保留命令入口与桌面程序 |
+
+`--host codex|deepseek|claude|zcode` 可以重复，多选 Agent；`--host all` 不与其他 Agent 混用。`--profile` 可重复，`--all-known-profiles` 选择全部受管 DeepSeek Profile。共享数据删除隐含全部 Agent 和 Profile，不接受按 Agent/单个 Profile 删除数据。
+
+```sh
+taskbelay install --host codex --host claude --yes
+taskbelay upgrade --host all --all-known-profiles --self --yes
+taskbelay upgrade --self --yes
+taskbelay delete-data --json
+taskbelay delete-all --json
+```
+
+`--version latest|<x.y.z>` 用于安装、升级、修复和重装；降级须额外 `--confirm-downgrade <token>`。命令入口自更新只适用于当前全局 npm 安装，必须保持原渠道。本地开发安装使用 `--self --self-package <完整本地分发包的绝对路径.tgz>`，先校验包内四个插件及摘要，再安装；不自动切换到 npm。临时源码管理器不更新另一份全局入口。普通维护的 `--yes` 不批准数据删除、永久删除或降级。
+
+数据删除先返回具体目录和与本次计划绑定的 `--confirm-delete <token>`；永久删除还需 `--permanent --confirm-permanent <token>`。额外目录用 `--confirm-explicit-data <绝对路径>` 单独确认。ZCode 安装存在时，先关闭其全部窗口和会话，再提供 `--confirm-zcode-closed`；这个参数记录用户实际操作，程序仍检查可识别的 Core 进程。delete-all 在任何插件尚未真正卸载时保留数据，并返回剩余 UI 步骤。
+
+清理先停止宠物和相关 Core，通过兼容 Core 的只读接口确认无运行中或未确定的 Task 执行，再清理准确目录。存在数据库但无可用的兼容 Core 时停止，不猜测历史数据内容。保留本次删除结果及未解决的维护记录，清理普通已完成维护记录。默认可恢复删除使用 macOS 废纸篓或 Windows 的 TaskBelay 恢复目录；后者不是系统回收站。不会清空以前的恢复目录、项目代码或 Agent 会话历史。旧 factory-reset、--confirm-reset 和删除后自动重装选项已移除。
+
 Core：taskbelay version；config validate（stdin 配置）；mcp --stdio；call <tool_name>（stdin 完整 JSON）；host-check pre-file-write / workspace-available；webui start/open/status/stop（--json 或 --plain，start 可 --no-open）。Core 运行必须设置绝对 TASKBELAY_DATA_DIR；保留旧数据，选择新目录，不自动迁移。统一 npm launcher 将 call 与 webui 转发到已配置 Core；Codex、Claude、ZCode 的 taskbelay-<host> call <tool_name> 转发到各自 bundled Core。DeepSeek 使用已发现的 MCP namespace。
 
 host-check pre-file-write 输入 host、repository_path、tool_name、paths、intent_digest、path_parse_complete；返回 decision allow/deny 和明确 coverage，不判断未来修改语义。workspace-available 输入 repository_path 或 repositories [{key,repository_path}]，只读返回 available 和逐仓 repositories [{key,repository_path,active_task_id}]，未占用为 null。检查失败不按无 Task 放行。普通 artifact 阶段命令已移除。

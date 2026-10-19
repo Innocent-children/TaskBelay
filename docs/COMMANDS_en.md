@@ -6,6 +6,37 @@
 
 Public entry: npm install -g taskbelay@latest; taskbelay. Installation/status/doctor/upgrade/uninstall options remain defined by packages/taskbelay/lib/cli.mjs. Build the source contract with node scripts/taskbelay-local.mjs install --host codex --yes; select deepseek, claude or zcode as needed. This does not publish.
 
+### Interactive menu and maintenance
+
+A no-argument TTY uses arrows, Enter, Space for multiple selection, A for all, and Esc to go back. V changes the upgrade version, L selects a local launcher distribution, and N adds a DeepSeek Profile. Left/right do not navigate menus during text entry; Ctrl+C exits. NO_COLOR disables color, not keyboard selection. Non-TTY execution never prompts; no arguments print help.
+
+| Command | Behavior |
+| --- | --- |
+| `status` | Actual plugin, Core and launcher versions, state and local paths |
+| `doctor` | Read-only installation/configuration checks and relevant next steps |
+| `install` | Install into selected Agents, retaining installed versions |
+| `upgrade` | Update installed plugins only, defaulting to latest stable; `--self` includes or exclusively updates the launcher |
+| `repair` / `reinstall` | Repair registration or replace current package files, retaining user data |
+| `uninstall` | Remove selected plugins and registrations, retaining data |
+| `delete-data` | Clear tasks, configuration and pet preferences; keep plugins, registrations and installation records; recreate empty directories in place |
+| `delete-all` | Remove all managed plugins and confirmed data, retaining the launcher and desktop application |
+
+Repeat `--host codex|deepseek|claude|zcode` for an Agent subset; `--host all` cannot be mixed with individual Agents. Repeat `--profile` or use `--all-known-profiles` for managed DeepSeek Profiles. Shared data deletion implies all Agents and Profiles and cannot target one Agent or Profile's shared data.
+
+```sh
+taskbelay install --host codex --host claude --yes
+taskbelay upgrade --host all --all-known-profiles --self --yes
+taskbelay upgrade --self --yes
+taskbelay delete-data --json
+taskbelay delete-all --json
+```
+
+`--version latest|<x.y.z>` applies to install, upgrade, repair and reinstall. Downgrades additionally require `--confirm-downgrade <token>`. Self update requires the current global npm installation and retains its channel. Local development installations use `--self --self-package <absolute-complete-local-distribution.tgz>`; all four contained plugins and their digests are verified before installation. They never silently switch to npm. A temporary source manager cannot update another global installation. `--yes` covers ordinary maintenance, not data deletion, permanent deletion or downgrade.
+
+Data deletion first returns exact directories and a plan-bound `--confirm-delete <token>`. Permanent removal additionally requires `--permanent --confirm-permanent <token>`. Approve extra directories separately with `--confirm-explicit-data <absolute-path>`. When ZCode is installed, close all its windows and sessions before supplying `--confirm-zcode-closed`; this records an actual user action, while identifiable Core processes are still checked. delete-all retains data and returns pending UI steps while any plugin remains installed.
+
+Cleanup stops the pet and associated Core processes, reads a compatible Core's saved-state API to rule out running or uncertain Task executions, then cleans exact directories. A database without a usable compatible Core blocks cleanup rather than guessing its historical contents. The current deletion result and unresolved maintenance records are retained; ordinary completed maintenance records are removed. Recoverable deletion uses macOS Trash or the Windows TaskBelay recovery directory, not Windows Recycle Bin. Earlier recovery directories, project code and Agent conversation history are retained. The old factory-reset, --confirm-reset and automatic reinstall-after-deletion options have been removed.
+
 Core: taskbelay version; config validate (stdin); mcp --stdio; call <tool_name> (complete JSON stdin); host-check pre-file-write/workspace-available; webui start/open/status/stop (--json or --plain, start optionally --no-open). Set absolute TASKBELAY_DATA_DIR. Preserve old data and choose a new directory; no migration occurs. The unified npm launcher forwards call/webui to configured Core. Codex/Claude/ZCode taskbelay-<host> call <tool_name> forwards to bundled Core. DeepSeek uses the discovered MCP namespace.
 
 pre-file-write takes host, repository_path, tool_name, paths, intent_digest, path_parse_complete and returns allow/deny with actual coverage, not future edit semantics. workspace-available takes repository_path or repositories [{key,repository_path}], returning available and repositories [{key,repository_path,active_task_id}] read-only. Observation failure never means no Task. Phase artifact commands have been removed.

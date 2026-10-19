@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { ensureManagerDirectories, readOwnedJSON, writeOwnedJSON } from "./ownership.mjs";
@@ -42,17 +41,6 @@ export function validateRun(value) {
   if (value.trash_root !== null && typeof value.trash_root !== "string") throw new Error("lifecycle run trash_root is invalid");
   if (!Number.isFinite(Date.parse(value.updated_at))) throw new Error("lifecycle run updated_at is invalid");
   return structuredClone(value);
-}
-
-export async function clearRunRecords(paths, { trashRoot = null, permanent = false } = {}) {
-  if (permanent) {
-    await rm(paths.runsDirectory, { recursive: true, force: true });
-    return null;
-  }
-  if (!trashRoot) throw new Error("Trash root is required to clear lifecycle records recoverably");
-  const destination = join(trashRoot, "manager-runs");
-  await rename(paths.runsDirectory, destination);
-  return destination;
 }
 
 async function writeRun(paths, run) {

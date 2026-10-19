@@ -72,7 +72,7 @@ taskbelay pet stop
 
 本地分发包的 `--host all` 包含 ZCode；其 `action_required` 提示仍需在 ZCode UI 完成插件安装和启用，见 [ZCode 指南](ZCODE.md)。宠物能够读取 Core 不代表 ZCode 模型会话已经可用。
 
-productRoot 默认是 %LOCALAPPDATA%\taskbelay。已安装桌面目录为 productRoot/pet/TaskBelayPet，入口为 TaskBelayPet.exe；优先使用此目录，其次使用包内 runtime/win32-x64/TaskBelayPet。settings.json、appearances/ 与程序目录分开保存。统一入口通过 taskbelay install、upgrade、repair、reinstall 更新程序副本；统一入口先停止需要维护的实例，再暂存并替换程序目录，保留 settings.json 与 appearances/。单独 pet start 不重装已有程序。普通退出和卸载保留这些数据，确认的 factory-reset 才按既有规则清理整个宠物目录。
+productRoot 默认是 %LOCALAPPDATA%\taskbelay。已安装桌面目录为 productRoot/pet/TaskBelayPet，入口为 TaskBelayPet.exe；优先使用此目录，其次使用包内 runtime/win32-x64/TaskBelayPet。settings.json、appearances/ 与程序目录分开保存。统一入口通过 taskbelay install、upgrade、repair、reinstall 更新程序副本；统一入口先停止需要维护的实例，再暂存并替换程序目录，保留 settings.json 与 appearances/。单独 pet start 不重装已有程序。普通退出和卸载保留这些数据，确认的 delete-data 或 delete-all 清理宠物偏好和导入形象，保留已安装的桌面程序。
 
 Windows 使用受限渲染器、当前用户范围的本地单实例通道与确认消息，不按进程名或仅凭 PID 停止程序。每轮和点击跳转前核对同一 Core 与数据目录；连接失败保留最后记录并标注断连，任务更新与同步时间分别显示。隐藏/睡眠取消读取和动画，恢复后不重放历史完成提示。
 
@@ -176,7 +176,7 @@ Windows 调整大小时会结束当前待机活动、停止对应位移，再按
 任务选择与形象选择分别保存；切换形象不会改变关注任务，也不会重新播放旧的完成提示。
 
 用户素材位于 `productRoot/pet/appearances/<id>`，`selected_appearance` 保存在宠物设置中。
-程序升级和普通卸载保留素材与选择；已确认的 factory-reset 随整个宠物目录清理。保存的形象缺失或损坏时，
+程序升级和普通卸载保留素材与选择；已确认的 delete-data 或 delete-all 清理素材与选择，保留程序。保存的形象缺失或损坏时，
 程序提示并暂用内置形象，用户可以重新导入。
 
 ## TaskBelay 静态形象

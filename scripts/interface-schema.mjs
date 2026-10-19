@@ -20,8 +20,10 @@ export function mergeSchema(left, right) {
 export function exampleSchema(value, descriptions = {}, field = '') {
   const description = descriptions[field] ?? (field ? `Returned ${field}; see the method's field notes and complete examples.` : 'Complete method result.');
   if (['input_schema','output_schema'].includes(field)) return { type:'object',description:'Complete JSON Schema for the selected method. Interpret with JSON Schema rules; it is data, not an operation request.',additionalProperties:true };
-  if (['handoff','snapshot','host_request','session','confirmation','failed_action'].includes(field)) return {type:['object','null'],description:description+' Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.',additionalProperties:true};
+  if (['handoff','snapshot','host_request','session','confirmation'].includes(field)) return {type:['object','null'],description:description+' Retain this producer-owned object unchanged; do not reconstruct it or infer that an external action executed.',additionalProperties:true};
   if (['source_dirty_paths','source_dirty_paths_truncated'].includes(field)) return {type:'object',description,additionalProperties:field==='source_dirty_paths'?{type:'array',items:{type:'string',description:'Relative dirty path in this repository.'}}:{type:'boolean'}};
+  if (field === 'changed' && value === null) return {type: ['boolean','null'], description};
+  if (field === 'failed_action') return {type: ['string','null'], description};
   if (value === null) return { type: ['string','null'], description };
   if (Array.isArray(value)) return { type: 'array', description, items: value.reduce((schema, item) => mergeSchema(schema, exampleSchema(item, descriptions, field)), undefined) ?? {description:description+' Empty in this example; state-dependent records are described by the owning method.'} };
   if (typeof value === 'object') return { type: 'object', description, additionalProperties: false, properties: Object.fromEntries(Object.entries(value).map(([name, child]) => [name, exampleSchema(child, descriptions, name)])), required: Object.keys(value) };

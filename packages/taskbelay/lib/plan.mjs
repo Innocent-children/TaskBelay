@@ -1,106 +1,82 @@
 import { planDigest } from "./ownership.mjs";
+import { AGENTS, isDataDeletion } from "./cli.mjs";
 
 const versionedOperations = new Set(["install", "upgrade", "repair", "reinstall"]);
+export const targetKey = target => `${target.host}:${target.profile ?? "default"}`;
+export const isInstalled = target => target && (target.packageInstalled === true || Boolean(target.packageVersion) || Boolean(target.receipt) || target.contribution === true);
 
 export function createLifecyclePlan(request, observed, {
-  targetVersions = {},
-  planId = null,
-  token = null,
-  now = () => new Date(),
-  platformKey = "darwin-arm64",
-  recoverableCleanupDescription = "Move confirmed data to macOS Trash",
-  replaceLocalPackages = false,
-  installDesktopPet = false,
+  targetVersions = {}, launcherTarget = null, planId = null, token = null, now = () => new Date(),
+  platformKey = "darwin-arm64", recoverableCleanupDescription = "Move confirmed data to macOS Trash",
+  replaceLocalPackages = false, installDesktopPet = false,
 } = {}) {
-  if (request.operation === "factory-reset" && request.host !== "all") {
-    throw planConflict("factory reset requires --host all because Task data is shared");
-  }
-  const targets = selectTargets(request, observed);
-  const cleanupTargets = request.operation === "factory-reset" ? resetCleanupTargets(observed.resources) : [];
+  const deletion = isDataDeletion(request.operation);
+  if (deletion && (request.hosts.length !== AGENTS.length || !request.allKnownProfiles)) throw planConflict("shared data deletion requires all Agents and every known Profile");
+  const targets = [observed.codex, ...observed.deepseek, observed.claude, observed.zcode].filter(Boolean)
+    .filter(target => request.hosts.includes(target.host) && (target.host !== "deepseek" || request.allKnownProfiles || request.profiles.includes(target.profile)))
+    .filter(target => request.operation !== "upgrade" || isInstalled(target));
+  const cleanupTargets = deletion ? cleanupResources(observed.resources) : [];
   const actions = [];
   let downgrade = false;
-
-  if (request.operation === "factory-reset") {
-    const unselected = (observed.knownDeepSeekProfiles ?? []).filter((profile) => !targets.some((target) => target.host === "deepseek" && target.profile === profile));
-    if (unselected.length > 0) throw planConflict("factory reset requires every manager-owned DeepSeek Profile");
-    for (const target of targets) {
-      if (requiresUninstall(target)) actions.push(actionFor(target, "uninstall", null));
-    }
-    if (request.reinstallAfterReset || actions.length || Object.values(observed.resources).some(resource => resource?.exists)) actions.push({ actionId: "manager.cleanup", owner: "manager", operation: "cleanup", host: "manager", profile: null, targetVersion: null });
-    if (request.reinstallAfterReset) {
-      actions.push({ actionId: "manager.initialize_fresh_state", owner: "manager", operation: "initialize", host: "manager", profile: null, targetVersion: null });
-      for (const target of targets) actions.push(actionFor(target, "install", targetVersions[targetKey(target)]));
+  if (deletion) {
+    if (request.operation === "delete-all") for (const target of targets) if (target.state !== "absent" || isInstalled(target)) actions.push(actionFor(target, "uninstall", null));
+    if (actions.length || cleanupTargets.length) {
+      actions.push({ actionId: "manager.cleanup", owner: "manager", operation: "cleanup", host: "manager", profile: null, targetVersion: null });
+      if (request.operation === "delete-data") actions.push({ actionId: "manager.initialize", owner: "manager", operation: "initialize", host: "manager", profile: null, targetVersion: null });
     }
   } else if (versionedOperations.has(request.operation)) {
     for (const target of targets) {
-      const targetVersion = targetVersions[targetKey(target)];
-      if (!targetVersion) throw new Error(`target version is missing for ${targetKey(target)}`);
-      if (target.packageVersion && compareVersions(target.packageVersion, targetVersion) > 0) downgrade = true;
-      const alreadyReady = (target.state === "ready" || target.state === "action_required" && target.localReady === true) && target.packageVersion === targetVersion;
-      if (replaceLocalPackages || request.operation === "reinstall" || request.adopt || !alreadyReady) actions.push(actionFor(target, request.operation, targetVersion));
+      const next = targetVersions[targetKey(target)];
+      if (!next) throw new Error(`target version is missing for ${targetKey(target)}`);
+      if (target.packageVersion && compareVersions(target.packageVersion, next) > 0) downgrade = true;
+      const ready = (target.state === "ready" || target.state === "action_required" && target.localReady === true) && target.packageVersion === next;
+      if (replaceLocalPackages || request.operation === "reinstall" || request.adopt || !ready) actions.push(actionFor(target, request.operation, next));
     }
   } else if (request.operation === "uninstall") {
-    for (const target of targets) if (requiresUninstall(target)) actions.push(actionFor(target, "uninstall", null));
+    for (const target of targets) if (target.state !== "absent" || isInstalled(target)) actions.push(actionFor(target, "uninstall", null));
   }
-
-  if (installDesktopPet && (versionedOperations.has(request.operation) || request.reinstallAfterReset)) {
-    actions.push({ actionId: "pet.install", owner: "manager", operation: "install_pet", host: "manager", profile: null, targetVersion: null });
+  if (installDesktopPet && targets.length && versionedOperations.has(request.operation)) actions.push({ actionId: "pet.install", owner: "manager", operation: "install_pet", host: "manager", profile: null, targetVersion: null });
+  if (launcherTarget) {
+    if (compareVersions(observed.launcher.packageVersion, launcherTarget.version) > 0) downgrade = true;
+    if (launcherTarget.channel === "local" || observed.launcher.packageVersion !== launcherTarget.version) actions.push({ actionId: "taskbelay.upgrade", owner: "taskbelay", operation: "upgrade", host: "taskbelay", profile: null, targetVersion: launcherTarget.version });
   }
-
-  const observedIdentity = {
-    targets: targets.map((target) => ({ host: target.host, profile: target.profile, state: target.state, packageInstalled: target.packageInstalled === true, packageVersion: target.packageVersion, receipt: Boolean(target.receipt) })),
-    resources: observed.resources,
-  };
-  const observedDigest = planDigest(observedIdentity);
-  const stablePlanIdentity = planDigest({
-    operation: request.operation,
-    host: request.host,
-    profiles: request.profiles,
-    allKnownProfiles: request.allKnownProfiles,
-    targetVersion: request.targetVersion,
-    reinstallAfterReset: request.reinstallAfterReset,
-    permanent: request.permanent,
-    adopt: request.adopt,
-    platformKey,
-    observedDigest,
-    actions,
-  });
-  const resolvedPlanId = planId ?? `plan-${stablePlanIdentity.slice(0, 20)}`;
-  const confirmationClass = actions.length === 0 ? "none" : request.operation === "factory-reset"
-    ? request.permanent ? "permanent_reset" : "reset"
-    : downgrade ? "downgrade"
-      : actions.length > 0 ? "mutation" : "none";
-  const tokenValue = token ? token() : stablePlanIdentity.slice(0, 6).toUpperCase();
-  const confirmationToken = confirmationClass === "reset" || confirmationClass === "permanent_reset" ? `RESET-${tokenValue}` : null;
-  const permanentToken = confirmationClass === "permanent_reset" ? `PERMANENT-${stablePlanIdentity.slice(6, 12).toUpperCase()}` : null;
-  const downgradeToken = confirmationClass === "downgrade" ? `DOWNGRADE-${tokenValue}` : null;
-  const core = {
-    planId: resolvedPlanId,
-    operation: request.operation,
-    host: request.host,
-    targets: targets.map((target) => ({ host: target.host, profile: target.profile, state: target.state, packageInstalled: target.packageInstalled === true, packageVersion: target.packageVersion })),
-    actions,
-    impacts: impactsFor(request, targets, observed, actions, recoverableCleanupDescription),
-    restartRequirements: actions.filter(action => action.owner === "deepseek" && action.operation !== "uninstall").map(action => `Restart DeepSeek Profile ${action.profile}`),
-    resources: (request.operation === "factory-reset" ? cleanupTargets : Object.values(observed.resources).filter(resource => resource?.exists))
-      .map(({ label, path }) => ({ label, path })),
-    cleanupTargets,
-    confirmationClass,
-    observedDigest,
-  };
-  return Object.freeze({
-    ...core,
-    digest: planDigest(core),
-    createdAt: now().toISOString(),
-    confirmationToken,
-    permanentToken,
-    downgradeToken,
-  });
+  const selectedTargets = [...targets, ...(launcherTarget ? [observed.launcher] : [])];
+  const observedDigest = planDigest({ targets: selectedTargets, resources: observed.resources });
+  const stable = planDigest({ operation: request.operation, hosts: request.hosts, profiles: request.profiles, allKnownProfiles: request.allKnownProfiles,
+    targetVersion: request.targetVersion, permanent: request.permanent, adopt: request.adopt, platformKey, observedDigest, actions, launcherTarget });
+  const confirmationClass = !actions.length ? "none" : deletion ? request.permanent ? "permanent_delete" : "delete" : downgrade ? "downgrade" : "mutation";
+  const suffix = token ? token() : stable.slice(0, 6).toUpperCase();
+  const impacts = [];
+  if (["status", "doctor"].includes(request.operation)) impacts.push("Read Host and Adapter state only");
+  else if (deletion && actions.length) {
+    impacts.push(request.operation === "delete-all" ? "Remove every installed Adapter before shared data cleanup" : "Preserve plugins, Agent registrations and installation records");
+    if (observed.resources.configuration.exists) impacts.push("Clear TaskBelay user configuration");
+    if (observed.resources.defaultData.exists) impacts.push("Clear current default Task data");
+    if (cleanupTargets.some(target => target.label.startsWith("pet"))) impacts.push("Clear desktop pet records, preferences, and imported appearances");
+    if (cleanupTargets.some(target => target.requiresExplicitConfirmation)) impacts.push("Clear the explicitly confirmed Task data directory");
+    impacts.push("Clear completed maintenance records; retain the current operation result", "Preserve the launcher, desktop application, project code and Agent conversation history");
+    impacts.push(request.permanent ? "Permanently remove confirmed data" : recoverableCleanupDescription);
+    if (request.operation === "delete-data") impacts.push("Create empty data directories at the original paths and restore default preferences");
+  } else if (deletion) impacts.push("No installed Adapter or active TaskBelay data was found");
+  else impacts.push("Preserve TaskBelay user configuration and Task data");
+  if (installDesktopPet && actions.some(action => action.operation === "install_pet")) impacts.push("Update desktop pet application; preserve settings and appearances");
+  const restartRequirements = request.operation === "delete-data" && actions.length
+    ? [...new Set(targets.filter(isInstalled).map(target => `Restart ${target.host}${target.profile ? ` Profile ${target.profile}` : " Agent sessions"}`))]
+    : actions.filter(action => action.owner === "deepseek" && action.operation !== "uninstall").map(action => `Restart DeepSeek Profile ${action.profile}`);
+  if (actions.some(action => action.owner === "taskbelay")) restartRequirements.push("Run taskbelay again to use the updated launcher.");
+  const core = { planId: planId ?? `plan-${stable.slice(0, 20)}`, operation: request.operation, hosts: request.hosts,
+    targets: selectedTargets.map(target => ({ host: target.host, profile: target.profile, state: target.state, packageInstalled: isInstalled(target), packageVersion: target.packageVersion })),
+    actions, impacts, restartRequirements, resources: deletion ? cleanupTargets.map(({ label, path }) => ({ label, path })) : [],
+    cleanupTargets, confirmationClass, observedDigest, launcherTarget };
+  return Object.freeze({ ...core, digest: planDigest(core), createdAt: now().toISOString(),
+    confirmationToken: deletion && actions.length ? `${request.operation.toUpperCase()}-${suffix}` : null,
+    permanentToken: confirmationClass === "permanent_delete" ? `PERMANENT-${stable.slice(6, 12).toUpperCase()}` : null,
+    downgradeToken: confirmationClass === "downgrade" ? `DOWNGRADE-${suffix}` : null });
 }
 
-function resetCleanupTargets(resources) {
+function cleanupResources(resources) {
   const targets = new Map();
-  for (const resource of [resources.configuration, resources.defaultData, resources.pet, resources.explicitData]) {
+  for (const resource of [resources.configuration, resources.defaultData, ...(resources.petData ?? []), resources.explicitData, ...(resources.completedRuns ?? [])]) {
     if (!resource?.exists) continue;
     const existing = targets.get(resource.path);
     if (existing) {
@@ -110,83 +86,6 @@ function resetCleanupTargets(resources) {
   }
   return [...targets.values()];
 }
-
-function selectTargets(request, observed) {
-  const targets = [];
-  if (request.host === "codex" || request.host === "all") targets.push(observed.codex);
-  if (request.host === "deepseek" || request.host === "all") {
-    const requestedProfiles = request.allKnownProfiles
-      ? [...new Set([...(observed.knownDeepSeekProfiles ?? []), ...request.profiles, ...observed.deepseek.map(target => target.profile)])]
-      : request.profiles;
-    for (const profile of requestedProfiles) {
-      const target = observed.deepseek.find((entry) => entry.profile === profile);
-      if (!target) throw new Error(`DeepSeek Profile ${profile} was not observed`);
-      targets.push(target);
-    }
-  }
-  if (request.host === "claude" || request.host === "all") {
-    if (!observed.claude && request.host === "claude") throw new Error("Claude Host was not observed");
-    if (observed.claude) targets.push(observed.claude);
-  }
-  if (request.host === "zcode" || request.host === "all") {
-    if (!observed.zcode && request.host === "zcode") throw new Error("ZCode Host was not observed");
-    if (observed.zcode) targets.push(observed.zcode);
-  }
-  return targets;
-}
-
-function actionFor(target, operation, targetVersion) {
-  return {
-    actionId: `${target.host}.${target.profile ?? "default"}.${operation}`,
-    owner: target.host,
-    operation,
-    host: target.host,
-    profile: target.profile,
-    targetVersion,
-  };
-}
-
-function impactsFor(request, targets, observed, actions, recoverableCleanupDescription) {
-  if (["status", "doctor"].includes(request.operation)) return ["Read Host and Adapter state only"];
-  const affectedTargets = request.operation === "factory-reset"
-    ? targets.filter((target) => actions.some((action) => action.owner === target.host && action.profile === target.profile))
-    : targets;
-  const impacts = affectedTargets.map((target) => `${request.operation} ${target.host}${target.profile ? ` Profile ${target.profile}` : " Adapter"}`);
-  if (request.operation === "factory-reset") {
-    if (actions.some((action) => action.operation === "uninstall")) impacts.push("Remove every installed Adapter before shared data cleanup");
-    if (observed.resources.configuration.exists) impacts.push("Clear TaskBelay user configuration");
-    if (observed.resources.defaultData.exists) impacts.push("Clear current default Task data");
-    if (observed.resources.pet.exists) impacts.push("Clear desktop pet records, preferences, and imported appearances");
-    if (observed.resources.explicitData?.exists) impacts.push("Clear the explicitly confirmed Task data directory");
-    if (observed.resources.configuration.exists || observed.resources.defaultData.exists || observed.resources.pet.exists || observed.resources.explicitData?.exists) {
-      impacts.push(request.permanent ? "Permanently remove confirmed data" : recoverableCleanupDescription);
-    }
-    if (request.reinstallAfterReset) impacts.push("Create fresh state and reinstall selected Adapters");
-    if (impacts.length === 0) impacts.push("No installed Adapter or active TaskBelay data was found");
-  } else {
-    impacts.push("Preserve TaskBelay user configuration and Task data");
-  }
-  if (actions.some(action => action.operation === "install_pet")) impacts.push("Update desktop pet application; preserve settings and appearances");
-  return impacts;
-}
-
-function requiresUninstall(target) {
-  return target.state !== "absent" || target.packageInstalled === true;
-}
-
-function targetKey(target) {
-  return `${target.host}:${target.profile ?? "default"}`;
-}
-
-function compareVersions(left, right) {
-  const a = left.split(".").map(Number);
-  const b = right.split(".").map(Number);
-  for (let index = 0; index < 3; index += 1) if (a[index] !== b[index]) return a[index] - b[index];
-  return 0;
-}
-
-function planConflict(message) {
-  const error = new Error(message);
-  error.exitCode = 4;
-  return error;
-}
+function actionFor(target, operation, targetVersion) { return { actionId: `${target.host}.${target.profile ?? "default"}.${operation}`, owner: target.host, operation, host: target.host, profile: target.profile, targetVersion }; }
+export function compareVersions(left, right) { const a = left.split(".").map(Number), b = right.split(".").map(Number); for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; }
+function planConflict(message) { const error = new Error(message); error.exitCode = 4; return error; }

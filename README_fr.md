@@ -27,6 +27,10 @@ npm install -g taskbelay@latest
 taskbelay
 ```
 
+Exécutez `taskbelay` pour accéder au menu : mise à jour, installation dans les Agents, diagnostic et réparation, centre de contrôle, compagnon de bureau, informations d’installation, désinstallation et suppression des données. Les flèches déplacent la sélection, Entrée confirme, Espace permet la sélection multiple, A sélectionne tout et Échap revient en arrière en conservant les choix. La mise à jour affiche les versions actuelles et cibles du lanceur et des extensions installées ; les installations locales de développement gardent leur canal.
+
+La désinstallation conserve les données. `delete-data` supprime les enregistrements des tâches, la configuration et les préférences du compagnon, conserve les extensions et leurs enregistrements, puis prépare des répertoires vides aux emplacements d’origine. `delete-all` supprime toutes les extensions gérées et les données confirmées. Les deux opérations conservent le lanceur, l’application de bureau, le code du projet et l’historique des conversations de l’Agent. Les données partagées sont confirmées par répertoire et déplacées par défaut vers un emplacement récupérable ; une suppression définitive nécessite une confirmation distincte. Résolvez d’abord les exécutions actives ou incertaines et confirmez explicitement la fermeture de toutes les fenêtres et sessions ZCode. Consultez la [référence des commandes](docs/COMMANDS_en.md). Ces changements concernent le code source actuel et n’annoncent pas une nouvelle publication du paquet.
+
 Compiler et installer les sources actuelles localement :
 
 ```sh

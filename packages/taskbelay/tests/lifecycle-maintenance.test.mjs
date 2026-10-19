@@ -130,7 +130,7 @@ async function maintenanceFixture(t) {
 }
 
 function request(operation) {
-  return { operation, host: "codex", profiles: [], targetVersion: "latest", allKnownProfiles: false, adopt: false, reinstallAfterReset: false, permanent: false, yes: true, confirmationToken: null, permanentToken: null, downgradeToken: null, confirmedExplicitData: [], outputMode: "json" };
+  return { operation, hosts: ["codex"], profiles: [], targetVersion: "latest", allKnownProfiles: false, adopt: false, permanent: false, yes: true, confirmationToken: null, permanentToken: null, downgradeToken: null, confirmedExplicitData: [], outputMode: "json" };
 }
 
 test("bundled pet maintenance runs even when the Adapter is current and preserves user data", async t => {
@@ -138,7 +138,7 @@ test("bundled pet maintenance runs even when the Adapter is current and preserve
   const packageRoot = join(fixture.root, "package");
   const app = join(packageRoot, "runtime/darwin-arm64/TaskBelayPet.app/Contents/MacOS");
   await mkdir(app, { recursive: true });
-  await writeFile(join(packageRoot, "package.json"), "{}");
+  await writeFile(join(packageRoot, "package.json"), '{"name":"taskbelay","version":"0.1.0"}');
   await writeFile(join(app, "TaskBelayPet"), "new application");
   await chmod(join(app, "TaskBelayPet"), 0o755);
   await mkdir(fixture.paths.petDirectory, { recursive: true });
@@ -250,10 +250,11 @@ test("one interactive session can inspect state and return to the menu", async t
   const fixture = await maintenanceFixture(t);
   let text = '';
   const output = { write: value => { text += value; } };
-  const result = await runMain([], { ...fixture.dependencies, input: Readable.from(['6\n1\n1\n0\n']), output, errorOutput: output, isTTY: true });
+  const answers = ['status', 'home', 'exit'];
+  const result = await runMain([], { ...fixture.dependencies, input: Readable.from([]), session: { select: async () => answers.shift(), close() {} }, output, errorOutput: output, isTTY: true });
   assert.equal(result.code, 0);
   assert.equal(fixture.events.length, 0);
-  assert.equal(text.split('TaskBelay Lifecycle Manager').length >= 3, true);
+  assert.equal(text.split('┌ TaskBelay').length >= 3, true);
 });
 
 test("ordinary confirmation with explicit data returns a valid maintenance command", async t => {
@@ -272,7 +273,7 @@ test("ordinary confirmation with explicit data returns a valid maintenance comma
 test("all-Host diagnostics do not classify an unused absent Adapter as a broken install", async t => {
   const fixture = await maintenanceFixture(t);
   await writeFile(fixture.paths.configurationPath, '{}\n');
-  const result = await runLifecycle({ ...request('doctor'), host: 'all', profiles: ['web'] }, {
+  const result = await runLifecycle({ ...request('doctor'), hosts: ['codex', 'deepseek', 'claude', 'zcode'], profiles: ['web'] }, {
     ...fixture.dependencies,
     validateConfiguration: async () => {},
     claudeDriver: { observe: async () => ({ host: 'claude', profile: null, hostAvailable: false, state: 'absent', packageVersion: null, issues: [{ code: 'host_missing', message: 'Claude missing', command: 'claude --version' }] }) },

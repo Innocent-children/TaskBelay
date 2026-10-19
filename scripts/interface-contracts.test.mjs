@@ -20,7 +20,7 @@ function described(schema,path) {
   if(schema.items)described(schema.items,path+'[]');
 }
 test('current public method/operation branches have complete discoverable contracts',()=>{
-  assert.equal(all.length,100);assert.equal(new Set(all.map(x=>x.name)).size,100);
+  assert.equal(all.length,101);assert.equal(new Set(all.map(x=>x.name)).size,101);
   const expected=[...HOST_LAUNCH_OPERATIONS.map(x=>'codex.host-launch.'+x),...zcodeOperations.map(x=>'zcode.host-launch.'+x),...OPERATIONS.map(x=>'taskbelay.lifecycle.'+x)];
   for(const name of expected)assert.ok(all.some(x=>x.name===name),name);
   for(const entry of all){

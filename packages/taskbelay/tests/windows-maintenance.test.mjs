@@ -97,8 +97,8 @@ test("Windows replacement simulation validates package identity and stops the ex
 });
 
 function request(operation) {
-  return { operation, host: "claude", profiles: [], allKnownProfiles: false, targetVersion: "0.2.0", adopt: false,
-    reinstallAfterReset: false, permanent: false, yes: true, confirmedExplicitData: [], outputMode: "json" };
+  return { operation, hosts: ["claude"], profiles: [], allKnownProfiles: false, targetVersion: "0.2.0", adopt: false,
+    permanent: false, yes: true, confirmedExplicitData: [], outputMode: "json" };
 }
 
 test("Windows process command simulation binds exact image, complete arguments and startup identity", async () => {

@@ -1,5 +1,5 @@
 const chinese = {
-  title: "TaskBelay 生命周期管理器",
+  title: "TaskBelay 管理",
   manage: "管理现有安装",
   choose: "请选择：",
   operationPrompt: "选择操作：",
@@ -41,9 +41,11 @@ const chinese = {
     repair: "修复",
     reinstall: "重装",
     uninstall: "卸载",
-    "factory-reset": "恢复出厂设置",
+    "delete-data": "删除数据（保留插件）",
+    "delete-all": "删除所有数据（插件+数据）",
+    cleanup: "删除已确认的数据", initialize: "准备空数据目录",
   },
-  hosts: { codex: "Codex", deepseek: "DeepSeek", claude: "Claude Code", zcode: "ZCode", all: "全部" },
+  hosts: { taskbelay: "TaskBelay 命令入口", codex: "Codex", deepseek: "DeepSeek", claude: "Claude Code", zcode: "ZCode", all: "全部" },
   statuses: {
     ready: "就绪",
     absent: "未安装",
@@ -77,7 +79,7 @@ const chinese = {
   },
 };
 const english = {
-  title: "TaskBelay Lifecycle Manager",
+  title: "TaskBelay Manager",
   manage: "Manage existing installation",
   choose: "Choose: ",
   operationPrompt: "Operation: ",
@@ -112,9 +114,9 @@ const english = {
   },
   continuePrompt: "Continue? [y/N] ",
   operations: Object.fromEntries([
-    "status", "doctor", "install", "upgrade", "repair", "reinstall", "uninstall", "factory-reset",
+    "status", "doctor", "install", "upgrade", "repair", "reinstall", "uninstall", "delete-data", "delete-all", "cleanup", "initialize",
   ].map((operation) => [operation, operation])),
-  hosts: { codex: "codex", deepseek: "deepseek", claude: "Claude Code", zcode: "ZCode", all: "all" },
+  hosts: { taskbelay: "TaskBelay launcher", codex: "codex", deepseek: "deepseek", claude: "Claude Code", zcode: "ZCode", all: "all" },
   statuses: Object.fromEntries([
     "ready", "absent", "partial", "incompatible", "conflicted", "unknown", "restart_required",
     "confirmation_required", "action_required", "failed",
@@ -156,7 +158,7 @@ export function renderResult(result, { mode = "plain", language = resolveLanguag
   const good = ["ready", "absent", "restart_required"].includes(result.status);
   const heading = `${good ? "✓" : "!"} ${messages.operations[result.operation] ?? result.operation}: ${messages.statuses[result.status] ?? result.status}`;
   const lines = ["", mode === "rich" ? `\u001b[1;${good ? "36" : "33"}m${heading}\u001b[0m` : heading,
-    "─".repeat(36), result.changed ? messages.changed : messages.unchanged];
+    "─".repeat(36), result.changed === null ? (zh ? "变更结果待检查" : "Inspect changes before retrying") : result.changed ? messages.changed : messages.unchanged];
   for (const target of result.targets ?? []) {
     lines.push(`  ${messages.hosts[target.host] ?? target.host}${target.profile ? `/${target.profile}` : ""} · ${messages.statuses[target.state] ?? target.state}`);
     if (target.package_version) lines.push(`    Adapter ${target.package_version}${target.core_version ? ` · Core ${target.core_version}` : ""}`);
@@ -167,6 +169,8 @@ export function renderResult(result, { mode = "plain", language = resolveLanguag
       if (issue.command) lines.push(`      ${issue.command}`);
     }
   }
+  if (result.launcher) lines.push(`  TaskBelay ${result.launcher.packageVersion} · ${result.launcher.channel} · ${result.launcher.packageRoot}`);
+  if (result.installation) for (const [name, path] of Object.entries(result.installation)) lines.push(`  ${name}: ${path}`);
   for (const check of result.checks ?? []) lines.push(`  ${check.status === "passed" ? "✓" : check.status === "not_installed" ? "–" : "!"} ${check.name}: ${check.message}`);
   if (result.error) {
     lines.push(`${zh ? "原因" : "Reason"}: ${result.error.message}`);
@@ -188,6 +192,9 @@ export function renderResult(result, { mode = "plain", language = resolveLanguag
     if (result.targets?.some(t => t.host === "deepseek" && ["ready", "restart_required"].includes(t.state))) lines.push("  /taskbelay <task description>");
     lines.push("  taskbelay webui start");
   }
+  if (["delete-data", "delete-all"].includes(result.operation)) lines.push(zh
+    ? result.operation === "delete-data" ? "插件与注册保留；数据已清理时，请重启相关 Agent 会话。" : "命令入口与桌面程序保留；按结果确认插件及数据是否已移除。"
+    : result.operation === "delete-data" ? "Plugins and registrations are retained; restart Agent sessions after data cleanup." : "Launcher and desktop application are retained; inspect the result for plugin and data removal.");
   if (result.next_step) lines.push(`${messages.next}: ${result.next_step}`);
   return `${lines.join("\n")}\n`;
 }
@@ -229,6 +236,7 @@ export function renderProgress(event, { language = resolveLanguage() } = {}) {
 
 function actionLabel(action, messages) {
   if (action.operation === "install_pet") return messages.pet.install;
+  if (["cleanup", "initialize"].includes(action.operation)) return messages.operations[action.operation];
   const host = messages.hosts[action.host] ?? action.host;
   const profile = action.profile ? ` Profile ${action.profile}` : "";
   return `${messages.operations[action.operation] ?? action.operation} ${host}${profile}`;
@@ -243,8 +251,8 @@ function translateImpact(impact, language, messages) {
   if (language !== "zh-CN") return impact;
   const fixed = {
     "Update desktop pet application; preserve settings and appearances": "更新桌面宠物程序，保留设置与形象",
-    "Read Host and Adapter state only": "仅读取 Host 和 Adapter 状态",
-    "Remove every installed Adapter before shared data cleanup": "在清理共享数据前移除所有已安装的 Adapter",
+    "Read Host and Adapter state only": "仅读取 Agent 和插件状态",
+    "Remove every installed Adapter before shared data cleanup": "在清理共享数据前移除所有已安装的插件",
     "Clear TaskBelay user configuration": "清理 TaskBelay 用户配置",
     "Clear current default Task data": "清理当前默认 Task 数据",
     "Clear desktop pet records, preferences, and imported appearances": "清理桌面宠物记录、偏好与导入形象",
@@ -252,12 +260,15 @@ function translateImpact(impact, language, messages) {
     "Permanently remove confirmed data": "永久删除已确认的数据",
     "Move confirmed data to the TaskBelay recovery directory": "将已确认的数据移入 TaskBelay 恢复目录",
     "Move confirmed data to macOS Trash": "将已确认的数据移入 macOS 废纸篓",
-    "Create fresh state and reinstall selected Adapters": "创建全新状态并重新安装所选 Adapter",
+    "Preserve plugins, Agent registrations and installation records": "保留插件、Agent 注册和必要的安装记录",
+    "Clear completed maintenance records; retain the current operation result": "清理已完成的维护记录，保留本次操作结果和未解决的记录",
+    "Preserve the launcher, desktop application, project code and Agent conversation history": "保留命令入口、桌面程序、项目代码和 Agent 会话历史",
+    "Create empty data directories at the original paths and restore default preferences": "在原位置准备空数据目录，恢复默认偏好",
     "No installed Adapter or active TaskBelay data was found": "未发现已安装的 Adapter 或有效 TaskBelay 数据",
     "Preserve TaskBelay user configuration and Task data": "保留 TaskBelay 用户配置和 Task 数据",
   };
   if (fixed[impact]) return fixed[impact];
-  const target = /^(status|doctor|install|upgrade|repair|reinstall|uninstall|factory-reset) (codex|deepseek|claude|zcode)(?: Profile (.+)| Adapter)$/u.exec(impact);
+  const target = /^(status|doctor|install|upgrade|repair|reinstall|uninstall|delete-data|delete-all) (codex|deepseek|claude|zcode)(?: Profile (.+)| Adapter)$/u.exec(impact);
   if (!target) return impact;
   const [, operation, host, profile] = target;
   return `${messages.operations[operation]} ${messages.hosts[host]}${profile ? ` Profile ${profile}` : " Adapter"}`;

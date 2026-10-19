@@ -1,237 +1,92 @@
 import assert from "node:assert/strict";
-import { PassThrough, Readable, Writable } from "node:stream";
+import { PassThrough, Writable } from "node:stream";
 import test from "node:test";
-
-import { CLIError, confirmPlan, parseArguments, promptForRequest } from "../lib/cli.mjs";
+import { AGENTS, OPERATIONS, CLIError, confirmPlan, parseArguments, promptForRequest } from "../lib/cli.mjs";
+import { BACK, CANCEL, createTerminalSession } from "../lib/terminal.mjs";
 import { renderPlan, renderProgress, renderResult, resolveLanguage } from "../lib/presentation.mjs";
 
-test("parser normalizes every lifecycle operation through one closed entry", () => {
-  for (const operation of ["status", "doctor", "install", "upgrade", "repair", "reinstall", "uninstall", "factory-reset"]) {
-    const args = [operation, "--host", "codex", ...(operation === "factory-reset" ? [] : [])];
-    const request = parseArguments(args, { isTTY: false, noColor: true });
+function output() { let text = ""; const stream = new Writable({ write(chunk, _encoding, done) { text += chunk; done(); } }); Object.defineProperties(stream, { text: { get: () => text }, columns: { value: 42 }, rows: { value: 20 } }); return stream; }
+function scripted(answers, inspect = () => {}) {
+  const ask = async (message, entries, options) => { inspect(message, entries, options); assert.ok(answers.length, `missing answer for ${message}`); return answers.shift(); };
+  return { select: ask, multiselect: ask, question: ask, close() {} };
+}
+
+test("current operations normalize one or several Agents and reject retired commands", () => {
+  for (const operation of OPERATIONS) {
+    const request = parseArguments([operation, "--host", "all", "--json"], { isTTY: false });
+    assert.deepEqual(request.hosts, AGENTS); assert.equal(request.outputMode, "json");
+  }
+  assert.deepEqual(parseArguments(["upgrade", "--host", "codex", "--host", "claude"]).hosts, ["codex", "claude"]);
+  assert.deepEqual(parseArguments(["upgrade", "--self"], { isTTY: false }).hosts, []);
+  for (const args of [["factory-reset"], ["delete-all", "--reinstall"], ["status", "--self"], ["install", "--self-package", "/a.tgz"], ["delete-data", "--host", "codex"], ["install", "--host", "all", "--host", "codex"], ["status", "--json", "--plain"], ["install", "--host", "deepseek", "--profile", "../web"], ["upgrade", "--host", "codex", "--version", "beta"]]) assert.throws(() => parseArguments(args), CLIError);
+  assert.throws(() => parseArguments(["install"], { isTTY: false }), /--host or --self/);
+  assert.deepEqual(parseArguments(["delete-data"], { isTTY: false }).hosts, AGENTS);
+});
+
+test("home exposes upgrade, Agent install and three distinct cleanup results", async () => {
+  for (const operation of ["uninstall", "delete-data", "delete-all"]) {
+    const answers = operation === "uninstall" ? ["cleanup", operation, ["codex"]] : ["cleanup", operation, "recoverable"];
+    let home;
+    const request = await promptForRequest({ output: output(), language: "zh-CN", session: scripted(answers, (_message, entries) => { home ??= entries; }), observation: { targets: [{ host: "codex", state: "ready", package_version: "1.0.0" }] } });
     assert.equal(request.operation, operation);
-    assert.equal(request.host, "codex");
-    assert.equal(request.outputMode, "plain");
+    assert.ok(home.some(entry => entry.label === "安装到 Agent"));
+    assert.equal(home[0].value, "upgrade");
+    assert.equal(request.allKnownProfiles, operation !== "uninstall");
   }
 });
 
-test("non-TTY mutations require Host while DeepSeek defaults to web", () => {
-  assert.throws(() => parseArguments(["install"], { isTTY: false }), CLIError);
-  const request = parseArguments(["install", "--host", "deepseek", "--yes"], { isTTY: false });
-  assert.deepEqual(request.profiles, ["web"]);
-  assert.equal(request.yes, true);
+test("install supports arbitrary Agent and Profile subsets and retains choices on back", async () => {
+  const state = {};
+  const request = await promptForRequest({ output: output(), state, session: scripted(["install", ["codex", "deepseek"], BACK, ["codex", "deepseek"], ["web", "work"]], (message, _entries, options) => { if (message === "install" && state.selections.install) assert.deepEqual(options.initial, ["codex", "deepseek"]); }) });
+  assert.deepEqual(request.hosts, ["codex", "deepseek"]);
+  assert.deepEqual(request.profiles, ["web", "work"]);
+  assert.equal(state.nextOperation, "install");
 });
 
-test("parser rejects path-like Profiles, conflicting output, and ordinary reset authorization", () => {
-  for (const args of [
-    ["install", "--host", "deepseek", "--profile", "../web"],
-    ["status", "--json", "--plain"],
-    ["install", "--host", "codex", "--confirm-reset", "RESET-X"],
-    ["upgrade", "--host", "codex", "--version", "beta"],
-  ]) assert.throws(() => parseArguments(args, { isTTY: false }), CLIError);
-  const reset = parseArguments(["factory-reset", "--host", "all", "--yes"], { isTTY: false });
-  assert.equal(reset.confirmationToken, null);
+test("upgrade submits only selected installed components and offers secondary version input", async () => {
+  const choices = [{ value: "self", label: "CLI" }, { value: "codex", label: "Codex", host: "codex" }, { value: "deepseek:work", label: "work", host: "deepseek", profile: "work" }];
+  const state = {};
+  const request = await promptForRequest({ output: output(), state, session: scripted(["upgrade", { action: "v", selected: [] }, "1.2.3", ["self", "deepseek:work"]]), inspectUpgrade: async options => { assert.ok(["latest", "1.2.3"].includes(options.targetVersion)); return choices; } });
+  assert.deepEqual(request.hosts, ["deepseek"]); assert.deepEqual(request.profiles, ["work"]);
+  assert.equal(request.self, true); assert.equal(request.targetVersion, "1.2.3");
 });
 
-test("JSON rendering is exactly one parseable object", () => {
-  const result = { operation: "status", status: "ready", changed: false, targets: [], next_step: null };
-  const text = renderResult(result, { mode: "json", language: "en" });
-  assert.equal(text.trim().split("\n").length, 1);
-  assert.deepEqual(JSON.parse(text), result);
+test("terminal arrows skip disabled rows, Space toggles, Enter submits and raw mode restores", async () => {
+  const input = new PassThrough(), out = output();
+  const raw = []; input.isTTY = true; input.setRawMode = value => { input.isRaw = value; raw.push(value); };
+  const session = createTerminalSession(input, out, { language: "zh-CN", environment: { NO_COLOR: "1" } });
+  const pending = session.multiselect("选择", [{ value: "a", label: "第一项" }, { value: "b", label: "不可选", disabled: true }, { value: "c", label: "第三项" }]);
+  input.write(" \u001b[B \r");
+  assert.deepEqual(await pending, ["a", "c"]);
+  assert.equal(input.isRaw, false); assert.deepEqual(raw, [true, false]);
+  const back = session.select("返回", [{ value: true, label: "执行" }]); input.write("\u001b[D"); assert.equal(await back, BACK);
+  const cancel = session.select("退出", [{ value: true, label: "执行" }]); input.write("\u0003"); assert.equal(await cancel, CANCEL);
+  session.close(); assert.equal(input.listenerCount("keypress"), 0);
+  assert.match(out.text, /Space|空格/); assert.doesNotMatch(out.text, /\u001b\[[0-9;]+m/u);
 });
 
-test("rich successful install renders one brand screen and contextual next steps", () => {
-  const result = {
-    operation: "install", status: "ready", changed: true, next_step: null, restart_requirements: ["Restart DeepSeek Profile web"],
-    targets: [
-      { host: "codex", profile: null, package_version: "0.8.0", state: "ready" },
-      { host: "deepseek", profile: "web", package_version: "0.8.0", state: "restart_required" },
-    ],
-  };
-  const text = renderResult(result, { mode: "rich", language: "zh-CN" });
-  assert.match(text, /\u001b\[1;36m/u);
-  assert.match(text, /安装: 就绪/u);
-  assert.match(text, /\$taskbelay-codex:taskbelay <task description>/u);
-  assert.match(text, /\/taskbelay <task description>/u);
-  assert.match(text, /taskbelay webui start/u);
-  assert.match(text, /Adapter 0.8.0/u);
-  assert.doesNotMatch(renderResult(result, { mode: "plain", language: "en" }), /██████╗/u);
-  assert.equal(renderResult(result, { mode: "json", language: "zh-CN" }), `${JSON.stringify(result)}\n`);
+test("empty multiselect does not submit; text keeps spaces and buffers no later approval", async () => {
+  const input = new PassThrough(), out = output(), session = createTerminalSession(input, out);
+  const selected = session.multiselect("Select", [{ value: "a", label: "A" }]);
+  input.write("\r"); assert.match(out.text, /Select at least one/);
+  input.write("a\rignored"); assert.deepEqual(await selected, ["a"]);
+  const text = session.question("Path"); input.write("/tmp/my folder\r"); assert.equal(await text, "/tmp/my folder");
+  session.close();
 });
 
-test("installation progress renders readable localized actions and concrete Host steps", () => {
-  const action = { operation: "install", host: "deepseek", profile: "web" };
-  assert.equal(renderProgress({ type: "action_start", action }, { language: "zh-CN" }), "→ 开始: 安装 DeepSeek Profile web\n");
-  assert.equal(renderProgress({ type: "step_complete", action, stepId: "deepseek.web.verify_artifact" }, { language: "zh-CN" }), "  ✓ 下载并校验 DeepSeek Adapter 制品\n");
-  assert.equal(renderProgress({ type: "step_complete", action, stepId: "deepseek.web.write_receipt" }, { language: "en" }), "  ✓ Write and save the DeepSeek Profile installation receipt\n");
-  assert.equal(renderProgress({ type: "action_complete", action }, { language: "en" }), "✓ Completed: install deepseek Profile web\n");
+test("destructive, permanent and downgrade approvals cannot be supplied by --yes", async () => {
+  const plan = { operation: "delete-all", confirmationClass: "permanent_delete", confirmationToken: "DELETE-ALL-123", permanentToken: "PERMANENT-123" };
+  assert.equal(await confirmPlan(plan, { operation: "delete-all", yes: true, permanent: true, outputMode: "json" }, { input: { isTTY: true }, output: output() }), false);
+  assert.equal(await confirmPlan(plan, { operation: "delete-all", permanent: true }, { input: { isTTY: true }, output: output(), session: scripted(["DELETE-ALL-123", "PERMANENT-123"]) }), true);
+  assert.equal(await confirmPlan({ confirmationClass: "mutation" }, {}, { input: { isTTY: true }, output: output(), session: scripted([BACK]) }), BACK);
+  assert.equal(await confirmPlan({ confirmationClass: "downgrade", downgradeToken: "DOWNGRADE-123" }, { yes: true }, { input: { isTTY: false }, output: output() }), false);
 });
 
-test("locale selection uses Chinese only for zh and English for every other locale", () => {
+test("JSON output stays exactly one object while Chinese plans describe data retention", () => {
+  const result = { operation: "delete-data", status: "restart_required", changed: true, targets: [], next_step: null };
+  assert.deepEqual(JSON.parse(renderResult(result, { mode: "json", language: "zh-CN" })), result);
+  const text = renderPlan({ operation: "delete-data", planId: "test", actions: [], impacts: ["Preserve plugins, Agent registrations and installation records", "Create empty data directories at the original paths and restore default preferences"] }, { language: "zh-CN" });
+  assert.match(text, /删除数据（保留插件）/); assert.match(text, /在原位置准备空数据目录/);
   assert.equal(resolveLanguage({ LANG: "zh_CN.UTF-8" }), "zh-CN");
-  assert.equal(resolveLanguage({ LANG: "zh-TW" }), "zh-CN");
-  assert.equal(resolveLanguage({ LANG: "en_US.UTF-8" }), "en");
-  assert.equal(resolveLanguage({ LANG: "ja_JP.UTF-8" }), "en");
-  assert.equal(resolveLanguage({ LANG: "fr_FR.UTF-8" }), "en");
-  assert.equal(resolveLanguage({}), "en");
-});
-
-test("no-argument TTY home installs Codex without asking for a lifecycle operation", async () => {
-  const output = captureOutput();
-  const request = await promptForRequest({ input: Readable.from(["1\n"]), output, language: "en" });
-  assert.equal(request.operation, "install");
-  assert.equal(request.host, "codex");
-  assert.match(output.text, /1\. Install Codex/u);
-  assert.match(output.text, /6\. Manage existing installation/u);
-  assert.doesNotMatch(output.text, /1\. status/u);
-});
-
-test("manage existing installation opens the complete operation menu", async () => {
-  const output = captureOutput();
-  const input = scriptedInput(["6\n", "1\n", "5\n", "web\n"]);
-  const request = await promptForRequest({ input, output, language: "en" });
-  assert.equal(request.operation, "status");
-  assert.equal(request.host, "all");
-  assert.match(output.text, /Manage existing installation/u);
-  assert.match(output.text, /1\. status/u);
-});
-
-test("the home menu offers the desktop pet only on the runtime that ships it", async () => {
-  const macos = captureOutput();
-  const started = await promptForRequest({ input: Readable.from(["7\n"]), output: macos, language: "en", platform: "darwin", arch: "arm64" });
-  assert.deepEqual(started, { pet: "start" });
-  assert.match(macos.text, /7\. Start the desktop pet/u);
-  assert.match(macos.text, /8\. Stop the desktop pet/u);
-
-  const stopped = await promptForRequest({
-    input: Readable.from(["8\n"]),
-    output: captureOutput(),
-    language: "en",
-    platform: "darwin",
-    arch: "arm64",
-  });
-  assert.deepEqual(stopped, { pet: "stop" });
-
-  const chinese = captureOutput();
-  await promptForRequest({ input: Readable.from(["7\n"]), output: chinese, language: "zh-CN", platform: "darwin", arch: "arm64" });
-  assert.match(chinese.text, /7\. 开启桌面宠物/u);
-  assert.match(chinese.text, /8\. 关闭桌面宠物/u);
-
-  const windows = captureOutput();
-  const manage = await promptForRequest({
-    input: scriptedInput(["6\n", "1\n", "5\n", "web\n"]),
-    output: windows,
-    language: "en",
-    platform: "win32",
-    arch: "x64",
-  });
-  assert.equal(manage.operation, "status");
-  assert.equal(manage.pet, undefined);
-  assert.match(windows.text, /7\. Start the desktop pet/u);
-  assert.match(windows.text, /8\. Stop the desktop pet/u);
-});
-
-test("Chinese locale renders the complete interactive menu and plan in Chinese", async () => {
-  const output = captureOutput();
-  const input = scriptedInput(["6\n", "8\n"]);
-  const request = await promptForRequest({ input, output, language: "zh-CN" });
-  assert.equal(request.operation, "factory-reset");
-  assert.equal(request.host, "all");
-  assert.match(output.text, /TaskBelay 生命周期管理器/u);
-  assert.match(output.text, /6\. 管理现有安装/u);
-  assert.match(output.text, /8\. 恢复出厂设置/u);
-  assert.equal(request.allKnownProfiles, true);
-  assert.doesNotMatch(output.text, /Manage existing installation|Choose:|Operation:/u);
-
-  const plan = renderPlan({
-    operation: "factory-reset",
-    planId: "plan-language",
-    impacts: [
-      "factory-reset codex Adapter",
-      "Remove every installed Adapter before shared data cleanup",
-      "Clear desktop pet records, preferences, and imported appearances",
-      "Move confirmed data to macOS Trash",
-    ],
-  }, { mode: "plain", language: "zh-CN" });
-  assert.match(plan, /^执行计划 恢复出厂设置/u);
-  assert.match(plan, /恢复出厂设置 Codex Adapter/u);
-  assert.match(plan, /移除所有已安装的 Adapter/u);
-  assert.match(plan, /清理桌面宠物记录、偏好与导入形象/u);
-  assert.match(plan, /移入 macOS 废纸篓/u);
-  assert.doesNotMatch(plan, /Plan|Remove every|Move confirmed|desktop pet/u);
-});
-
-test("Chinese locale renders reset confirmation in Chinese", async () => {
-  const output = captureOutput();
-  const input = scriptedInput(["RESET-ABC123\n"], { isTTY: true });
-  const confirmed = await confirmPlan({
-    confirmationClass: "reset",
-    confirmationToken: "RESET-ABC123",
-    permanentToken: null,
-  }, { confirmationToken: null }, { input, output, language: "zh-CN" });
-  assert.equal(confirmed, true);
-  assert.match(output.text, /输入 RESET-ABC123 确认恢复出厂设置/u);
-  assert.doesNotMatch(output.text, /Type .* to confirm reset/u);
-});
-
-function captureOutput() {
-  let text = "";
-  const stream = new Writable({ write(chunk, _encoding, callback) { text += chunk.toString(); callback(); } });
-  Object.defineProperty(stream, "text", { get: () => text });
-  return stream;
-}
-
-function scriptedInput(lines, { isTTY = false } = {}) {
-  const input = new PassThrough();
-  Object.defineProperty(input, "isTTY", { value: isTTY });
-  const writeNext = (index) => {
-    if (index === lines.length) {
-      input.end();
-      return;
-    }
-    input.write(lines[index]);
-    setTimeout(() => writeNext(index + 1), 5);
-  };
-  setTimeout(() => writeNext(0), 0);
-  return input;
-}
-
-test("menus retry invalid input, accept buffered lines and allow back and exit", async () => {
-  const output = captureOutput();
-  const result = await promptForRequest({ input: Readable.from(['x\n6\n0\n0\n']), output, language: 'zh-CN' });
-  assert.equal(result.cancelled, true);
-  assert.match(output.text, /请输入列表中的数字/u);
-  assert.match(output.text, /0\. 返回/u);
-});
-
-test("subcommand help and version defaults are explicit", () => {
-  for (const operation of ['install', 'repair', 'upgrade', 'reinstall', 'factory-reset', 'doctor']) {
-    assert.equal(parseArguments([operation, '--help']).help, operation);
-  }
-  assert.equal(parseArguments(['repair', '--host', 'codex']).targetVersion, null);
-  assert.equal(parseArguments(['repair', '--host', 'codex', '--version', '1.0.0', '--confirm-downgrade', 'DOWNGRADE-X']).downgradeToken, 'DOWNGRADE-X');
-});
-
-test("JSON confirmation never prompts even on a TTY", async () => {
-  const output = captureOutput();
-  assert.equal(await confirmPlan({ confirmationClass: 'mutation' }, { outputMode: 'json' }, { input: { isTTY: true }, output }), false);
-  assert.equal(output.text, '');
-});
-
-test("Claude selection does not ask for DeepSeek profiles", async () => {
-  const output = captureOutput();
-  const request = await promptForRequest({ input: Readable.from(["3\n"]), output, language: "en" });
-  assert.equal(request.host, "claude");
-  assert.deepEqual(request.profiles, []);
-  assert.doesNotMatch(output.text, /DeepSeek Profile/);
-});
-
-test("ZCode selection uses its own Host identity without DeepSeek profiles", async () => {
-  const output = captureOutput();
-  const request = await promptForRequest({ input: Readable.from(["4\n"]), output, language: "en" });
-  assert.equal(request.operation, "install");
-  assert.equal(request.host, "zcode");
-  assert.deepEqual(request.profiles, []);
-  assert.doesNotMatch(output.text, /DeepSeek Profile/);
-  assert.throws(() => parseArguments(["install", "--host", "zcode", "--profile", "web"]), /DeepSeek Profile/);
+  assert.match(renderProgress({ type: "action_start", action: { operation: "cleanup", host: "manager" } }, { language: "zh-CN" }), /删除已确认的数据/);
 });

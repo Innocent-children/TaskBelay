@@ -37,7 +37,7 @@ function driver(host, profile, states) {
 }
 
 function request() {
-  return { operation: "uninstall", host: "all", profiles: ["web"], targetVersion: "latest", allKnownProfiles: true, adopt: false, reinstallAfterReset: false, permanent: false, yes: true, confirmationToken: null, permanentToken: null, downgradeToken: null, confirmedExplicitData: [], outputMode: "json" };
+  return { operation: "uninstall", hosts: ["codex", "deepseek", "claude", "zcode"], profiles: ["web"], targetVersion: "latest", allKnownProfiles: true, adopt: false, permanent: false, yes: true, confirmationToken: null, permanentToken: null, downgradeToken: null, confirmedExplicitData: [], outputMode: "json" };
 }
 
 test("repeated uninstall completes without invoking a Host mutation", async t => {
@@ -54,7 +54,7 @@ test("repeated uninstall completes without invoking a Host mutation", async t =>
   };
   const deps = { homeDirectory: home, environment: {}, platform: 'darwin', arch: 'arm64', codexDriver,
     deepseekDriver: {}, confirmPlan: async () => true };
-  const selected = { ...request(), host: 'codex', profiles: [], allKnownProfiles: false };
+  const selected = { ...request(), hosts: ['codex'], profiles: [], allKnownProfiles: false };
   assert.equal((await runLifecycle(selected, deps)).result.changed, true);
   const repeated = await runLifecycle(selected, deps);
   assert.equal(repeated.code, 0);
