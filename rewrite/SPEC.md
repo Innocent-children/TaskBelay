@@ -1,702 +1,683 @@
 # TaskBelay 功能说明书
+//TODO 这套算法还是太依赖LLM自己判断了，如果它给过度设计找理由怎么办？能不能设计更客观、可计算、难以绕过的约束？
+本文定义重构后的 TaskBelay，包括产品行为、核心算法、接口和验收方式。实现中的选择必须服务于这里的用户结果。算法的效果目标需要按第 16 节实测，不能把设计目标写成已经获得的收益。
 
-本文是重写 TaskBelay 的唯一依据。实现、文档、测试与本文冲突时，以本文为准；本文没写的功能不做。文中所有数值都是初始值，后面按第 18 节的对照实验调整。
+## 1. 产品目标
 
-## 1. TaskBelay 是什么
+TaskBelay 帮助使用 LLM 编程 Agent 的开发者减少两类浪费：
 
-TaskBelay 是一个本地命令行程序，接在 AI 编程 Agent（Claude Code、Codex、ZCode、DeepSeek Harness）上，做三件事：
+1. **过度设计**：为当前需求不需要的职责、扩展方式、状态、副作用或间接调用增加长期维护成本。
+2. **过度测试**：编写没有新增验证价值的测试，或者反复执行不能提供新信息的检查。
 
-1. **防止过度设计**：按 Git 里的实际改动计算规模和结构指标，与预算比较。超出预算时，拦下改动或要求说明理由；超出很多时，必须问用户。
-2. **防止过度测试**：按输入文件的哈希复用检查结果，代码没变就不重跑。测试写多少也有预算，和本次改动无关的测试会被找出来。
-3. **让工作接得上**：开新会话或换一个 Agent，都能拿到同一个 Task 的进展，接着做。
+产品的主要结果是：在满足真实需求、保留必要验证和清晰职责的前提下，让 Agent 做更少的无效工作。少写几行代码、少建几个文件、少跑几次测试只是可能出现的结果，不单独代表成功。
 
-代码由 Agent 写。TaskBelay 只负责计算、记录、拦截和出报告。
+TaskBelay 是本地 Go 程序，通过 MCP、Skill 和 Agent 支持的 hook 接入 Claude Code、Codex、ZCode、DeepSeek Harness。它观察真实改动，要求处理具体的设计与测试问题，执行和复用检查，产生明确的停止条件。
 
-## 2. 解决的问题
+多 Agent 接力、新会话接力和交付报告保存这套判断及其实际结果，使接手者继续已有工作，不重新设计、不重复验证。
 
-| 问题 | 常见表现 | TaskBelay 怎么做 |
-| --- | --- | --- |
-| 过度设计 | 修一个 bug 新建三个文件；接口只有一个实现；新函数没人调用；生产代码只给测试用；顺手格式化无关文件；加新依赖 | 第 7 节的算法：算指标，对照预算分级，再要求删减、说明理由或问用户 |
-| 过度测试 | 代码没变还反复跑测试；改一行就跑全量；给没改的代码写测试；写一堆结构一样的测试；失败后不改代码就重跑 | 第 8 节的算法：测试规模指标、按输入哈希复用、run 的决定流程、全量检查放到最后 |
-| 接不上 | 新会话从头再问一遍；换了 Agent 后不知道做到哪、检查过什么 | 第 9 节：Task 摘要、交接、占用 |
+## 2. 核心方法与职责
 
-## 3. 做什么，不做什么
+核心方法是**按当前需求约束新增复杂度，按尚未解决的问题分配验证工作**。它由四个互相配合的部分组成：
 
-**做：**
+| 部分 | 输入 | 处理 | 输出 |
+| --- | --- | --- | --- |
+| 需求与行为 | 用户请求、相关现有约定 | 定义必须实现的结果和受影响但必须保持的行为 | 有稳定 ID 的行为清单 |
+| 设计检查 | 实际 diff、调用与依赖关系、行为清单 | 找到新增职责和扩展选择，比较具体的简单替代方案 | 必须处理的设计问题及保留依据 |
+| 测试检查 | 行为清单、实际测试断言、当前运行记录 | 找出验证缺口、重复测试和可复用结果，选择足够且成本较低的检查 | 本次必要的检查集合 |
+| 停止判断 | 当前代码、已处理问题、检查结果 | 检查是否仍有真实缺口 | 继续修复、验证、询问真实选择或交付 |
 
-1. 记录 Task：目标、不做的事、用户限制、规模、检查计划、进展、需要问用户的问题。
-2. 防过度设计算法（第 7 节）。
-3. 防过度测试算法（第 8 节）。
-4. 新会话接续和换 Agent 接续（第 9 节）。
-5. 完成条件和交付报告（第 10 节）。
-6. 装到各个 Agent、卸载、自检（第 13 节）。
+程序负责文件内容、进程结果、结构关系、记录关联和规则执行。Agent 负责理解需求、判断行为差异、提出简单方案并修改代码。用户只决定目标、明确限制以及确实需要用户取舍的问题。
 
-**不做（直接删除，不留开关）：**
+程序不能由“文件多”“只有一个实现”“测试没出现函数名”推出设计错误，也不能由“模型说必要”“命令通过”推出需求已经满足。所有输出区分 `observed`（程序观察）、`agent_reviewed`（Agent 根据具体来源判断）、`unknown`（未能确定）。这三类来源不能互相冒充。
 
-| 不做 | 原因 |
+约束力度来自具体问题必须处理、处理绑定实际内容、重复工作被拒绝以及完成后停止，而不是给代码打一个总分。
+
+## 3. 一次完整使用
+
+用户要求：“登录连续失败 5 次锁 15 分钟。锁定期间返回 429 和剩余秒数。别动账号管理，不要加新依赖。”
+
+1. Agent 读取当前登录入口、失败计数和相关测试，调用 `taskbelay_start`。Task 保存用户原话、两个目标、禁止范围和已有检查位置。
+2. Agent 列出需要观察的行为：第 5 次失败触发锁定；未达到阈值时不锁定；锁定期间返回状态和剩余时间；到期后可重新登录。已有成功登录行为作为受影响的保持条件。没有凭空加入并发平台、配置中心或多种限流策略。
+3. Agent 在现有登录职责中实现逻辑。如果新增了策略接口、工厂和只有一种取值的配置，checkpoint 生成一个合并后的设计问题：“当前只有一种限流方式，这组选择与转发是否需要？”
+4. Agent 比较直接函数方案。若没有当前行为会因此受损，就删除多余机制；若现有调用方确实需要一个边界，则引用调用方和具体条件保留。只填写“可扩展、好测试”不能处理该问题。
+5. Agent 优先扩展已有测试。不同阈值条件可以作为同一测试的参数，但它们仍是不同的验证情况。已有检查已经覆盖的行为无需再创建一套测试。
+6. TaskBelay 选择覆盖剩余缺口的局部检查。真实执行通过后，在输入和行为关联都未变化时再次调用返回 `reused`。新增一个检查 ID 或换一种命令写法不能自动获得重复执行的机会。
+7. 如果随后删除接口改变了相关输入，对应结果失效，只补跑受影响的检查。实际需要的全量检查留到代码稳定时执行，并说明它填补哪个剩余缺口。
+8. 当前目标满足、问题处理有效、检查齐备时返回 `finish`。Agent 完成交付，不继续增加测试或抽象。
+
+会话中断后，接手 Agent 得到行为清单、已观察问题、保留与删减理由、仍有效的检查、运行中的命令和下一步，沿同一 Task 继续。
+
+## 4. Task 与行为清单
+
+### 4.1 Task
+
+一个 Task 绑定一个 Git worktree 的规范化身份与根目录。同一 worktree 同时最多一个 `active` Task；不同 worktree 可以并行。状态只有 `active`、`done`、`cancelled`，终态不能重新打开。
+
+Task 保存以下内容：
+
+| 内容 | 说明 |
 | --- | --- |
-| 沙箱、权限系统 | Agent 自带的权限设置已经在管 |
-| 通用工作流、方案审批、反复确认 | 和"少折腾"的目标矛盾 |
-| Token、时间预算和计费 | Agent 不提供 token 数据，测不准的东西不做 |
-| 建 branch、建 worktree、commit、push 等 Git 写操作 | Agent 自己用 git 做；TaskBelay 只读 Git |
-| 用模型判断代码对不对、给代码打分 | 程序只算能确定的事实，判断交给 Agent 和用户 |
-| WebUI、桌面宠物、交互式管理菜单 | 终端里的 `status` 和 `report` 已经够用 |
-| 有副作用的命令中断后的恢复机制 | 检查必须是可以重复执行的验证命令 |
-| 一个 Task 跨多个仓库；同一个 worktree 同时开多个 Task | 要并行就用不同的 worktree，每个开一个 Task |
-| 中英文以外的语言 | 维护成本远大于收益 |
+| `request` | 用户原话、目标、不做的事、明确限制及消息来源引用（Agent 能取得时） |
+| `start` | 开工时不可变的内容起点和仓库身份 |
+| `behaviors` | 本次需要实现或保持的可观察行为 |
+| `changes` | 程序观察的变更单元、职责分组、结构关系与覆盖范围 |
+| `findings` | 设计、测试及观察问题，处理记录和有效条件 |
+| `checks` | 检查定义、行为覆盖、输入、成本和运行设置 |
+| `runs` | 实际执行、失败、复用、拒绝与未确定运行的记录 |
+| `progress` | 每个目标的进展、剩余问题和下一步 |
+| `questions` | 需要用户做的实际选择及其答复 |
+| `owner` | 当前会话占用者和活动时间 |
+| `handoffs` | 交接内容 |
+| `totals` | 累计执行、复用、拒绝、检查耗时与问题处理数量 |
+| `delivery` | 交付时冻结的结论、范围、检查结果和限制 |
 
-## 4. 用词规则
+用户请求、目标和明确限制的变更必须附真实 `user_quote`。TaskBelay 保存来源但不认证对话真假。实现方法、普通检查安排和职责分组可以由 Agent 调整；调整不能悄悄删除尚未满足的用户目标。
 
-本项目的文档、Skill、工具输出和代码命名都要遵守以下规则：
+`new_dependencies` 为 `unspecified`、`allowed` 或 `forbidden`，默认 `unspecified`。禁止时直接阻止违规交付；未明确限制时，新依赖进入必要性检查，不自动制造一次用户审批。
 
-1. 开发者平时直接说英文的词，不翻译：Agent、Task、MCP、Skill、hook、session、commit、diff、branch、worktree、glob、CLI。工具名、字段名、错误码一律用英文。
-2. 其他内容用普通中文。一个常用词能说清楚的，就不用生造词、比喻或口号。
-3. 一句话只说一件事，先说结论。
-4. 下表左边的词不许出现：
+### 4.2 行为与验证情况
 
-| 不用 | 改用 |
+一个 `behavior` 表示可以观察的结果，而不是实现步骤。例如“达到失败阈值后拒绝登录”，不是“新增 LimiterFactory”。
+
+每项包含 `id`、`goal_id`、`kind`（`change` 或 `preserve`）、`condition`、`expected`、`source_refs`、`check_refs` 和 `review_method`。`source_refs` 指向用户要求、现有约定、真实调用方或缺陷复现。保持条件只来自本次会影响的既有行为。
+
+一个行为可以有多个验证情况 `case`。每项包含触发条件、预期观察及其不同的失败原因。例如第 4 次失败、第 5 次失败和锁定到期并不是重复情况。参数化、拆成三个函数或使用不同语言，都不改变这些情况的身份。
+
+Agent 不能为了让新增代码显得必要而扩展用户目标，也不能仅通过拆分、改名增加验证价值。新情况必须说明它与已有情况的行为差异；程序检查关联和实际断言位置，语义差异标为 Agent 判断。
+
+文档、外观等无法用适当命令验证的结果使用 `review_method=inspection`，保存具体查看范围、观察结论和来源。自动检查数可以为零，但不能只填一句“不需要测试”就把目标标为完成。用户亲自检查的结果与 Agent 检查分开记录。
+
+## 5. 观察与分析范围
+
+### 5.1 不可变的内容起点
+
+开工时保存 HEAD 身份和 Git 可见文件清单、内容哈希、文件类型与权限。对开工前未提交或未跟踪的文件保存实际内容；已删除文件保存缺失状态。已提交内容可引用 Git 对象，但必须能读取，不由 TaskBelay 改写 Git。
+
+之后比较的是“开工时实际内容”和“现在实际内容”，候选路径取起点清单与当前清单的并集。开工前已有改动不计入本 Task；把它们撤回也是本 Task 的变化。新增、删除、重命名、commit、暂存操作不能让变化消失。
+
+重命名以内容和实际修改计算，不把同一段移动代码当成新增职责。历史重写不重置内容起点；如果仓库身份改变或原内容无法读取，返回 `observation_incomplete`，先恢复观察条件。TaskBelay 只读取 Git。
+
+### 5.2 变更单元和分类
+
+优先把 diff 归到函数、类型、配置项、依赖声明或测试用例；不能解析时保留文件及具体 diff 块。稳定 ID 关联内容与所在职责，行号只是显示位置。删除和修改已有代码同样参与影响分析。
+
+文件分为生产实现、测试、文档、生成内容、依赖与构建配置。分类用于展示和设计分析，**不决定检查输入是否可以忽略**。锁文件、生成源码、文档、夹具都可以影响检查结果。
+
+格式变化要按语言语法与字面量区分。不能把“忽略空白后相同”用于证明 Python 缩进、字符串、模板等行为没有变化。无法确定时按普通修改处理。
+
+### 5.3 结构关系
+
+关系记录调用、类型使用、导入、注册、配置读取和状态读写，以及关系是确定、Agent 提供还是未知。分析范围包括变更单元及其调用方、被调用方和模块边界；缓存按文件内容失效。
+
+Go 使用语法和类型信息识别符号身份、方法、实际使用及接口关系，方法名相同不等于实现了接口。构建条件、反射、外部调用和加载失败必须显式记录。库的公开 API、框架入口、命令入口和注册项可作为使用入口，不要求仓库内一定有直接调用。
+
+TypeScript/JavaScript、Python、Java/Kotlin、Rust 及其他文件均支持 diff、文件依赖声明、代码位置引用和 Agent 的职责与行为检查；只有实际具备并验证过的解析能力才能输出确定的符号关系。每次结果列出分析覆盖范围。纯文本同名匹配只能帮助定位，不能确定引用、实现数或测试是否相关。
+
+外部代码索引可以作为补充观察来源；未安装、过期或不完整时，继续使用本地可获得的事实并标明缺口。核心产品不依赖外部索引保持 Task 状态。
+
+## 6. 防过度设计算法
+
+### 6.1 判断目标
+
+在满足当前行为、明确限制和必要质量要求的候选实现中，优先选择维护负担较小、职责更直接的实现。必要质量要求来自当前实际风险，例如原子更新、性能目标、平台隔离和调用方契约；不能只由“以后可能需要”产生。
+
+比较使用一个向量，分别观察新增的业务职责、独立可变状态、运行时选择、转发层、模块间依赖和实现体量。文件拆分本身不等于复杂度增加；把所有代码塞进一个文件也不会降低其他维度。
+
+语法节点、真实引用和依赖数由程序计算；“两个状态表示同一事实”“新增了一个业务职责”等含义由 Agent 关联具体代码判断。向量保留各项来源，不能把推断出来的业务数量伪装成精确的静态分析结果。
+
+若简单方案在必要行为、质量要求和上述各维度上均不更差，且至少一项更简单，就优先采用它。存在真实取舍时记录具体取舍，不用任意加权总分抵消一个缺失行为。程序不宣称求得全局最优设计。
+
+### 6.2 从改动找到需要处理的问题
+
+准备新增抽象、可变状态副本、配置选择、依赖或通用测试支架时，Agent 在写出这一组机制前，通过 checkpoint 的 `proposals` 一次说明当前用途、已有直接做法及其不足。程序先核对现有来源，能沿用已有结论时直接返回。普通局部修改不需要预先登记。
+
+这一步尽量在投入实现成本之前发现不必要的机制，不是向用户申请设计批准。提案不会冒充已经存在的代码，也不提前满足完成条件；写入后仍按实际内容核对。没有预先提案的实际扩展照常被检测，不能绕过处理。
+
+```text
+review_design(task, observation):
+  delta = compare(task.start, observation)
+  units = group_by_existing_responsibility(delta)
+  inspect_changed_units_and_affected_boundaries(units)
+  findings = check_explicit_limits(units)
+  findings += find_unexplained_behavior_and_expansion(units)
+  findings += find_candidates_for_simpler_structure(units)
+  findings = merge_same_cause(findings)
+  retain_only_still_valid_resolutions(findings)
+  return findings, affected_behaviors
+```
+
+Agent 先指出实际应该承担改动的已有职责。分组保存 `change_refs`、`owner_ref`、`behavior_refs` 和已有直接做法；普通局部实现可一次覆盖整组变化，不要求给每个函数或每一行写说明。程序枚举全部变更单元，未被任何分组解释的变化形成 `unmapped_change`，防止只解释局部而遗漏顺手扩展。把所有变化归到同一组不免除组内新增边界的检查。
+
+以下规则生成具体问题。表中的“核对”要求处理问题，不等于程序已经证明代码多余。
+
+| 规则 | 触发事实或候选 | 必须核对的内容 |
+| --- | --- | --- |
+| `scope_expansion` | 新增输出行为、公开能力、配置入口或与当前目标无关联的改动组 | 当前哪个要求或受影响行为需要它 |
+| `unused_addition` | 新增单元在已知生产入口关系中不可达，或只发现测试调用 | 是否缺少真实入口；可否删除；动态入口在哪里 |
+| `speculative_choice` | 新增抽象、工厂、注册机制、策略选择或可配置分支 | 当前是否存在真实变化点；直接调用为何不够 |
+| `forwarding_layer` | 新增单元主要转交参数和结果，或一组新单元形成转发链 | 是否承担独立校验、协议转换或平台边界；能否合并 |
+| `duplicate_state` | 为同一业务事实新增缓存、镜像、标志或同步逻辑的候选 | 哪一处是实际事实来源；为何需要副本；如何保持一致 |
+| `extra_dependency` | 新增依赖或扩大依赖范围 | 现有代码、标准能力能否满足；引入后的实际维护成本 |
+| `unneeded_branch` | 新增兼容、重试、fallback 或错误处理分支 | 当前存在什么可发生的条件和约定；是否掩盖错误 |
+| `scattered_change` | 同一行为被分散到新的多个职责或修改了无关系区域 | 现有归属是否错误；分散是否产生必要的职责分离 |
+| `review_gap` | 改动组中某部分没有可核对的行为说明，或关键关系未知 | 补充实际上下文，不能把未知当作没有问题 |
+
+抽象只有一个实现、函数只被一处调用、文件名叫 manager、行数较大，都不能单独判定违规。新增抽象会接受一次必要性核对；已有稳定边界中的正常实现不因同一形态反复触发。
+
+### 6.3 简单替代方案检查
+
+每个问题至少比较一个贴近现有代码的直接方案，按问题选择“删除、内联、合并、使用现有职责、取消配置选择、只保留一个事实来源”中的适当方式。只讨论当前问题，不要求 Agent 枚举多个架构。
+
+保留当前方案时必须提交：
+
+| 字段 | 内容 |
 | --- | --- |
-| 代理、宿主、Host | Agent，或者直接写 Claude Code、Codex 等名字 |
-| Core（面向用户时） | TaskBelay |
-| 授权、授权边界 | 用户要求、用户限制 |
-| 证据、收据、凭证 | 检查结果、运行记录 |
-| 适用性、新鲜度 | 是否仍然有效 |
-| 语义审查、语义判断 | Agent 自己判断 |
-| 控制建议、advice | 下一步 |
-| 指纹 | 输入哈希 |
-| 基线 | 起点 |
-| 租约 | 占用 |
-| 原生 | Agent 自带的 |
-| 工程控制、治理、编排、范式、闭环、赋能、抓手、链路、心智、沉淀、对齐、颗粒度、兜底、落地、口径 | 直接写具体做什么 |
+| `finding_id` | 程序给出的问题 ID |
+| `behavior_refs` | 当前必须满足的行为或保持条件 |
+| `current_refs` | 实际入口、调用方、实现或配置的位置与内容哈希 |
+| `simpler_alternative` | 可以具体实施的较简单方案 |
+| `breaks_when` | 采用简单方案会破坏的当前条件、可观察结果和因果解释 |
+| `support_refs` | 支持该解释的现有约定、实际代码或已有检查结果 |
+| `tradeoff` | 保留的维护成本，以及为何与当前需求相称 |
 
-5. 代码命名也不用以下英文词：authorization、evidence、applicability、freshness、testimony、receipt、concern、assessment、admission、provisioning、orchestration。
-6. 文档、Skill 和输出模板由自动测试扫描，出现上面的禁用词，测试就失败。
+“更灵活”“方便测试”“最佳实践”不是 `breaks_when`。专为测试增加生产层次，必须进一步说明为什么无法通过现有边界测试真实行为。一个接口隔离实际外部 I/O 或平台差异，可以有必要性，即使目前只有一个实现。
 
-## 5. 一次完整使用
+程序核对来源存在、引用内容当前有效、行为仍属于本 Task、已有检查确实运行过。Agent 对因果关系作判断，记录为 `agent_reviewed`；有效的字段和引用不被包装成程序证明。
 
-用户对 Agent 说："给登录接口加失败限流：连续失败 5 次锁 15 分钟。别动账号管理，不要加新依赖。"
+能从代码和已有结果判断的，不为回答问题新增实验。只有一个影响选择的具体疑问无法解决时，才允许一次针对该疑问的最小检查，进入第 7 节的同一检查选择流程。不能为评审本身自动跑一轮全量测试或生成大批变异测试。
 
-1. Agent 调用 `taskbelay_start`，传入：用户原话、两个目标、不做的事、`allow_new_deps: false`、规模 S，以及一个验收检查 `c1`（`go test ./internal/auth -run TestLogin`）。TaskBelay 创建 Task `tb-7f3k`，返回 Task 摘要。
-2. Agent 改代码时想新建第二个生产文件，被 hook 拒绝：S 规模只允许新建 1 个，要么写进已有文件，要么先说明理由。
-3. Agent 在 shell 里运行 `taskbelay run c1`，通过。代码没变时再运行一次，TaskBelay 直接返回上次的结果，不执行命令。
-4. Agent 调用 `taskbelay_checkpoint`。结果显示：生产代码改了 2 个文件、新增 86 行，另外新加了 1 个只有一个实现的接口，而 S 规模的预算是 0。Agent 删掉这个接口，直接用具体类型，再次 checkpoint 后全部在预算内，下一步是 `finish`。
-5. Agent 调用 `taskbelay_finish` 并填写自评，拿到交付报告，转述给用户。
+### 6.4 处理与阻止
 
-**换会话：** 会话断了，用户开了新会话。SessionStart hook 提示"这个 worktree 有进行中的 Task tb-7f3k"。Agent 调用 `taskbelay_start`，拿到 Task 摘要（目标、进展、下一步、检查状态），接着做。
+处理方式为 `removed`、`simplified`、`necessary` 或 `not_applicable`。前两种必须重新观察到实际变化；后两种必须提供第 6.3 节的具体依据，`not_applicable` 说明触发事实为什么不代表该问题。相关代码、行为或约定改变后重新处理；无关改动不影响已有结论。
 
-**换 Agent：** 用户让 Claude Code 执行 `handoff`，然后到 Codex 里说"继续"。Codex 调用 `taskbelay_start`，拿到同一个 Task 的摘要和交接说明，Task 改由 Codex 占用。
+明确限制被违反时不能用设计解释放行。其他未处理问题阻止交付，并将下一步集中在修复或核对这些问题。Agent 可以继续实施所需修复，无需向用户请求普通设计批准。
 
-## 6. Task
+同一原因的一组接口、工厂、配置和转发层合并成一个问题。每个内容版本只要求一次处理，不因反复 checkpoint 或换会话重复提问。问题改名、从请求里省略或清空数组不会删除它。
 
-**对应关系。** 一个 Task 对应一个 Git worktree 的根目录，也就是 `git rev-parse --show-toplevel` 的结果。每个 worktree 同时最多有一个进行中的 Task。
+只有发现用户需求冲突、必要行为确实无法同时满足，或者需要改变用户限制时才 `ask_user`。用户接受一个具体取舍不代表以后无限扩大该结构。
 
-**状态。** 只有三种：`active`、`done`、`cancelled`。`active` 只能变成另外两种，结束的 Task 不能重新打开。要继续做，就开新 Task，新 Task 的摘要会附上同一个 worktree 上一个 Task 的结论。
+### 6.5 规模的用途
 
-**起点。** 开 Task 时记录两样东西：当时 HEAD 指向的 commit（`start_commit`），以及当时已有的未提交改动（文件路径和内容）。之后所有计算都从起点算起，开工前就有的改动不算在这个 Task 上。如果未提交改动超过 8 MiB，拒绝开 Task（`START_TOO_LARGE`），请用户先 commit 或 stash。如果后来 `start_commit` 不再是 HEAD 的祖先（比如做过 rebase），会得到 `start_moved`；这时 Agent 用 `update.move_start{commit, reason}` 指定新起点，这一操作会写进报告。
+报告显示修改与新增的文件、生产与测试行数、职责、状态、扩展选择和依赖变化。它们用于定位增长和衡量实际效果，不作为“修 bug 最多几个文件”的普遍真理。
 
-**用户要求和限制。** 这些内容来自用户，必须附上 `user_quote`，也就是 Agent 照抄的用户消息原文。之后修改其中任何一项，都要附上新的用户原话。TaskBelay 不能判断原话的真假，只负责记录，并在报告里原样展示。
+用户可以明确设置路径、依赖或数量上限；这样的上限按实际约定执行。Agent 不能通过改配置、换规模名称、重新开检查或移动 Git 起点取消它。
 
-- `goals`：1–5 条，每条是一句能验证的结果，编号依次为 `g1..gN`。不需要检查的目标（比如只改文档）要填写 `no_check_reason`。
-- `non_goals`：明确不做的事。
-- `forbidden_paths`：glob 列表，写这些文件会被拦下。
-- `allow_new_deps`：是否允许加新依赖，默认 `false`。
-- 规模：用户指定了规模时，`size_set_by_user = true`。
+设计检查在职责边界发生变化、准备扩大修改范围、获得新的结构事实及交付前执行；普通连续编辑不需要每次调用一次 MCP。
 
-**Agent 的计划。** 这部分不需要用户原话，但每次修改都会记进历史，并出现在报告里。
+### 6.6 可执行的检测约定
 
-- `size`、`size_reason`、`design_note`：规则见 7.9。
-- `expected_paths`：预计会改的位置，只用于提示。
-- `checks`：见 8.2。
+检测器必须输出 `rule`、`unit_refs`、`observed_facts`、`unknowns`、`behavior_refs` 和 `suggested_alternative`，不能只输出“复杂度高”。以下为程序直接生成候选的最小规则：
 
-**进展。** 包括 `note`、`next`，以及每个目标的状态（`open`、`done`、`dropped`）。把目标改成 `dropped` 需要用户原话。
+- 新增公开入口、接口、配置键、模块边界或依赖声明：逐项进入当前用途检查。一个职责内同因的项目合并显示。
+- 新增非入口单元在所观察关系图中无生产可达路径：列出入口集合、搜索范围和未知关系，生成未找到用途候选；不把它直接标成死代码。
+- 函数体只有一次调用及参数、结果转交，且没有解析到校验、状态更新或资源处理：生成可内联候选；包含未知副作用时标明未知。
+- 新类型只包裹已有类型、仅新增转发方法：生成合并候选；类型安全、生命周期或协议转换是可以核对的保留理由。
+- 新增选择点所有已知生产调用均选择同一实现或同一常量：生成取消选择候选；未知调用方不能计为零。
+- 语法结构相同的新增逻辑、并行更新同组字段、在多个位置保存同一计算结果：生成重复职责或状态候选，最终是否表示同一业务事实由具体行为检查确定。
+- 变更组没有目标或受影响保持条件，或包含未检查的差异块：生成覆盖缺口。
 
-**问题。** Agent 需要用户做决定时，先登记问题。还有没回答的问题，就不能交付。记录回答时要附上用户原话。
+语法和类型能力不足时，按文件和变更组执行当前用途、直接方案及行为检查，并明确来源为 Agent 判断。不能用正则表达式补出确定的调用图，也不能显示“未发现过度设计”来掩盖未分析范围。
 
-**历史。** 每个 Task 保留最近 200 条记录，每条写明谁、什么时候、做了什么。
+## 7. 防过度测试算法
 
-## 7. 防过度设计算法
+### 7.1 同时控制编写和执行
 
-### 7.1 总流程
+测试的必要性由“它能区分什么当前可能发生的错误”决定。每个新测试或扩展的测试情况都关联一个当前行为、触发条件、预期结果、实际断言位置及不同的失败原因。
 
-```text
-measure(task):
-  changes = get_changes(task.start)        # 7.2 取改动
-  files   = classify(changes)              # 7.3 文件分类
-  symbols = analyze_symbols(files)         # 7.4 符号分析
-  metrics = compute_metrics(files, symbols) # 7.5 指标；测试指标见 8.1
-  items   = check_budgets(metrics, task)    # 7.6 对照预算，用 grade 分级
-  return next_steps(items, task)           # 7.7 下一步
-```
+测试可以通过公开入口间接覆盖内部改动，也可以验证没有修改但受到影响的调用方。行为与风险的关联成立即可，不要求测试正文出现被改函数的名字。生产代码改动很少也可能需要多个边界情况，不能按生产行数限制测试数。
 
-`taskbelay_checkpoint`、`taskbelay_finish` 和 `taskbelay report` 都会跑完整流程。写文件的 hook 只做 7.8 里的快速判断。
+程序维护两张关系表：`case → behavior/condition/failure_mode` 和 `check → case/assertion_refs`。关系由实际测试代码和 Agent 的检查形成，来源标签保留。测试名称、测试函数数量、覆盖率百分比都不能替代预期结果与断言。
 
-### 7.2 取改动
+### 7.2 先用现有测试，再增加缺失情况
 
-1. **文件列表：**
-   - 已跟踪的文件：用 `git diff --name-status -M50% <start_commit>` 比较当前 worktree 和起点 commit。开工后的 commit、已暂存和未暂存的改动都会包括在内。
-   - 新文件：`git ls-files --others --exclude-standard` 的结果。
-   - 起点时已经有未提交改动的文件：用起点时保存的内容和当前内容比较，不和 `start_commit` 比较；内容没变的直接排除。
-2. **重命名：** 相似度 ≥ 50% 的重命名算作修改，不算新文件，只计算改动的行。
-3. **行数：** 对每个文件，统计新增的非空行数和删除的行数。二进制文件只计入文件数，不计行数。
-4. **只改了格式：** 一个被修改的文件，忽略所有空白差异之后（相当于 `git diff -w --ignore-blank-lines`）没有任何改动，就算"只改了格式"。
-5. **新目录：** 起点时不存在、现在存在、而且里面有新文件的目录，每个都算一个新目录。
+对每个受影响行为按以下顺序处理：
 
-### 7.3 文件分类
+1. 检查已有测试是否已经观察目标结果；已有覆盖满足需要时直接引用。
+2. 已有测试缺少某个条件时，优先补充该条件或扩展参数表。
+3. 现有测试边界无法观察该结果时，再添加最小的新测试。
+4. 新测试夹具、mock 层、通用测试框架同样接受第 6 节的职责与直接方案检查。
 
-文件按以下规则分成四类。仓库配置（第 14 节）可以追加规则。
+新增测试出现以下情况，生成必须处理的问题：没有当前行为关联；断言只复述实现结构却没有需要保持的结构约定；与已有情况的输入条件、预期观察、失败原因和验证层次都相同；新增支架比直接使用已有边界更复杂且没有当前用途。
 
-| 类别 | 默认规则 | 是否计入预算 |
-| --- | --- | --- |
-| 生成文件 | 锁文件（`go.sum`、`*-lock.*`、`*.lock`）、`vendor/`、`node_modules/`、`dist/`、`*.min.*`、`*.pb.go`、`*_gen.*`、`*.gen.*`，以及带 `linguist-generated` 属性的文件 | 不计入 |
-| 测试 | `*_test.*`、`*.test.*`、`*.spec.*`、`test_*.py`，以及路径里有 `test/`、`tests/`、`__tests__/`、`testdata/`、`fixtures/` 的文件 | 计入测试指标 |
-| 文档 | `*.md`、`*.mdx`、`*.rst`、`docs/**` | 只报告，不计入 |
-| 生产代码 | 其余所有文件 | 计入设计指标 |
+结构相似、断言相同或覆盖同一行，只能发现重复候选。不同失败原因、边界值、运行环境和协议层次可以具有独立价值。合并测试时必须保留这些情况，而不是靠删除断言减少数量。
 
-### 7.4 符号分析
+处理方式为删除重复项、合并保留情况、完善断言或说明独立失败原因。处理绑定测试和相关行为的内容。不能通过改测试名、拆成多个函数或把数据搬到夹具中规避核对。
 
-这一步的目的是找出没必要的新代码：从来没被调用的、只被测试调用的，以及只有一个实现的抽象。
+### 7.3 验证缺口
 
-**支持的语言**（其他语言只计算 7.5 里的规模指标，报告会列出没有做符号分析的文件类型）：
+令 `U` 为当前必须验证的情况集合，包括用户验收、实际受影响的保持条件、明确项目要求和真实失败带来的诊断问题。每个元素都有稳定身份、来源、预期观察和验证层次。
 
-| 语言 | 算作"定义"的写法 | 算作"抽象"的写法（只算声明了方法的） | 怎么数"实现" | 算作"测试用例"的写法 |
-| --- | --- | --- | --- | --- |
-| Go | 顶层 `func Name(`（不含带接收者的方法）、`type Name` | `type Name interface` | 用 go/parser 解析同一个 module，方法名覆盖接口全部方法名的类型 | `func TestXxx(`、`func BenchmarkXxx(`、`func FuzzXxx(` |
-| TypeScript / JavaScript | 顶层 `function Name`、`class Name`、`const Name = (...) =>`、`const Name = function`、`interface Name`、`type Name =` | 带方法签名的 `interface Name`、`abstract class Name` | 出现 `implements Name` 或 `extends Name` 的 class | `it(`、`test(`，包括 `.only`、`.each` 的写法 |
-| Python | 顶层 `def name`、`class Name` | 继承 `ABC` 或 `Protocol` 的 class | `class X(... Name ...)` | `def test_xxx`（顶层或 class 内） |
-| Java / Kotlin | `class`、`interface`、`enum`、`record Name`；Kotlin 顶层 `fun name` | `interface Name`、`abstract class Name` | `implements Name`、`extends Name`；Kotlin 的 `: Name` | 带 `@Test` 注解的方法 |
-| Rust | 不在 `impl` 块里的 `fn name`、`struct`、`enum`、`trait Name` | `trait Name` | `impl ... Name for` | 带 `#[test]` 的 fn |
+令 `V` 为已有有效通过结果或适当检查记录所覆盖的情况。待处理集合为 `G = U − V`。相关行为、断言、输入或执行条件改变时，仅对应部分退出 `V`。
 
-**第 1 步：找出新符号。**
+外部环境不稳定、关系未知或检查范围不足的情况不能仅因一次旧通过就从 `G` 消失。检查计划变更必须说明如何仍覆盖原缺口；删除检查、换 ID 或降低断言不能清除真实失败和未完成行为。
+
+### 7.4 选择足够且较小的检查集合
+
+每个候选检查 `c` 保存可观察的情况集合 `covers(c)`、执行范围和已知成本。覆盖关系必须具体到情况与断言；“全量检查更全面”不是一个覆盖关系。
+
+先复用有效结果，再选择实际需要执行的检查：
 
 ```text
-new_symbols = 生产文件新增行里的定义 − 删除行里同名的定义    # 只是挪了位置的代码不算新符号
-跳过：名字短于 3 个字符；main、init、New、setup、teardown、String、Error；
-      Go 中带接收者的方法；写在测试文件里的定义
-最多分析 500 个，超出的部分不分析，报告里注明
+select_checks(U, valid_results, candidates):
+  G = U - covered_by(valid_results)
+  S = mandatory_checks_required_by_user_or_project(G)
+  G = G - covered_by(S)
+  candidates = remove_equivalent_and_dominated_candidates(candidates)
+  while G is not empty:
+    choose c by marginal_coverage_per_cost_or_scope_order(c, G)
+    if no c covers any remaining item:
+      return S, verification_gap(G)
+    S.add(c)
+    G = G - covers(c)
+  remove any non-mandatory c from S whose removal preserves all coverage
+  return S
 ```
 
-**第 2 步：数引用。** 对所有新符号只运行一次 `git grep -o -w -I --untracked -e 名字1 -e 名字2 ...`，搜索范围是生产文件和测试文件（不含文档和生成文件），按文件类别分别计数：
+本轮候选均有可比运行记录时，选择 `|covers(c) ∩ G| / cost(c)` 最大的检查；`cost` 使用最近至多 5 次实际耗时的中位数，最小取 1 毫秒，并保留样本数。否则本轮统一按范围等级排序：单个情况、包或组件、跨组件或全量；同等级优先覆盖更多缺口，再按稳定 ID 排序。比值相同时也按范围、稳定 ID 决定。不能混用毫秒与无单位等级，也不能把历史估计标成这次的实测。
 
-```text
-prod_refs(name) = 在生产文件中出现的次数 − 它的定义次数
-test_refs(name) = 在测试文件中出现的次数
-```
+一个检查仅在相同环境、验证层次和断言目标下覆盖了另一个的全部情况，并且成本不高，才可以视为支配另一个。集成测试通过不能自动替代单元测试的不同失败定位，单元测试通过也不能替代必须观察的集成行为。语义覆盖不确定时保留缺口，不能为减少次数假定包含关系。
 
-**第 3 步：归类。**
+等价候选保留一条稳定的规范记录并关联其他名称，不能相互支配后全部被删除。强制检查不参与普通冗余删除。候选的预期覆盖用于选择；只有第 7.8 节核对过的实际结果才能进入已满足集合。
 
-```text
-unused     : prod_refs == 0 且 test_refs == 0      → 计入 unused_symbols
-test_only  : prod_refs == 0 且 test_refs > 0       → 计入 test_only_symbols
-abstraction: 新定义属于"抽象"，且实现数 ≤ 1      → 计入 new_abstractions
-single_use : 不是抽象的新类型，且 prod_refs == 1  → 只作为提示
-```
+这是小规模集合的贪心选择加冗余删除，目标是得到可解释的充分集合，不承诺数学上的最优集合。它控制的是当前检查计划，不扫描仓库全部测试后创建一个新的通用测试调度器。
 
-**已知局限。** 这种按名字计数的方法比较宽松：别处有同名的标识符时，引用数会偏高，可能漏掉一些没用的符号。只有通过反射、字符串或框架按名字注册来调用的代码，才会被误判成没被使用；遇到这种情况，Agent 用 `justify` 写一句理由即可。
+每获得一个结果就重新计算缺口，再决定是否执行集合中的下一项。新的失败可能要求先修复或诊断，不机械跑完原清单。实际明确要求的检查本身形成一个不可由普通覆盖替代的必需项。
 
-### 7.5 设计指标和预算
+### 7.5 执行时的新增价值
 
-| 指标 | 怎么算 | S | M | L |
-| --- | --- | --- | --- | --- |
-| `prod_files` | 有新增行的生产文件数（只删代码的文件不算） | 3 | 8 | 25 |
-| `prod_lines` | 生产文件新增的非空行数（删除的行只报告，不计入） | 120 | 500 | 1500 |
-| `new_prod_files` | 新建的生产文件数 | 1 | 3 | 10 |
-| `new_dirs` | 新建的目录数 | 0 | 1 | 3 |
-| `new_abstractions` | 实现数 ≤ 1 的新抽象 | 0 | 1 | 3 |
-| `unused_symbols` | 没被用到的新符号 | 0 | 0 | 0 |
-| `test_only_symbols` | 只被测试用到的新生产符号 | 0 | 0 | 0 |
-| `format_only_files` | 只改了格式的文件 | 0 | 0 | 0 |
-| `new_deps` | 新增的依赖（`allow_new_deps = true` 时不计） | 0 | 0 | 0 |
+`taskbelay run` 在启动前重算缺口和有效结果。请求的检查若既不覆盖当前缺口，也不是尚未完成的强制检查或具体诊断，则返回 `RUN_REDUNDANT`，给出已经覆盖它的记录。
 
-**新增依赖的识别：** 能解析的清单文件（`go.mod`、`package.json`、`Cargo.toml`、`requirements*.txt`、`pyproject.toml`）会列出新增的包名；其他清单文件有改动时，记为 `manifest:<路径>`。
+被其他检查覆盖时返回 `covered` 及实际运行来源；只有相同执行定义和输入下的结果才叫 `reused`。两者都不伪造一次运行，不把较大命令的名字写成已经执行的小命令。
 
-仓库配置可以覆盖表里的数值。
+正常开发优先运行较小检查；全量检查在准备交付、存在跨模块缺口或项目明确要求时进入集合。全量是唯一能验证某个初始缺陷的办法时可以先运行，不会因为它自己尚未通过而形成循环阻塞。
 
-### 7.6 分级
+新的代码、执行条件、失败或明确要求产生新缺口时，可以再次运行。没有变化的全量检查不能因为“阶段结束”而自动再跑一次。
 
-每个指标超出预算时会生成一项超标，ID 就是指标名。另外有两类按个记录的超标：`dep:<包名>` 和 `forbidden:<路径>`。
+### 7.6 失败重试与诊断
 
-```text
-grade(v, b):                      # v 是实际值，b 是预算
-  if v <= b:               ok
-  if v <= max(2*b, b+1):   justify   # Agent 写一句理由即可
-  else:                    user      # 需要用户原话
-```
+失败后重试要关联新增信息：修复后的输入变化、实际环境变化，或一个能够被本次运行支持或否定的诊断假设。相同输入、相同失败、没有新信息时返回 `RETRY_WITHOUT_NEW_INFORMATION`。
 
-特殊规则：
+同一失败特征连续出现 3 次后返回 `rethink`，要求改变诊断方法或实现。仅改写理由不能重试；新假设必须说明预期观察与下一步决定，同一假设在相同条件下不重复使用。
 
-- 改了 `forbidden_paths` 里的文件：每个文件生成一项 `forbidden:<路径>`，等级为 `revert`，必须撤回。只有用户用原话修改限制后才放行。
-- `allow_new_deps = false` 时，每个新依赖生成一项 `dep:<包名>`，等级直接是 `user`。
+怀疑偶发失败时使用有界的诊断计划：记录次数、停止条件和要区分的环境或随机条件。一次通过不能抹去此前不稳定结果；报告保留失败，稳定性未处理前不作为普通可复用通过结果。检查本来依赖时间、网络或外部状态时，按第 8 节关闭内容缓存，仍受新增价值和停止条件控制。
 
-怎样算解决：
+### 7.7 判断测试有没有用
 
-- `justify` 等级：在 checkpoint 中用 `justify[{item, reason}]` 写了理由，就算解决。
-- `user` 等级：写了用户原话，即 `justify[{item, reason, user_quote}]`，才算解决。
-- 已解决的超标项数值继续变大时，只要等级不变，仍然算解决；等级从 `justify` 升到 `user` 时，需要补上用户原话。
-- 数值回到预算以内时，这一项自动消失，之前写的理由保留在历史里。
+默认通过阅读触发条件、真实执行路径和断言判断，不要求为每个测试运行一次故意破坏代码的实验。已有缺陷复现的失败记录优先复用。
 
-### 7.7 下一步
+只有测试可能永远通过且影响验收结论时，才针对那个疑问做最小区分检查，例如验证已知错误输入确实被拒绝。此检查也占用同一个执行记录和缺口，不自动扩展成批量反例或变异测试。
 
-checkpoint 返回一份按优先级排好的下一步列表。每一项都包含 `code`、`item`，以及一句说明要做什么的话，比如："新函数 parseLimitConfig 没有被调用：删掉，或者说明理由。"
+### 7.8 核对实际覆盖
 
-| 顺序 | `code` | 什么时候出现 |
-| --- | --- | --- |
-| 1 | `revert` | 有 `forbidden` 项 |
-| 2 | `ask_user` | 有没解决的 `user` 项，或者有没回答的问题 |
-| 3 | `reduce_or_justify` | 有没解决的 `justify` 项 |
-| 4 | `rethink` | 某个检查连续 3 次没通过（8.4） |
-| 5 | `run_checks` | 有检查还没跑过，或者结果已经失效 |
-| 6 | `continue` | 还有没完成的目标 |
-| 7 | `finish` | 以上情况都没有 |
+测试类检查保存实际选择的测试和运行器报告的结果。Go 检查支持从 `go test -json` 输出读取测试情况、通过、失败、跳过及运行器缓存信息；运行过程中提取结构化摘要，不能因日志末尾截断而丢失这些结果。
 
-### 7.8 写文件时的快速判断（hook）
+其他命令使用其实际输出和可支持的结果格式。无法机器确认测试选择与断言时，由 Agent 核对实际运行输出、命令选择条件和测试代码，明确标为 `agent_reviewed`，不能伪造为程序确认。含糊的“全部通过”不足以关联具体情况。
 
-Agent 用自带的写文件工具写文件之前，hook 会运行以下判断：
+命令退出码为 0、只完成构建、所有测试都被过滤或跳过，都不等于验收测试实际通过。已有程序确认的等价覆盖可以直接复用；依赖语义包含关系的 `covered` 必须已有绑定当前内容的明确比较，不能仅根据 Agent 填写的集合大小自动跳过检查。
 
-```text
-pre_write(path):
-  task = path 所在 worktree 里进行中的 Task；没有就放行
-  if path 匹配 forbidden_paths: 拒绝
-  if path 原来不存在:
-    kind = classify(path)
-    if kind 是 生产代码 或 测试:
-      n = 已新建的同类文件数 + 1
-      按 7.6 给 new_prod_files 或 new_test_files 分级，并查看已有的理由和原话：
-        需要理由但还没有  → 拒绝："写进已有文件，或者先在 checkpoint 里说明理由"
-        需要原话但还没有  → 拒绝："先问用户，再用 justify 记下原话"
-    对每个将要新建的目录，用同样的方法检查 new_dirs
-  放行
-```
+程序能确定执行选择和结果，仍不能单凭运行器报告证明断言足够。第 7.1 节的行为与断言核对继续成立。运行器自身缓存命中与 TaskBelay 的复用分别显示，实际命令次数不冒充底层测试用例重新执行次数。
 
-这一步只用 `git status` 和 Task 里的数据，不做符号分析，以保证速度。通过 shell 命令新建的文件不经过 hook，会在 checkpoint 和 finish 时按同样的规则算出来。
+## 8. 检查执行与结果复用
 
-### 7.9 规模怎么选
+### 8.1 检查定义
 
-| 规模 | 适用场景 | 选择条件 |
-| --- | --- | --- |
-| S | 修 bug、小改动 | 默认值 |
-| M | 一个完整的小功能 | Agent 写明 `size_reason` |
-| L | 跨模块的改动 | 需要用户原话，并且要写 `design_note`，说明准备新建哪些模块、各自为什么需要 |
-
-- 用户指定了规模时直接使用，并设置 `size_set_by_user = true`，之后改规模需要用户原话。
-- 中途调大：从 S 调到 M 要写理由；调到 L 需要用户原话。调小不需要任何条件。每次调整都会写进报告。
-- 报告会给出"实际规模"：让 `prod_files`、`prod_lines`、`new_prod_files`、`new_dirs` 四项全部落在预算内的最小规模；四项超过 L 时写"超过 L"。声明的规模和实际规模不一样时，报告里会写出来，以后据此调整预算。
-
-### 7.10 提示（不拦截）
-
-以下情况只作为提示，每次最多显示 5 条，由 Agent 自己判断要不要处理：
-
-- 新文件名或新目录名里出现：factory、registry、manager、provider、adapter、strategy、abstract、base、helper、util、wrapper、compat、legacy、fallback、v2（不区分大小写）。
-- 新增的代码行里出现：fallback、backward compat、legacy、deprecated、for future、in the future、extensible、pluggable。
-- 新目录里只有一个文件。
-- 只在一个地方用到的新类型（7.4 里的 `single_use`）。
-- 结构相同的新测试（8.1）。
-- 填写了 `expected_paths` 时，改动不在这些位置里。
-
-仓库配置可以替换前两条的词表。
-
-## 8. 防过度测试算法
-
-### 8.1 测试规模指标
-
-测试指标使用 7.2–7.4 取到的同一份改动来计算。
-
-**第 1 步：找出新测试用例。** 按 7.4 表格最后一列的写法，取测试文件新增行里的测试用例定义，减去删除行里同名的定义。
-
-**第 2 步：列出本次改动涉及的名字，记为 C。**
-
-```text
-C = 新的生产符号
-  ∪ 每个被改动的生产代码块所在的定义（在当前文件里，从改动位置往上找到的最近一个定义的名字）
-  ∪ 被改动的生产文件名（不含扩展名）；Go 再加上包所在目录的名字
-```
-
-**第 3 步：找出和本次改动无关的测试。** 一个测试用例的内容，是从它的定义行开始，到下一个测试用例定义（或文件末尾）为止的所有行。如果这些内容里没有出现 C 中的任何一个名字（按整词匹配），这个测试就和本次改动无关，计入 `unrelated_tests`。
-
-**第 4 步：找出结构相同的测试。** 先把每个新测试用例的内容规整一遍：去掉第一行，把字符串字面量都换成 `"S"`，数字都换成 `0`，连续空白合成一个，然后计算哈希。有 3 个或以上哈希相同的用例时，给出提示："这 N 个测试结构相同，考虑合并成表驱动测试。"
-
-| 指标 | 怎么算 | S | M | L |
-| --- | --- | --- | --- | --- |
-| `test_lines` | 测试文件新增的非空行数 | max(60, prod_lines) | max(150, prod_lines) | max(400, prod_lines) |
-| `new_test_files` | 新建的测试文件数 | 1 | 2 | 5 |
-| `new_test_cases` | 新的测试用例数 | 4 | 10 | 25 |
-| `unrelated_tests` | 和本次改动无关的新测试用例数 | 0 | 0 | 0 |
-| `checks` | 计划里的检查数 | 2 | 4 | 8 |
-| `full_runs` | 全量检查实际执行的次数（复用不算） | 1 | 2 | 3 |
-
-`test_lines` 预算里的 `prod_lines` 指本次实际的生产新增行数。超标的分级和处理方式与 7.6 相同。
-
-### 8.2 检查
-
-| 字段 | 说明 |
+| 字段 | 内容 |
 | --- | --- |
-| `id` | Agent 起的短 ID，比如 `c1` |
-| `goals` | 关联的目标 ID。为空表示这是整个 Task 的回归检查 |
-| `kind` | `acceptance`（验收检查：证明某个目标做到了）或 `regression`（回归检查：证明没有改坏别的东西） |
-| `run` | shell 命令。Unix 用 `/bin/sh -c` 执行，Windows 用 `cmd.exe /d /s /c` 执行 |
-| `cwd` | 相对仓库根目录的路径，默认是 `.` |
-| `inputs` | 会影响检查结果的文件 glob，默认值见 8.3 |
-| `env` | 会影响结果的环境变量名 |
-| `full` | 是否是全量检查，全量检查计入 `full_runs` |
-| `timeout_s` | 超时秒数，默认 900，最大 3600 |
+| `id` | 稳定检查 ID，改名不能重置运行历史 |
+| `purpose` | `acceptance`、`regression` 或 `diagnostic` |
+| `case_refs` | 本次要观察的情况和实际断言位置 |
+| `command` | `argv` 数组；需要管道等 shell 语义时显式使用 `shell` 类型并指定解释器 |
+| `cwd` | 相对 worktree 的工作目录 |
+| `inputs` | `repository` 或明确的路径/glob；缩小范围时保存实际依赖与依据 |
+| `external_inputs` | 实际使用的仓库外依赖文件、目录或可核对的环境快照 |
+| `environment` | 影响结果的变量及工具；值只保存哈希，不保存密钥明文 |
+| `stability` | `deterministic` 或 `external`，并说明条件 |
+| `reuse` | `content` 或 `off`；条件无法描述完整时使用 `off` |
+| `scope` | 情况、组件或全量，用于选择和报告 |
+| `required_by` | 用户或项目明确要求这个检查时的实际来源 |
+| `result_format` | 可机器读取的运行器格式，或需要核对实际输出的 `command_result` |
+| `timeout_s` | 默认 900，最大 3600；修改超时保留此前的真实失败 |
 
-验收检查至少要关联一个目标。每个没有 `no_check_reason` 的目标，至少要有一个验收检查。
+支持的直接命令由 Agent 自带的进程工具运行 `taskbelay run`，沿用实际用户权限。MCP 和 hook 不启动检查命令，也不为分析偷偷执行构建或下载依赖。
 
-### 8.3 输入哈希
+### 8.2 执行键与覆盖键
 
-```text
-input_hash(check):
-  files = input_files(check)
-  return sha256(
-    check.run, check.cwd, sorted(check.inputs), sorted(check.env),
-    操作系统, CPU 架构,
-    每个 env 变量当前值的 sha256,
-    files 按路径排序后，每个文件的 (路径, 文件权限, Git blob ID))
-```
-
-文件的 Git blob ID：没改过的已跟踪文件，直接取 index 里的值；其他文件按 Git 的算法自己计算。这样内容相同的文件，ID 一定相同。
-
-`input_files(check)` 按以下顺序取第一条符合的规则：
-
-1. 写了 `inputs`：所有 Git 能看到的文件中，匹配这些 glob 的文件。
-2. 没写 `inputs`，并且 `run` 以 `go test` 开头：在检查的 `cwd` 中运行 `go list -deps -test -f '{{.Dir}}' <包参数>`，取仓库内的那些目录里的文件（不进入子目录，但包括这些目录下的 `testdata/**`），再加上 `go.mod` 和 `go.sum`。如果 `go list` 失败，就用第 3 条，并在运行输出里注明。
-3. 其他情况：所有 Git 能看到的文件，去掉文档和生成文件。
-
-"Git 能看到的文件"指 `git ls-files --cached --others --exclude-standard` 列出的文件。被 Git 忽略的文件、数据库、网络服务和工具链版本都不在输入哈希里。如果需要把它们算进去，就把对应的版本文件或配置文件写进 `inputs`。
-
-### 8.4 run 的决定流程
-
-Agent 用自带的 shell 工具运行 `taskbelay run <check-id> [--reason "<新情况>"]`。这样命令会沿用 Agent 自己的权限、环境和长时间运行的处理方式。MCP 工具不启动命令。
+执行键使用明确分隔的规范编码计算：
 
 ```text
-run(c, reason):
-  if c 不在计划里:
-    refuse("先用 taskbelay_update 把它加进计划")
-  h = input_hash(c)
-  last = c 在输入哈希 h 下最近一次有结果的执行（passed、failed 或 timeout）
-  if last == passed:
-    return reused(last)                                    # 不执行命令
-  if last 是 failed 或 timeout，并且 reason 为空:
-    refuse("代码没变，重跑结果也一样。先改代码，或者用 --reason 说明有什么新情况")
-  if c 最近连续 3 次实际执行都没通过，并且 reason 为空:
-    refuse("已经连续失败 3 次。换个思路，再用 --reason 说明这次哪里不一样")
-  if c.full:
-    if 有验收检查在当前代码下还没通过，并且 reason 为空:
-      refuse("先让验收检查通过，再跑全量检查")
-    g = grade(已执行的全量检查次数 + 1, budget.full_runs)    # 7.6
-    if g == justify 并且 full_runs 这一项还没有理由:
-      if reason 为空: refuse("全量检查次数超出预算，用 --reason 说明理由")
-      把 reason 记为 full_runs 这一项的理由
-    if g == user 并且 full_runs 这一项还没有用户原话:
-      refuse("全量检查次数需要用户同意。先问用户，再用 justify 记下原话")
-  执行 c，记录结果，更新计数
+execution_key = sha256(
+  command_kind, exact_argv_or_shell_and_interpreter,
+  canonical_cwd, platform, architecture,
+  executable_identity, declared_tool_and_environment_state,
+  input_selection_definition,
+  sorted(path, file_type, permissions, content_hash_or_missing),
+  observed_external_inputs
+)
+
+coverage_key = sha256(
+  relevant_goal_and_behavior_definitions,
+  case_conditions_and_expected_results,
+  assertion_refs, check_purpose, result_interpretation, execution_key
+)
 ```
 
-- 连续失败次数在检查通过时清零。状态为 `interrupted` 的运行没有结果，不算失败，可以重跑。
-- **输出：** 第一行是结果（`passed`、`failed`、`timeout`、`reused`、`refused`）和耗时，后面是命令输出的最后 200 行。
-- **退出码：** 0 表示通过或复用了通过的结果；1 表示失败、超时或中断；2 表示拒绝执行；3 表示用法错误。
-- **超时：** 杀掉整个进程树。每次运行保存最后 64 KB 的输出。
-- **TaskBelay 自己被中途杀掉：** 运行记录会停在 `running`。下次读到这条记录时，如果对应进程已经不在了，就把它标成 `interrupted`。
+检查 ID、说明文字、排序和会话名不参与执行键。行为变化不会抹去旧命令确实运行过的事实，但旧通过不能自动验证新行为。需要重新核对断言与行为关联；如果改变断言，执行键随实际输入改变。
 
-### 8.5 检查结果什么时候失效
+相同执行键下较新的失败、超时或输入变化结果优先于旧通过，不能从历史中挑一次成功复用。发现不稳定性后，先按第 7.6 节处理。`reuse=off` 表示不把旧运行自动作为新的执行请求结果；本轮真实通过仍可用于对应内容和已说明条件下的交付，不声称外部状态将一直保持不变。
 
-一个检查结果只有在它的输入哈希和当前的输入哈希相同时才有效。所以：
+默认输入覆盖全部 Git 可见内容，包括文档、锁文件、生成源码和夹具。显式路径可以纳入 ignored 文件及仓库外实际依赖。记录目录成员变化、缺失、删除、符号链接目标和权限；无法读取或不能安全观察的输入返回未知，不能静默跳过。检查读取实际 worktree 内容，不用未经核实的 index blob 代替。
 
-- 改了 `inputs` 以外的文件，结果仍然有效。
-- 使用默认 `inputs` 时，只改文档或生成文件，结果仍然有效。
-- Go 检查只依赖它实际导入的包。改了没被导入的包，结果仍然有效。
-- 改了检查本身的定义（`run`、`cwd`、`inputs`、`env`），结果失效。
+复用要求声明的输入、环境和实际工具状态可观察，且 Agent 已核对命令不依赖遗漏的外部条件。PATH、实际可执行文件内容及被声明工具的身份参与计算；锁文件本身不证明安装目录与其一致。实际外部依赖不能被观察时，`reuse=off`。任意 shell 字符串默认关闭复用，只有明确列出其工具、输入和稳定条件后才可开启。
 
-### 8.6 拦截 shell 里的测试命令
+程序不证明任意命令的依赖声明完整。报告写明复用范围、声明来源和未覆盖条件；发现新的依赖会使对应结果失效。可复用范围按能力逐步缩小，无可靠闭合依赖范围时使用完整仓库和已声明外部输入，不依据一次代码覆盖轨迹排除其他可能执行路径。
 
-如果 Agent 支持在执行 shell 命令前调用 hook，并且命令所在的 worktree 有进行中的 Task：
+### 8.3 运行与中断
 
-- 命令（空白规整后）和计划里某个检查的 `run` 完全一样：拒绝，提示改用 `taskbelay run <id>`，代码没变时会直接复用结果。
-- 命令匹配常见的测试命令（`go test`、`pytest`、`npm test`、`pnpm test`、`yarn test`、`vitest`、`jest`、`cargo test`、`mvn test`、`gradle test`、`make test`，以及仓库配置里追加的命令）：放行，同时记一次"shell 里临时跑测试"，次数会写进报告。
-- 其他命令：放行，不做记录。
+每个 Task 同时最多一个实际检查进程。事务内重新核对当前 Task、占用、检查定义和缺口，登记 `run_id`、请求身份、输入键与 `running` 后才启动。重复请求读取原运行；不同请求在已有运行未结束时返回 `RUN_IN_PROGRESS`。
 
-## 9. 接续
+执行前后都观察输入。运行期间禁止受支持 hook 中对相关输入的写入；发现输入发生变化时记录 `inputs_changed`，保留命令结果但不作为当前通过。两次观察不能证明运行期间从未改动又恢复，报告不作这种保证。
 
-### 9.1 Task 摘要
+执行结果先持久保存再返回。保存前响应丢失不等于失败，也不触发盲目重跑。进程身份包含启动身份和进程组，不能只比较 PID。原命令或后代仍存活或无法确认时保持 `running/unknown`；确认全部结束且没有完整结果时记 `interrupted`，不生成通过结果。
 
-`taskbelay_start`、`taskbelay_status` 和 SessionStart hook 返回的是同一份摘要，最多 60 行，使用用户设置的语言。示例：
+TaskBelay 只执行被声明为可重复的验证操作。对 `interrupted` 的重试须先确认没有仍在运行的实例，且验证环境已具备重复执行条件。终止和超时处理整组进程；完成或取消 Task 都要求没有运行中或未确定的命令。
+
+### 8.4 run 决策
 
 ```text
-TaskBelay Task tb-7f3k · 进行中 · 规模 S · claude 占用中（2 分钟前活动）
-目标
-  [x] g1 登录连续失败 5 次后锁定 15 分钟
-  [ ] g2 锁定期间返回 429 和剩余秒数
-不做：账号管理 | 不加新依赖 | 不改 api/public/**
-进展：限流逻辑写在 internal/auth/limit.go
-下一步：在 handler 里返回 429，补 TestLockedResponse
-设计：生产 2/3 文件 · +86/120 行 · 新文件 0/1 · 新抽象 0/0 · 没用到的符号 0
-测试：+40/86 行 · 新用例 2/4 · 无关测试 0
-超标：无    提示：无
-检查：c1 通过（当前代码）· c2 还没跑
-待用户回答：无
-上次交接：codex 10-20 18:02「g1 做完了；redis mock 在 testdata/」
+run(check, request):
+  load_task_and_original_request()
+  if same_request_exists: return saved_run
+  check_current_ownership_and_definition()
+  if live_or_unknown_run_exists: return RUN_IN_PROGRESS
+  verify_inputs_and_current_gap()
+  if reuse_enabled and valid_identical_pass and no_specific_rerun_gap: return reused
+  if coverage_is_current_for_this_request and already_covered and no_specific_rerun_gap: return covered
+  if unchanged_failure and no_new_diagnosis: return RETRY_WITHOUT_NEW_INFORMATION
+  if no_new_information: return RUN_REDUNDANT
+  reserve_run_atomically()
+  execute_and_observe_inputs_again()
+  persist_result_and_totals()
+  return actual_result
 ```
 
-### 9.2 新会话
+需要重验已有通过结果时使用 `--reason` 关联一个具体的新诊断问题；该问题先由 checkpoint 保存，并受第 7.6 节约束。没有无限制的“强制通过”或重复执行开关。
 
-- Agent 支持 SessionStart hook 时：会话开始时运行 `taskbelay hook session-start`。如果当前 worktree 有进行中的 Task，就输出不超过 3 行的提示（Task ID、目标、下一步），并要求 Agent 开始开发前先调用 `taskbelay_start`；没有 Task 时什么都不输出。
-- Agent 不支持 SessionStart hook 时：由 Skill 要求 Agent 在仓库里开始开发前，先调用 `taskbelay_start`。
-- 如果 worktree 里已经有进行中的 Task，`taskbelay_start` 会返回这个 Task 的摘要，不会再新建一个。如果 Agent 其实要做另一件事，必须先请用户决定：结束（finish）还是取消（cancel）当前的 Task。
+输出第一行显示 `passed`、`failed`、`timeout`、`interrupted`、`inputs_changed`、`reused`、`covered` 或 `refused`，同时返回实际来源、输入状态和耗时。退出码 0 表示满足本次检查请求，1 表示实际运行未通过或不可用，2 表示拒绝或需等待，3 表示输入错误。
 
-### 9.3 交接
+每次运行保留最后 64 KiB 输出，终端默认显示最后 200 行，完整保留部分可按 `run_id` 查询。`reused` 和 `covered` 的节省时间只能按已有运行估算，并标为估算。
 
-`taskbelay_handoff` 记录三项内容：`done`（做了什么）、`next`（接下来做什么）、`pitfalls`（遇到的坑和注意事项），然后解除占用。每个 Task 保留最近 5 次交接，摘要里显示最近一次。
+## 9. 下一步与停止条件
 
-以下情况 Agent 应该交接：自己要停下、用户要换 Agent、会话快结束了。
+每次 checkpoint 根据当前内容生成下一步，不另设一套流程状态。优先顺序如下：
 
-### 9.4 占用
-
-- 每个 MCP 服务进程启动时生成一个占用者 ID，格式为 `<Agent 名>:<8 位随机字符>`。
-- `taskbelay_start` 会占用 Task，之后每次修改 Task 都会刷新最后活动时间。占用默认在 30 分钟没有活动后过期，时长可以配置。
-- 占用没有过期时，别的会话修改这个 Task 会得到 `TASK_IN_USE`，同时返回占用者、最后活动时间和只读的摘要。这时 Agent 有两个选择：问用户之后，用 `taskbelay_start` 带上 `takeover_quote`（用户原话）接手；或者等待。
-- 占用已经过期，或者已经交接过时，下一次 `taskbelay_start` 直接接手，并写进历史。占用者自己再次调用 `taskbelay_start`，只返回摘要。
-- 只读操作（`taskbelay_status`、`taskbelay report`）和 `taskbelay run` 都不受占用限制。
-
-### 9.5 换 Agent
-
-所有 Agent 共用同一个数据目录和同一个程序，Task 里也不存任何某个 Agent 特有的内容，所以任何支持的 Agent 都能接着做另一个 Agent 开始的 Task。摘要和报告会写明每一段工作是哪个 Agent 做的。
-
-## 10. 交付
-
-### 10.1 完成条件
-
-`taskbelay_finish` 要求下表的条件全部满足。有任何一条不满足，就返回 `FINISH_BLOCKED` 和未满足条件的列表。
-
-| `code` | 条件 |
-| --- | --- |
-| `goal_open` | 每个目标都是 `done`，或者已经凭用户原话改成了 `dropped` |
-| `check_missing` | 每个需要检查的目标，至少有一个验收检查 |
-| `check_stale` / `check_failed` | 每个验收检查和回归检查，在当前输入哈希下都有通过的结果（只关联了 `dropped` 目标的检查除外） |
-| `over_budget` | 每个 `justify` 等级的超标项都已经删减或者写了理由 |
-| `user_decision_needed` | 每个 `user` 等级的超标项都有用户原话 |
-| `forbidden_changed` | 禁止的路径上没有遗留改动 |
-| `question_open` | 没有没回答的问题 |
-| `run_in_progress` | 没有正在运行的检查 |
-| `start_moved` | 起点仍然有效 |
-
-没通过的回归检查，可以凭用户原话列入 `known_failures`，这样视为满足条件，并在报告里单独列出。验收检查不能这样处理。
-
-### 10.2 自评
-
-finish 时必须填写三项自评，每项一句话：
-
-- `root_cause`：解决的根本问题是什么。
-- `not_done`：删掉了什么，或者刻意没做什么；没有就写"无"。
-- `would_do_again`：从现在的实际需求出发，还会不会选择现在这个结构，为什么。
-
-### 10.3 交付报告
-
-交付成功后返回报告，最多 40 行。Agent 必须用用户的语言把报告转述给用户，超标项和已知问题不能省略。任何时候都可以用 `taskbelay report` 打印当前的报告或最终的报告。示例：
-
-```text
-TaskBelay 交付报告 · tb-7f3k · 已完成
-结论：2/2 个目标完成
-规模：声明 S，实际 S
-设计：生产 2 文件 +86/−12 行（预算 3 / 120）· 新文件 1/1 · 新目录 0/0 · 新抽象 0/0
-      没用到的符号 0 · 只给测试用的符号 0 · 只改格式的文件 0 · 新依赖 0
-测试：+40 行（预算 86）· 新测试文件 1/1 · 新用例 3/4 · 无关测试 0
-超标和理由：无
-规模调整：无
-检查：实际执行 3 次 · 复用 2 次 · 拒绝 1 次 · shell 里临时跑测试 0 次 · 共 48 秒
-  c1 验收 g1,g2  go test ./internal/auth -run TestLogin   通过（当前代码）
-  c2 回归        go test ./internal/...                   通过（当前代码）
-已知失败：无
-提示：无
-自评：根因是登录失败没有计数 | 没做通用限流中间件 | 还会这样做：改动都在 auth 包里
-参与：claude（开 Task、g1）→ codex（g2、交付）
-```
-
-### 10.4 取消
-
-取消 Task 需要写明理由，并附上用户原话。取消后也会生成一份标着"已取消"的报告。
-
-## 11. 接口
-
-### 11.1 MCP 工具（6 个）
-
-所有工具的输出都包含 `ok`、`task_id`，以及一段默认不超过 4 KB 的文字摘要，同时附上结构化数据。
-
-| 工具 | 输入 | 输出 |
+| 下一步 | 条件 | Agent 应做什么 |
 | --- | --- | --- |
-| `taskbelay_start` | `cwd`（绝对路径，必填）。worktree 里没有进行中的 Task 时，必须提供 `task`，包括：`goals[{text, no_check_reason?}]`、`non_goals`、`forbidden_paths`、`allow_new_deps`、`user_quote`、`size`、`size_set_by_user`、`size_reason`、`design_note`、`expected_paths`、`checks`。可选 `takeover_quote` | `created`、Task 摘要、下一步 |
-| `taskbelay_update` | `task_id`，以及下面任意几项：`goals`（完整列表，已有的目标保留原 ID）、`non_goals`、`forbidden_paths`、`allow_new_deps`、`size`、`size_reason`、`design_note`、`expected_paths`、`checks`（完整列表）、`move_start{commit, reason}`、`user_quote` | 改了什么、Task 摘要 |
-| `taskbelay_checkpoint` | `task_id`。可选：`note`、`next`、`goals_done[]`、`justify[{item, reason, user_quote?}]`、`questions[]`、`answers[{question_id, user_quote}]` | 设计指标、测试指标、超标项、检查状态、下一步 |
-| `taskbelay_handoff` | `task_id`、`done`、`next`、`pitfalls` | Task 摘要 |
-| `taskbelay_finish` | `task_id`，再加以下两组之一：① `summary`、`self_review{root_cause, not_done, would_do_again}`、`known_failures[{check_id, user_quote}]`；② `cancel{reason, user_quote}` | 交付报告；或者 `FINISH_BLOCKED` 加上未满足的条件 |
-| `taskbelay_status` | 可选：`task_id` 或 `cwd`、`detail` | Task 摘要。带 `detail` 时，再附上最近 30 条历史和每个检查最近一次的运行记录。两个参数都不给时，返回最近 20 个 Task |
+| `wait_run` | 有存活或未确定的检查进程 | 读取原运行，等待或处理已有运行 |
+| `restore_observation` | 必要的内容、来源或输入无法核对 | 恢复实际观察条件 |
+| `respect_limit` | 违反明确用户限制 | 修正改动；确需改变限制才询问用户 |
+| `ask_user` | 存在真实需求冲突或用户选择 | 提供具体选项，不把普通设计解释交给用户 |
+| `simplify_or_review` | 设计或测试必要性问题未处理 | 删减、完善断言或提供当前内容上的具体保留依据 |
+| `rethink` | 重复失败而缺少新的有效方法 | 重新诊断具体问题 |
+| `implement` | 行为尚未完成 | 完成剩余行为 |
+| `verify` | 实现完成但有验证缺口 | 运行第 7 节选出的必要检查，或完成适当的人工检查 |
+| `finish` | 所有完成条件均满足 | 停止扩展并交付 |
 
-调用时不需要传版本号。每次修改都在一个数据库事务里完成，多个 Agent 之间的冲突由"占用"来避免。
+下一步可以附其他可并行处理的缺口，但“先补完所有实现才能测试”不是限制；复现和局部验证可穿插执行。
 
-### 11.2 命令行
+完成条件包括：目标已完成或凭用户决定取消；实际 diff 全部被当前职责和行为解释；设计与测试问题已有有效处理；用户验收与必要保持条件已验证；没有未处理的真实失败、用户问题、观察缺口或未确定执行；最终审查确认根因、职责和复杂度与需求相称。
+
+对于用户接受的回归失败，保存真实失败的 `run_id`、执行键、受影响行为、影响说明和用户原话。它不满足本次验收行为，不把失败改写成通过。相关失败或需求变化后重新处理。“原本就失败”必须有实际比较来源，不能只靠 Agent 断言。
+
+`finish` 条件满足后形成绑定当前相关内容的停止记录。没有新用户要求、实际输入变化、新失败或具体遗漏行为时，TaskBelay 拒绝无新增价值的检查，Skill 要求 Agent 不再新增结构和测试。发现实际遗漏时记录新缺口并继续，不能以停止为由忽略真实问题。
+
+取消需要用户原话和理由，保存取消时的剩余工作。终态报告冻结；之后仓库发生变化不会重写旧交付结论。
+
+## 10. 接力与占用
+
+### 10.1 摘要
+
+摘要按以下顺序展示：目标与限制；实际进展；当前问题；已有删减或保留理由；有效检查与缺口；运行中的检查；下一步；最近交接。默认不超过 60 行，并带观察时间和内容标识。
+
+SessionStart hook 只输出不超过 3 行的 Task ID、目标和下一步，引导 Agent 调用 `taskbelay_start`。详细内容由同一 Task 摘要提供。接手者先核对当前内容，不将上次摘要当成现在已经验证的状态。
+
+`status` 读取已保存结果，不隐式重跑分析或检查；需要核对当前代码时使用 checkpoint。旧检查显示“截至某次观察有效”，不能在未观察时显示“当前代码通过”。
+
+### 10.2 同一 Task 接手
+
+每个真实 Agent 会话使用一个稳定 `owner_id`。MCP 服务可以在独立会话连接建立时生成并返回身份；无法区分会话的共享服务必须要求调用方提供会话身份，不能把进程身份冒充多个会话身份。
+
+`start` 在没有进行中 Task 时创建，有 Task 且未提供新需求时返回或接手原 Task；明确提供另一个新任务时返回 `ACTIVE_TASK_EXISTS`。不能悄悄把旧需求替换成新需求。
+
+交接保存 `done`、`next`、`pitfalls`，解除普通修改占用；已有运行身份继续保留。接手不会导致重新执行检查或重置待处理问题。
+
+占用默认 30 分钟没有活动后过期，运行中的检查维持活动状态。占用期间其他会话可以只读查看，修改和启动检查返回 `TASK_IN_USE`。提前接手需要真实 `takeover_quote`；它不能强行清除运行中的命令。
+
+占用只防止会话误操作；数据库仍以修订检查和原子事务防止并发覆盖。旧会话在接手发生后提交的请求必须被拒绝。
+
+## 11. MCP 与 CLI
+
+### 11.1 共同请求和响应
+
+现有 Task 的修改请求包含 `task_id`、`owner_id`、`revision`、`request_id`。创建请求包含会话身份和 `request_id`。同一个逻辑操作在响应丢失后复用相同请求身份；相同身份但不同内容返回 `REQUEST_CONFLICT`。
+
+程序先查询原请求结果，再核对新请求的修订。原请求已成功但回复丢失时返回原结果；真正过期的新请求返回 `REVISION_CONFLICT`。所有检查、修改及累计计数写入同一事务，不以“有占用”代替并发校验。
+
+成功响应为 `ok=true`、`task_id`、`revision`、`summary`、`next`、`data`；失败响应为 `ok=false`、可确定的 Task 身份、`error{code, message, fields, items, next}`。失败不附一个伪成功结果。默认文本与结构化摘要合计目标为 4 KiB；列表使用游标分页，截断不能隐去还有未处理项这一事实。
+
+代码引用统一包含 `path`、`unit` 或行位置、`content_hash`。程序按实际内容校验，引用过期时返回 `REFERENCE_STALE`。`request_id`、`run_id`、`finding_id` 和行为 ID 都不能由改显示名称来重置。
+
+### 11.2 六个 MCP 工具
+
+| 工具 | 主要输入 | 行为和输出 |
+| --- | --- | --- |
+| `taskbelay_start` | `cwd`、会话身份；创建时提供 `request`、`goals`、限制；接手时可带 `takeover_quote` | 创建或恢复一个 Task，返回摘要、身份和修订 |
+| `taskbelay_update` | 共同修改字段及对目标、行为、检查的明确增删改；影响用户要求时带 `user_quote` | 校验覆盖与来源，保存变更原因；不通过省略清空已有问题 |
+| `taskbelay_checkpoint` | 共同修改字段；可带 `proposals`、职责分组、进展、设计/测试处理、检查性观察、诊断问题和用户答复 | 重新观察；执行第 6、7、9 节；返回问题、缺口、建议检查与下一步 |
+| `taskbelay_handoff` | 共同修改字段、`done`、`next`、`pitfalls` | 保存交接并释放普通占用 |
+| `taskbelay_finish` | 共同修改字段；交付结论、自评及实际失败例外，或取消理由和用户原话 | 重新核对必要事实，满足条件后冻结报告；否则返回具体阻止项 |
+| `taskbelay_status` | `task_id` 或 `cwd`；可选明细类型、ID 和游标 | 只读摘要；按需读取问题、来源、检查、运行输出、历史或最终报告 |
+
+`update` 使用明确的对象操作；删除行为或检查需要原因和替代覆盖。没有替代覆盖时保留缺口。用户目标仅可完成或通过真实决定取消，不能通过删除对象消失。修改目标内容会使相关完成结论和验证关联需要重新核对。
+
+checkpoint 提交的是观察说明和待核对处理，不能直接设置“程序已确认”“命令通过”或任意清空 findings。最终自评包含 `root_cause`、`responsibility`、`simplicity` 和 `remaining_limits`，每项针对实际改动；它不能覆盖程序仍然存在的缺口。
+
+### 11.3 CLI
 
 ```text
-taskbelay run <check-id> [--task <id>] [--reason <text>]
-taskbelay status [--task <id>] [--json]
-taskbelay report [--task <id>]
-taskbelay list [--all]
-taskbelay call <tool> [--agent <name>] [--session <id>]   # 从 stdin 读 JSON，效果和调用 MCP 工具一样，用于测试和调试
+taskbelay run <check-id> --owner <id> [--task <id>] [--request <id>] [--reason <diagnostic-id>]
+taskbelay status [--task <id>] [--json] [--detail <kind>] [--id <id>] [--cursor <cursor>]
+taskbelay report [--task <id>] [--json]
+taskbelay list [--all] [--cursor <cursor>]
+taskbelay call <tool> --agent <name> --session <id>
 taskbelay mcp --agent <name>
-taskbelay hook <session-start|pre-write|pre-shell> --agent <name>   # 从 stdin 读 Agent 传来的事件 JSON
+taskbelay hook <session-start|pre-write|pre-shell> --agent <name>
 taskbelay install <agent...> | --all
 taskbelay uninstall <agent...> | --all
 taskbelay doctor
 taskbelay version
 ```
 
-- 省略 `--task` 时，按当前目录所在的 worktree 找进行中的 Task。
-- `taskbelay call` 的占用者 ID 是 `<agent>:<session>`，默认为 `cli:local`。
+`call` 和 hook 从标准输入读取 JSON。`call` 与 MCP 使用同一处理入口和 Schema。CLI run 的会话身份来自 start 的实际返回，不推断成当前占用者。未提供 request 时程序生成并在启动输出中返回，方便响应丢失后读取已有运行。
 
-### 11.3 错误码
+省略 Task ID 时，修改和 run 定位当前目录的进行中 Task；status/report 定位进行中 Task，没有时返回同一 worktree 最近的终态 Task。选择不明确时返回候选，不读取其他目录的任意 Task。
 
-| 错误码 | 什么时候出现 |
-| --- | --- |
-| `NOT_A_REPO` | `cwd` 不在 Git worktree 里 |
-| `NO_ACTIVE_TASK` | worktree 里没有进行中的 Task，却调用了需要 Task 的操作 |
-| `ACTIVE_TASK_EXISTS` | 要新建 Task，但 worktree 里已经有进行中的 Task（会同时返回这个 Task 的摘要） |
-| `TASK_IN_USE` | Task 正被别的会话占用 |
-| `TASK_NOT_FOUND` | 找不到这个 Task |
-| `TASK_CLOSED` | 修改已经结束的 Task |
-| `USER_QUOTE_REQUIRED` | 这次修改需要用户原话，但没有提供 |
-| `INVALID_INPUT` | 字段缺失或不合法（会附上字段路径） |
-| `START_TOO_LARGE` | 开 Task 时，未提交的改动超过 8 MiB |
-| `FINISH_BLOCKED` | 完成条件没有全部满足（会附上未满足的条件） |
-| `RUN_REFUSED` | `taskbelay run` 被拒绝（会附上原因和解决办法） |
+### 11.4 错误和解决方式
 
-每个错误都会附带一句话，说明下一步该做什么。
-
-## 12. 数据
-
-- **位置：** `~/.taskbelay/tasks.db`（Windows 上是 `%USERPROFILE%\.taskbelay\tasks.db`），可以用 `TASKBELAY_HOME` 换目录。使用 SQLite 的 WAL 模式和纯 Go 驱动。
-- **表：** `tasks`（Task 的当前状态）、`start_files`（起点时未提交文件的内容）、`runs`（运行记录，包括输出的末尾部分）、`events`（历史）。数据库只有一个当前 Schema。
-- **上限：** 每个 Task 保留最近 200 条历史、最近 100 次运行，每次运行保存 64 KB 输出。
-- **安装记录：** `~/.taskbelay/installs.json`，记录给每个 Agent 写入了哪些文件。卸载时只删除这些文件。
-- **Git：** TaskBelay 只读 Git，只会调用 `rev-parse`、`status`、`diff`、`show`、`ls-files`、`grep`、`merge-base`、`check-attr`、`cat-file`。
-- **网络：** 不联网，不收集任何使用数据。
-
-## 13. Agent 接入
-
-| Agent | MCP | Skill | 写文件前 hook | shell 命令前 hook | SessionStart hook |
-| --- | --- | --- | --- | --- | --- |
-| Claude Code | 有 | 有 | Write / Edit / NotebookEdit | Bash | 有 |
-| Codex | 有 | 有 | apply_patch | 看 Codex 是否支持 | 看 Codex 是否支持 |
-| ZCode | 有 | 有 | Write / Edit | 看 ZCode 是否支持 | 看 ZCode 是否支持 |
-| DeepSeek Harness | 有 | 有 | 看 DeepSeek Harness 是否支持 | 看 DeepSeek Harness 是否支持 | 看 DeepSeek Harness 是否支持 |
-
-- `taskbelay install <agent>` 把程序里打包好的文件，按这个 Agent 自己的方式写进去：插件、MCP 配置、Skill 和 hook。hook 和 MCP 配置里使用 `taskbelay` 程序的绝对路径。重复执行 install 结果不变；升级 TaskBelay 后再执行一次就能更新这些文件。
-- `taskbelay doctor` 检查以下内容：程序版本、每个 Agent 的文件是否齐全、是否和当前版本一致、数据库能不能打开、git 能不能用。每发现一个问题，都给出一条修复命令。
-- 所有 Agent 用同一份 Skill 内容，只有开头的元数据和工具名写法不同。Skill 用英文写，每个 Agent 不超过 6 KB。
-
-**Skill 必须包含以下规则：**
-
-1. 在仓库里开始开发前，先调用 `taskbelay_start`。普通问答和一两行的小改动不需要。
-2. 只做用户要求的事。先找到原因，以及现有代码里应该改的位置，优先修改已有的函数和文件。
-3. 不添加用户没要求的接口、抽象类、工厂、插件机制、配置项、兼容分支、fallback，也不添加"以后可能用到"的参数；不改无关代码的格式、命名和结构。
-4. 测试只覆盖本次改变的行为。优先修改已有测试；结构相同的用例写成表驱动测试；不给没改的代码补测试。
-5. 检查都通过 `taskbelay run` 运行。先跑验收检查，全量检查最后跑一次。不是 Go 的检查要写 `inputs`。
-6. checkpoint 结果里有 `reduce_or_justify` 时，先删减，删不掉才写理由；有 `ask_user` 时去问用户，并照抄用户原话。
-7. 做完一个阶段时 checkpoint；停下或换 Agent 前 handoff；交付时 finish，并把报告转述给用户。
-8. `user_quote` 必须照抄用户原话，不能改写，不能编造。
-
-## 14. 配置
-
-**仓库配置** `.taskbelay.json`（可选，可以 commit 到仓库里）：
-
-```json
-{
-  "budgets": { "S": { "prod_lines": 150 } },
-  "paths": { "test": ["e2e/**"], "docs": [], "generated": ["api/gen/**"] },
-  "hint_words": { "names": ["..."], "code": ["..."] },
-  "test_commands": ["make check"]
-}
-```
-
-- `budgets`：只覆盖写出来的那些数值。
-- `paths`、`test_commands`：在默认规则的基础上追加。
-- `hint_words`：写了就整体替换 7.10 里默认的词表。
-
-**用户配置** `~/.taskbelay/config.json`：
-
-- `lang`：`zh-CN` 或 `en`，默认跟随系统语言。
-- `release_after_minutes`：占用多少分钟没活动就过期，默认 30。
-
-## 15. 分发与版本
-
-- **平台：** macOS arm64 和 x64、Linux x64 和 arm64、Windows x64。
-- **npm 包 `taskbelay`：** 由一个几十行的启动脚本，加上按平台拆分的可选依赖包组成，每个平台包里只有一个 `taskbelay` 可执行文件。也可以直接用 `go install` 安装。
-- **版本号：** 所有组件共用仓库根目录 `VERSION` 文件里的同一个版本号。
-
-## 16. 性能与体量
-
-- **速度**（1 万个文件的仓库，改动的文件在 500 个以内）：
-  - `taskbelay_start` ≤ 1 秒；
-  - `taskbelay_checkpoint` 和 `taskbelay_finish` ≤ 2 秒（包括符号分析）；
-  - hook 的 p95 ≤ 300 毫秒；
-  - `taskbelay run` 自身的开销 ≤ 300 毫秒（不含被运行命令本身的时间）。
-- **输出：** 工具默认输出 ≤ 4 KB，Task 摘要 ≤ 60 行，交付报告 ≤ 40 行。
-- **体量：**
-  - Go 非测试代码 ≤ 7000 行；
-  - 测试代码不超过非测试代码；
-  - 非 Go 代码（npm 启动脚本和各 Agent 的接入文件）≤ 800 行；
-  - 全部文档中英文合计 ≤ 1500 行。
-- **依赖：** 只用 Go 标准库、MCP Go SDK 和纯 Go 的 SQLite 驱动。加任何其他依赖，都要有明确的理由。
-- **可靠性：** 多个进程同时读写同一个数据库时，不丢数据，也不会出现两个进行中的 Task。TaskBelay 进程被杀掉之后，下次启动能正常读取数据，没跑完的运行记录标为 `interrupted`。
-
-## 17. 验收场景
-
-每个场景都在临时 Git 仓库和临时 `TASKBELAY_HOME` 里，通过 `taskbelay call`、`taskbelay run`、`taskbelay hook` 自动执行。另外，7.4 和 8.1 中各语言的识别规则，要有表驱动的单元测试。
-
-| 编号 | 场景 | 期望 |
+| 错误码 | 触发条件 | 下一步 |
 | --- | --- | --- |
-| A1 | S 规模 Task 改 1 个文件，`run c1` 两次，然后 finish | 第二次 run 返回 `reused`；报告里写实际执行 1 次、复用 1 次 |
-| A2 | S 规模 Task 新建第 2 个生产文件 | pre-write 拒绝；写了理由之后放行；新建第 3 个时（超过 2×1），没有用户原话就拒绝 |
-| A3 | `allow_new_deps = false` 时在 `go.mod` 里加依赖 | checkpoint 返回 `ask_user`；没有用户原话时 finish 被拦下 |
-| A4 | 检查失败后不改代码再 run | 被拒绝；带 `--reason` 才执行；连续失败 3 次后，下一次必须带 `--reason`，并给出 `rethink` |
-| A5 | 检查通过后，分别改 `inputs` 以内的文件、以外的文件，以及只改文档 | 改 `inputs` 以内：`check_stale`；改 `inputs` 以外、只改文档：结果仍然有效 |
-| A6 | 开 Task 前就有未提交的改动 | 这些改动不计入任何指标 |
-| A7 | 会话 1 开 Task 后没有交接就退出，会话 2 马上调用 start | 返回 `TASK_IN_USE`；占用过期后，或者带了 `takeover_quote`，摘要里能看到进展和下一步 |
-| A8 | Claude Code 交接后，Codex 调用 start | Codex 直接接手；摘要里有交接内容；报告列出两个参与的 Agent |
-| A9 | shell hook 收到和计划检查完全相同的命令 | 拒绝，并提示改用 `taskbelay run` |
-| A10 | 修改 `forbidden_paths` 里的文件 | pre-write 拒绝；通过 shell 修改的，finish 返回 `forbidden_changed` |
-| A11 | S 规模 Task 的测试新增行数超出预算 | 出现 `test_lines` 超标项，需要写理由 |
-| A12 | 不带用户原话 cancel | 返回 `USER_QUOTE_REQUIRED` |
-| A13 | S 规模 Task 新建 `utils/` 目录，里面只放一个 `UserFactory.go` | 出现 `new_dirs` 超标项；提示里包括目录名、文件名，以及"目录里只有一个文件"，共三条 |
-| A14 | worktree 已有进行中的 Task 时再新建 Task | 返回 `ACTIVE_TASK_EXISTS`，同时返回现有 Task 的摘要 |
-| A15 | 对每个 Agent 执行 install、doctor、uninstall | 只写入、只删除安装记录里的文件；手动删掉一个 hook 文件后，doctor 能发现 |
-| A16 | 新增一个没人调用的 Go 函数；然后再新增一个 | 第一个：`unused_symbols = 1`，等级 `justify`；两个：等级 `user` |
-| A17 | 新增一个只被测试调用的生产函数 | `test_only_symbols = 1` |
-| A18 | 新增一个只有一个实现的 Go 接口；然后加上第二个实现 | 第一种情况：`new_abstractions = 1`；第二种情况：0 |
-| A19 | 只改了某个文件的缩进和空行 | `format_only_files = 1` |
-| A20 | 把一个文件重命名，同时改了 3 行 | 不算新文件，只计入 3 行改动 |
-| A21 | 把一个函数从 a.go 挪到 b.go | 不算新符号 |
-| A22 | 新增一个测试，只调用了没被改过的函数 | `unrelated_tests = 1` |
-| A23 | 新增 3 个结构相同、只是数据不同的测试 | 出现"合并成表驱动测试"的提示 |
-| A24 | 验收检查还没通过时，run 全量检查 | 被拒绝；验收检查通过后可以执行 |
-| A25 | 改一个没被 `./internal/auth` 导入的 Go 包，然后 run `go test ./internal/auth` 的检查 | 返回 `reused` |
-| A26 | 不带用户原话选 L 规模；选 M 规模但没写理由 | L：`USER_QUOTE_REQUIRED`；M：`INVALID_INPUT` |
-| A27 | 扫描文档、Skill 和输出模板 | 没有第 4 节列出的禁用词 |
+| `NOT_A_REPO` / `TASK_NOT_FOUND` | 无法找到对应仓库或 Task | 使用正确目录或明确 Task ID |
+| `ACTIVE_TASK_EXISTS` | 已有 Task，却请求创建另一任务 | 继续原 Task，或取得实际结束/取消决定 |
+| `TASK_IN_USE` / `TASK_CLOSED` | 会话无占用或 Task 已结束 | 交接、接手或为新需求创建 Task |
+| `REVISION_CONFLICT` / `REQUEST_CONFLICT` | 旧状态写入或请求身份被复用为不同操作 | 回读当前状态或原操作 |
+| `INVALID_INPUT` / `REFERENCE_STALE` | 字段、关联或来源无效 | 修正指定字段或重新观察 |
+| `USER_QUOTE_REQUIRED` | 改变用户要求却没有真实决定 | 获取实际决定 |
+| `OBSERVATION_INCOMPLETE` | 必要观察无法完成 | 恢复可观察条件 |
+| `RESOURCE_LIMIT` | 本次输入超过明确支持的资源范围 | 返回具体资源与限制，不静默截断 |
+| `RUN_IN_PROGRESS` | 有存活或未确定运行 | 查看原 run |
+| `RUN_REDUNDANT` / `RETRY_WITHOUT_NEW_INFORMATION` | 检查没有新增价值 | 复用结果，或解决实际缺口 |
+| `FINISH_BLOCKED` | 当前完成条件不满足 | 处理同一份下一步清单中的具体项目 |
 
-## 18. 怎么判断 TaskBelay 有用
+发布接口时，同一共享 Schema 描述成功、失败和全部嵌套输入；文档中的完整请求示例同时给出同工具、具体触发条件的真实错误示例及实现来源。实际编码结果需要与 Schema 一致。
 
-源码测试只能证明功能能用，证明不了 TaskBelay 有用。发布 1.0 之前，至少做一次对照实验：
+## 12. Agent 接入
 
-- **任务：** 6 个真实任务，S、M、L 各 2 个。每个任务做两遍：一遍只用 Agent，一遍用 Agent 加 TaskBelay。两遍使用同一个模型、同一个起点 commit。
-- **记录：** 生产新增行数、新文件数、新抽象数、没用到的符号数、测试新增行数、测试实际执行次数、用户插手的次数、返工次数、总耗时，以及交付结果是否满足需求（由用户判断）。
-- **判断标准：** 交付质量不下降，同时生产新增行数或测试执行次数至少减少 30%，用户插手的次数不增加，就算有用。达不到就回来改这份说明书，而不是继续加功能。
-- **调预算：** 用报告里的"声明规模 / 实际规模"，以及每个指标的实际数值，调整第 7.5 和 8.1 节的预算。
+四个 Agent 使用同一套算法和 Task，只按实际能力转换工具输入、Skill 元数据和 hook 事件。支持情况按 MCP、Skill、会话提示、写入拦截和 shell 拦截分别记录；没有在对应 Agent 中验证的能力标为未验证。
 
-## 19. 可以改的默认决定
+写入 hook 执行快速的明确路径限制、运行中输入保护和停止提醒。它不在每次写文件时运行类型分析，也不按文件数量制造“先申请再创建”的流程。能够解析多文件写入时逐一检查，不能只检查第一个路径。
 
-以下是这份说明书替你做的决定，重写开始前可以修改：
+shell hook 对能够可靠解析且与已登记检查等价的命令，提示或要求通过 `taskbelay run` 执行。命令等价基于解释器、工作目录、参数和环境；不能随意合并引号内空白。无法完整解析的命令保留不确定性，不猜测等价关系。
 
-- 4 个 Agent 都支持，但先做 Claude Code 和 Codex，再做 ZCode 和 DeepSeek Harness。
-- 删掉 WebUI、桌面宠物和交互式菜单。
-- 文档只保留中文和英文。
-- 符号分析先支持 Go、TypeScript/JavaScript、Python、Java/Kotlin、Rust。
-- 预算表的数值、占用的过期时间。
-- 检查命令用 shell 字符串，不用参数数组。
-- 配置文件用 JSON 格式。
-- 所有组件共用一个版本号，从 0.4.0 开始。
+支持 hook 的 Agent 会记录观察到的直接测试调用；它只能证明调用被尝试，不能证明命令执行成功。未经过 TaskBelay 的真实结果不能伪装成其执行结果。任意 shell 或外部编辑仍可能绕开 hook，checkpoint 以实际内容重新核对。
+
+Skill 用简洁英文维护一份共同内容，明确以下规则：
+
+1. 对需要持续修改和验证的任务，先打开或恢复 Task；尊重用户明确使用或不使用的要求。
+2. 先找当前职责和可观察行为，再修改代码；不为将来需求增加机制。
+3. 对新增边界和实际问题比较直接方案；引用真实代码，不用空泛理由处理问题。
+4. 先复用或扩展已有测试；新情况必须补充独立的行为或失败原因。
+5. 检查通过 run 执行，执行前查看缺口；不要换名字、改包装命令或绕开工具重复跑。
+6. 在职责扩展、得到关键结果、遇到新缺口和交付前 checkpoint；普通编辑无需逐次登记。
+7. 收到 finish 就停止扩展并交付；只有新要求或真实新问题才继续。
+8. 停下或换 Agent 前交接；用户原话、人工观察、实际运行及未知情况如实记录。
+
+安装使用程序内打包的接入文件，按 Agent 的真实格式写入配置并记录归属。重复安装幂等，doctor 检查程序、Git、数据和每项接入是否一致。卸载只移除自身拥有且仍可核对的文件或配置项；保留其他配置，发现用户修改时报告具体冲突。
+
+## 13. 数据、报告与实现职责
+
+### 13.1 数据
+
+数据目录默认为 `~/.taskbelay`，可用 `TASKBELAY_HOME` 指定。SQLite 保存一个当前 Schema，原子维护 Task、运行、请求身份、占用和累计记录。不兼容或损坏的数据明确报错并保留原文件。
+
+每个 Task 默认保留最近 200 条普通历史、100 次普通运行和 5 次交接。当前仍引用的检查结果、处理依据、交付快照、累计计数及所有未结束操作不受普通历史裁剪影响。当前必要数据本身超过资源限制时显式报错，不以裁剪改变结论。
+
+用户配置保存语言和占用超时；仓库 `.taskbelay.json` 保存文件类别、真实项目约定、检查入口和明确限制。Task 保存生效配置的内容标识。配置变化产生相应复核，不能在进行中的 Task 中静默放宽用户限制或使已发现问题消失。
+
+产品本身在本地分析与存储；被用户允许的检查命令按其实际环境执行。命令日志可能包含项目内容，报告只显示必要摘要。
+
+### 13.2 报告
+
+报告优先展示：完成结果；删掉或合并的具体多余结构；保留复杂度的实际理由；新增与复用的验证情况；实际检查、复用、拒绝及耗时；剩余限制；参与 Agent。
+
+“发现候选”“经检查确认为多余”“已经实际删减”分别计数。不能把所有提示当作收益，不能把建议合并算成已经合并。重复请求被拒绝的次数也不能直接等同于节省的用户时间。
+
+活动 Task 的 report 显示最近保存观察及时间；终态 report 返回冻结的交付快照。默认不超过 40 行，完整来源可按 ID 查询。短报告仍须列出失败、未知和交付限制。
+
+### 13.3 实现职责
+
+| 位置 | 责任 |
+| --- | --- |
+| `internal/task` | 纯数据与规则：行为、问题处理、检查选择和完成条件 |
+| `internal/observe` | 仓库身份、不可变起点、实际 diff、文件与依赖观察 |
+| `internal/analyze` | 可支持语言的结构事实、候选检测和分析覆盖范围 |
+| `internal/check` | 输入与工具状态、实际进程、结果保存和复用判断 |
+| `internal/store` | SQLite、修订检查、占用、请求去重和记录保留 |
+| `internal/service` | 唯一操作入口，组合观察、规则和原子保存 |
+| `internal/protocol` | 共享输入、输出、错误及 Schema |
+| `internal/mcp`、`cmd/taskbelay` | 接口转换，调用同一 service |
+| `internal/hook`、`internal/install` | Agent 事件转换、快速检查和接入维护 |
+| `assets` | 一份共同 Skill 和各 Agent 接入模板 |
+
+平台进程和文件行为放在平台实现中，业务规则不选择操作系统。包之间优先直接调用，接口只为真实调用方需要的边界服务。报告、hook 和 Agent 不保存第二份 Task 游标。
+
+程序支持 macOS arm64/x64、Linux arm64/x64、Windows x64。npm 入口选择对应平台可执行文件，也提供 Go 安装方式；安装示例使用 `@latest`。组件使用统一版本元数据，安装包应包含独立运行所需的全部接入文件。中文和英文文档说明实际功能、能力范围和验证状态。
+
+## 14. 验收场景
+
+自动场景在临时 Git 仓库、临时数据目录和隔离的 Agent 配置目录中通过实际 CLI/MCP 入口执行。结构事实和算法结果使用小而真实的代码样本；语义处理输入明确标为模拟 Agent 输入。实际模型会话另按第 16 节验证。
+
+| 编号 | 场景 | 必须观察的结果 |
+| --- | --- | --- |
+| A1 | 提议并为一种当前策略增加接口、工厂、注册和配置 | 实施前指出直接方案；实际写入后合并为一个扩展问题；空泛理由不能处理；直接实现后该问题消失 |
+| A2 | 只有一个实现的接口隔离真实外部服务 | 根据实际调用边界和简单方案会破坏的条件处理；不因实现数量要求删除 |
+| A3 | 在已有文件中顺手新增另一业务功能 | 实际变更组出现范围问题；不能因文件数不变而漏掉 |
+| A4 | 为一个事实新增镜像状态与同步代码 | 输出具体状态读写位置和直接使用原事实的替代方案；处理前不能交付 |
+| A5 | 合理拆分文件减少职责混杂 | 不因新文件或目录增多单独阻止；比较实际职责而非文件数 |
+| A6 | 新生产函数仅有测试调用；另一个通过框架注册使用 | 分别列出实际关系；后者保留注册来源，不错误标成确定的死代码 |
+| A7 | 提交过期代码位置、无实际内容的来源或未来需求作为理由 | 拒绝无效处理；有效的当前行为和代码来源可保存为 Agent 判断 |
+| A8 | 处理一个设计问题后修改相关条件，再做无关修改 | 相关变化使处理失效；无关变化不重复提问 |
+| A9 | 同一原因包含多个新增单元，连续 checkpoint 和交接 | 保留一个稳定问题及处理历史；省略问题不能清除它 |
+| A10 | 新测试与已有测试条件、观察和失败原因均相同 | 生成重复候选，删除或合并后保留原覆盖；不能只按新名称算新增价值 |
+| A11 | 阈值前、阈值时和到期后三个结构相似测试 | 三个必要情况均保留，允许参数化，不按结构相似自动删除 |
+| A12 | 通过公共 API 间接覆盖内部函数修改 | 可关联真实行为；不会因测试正文没出现内部函数名判为无关 |
+| A13 | 多个候选检查有重叠覆盖和不同成本 | 输出确定的充分集合及每项独有缺口；冗余删除不丢失任何必需情况 |
+| A14 | 集成与单元检查观察同一功能的不同失败原因 | 不把名字相同或覆盖行相同当作相互替代 |
+| A15 | 相同命令、输入与行为下重复 run，或换检查 ID | 返回原结果引用；实际进程只执行一次，历史和计数不重置 |
+| A16 | 较大检查实际覆盖较小检查的全部相同情况 | 返回 `covered` 和真实来源，不声称小检查实际执行过 |
+| A17 | 必需全量检查也是唯一验收检查 | 能执行，不因其自身尚未通过而阻塞；有效通过后不重复执行 |
+| A18 | 连续同样失败，无变化重跑及改写理由重跑 | 拒绝无新增信息；具体新诊断可运行，连续失败产生 rethink |
+| A19 | 同一输入出现先通过后失败，或失败后偶发通过 | 较新失败不能被旧通过遮盖；不稳定状态保留，不挑一次通过完成普通验收 |
+| A20 | 修改锁文件、生成源码、被检查的文档、显式 ignored 输入、工具或环境 | 受影响的输入键变化；未纳入的外部条件不被宣称已验证 |
+| A21 | 改动可靠输入范围以外的独立文件 | 对应检查仍可复用，报告说明输入边界 |
+| A22 | 检查运行期间修改输入 | 输出实际结果但标记 inputs_changed，不能作为当前有效通过 |
+| A23 | 删除失败检查、换 ID、降低断言或修改目标 | 原缺口和失败不会自动消失；改变目标必须关联实际用户决定 |
+| A24 | 开工前有已修改、新增、删除文件，之后恢复到 HEAD、移动或 commit | 只计算相对实际起点的变化；已有修改不计入，后续撤回或移动仍能观察 |
+| A25 | 历史重写或修改仓库配置 | 不清零 Task 改动、问题和计数；生效条件变化需要核对 |
+| A26 | 两进程同时 start、修改或 run | 只产生一个活动 Task 和一个实际运行；旧修订不能覆盖新状态 |
+| A27 | 运行结果已保存但响应丢失，再次提交原请求 | 返回原结果，不启动第二个进程；不同内容复用身份被拒绝 |
+| A28 | TaskBelay 被终止但命令子进程仍活着，或 PID 被其他进程复用 | 正确保留运行或未知状态，不重跑、不完成、不取消 |
+| A29 | 交接与占用过期后换 Agent，旧 Agent 再写入 | 新 Agent 得到同一行为、问题和检查；旧占用者被拒绝 |
+| A30 | 完成条件满足后请求无新价值的测试 | 拒绝重复工作并返回 finish；实际新问题能重新形成缺口 |
+| A31 | 完成后继续改仓库，并超过普通历史保留上限 | 最终报告、必要引用和累计记录不变，未结束操作不被裁剪 |
+| A32 | 合理的文档修改只需直接检查 | 保存具体观察即可完成，不强制写机械测试，也不接受空泛免责 |
+| A33 | 多文件写入、引号内空白不同的命令、无法解析的 shell | 逐路径检查明确限制；不把不同命令误判等价；未知覆盖如实显示 |
+| A34 | 在有其他插件和用户改动的隔离配置中 install、doctor、uninstall | 保留非自身配置；幂等安装；发现缺失和用户修改，不盲删 |
+| A35 | 用户明确禁止依赖或接受一次具体回归失败 | 限制不能被设计理由覆盖；失败例外绑定实际结果，不替代新需求验收 |
+| A36 | 分析器缺失、类型加载失败、输入超过资源上限 | 显示实际覆盖与缺口，必要信息不完整时不能显示全部通过 |
+| A37 | 命令退出 0，但目标测试被过滤、跳过或未观察目标结果 | 实际命令成功与行为验证分开；缺口保留，不复用成验收通过 |
+
+上述场景还需要覆盖错误编码、实际输出 Schema 和已发布命令语义。不能通过直接修改数据库或伪造运行记录使场景通过。算法单元测试辅助定位，最终判断以真实入口和可见结果为准。
+
+## 15. 性能、资源与维护要求
+
+增量分析按文件内容缓存，只重建受影响的结构事实和问题。检查结果按自身输入和行为关系失效。默认输出优先展示最需要处理的 5 个问题，其余通过分页读取，完成判断仍覆盖全部问题。
+
+性能基准使用 1 万个 Git 可见文件、约 100 MiB 内容、最多 500 个修改文件和 1 MiB 文本 diff 的固定仓库，分别记录操作系统、机器、冷启动和热缓存。初始目标为：热 checkpoint 的程序处理 p95 不超过 2 秒，快速 hook 的 p95 不超过 300 毫秒，纯保存状态查询 p95 不超过 100 毫秒。
+
+基准至少重复 30 次并报告分位数。首次哈希、外部依赖读取、类型分析和真实检查耗时分别报告，不能把必需工作排除后声称整个操作达标。Agent 阅读、填写和修复问题的时间计入第 16 节总成本。
+
+默认资源边界为最多 10 万个观察文件、单个输入文件 512 MiB、开工时需保存的未提交实际内容合计 64 MiB。超限返回实际数量与限制；不能丢弃内容后继续声称完整观察。无法解析的大文件仍保留内容变化和人工复核需求，不用分析截断得出未发现问题。
+
+维护体量按职责检查：每个包服务于明确行为；相同判断只有一个实现；测试覆盖实际规则和用户场景；不存在只为形式统一的框架。报告代码、测试和文档体量，但不以压缩行数、隐藏测试情况或塞进已有文件来通过验收。
+
+## 16. 如何验证算法有效
+
+### 16.1 功能正确与实际收益分别验证
+
+第 14 节证明程序按规则工作，不能证明 LLM 会因此做出更好设计。真实收益使用三组对照：
+
+1. Agent 按正常项目规范完成任务。
+2. 同一个 Agent 加精简 Skill，包含同样的职责、直接方案和测试原则。
+3. 同一个 Agent 加同样的 Skill 与完整 TaskBelay。
+
+第三组必须相对第二组体现程序带来的增益，否则不能把提示词本身的效果归功于算法。
+
+### 16.2 任务与评定
+
+使用至少 12 个真实任务，覆盖局部修复、跨职责功能、重构、文档、外部依赖和多种语言；包含必要的单实现接口、参数化边界测试、间接覆盖及真实全量要求等容易误判的情况。每个任务各组至少执行两次。
+
+各组使用相同模型、初始代码、用户要求、权限和机器条件，顺序交错；每次从独立干净环境开始，防止缓存、任务记忆或先前答案泄漏。用于调整规则的任务与最后评估任务分开。
+
+不知道实验组别的评审者按实际需求检查结果：根因是否解决、行为是否完整、职责是否恰当、可删除的机制及重复测试是什么。不能把程序自己的候选数当作正确答案。争议案例保留原代码、判断依据和不确定性。
+
+### 16.3 指标与初始目标
+
+| 指标 | 定义与目标 |
+| --- | --- |
+| 交付质量 | 验收、关键回归和后续发现的问题不恶化；少跑测试但漏掉缺陷不算收益 |
+| 多余设计 | 由独立评定确认的非当前职责、无用选择、重复状态及不必要依赖减少，而非只减少文件或行数 |
+| 多余测试 | 无独立验证价值的测试情况与无新增信息的实际执行减少 |
+| 高确定性拦截准确性 | 在预先标注的重复执行和明确违规样本中目标至少 95%，误拦截需逐项解释 |
+| 候选价值 | 经独立评定确认的设计/测试问题比例和漏检比例分别报告，不把“被 Agent 写理由处理”算作真阳性 |
+| 无效工作成本 | 相对精简 Skill 组，多余设计返工与无价值验证的耗时中位数目标减少至少 30% |
+| 使用负担 | 用户介入次数不增加，包含分析、填写说明和处理误报的总耗时不恶化 |
+| 停止能力 | 需求满足后，无新信息仍继续改结构、写测试和执行检查的次数明显减少 |
+
+这些数值是首轮验收目标，不是已经验证的结论。样本结果逐任务展示，报告波动和失败案例，不能只用平均数掩盖退化。错误复用、丢失失败或遗漏明确限制属于必须修复的正确性缺陷，不能用节省时间抵消。
+
+未达到目标时，优先修正规则、误报和说明负担，并重新比较，不通过增加无关功能解释失败。对规则的调整不得降低用户验收或把未知结果改写成通过。
+
+### 16.4 技术依据
+
+设计必要性检查参考 Google 对当前需求、过度泛化、整体复杂度和测试断言的审查原则；本文的结构化比较与停止机制是 TaskBelay 的产品设计，效果需按以上对照验证。[Google：What to look for in a code review](https://google.github.io/eng-practices/review/reviewer/looking-for.html)
+
+检查缓存把真实输入、环境、工具以及运行期间变化作为有效条件。Bazel 的缓存说明也列出了遗漏工具和输入并发变化带来的错误结果风险；TaskBelay 根据自身可观察范围设计第 8 节规则，不假定任意命令天然可缓存。[Bazel：Remote Caching](https://bazel.build/remote/caching)
