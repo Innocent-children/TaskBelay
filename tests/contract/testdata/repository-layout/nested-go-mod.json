@@ -1,7 +1,0 @@
-{
-  "name": "nested go.mod",
-  "path": "internal/example/go.mod",
-  "contents": "module example.invalid/nested\n\ngo 1.26\n",
-  "expectedPath": "internal/example/go.mod",
-  "expectedContract": "single root go.mod"
-}

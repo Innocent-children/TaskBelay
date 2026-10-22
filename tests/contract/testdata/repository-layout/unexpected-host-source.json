@@ -1,7 +1,0 @@
-{
-  "name": "unexpected host source",
-  "path": "packages/codex/index.ts",
-  "contents": "export {};\n",
-  "expectedPath": "packages/codex/index.ts",
-  "expectedContract": "host packages contain only package.json and README.md"
-}

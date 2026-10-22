@@ -1,7 +1,0 @@
-{
-  "name": "extra executable root",
-  "path": "tools/helper/main.go",
-  "contents": "package main\n\nfunc main() {}\n",
-  "expectedPath": "tools/helper",
-  "expectedContract": "only cmd/taskbelay may be an executable source root"
-}

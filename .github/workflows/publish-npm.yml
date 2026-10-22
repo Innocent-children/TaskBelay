@@ -1,5 +1,9 @@
 name: publish-npm
 
+# Keep this file name: the Trusted Publisher of all five npm packages is bound
+# to Innocent-children/taskbelay + publish-npm.yml. The build and publish step
+# is rewritten with the new implementation; see release/README.md.
+
 on:
   workflow_dispatch:
     inputs:
@@ -8,13 +12,13 @@ on:
         required: true
         type: choice
         options:
+          - taskbelay
           - codex
           - deepseek
           - claude
           - zcode
-          - taskbelay
       channel:
-        description: npm channel (taskbelay supports stable only)
+        description: npm channel
         required: true
         default: stable
         type: choice
@@ -36,14 +40,15 @@ concurrency:
 
 jobs:
   publish:
-    runs-on: ${{ inputs.product == 'taskbelay' && 'xcode-27' || 'macos-15' }}
+    runs-on: macos-15
     timeout-minutes: 90
     env:
       RELEASE_PRODUCT: ${{ inputs.product }}
       RELEASE_CHANNEL: ${{ inputs.channel }}
       RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_OUTPUT: ${{ runner.temp }}/taskbelay-release-${{ inputs.product }}-${{ inputs.version }}
     steps:
-      - name: Check out selected source
+      - name: Check out latest main
         uses: actions/checkout@v7
         with:
           ref: main
@@ -60,18 +65,6 @@ jobs:
         with:
           node-version: 24.18.0
 
-      - name: Set up pnpm 11.24.0
-        uses: pnpm/action-setup@v6
-        with:
-          version: 11.24.0
-
-      - name: Install frozen dependencies
-        run: pnpm install --frozen-lockfile --ignore-scripts
-
-      - name: Check desktop build toolchain
-        if: inputs.product == 'taskbelay'
-        run: node --input-type=module -e 'import { verifyMacDesktopToolchain } from "./scripts/build-desktop-pet.mjs"; await verifyMacDesktopToolchain();'
-
       - name: Create release GitHub App token
         id: release-app-token
         uses: actions/create-github-app-token@v3
@@ -80,51 +73,24 @@ jobs:
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           permission-contents: write
 
-      - name: Validate release selection
+      - name: Prepare git identity and output directory
         shell: bash
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
-          RELEASE_OUTPUT: ${{ runner.temp }}/taskbelay-release-${{ inputs.product }}-${{ inputs.version }}
         run: |
           set -euo pipefail
-          test "$(uname -s)-$(uname -m)" = "Darwin-arm64"
-          if [[ "$RELEASE_PRODUCT" == "taskbelay" && "$RELEASE_CHANNEL" != "stable" ]]; then
-            echo "taskbelay supports stable releases only" >&2
-            exit 1
-          fi
           mkdir -p "$RELEASE_OUTPUT"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           gh auth setup-git
 
-      # TaskBelay preparation compiles Swift and downloads the locked Windows x64
-      # Electron runtime before checking the complete two-platform tarball.
       - name: Build, verify and publish selected npm product
         shell: bash
         env:
           GH_TOKEN: ${{ steps.release-app-token.outputs.token }}
-          RELEASE_OUTPUT: ${{ runner.temp }}/taskbelay-release-${{ inputs.product }}-${{ inputs.version }}
         run: |
-          set -euo pipefail
-          case "$RELEASE_PRODUCT" in
-            codex|deepseek|claude|zcode)
-              pnpm run "release:$RELEASE_PRODUCT" -- \
-                --channel "$RELEASE_CHANNEL" \
-                --version "$RELEASE_VERSION" \
-                --output "$RELEASE_OUTPUT" \
-                --confirm "$RELEASE_PRODUCT-v$RELEASE_VERSION"
-              ;;
-            taskbelay)
-              pnpm run release:taskbelay -- \
-                --version "$RELEASE_VERSION" \
-                --output "$RELEASE_OUTPUT" \
-                --confirm "taskbelay-v$RELEASE_VERSION"
-              ;;
-            *)
-              echo "unsupported product: $RELEASE_PRODUCT" >&2
-              exit 1
-              ;;
-          esac
+          echo "The release build for $RELEASE_PRODUCT is not implemented in this rewrite yet. See release/README.md." >&2
+          exit 1
 
       - name: Upload release records and artifacts
         if: ${{ always() }}
