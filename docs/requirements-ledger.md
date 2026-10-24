@@ -66,7 +66,7 @@ flowchart LR
 | --- | --- |
 | 编号 | 形如 `m3` |
 | 原文 | 用户发出的完整文字，包括粘贴进来的内容，以明文保存在本机 |
-| 时间、Agent、session | 消息从哪个 Agent 的哪个 session 发来 |
+| 时间、Agent、session、轮次 | 消息从哪个 Agent 的哪个 session 发来，属于哪一轮 |
 | 到达时的工作区状态 | 用来确定起点快照 |
 
 ### 需求

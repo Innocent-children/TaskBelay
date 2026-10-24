@@ -13,13 +13,21 @@ import (
 	"strings"
 )
 
-// Root 返回 dir 所在 git 工作区的根目录。
+// ErrNotWorkspace 表示目录不在 git 工作区里。
+var ErrNotWorkspace = errors.New("不在 git 工作区里")
+
+// Root 返回 dir 所在 git 工作区的根目录，符号链接已解析。dir 不在 git 工作区里时
+// 返回 ErrNotWorkspace：git rev-parse 以 128 退出，就是 git 认为这里不能当工作区用，
+// 比如不是仓库、在 .git 目录里，或者仓库的所有者不被信任。
 func Root(dir string) (string, error) {
 	out, err := git(dir, nil, "rev-parse", "--show-toplevel")
+	if exitErr := (*exec.ExitError)(nil); errors.As(err, &exitErr) && exitErr.ExitCode() == 128 {
+		return "", ErrNotWorkspace
+	}
 	if err != nil {
 		return "", err
 	}
-	return filepath.FromSlash(strings.TrimSpace(out)), nil
+	return filepath.EvalSymlinks(filepath.FromSlash(strings.TrimSpace(out)))
 }
 
 // State 算出工作区状态：工作区里文件内容的 git tree 哈希，包括没提交的改动和

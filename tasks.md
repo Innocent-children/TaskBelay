@@ -63,9 +63,9 @@ flowchart LR
 | 2.3 | Claude Code 适配器：把 SessionStart、UserPromptSubmit、PreToolUse（Bash、PowerShell、Edit、Write、NotebookEdit）、PostToolUse、PostToolUseFailure、Stop 的输入转成统一事件，按工具和平台定出命令写法；把决定转成 Claude Code 要的 JSON | [product-agent-integration.md](docs/product-agent-integration.md)「每个 hook 做什么」「Claude Code 和 Codex 的差异」 |
 | 2.4 | Codex 适配器：同上，工具是 Bash 和 apply_patch，轮次取 `turn_id` | 同上 |
 | 2.5 | `taskbelay hook <agent> <事件>`：适配器、`internal/hook`、适配器三步串起来；不在 git 工作区里直接退出；出错时正常退出、不输出内容，错误写进日志 | [product-agent-integration.md](docs/product-agent-integration.md)「TaskBelay 出错时」；[product-architecture.md](docs/product-architecture.md)「关键流程」 |
-| 2.6 | `internal/hook`：每次调用更新 session 记录和最后活动时间；UserPromptSubmit 时记下用户消息原文和到达时的工作区状态 | [requirements-ledger.md](docs/requirements-ledger.md)「session」「用户消息」 |
-| 2.7 | `taskbelay install claude`、`uninstall claude`：写入和删除 hook 条目；macOS 和 Linux 写加了单引号的程序绝对路径，Windows 加 `"shell": "powershell"`；保留用户原有配置，可以重复运行 | [product-agent-integration.md](docs/product-agent-integration.md)「安装和卸载」「三个平台的差异」 |
-| 2.8 | `taskbelay install codex`、`uninstall codex`：写入和删除 `hooks.json` 条目，Windows 上用 `commandWindows`；安装后提示用户用 `/hooks` 确认信任 | 同上 |
+| 2.6 | `internal/hook`：每次调用更新 session 记录和最后活动时间；UserPromptSubmit 时记下用户消息原文、轮次和到达时的工作区状态 | [requirements-ledger.md](docs/requirements-ledger.md)「session」「用户消息」 |
+| 2.7 | `taskbelay install claude`、`uninstall claude`：写入和删除 hook 条目，用 exec 形式写程序的绝对路径和参数，三个平台相同；安装前检查 git 和 Claude Code 的版本；保留用户原有配置，可以重复运行 | [product-agent-integration.md](docs/product-agent-integration.md)「安装和卸载」「三个平台的差异」 |
+| 2.8 | `taskbelay install codex`、`uninstall codex`：写入和删除 `hooks.json` 条目，命令在 macOS 和 Linux 上按 POSIX 写法、在 Windows 上按 PowerShell 写法；安装后提示用户用 `/hooks` 确认信任 | 同上 |
 | 2.9 | `taskbelay status`：显示当前工作区记到的 session 和最近的用户消息，第 8 组扩展成完整内容 | [product-architecture.md](docs/product-architecture.md)「命令」 |
 
 **验收**

@@ -4,7 +4,7 @@ TaskBelay 在 Windows、macOS 和 Linux 上接入 Claude Code 和 Codex，靠的
 
 ## 接入方式
 
-- **hook**：接 5 个事件。每次触发时 Agent 运行 `taskbelay hook <agent> <事件>`，把事件的 JSON 从标准输入传进来，TaskBelay 处理完把决定写到标准输出。输出的 JSON 只用 ASCII 字符，中文等其他字符写成 `\u` 转义，这样不管经过哪个平台的哪种 shell，内容都不会被转码。
+- **hook**：接 5 个事件。每次触发时 Agent 运行 `taskbelay hook <agent> <事件>`，把事件的 JSON 从标准输入传进来，TaskBelay 处理完把决定写到标准输出。输出的 JSON 只用 ASCII 字符，中文等其他字符写成 `\u` 转义，这样不管经过哪个平台的哪种 shell，内容都不会被转码。输出里只写用到的字段，因为 Codex 遇到它不认识的字段时，会把整个输出当作出错。
 - **MCP**：Agent 启动时运行 `taskbelay mcp`，得到 [任务账本](requirements-ledger.md) 里定义的 8 个工具。
 - **skill**：[半自动模式](semi-auto.md) 写方案用的两个 skill，write-technical-plans 和 write-a-well-document，随 TaskBelay 一起安装到两个 Agent 的用户级 skill 目录。
 - **事前提示**：要告诉 Agent 的规矩，在 session 开始时通过 hook 注入。
@@ -175,12 +175,12 @@ macOS 和 Linux 的做法相同，Windows 不同：
 | 用户目录 | `~` | `%USERPROFILE%` |
 | TaskBelay 程序 | `taskbelay` | `taskbelay.exe` |
 | Agent 运行命令用的 shell | Claude Code、Codex 都是用户的 bash 或 zsh | Claude Code 是 Git Bash 或 PowerShell，Codex 是 PowerShell |
-| Claude Code 的 hook 条目 | `command` 写 taskbelay 的绝对路径和参数，路径用 POSIX 的写法加单引号 | 加上 `"shell": "powershell"`，`command` 写成 `& 'C:\Users\dev\go\bin\taskbelay.exe' hook claude stop` |
-| Codex 的 hook 条目 | `command` 写 taskbelay 的绝对路径和参数，路径用 POSIX 的写法加单引号 | `command` 和 `commandWindows` 都写 taskbelay.exe 的绝对路径和参数 |
+| Codex 运行 hook 命令用的 shell | bash 或 zsh，用 `-c` 运行 | PowerShell，用 `-NoProfile -Command` 运行 |
+| Codex 的 hook 条目 | `command` 写成 `'/Users/dev/go/bin/taskbelay' hook codex stop` | `command` 写成 `& 'C:\Users\dev\go\bin\taskbelay.exe' hook codex stop` |
 
-Windows 上，Claude Code 的 hook 条目指定用 PowerShell 运行，是因为 Claude Code 默认用 Git Bash 运行 hook 命令，而 PowerShell 不依赖 Git Bash，Windows 路径里的反斜杠也不用转义。Codex 的 `commandWindows` 是 Windows 上专用的命令写法。
+Claude Code 的 hook 条目在三个平台上写法相同，用 exec 形式：`command` 写 taskbelay 的绝对路径，`args` 写参数。Claude Code 直接启动这个程序，不经过 shell，所以路径里有空格、中文或引号都原样写，也省掉了每次启动 shell 的时间。exec 形式从 Claude Code 2.1.139 开始支持。
 
-程序路径里可能有空格、中文或引号，比如用户名带空格。所以路径一律加单引号：POSIX 写法里，路径中的单引号写成 `'\''`；PowerShell 写法里，路径中的单引号写成两个单引号。
+Codex 用自己运行命令的那个 shell 运行 hook 命令，所以 Codex 的 hook 条目按这个 shell 的写法来写。程序路径里可能有空格、中文或引号，比如用户名带空格，所以路径一律加单引号：POSIX 写法里，路径中的单引号写成 `'\''`；PowerShell 写法里，路径中的单引号写成两个单引号，PowerShell 当作单引号的几个弯引号也一样。
 
 在 Windows 的 WSL 里运行的 Agent 是 Linux 程序，按 Linux 接入：TaskBelay 装在 WSL 里，配置和数据都在 WSL 的用户目录下。
 
@@ -188,11 +188,11 @@ Windows 上，Claude Code 的 hook 条目指定用 PowerShell 运行，是因为
 
 **安装 Claude Code 的接入：`taskbelay install claude`。**
 
-1. 在 Claude Code 的 `settings.json` 的 `hooks` 里加入 7 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 两个，一个匹配 `Bash|PowerShell`，一个匹配 `Edit|Write|NotebookEdit`；PostToolUse、PostToolUseFailure 各一个，匹配 `Bash|PowerShell`。命令里写 taskbelay 的绝对路径，避免 Agent 运行时找不到它。Stop 的超时设为 300 秒，其他设为 30 秒。用户原有的配置保持不动。
+1. 在 Claude Code 的 `settings.json` 的 `hooks` 里加入 7 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 两个，一个匹配 `Bash|PowerShell`，一个匹配 `Edit|Write|NotebookEdit`；PostToolUse、PostToolUseFailure 各一个，匹配 `Bash|PowerShell`。每个条目用 exec 形式写 taskbelay 的绝对路径和参数，绝对路径保证 Agent 运行时找得到它。Stop 的超时设为 300 秒，其他设为 30 秒。用户原有的配置保持不动。
 2. 运行 `claude mcp add --scope user taskbelay -- <taskbelay 的绝对路径> mcp`。
 3. 安装两个 skill。
 
-macOS 和 Linux 上写入的 hook 条目是这个样子（只列出两个，路径以 macOS 为例）：
+写入的 hook 条目是这个样子（只列出两个，路径以 macOS 为例，Windows 上是 taskbelay.exe 的路径）：
 
 ```json
 {
@@ -201,14 +201,14 @@ macOS 和 Linux 上写入的 hook 条目是这个样子（只列出两个，路�
       {
         "matcher": "Bash|PowerShell",
         "hooks": [
-          { "type": "command", "command": "'/Users/dev/go/bin/taskbelay' hook claude pre-tool-use", "timeout": 30 }
+          { "type": "command", "command": "/Users/dev/go/bin/taskbelay", "args": ["hook", "claude", "pre-tool-use"], "timeout": 30 }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "'/Users/dev/go/bin/taskbelay' hook claude stop", "timeout": 300 }
+          { "type": "command", "command": "/Users/dev/go/bin/taskbelay", "args": ["hook", "claude", "stop"], "timeout": 300 }
         ]
       }
     ]
@@ -216,22 +216,16 @@ macOS 和 Linux 上写入的 hook 条目是这个样子（只列出两个，路�
 }
 ```
 
-Windows 上的 Stop 条目：
-
-```json
-{ "type": "command", "shell": "powershell", "command": "& 'C:\\Users\\dev\\go\\bin\\taskbelay.exe' hook claude stop", "timeout": 300 }
-```
-
 **安装 Codex 的接入：`taskbelay install codex`。**
 
-1. 在 Codex 的 `hooks.json` 里加入 6 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 两个，一个匹配 `Bash`，一个匹配 `apply_patch`；PostToolUse 一个，匹配 `Bash`。
+1. 在 Codex 的 `hooks.json` 里加入 6 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 两个，一个匹配 `Bash`，一个匹配 `apply_patch`；PostToolUse 一个，匹配 `Bash`。命令的写法见上一节“三个平台的差异”，超时和 Claude Code 相同。
 2. 运行 `codex mcp add taskbelay -- <taskbelay 的绝对路径> mcp`。
 3. 安装两个 skill。
 4. 提示用户打开 Codex，用 `/hooks` 确认信任 TaskBelay 的 hook。不确认的话，hook 不会运行。
 
 **两个 skill 怎样安装。** 两个 skill 的文件内置在 TaskBelay 项目的 `skills/` 目录里，编译时打包进程序。安装时，把它们复制到 Agent 的 skill 目录，每个 skill 一个子目录：`write-technical-plans/` 和 `write-a-well-document/`。目录里已经有同名的子目录时，保留用户原有的那份。TaskBelay 在自己复制过去的目录里放一个 `.taskbelay` 标记文件，卸载时只删除带这个标记的目录。
 
-两条安装命令都可以重复运行，重复运行只更新 TaskBelay 自己的条目。安装写的是用户级配置，对这台电脑上所有的 git 工作区生效。安装时找不到 `claude` 或 `codex` 命令，TaskBelay 会报错，并打印需要手动写入的配置。
+两条安装命令都可以重复运行，重复运行只更新 TaskBelay 自己的条目。安装写的是用户级配置，对这台电脑上所有的 git 工作区生效；配置文件是符号链接时，修改它指向的文件。安装前先检查版本：git 要 2.5 或更高，安装 Claude Code 的接入时 Claude Code 要 2.1.139 或更高，不满足时报错并说明要求，不写入任何配置。安装时找不到 `claude` 或 `codex` 命令，TaskBelay 会报错，并打印需要手动写入的配置。
 
 **卸载：`taskbelay uninstall claude`、`taskbelay uninstall codex`。** 删除命令里带 taskbelay 路径和 `hook` 子命令的条目，运行 `claude mcp remove --scope user taskbelay` 或 `codex mcp remove taskbelay`，再删除带 `.taskbelay` 标记的 skill 目录。任务账本里的数据保留。
 

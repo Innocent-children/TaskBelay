@@ -72,6 +72,7 @@ internal/
   agent/                Agent 适配器的接口和已注册的适配器列表
     claude/             Claude Code 适配器
     codex/              Codex 适配器
+    hookjson/           两个适配器共用的 JSON 读写：修改 hook 配置文件，写出 hook 的输出
   platform/             平台差异，分 platform_unix.go（macOS、Linux）和 platform_windows.go
   shell/                把命令拆段、分类
     posix/              bash、zsh、Git Bash 的写法
@@ -105,6 +106,8 @@ flowchart TB
     AGENT --> SKILLS["skills"]
     AGENT --> EVENT["event"]
     HOOK --> EVENT
+    HOOK --> LEDGER
+    HOOK --> GITSTATE
     HOOK --> SHELL["shell<br/>posix、pwsh"]
     HOOK --> CHECK["check"]
     HOOK --> PLAN["plan"]
@@ -156,16 +159,16 @@ type Adapter interface {
 	Name() string // "claude"、"codex"，也是 hook 命令里的 <agent>
 	ParseEvent(hookEvent string, input []byte) (event.Event, error)
 	RenderDecision(hookEvent string, d event.Decision) ([]byte, error)
-	Install(env platform.Env, exe string) error
-	Uninstall(env platform.Env) error
+	Install(env platform.Env, exe string) (string, error) // exe 是 taskbelay 的绝对路径，返回要告诉用户的话
+	Uninstall(env platform.Env) (string, error)
 }
 ```
 
-适配器负责这个 Agent 的全部特殊之处：工具名对应哪种事件，命令按哪种写法解析，决定写成什么 JSON，配置文件和 skill 目录在哪里，hook 条目怎样写。这些具体是什么，见 [Agent 接入](product-agent-integration.md)。
+适配器负责这个 Agent 的全部特殊之处：工具名对应哪种事件，命令按哪种写法解析，决定写成什么 JSON，配置文件和 skill 目录在哪里，hook 条目怎样写。这些具体是什么，见 [Agent 接入](product-agent-integration.md)。两个 Agent 的 hook 配置结构相同，用到的输出字段也相同，这两部分放在 `hookjson` 里共用；修改配置文件时保持用户原有内容和键的顺序不变。
 
 ### 平台
 
-平台差异放在 `internal/platform` 里，用 Go 的构建约束区分：`platform_unix.go`（构建约束是 `unix`，macOS 和 Linux 共用）和 `platform_windows.go` 提供同一组函数，编译时只会选中其中一个。macOS 和 Linux 在下面这些问题上的答案相同，所以共用一个文件。它们回答这几个问题：用户目录在哪里；TaskBelay 的数据目录在哪里；程序文件叫什么；Claude Code 和 Codex 的 hook 命令在这个平台上怎样写；Codex 在这个平台上用哪种命令写法。
+平台差异放在 `internal/platform` 里，用 Go 的构建约束区分：`platform_unix.go`（构建约束是 `unix`，macOS 和 Linux 共用）和 `platform_windows.go` 提供同一组函数，编译时只会选中其中一个。macOS 和 Linux 在下面这些问题上的答案相同，所以共用一个文件。它们回答这几个问题：用户目录在哪里；TaskBelay 的数据目录在哪里；程序文件叫什么；Codex 的 hook 命令在这个平台上怎样写；Codex 在这个平台上用哪种命令写法。Claude Code 的 hook 不经过 shell，三个平台写法相同，不需要平台来回答。
 
 平台用构建约束，不用运行时的接口，因为一个程序文件只会在一个平台上运行，编译时选定就够了。
 
@@ -287,7 +290,7 @@ TaskBelay 的数据都放在用户目录下的 `.taskbelay` 目录里，macOS �
 | `github.com/modelcontextprotocol/go-sdk` | MCP server，官方的 Go SDK |
 | `mvdan.cc/sh/v3` | 解析 POSIX 写法的命令 |
 
-运行时还需要：`git`，Windows 上是 Git for Windows；Go 项目需要 Go 工具链；安装接入时需要 `claude` 或 `codex` 命令。
+运行时还需要：`git` 2.5 或更高版本（`git rev-parse --git-path` 从 2.5 开始有），Windows 上是 Git for Windows；Go 项目需要 Go 工具链；安装接入时需要 `claude` 或 `codex` 命令，Claude Code 要 2.1.139 或更高版本（hook 的 exec 形式从这个版本开始有）。
 
 ## 平台和安装
 

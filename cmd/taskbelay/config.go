@@ -4,20 +4,19 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"path/filepath"
 
-	"github.com/Innocent-children/taskbelay/internal/ledger"
+	"github.com/Innocent-children/taskbelay/internal/platform"
 )
 
 // runConfig 处理 taskbelay config get <设置项> 和 taskbelay config set <设置项> <值>。
-func runConfig(dataDir string, args []string, stdout io.Writer) error {
+func runConfig(env platform.Env, args []string, stdout io.Writer) error {
 	isGet := len(args) == 2 && args[0] == "get"
 	isSet := len(args) == 3 && args[0] == "set"
 	if !isGet && !isSet {
 		return errUsage
 	}
 
-	l, err := ledger.Open(filepath.Join(dataDir, "taskbelay.db"))
+	l, err := openLedger(env)
 	if err != nil {
 		return err
 	}

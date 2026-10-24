@@ -5,7 +5,8 @@ package ledger
 const schema = `
 CREATE TABLE IF NOT EXISTS workspaces (
 	id   INTEGER PRIMARY KEY,
-	path TEXT NOT NULL UNIQUE -- git 工作区根目录的绝对路径
+	path TEXT NOT NULL,       -- git 工作区根目录的绝对路径
+	key  TEXT NOT NULL UNIQUE -- 比较路径用的写法，见 platform.PathKey
 );
 
 CREATE TABLE IF NOT EXISTS messages (
@@ -13,6 +14,7 @@ CREATE TABLE IF NOT EXISTS messages (
 	workspace_id INTEGER NOT NULL REFERENCES workspaces(id),
 	agent        TEXT NOT NULL,       -- claude、codex
 	session_id   TEXT NOT NULL,
+	turn_id      TEXT NOT NULL,       -- 轮次
 	text         TEXT NOT NULL,       -- 用户消息原文
 	state        TEXT NOT NULL,       -- 到达时的工作区状态
 	created_at   INTEGER NOT NULL
