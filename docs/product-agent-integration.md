@@ -1,170 +1,96 @@
 # Agent 接入
 
-TaskBelay 在 Windows、macOS 和 Linux 上接入 Claude Code 和 Codex，靠的是三样东西：hook、MCP 和 skill。两个 Agent 的 hook 机制几乎一样：事件名称相同，输入都是一段 JSON，都能拦下工具调用、阻止 Agent 结束、往 Agent 的上下文里加内容。所以 TaskBelay 用同一套逻辑处理两边的事件，只在输入输出格式、平台和几处能力上分开处理。本文说明接了哪些 hook、每个 hook 做什么、两个 Agent 和三个平台有什么差异、怎样安装和卸载，以及 TaskBelay 自己出错时怎样处理。各平台差异可能带来的问题，记在项目根目录的 `notice.md` 里。
+TaskBelay 通过 hook 记录开发过程，通过 MCP 让 Agent 保存需求、方案和决定，通过 skill 提供方案写作方法。平台和 Agent 的格式差异放在适配器里，任务和判定逻辑共用。
 
 ## 接入方式
 
-- **hook**：接 5 个事件。每次触发时 Agent 运行 `taskbelay hook <agent> <事件>`，把事件的 JSON 从标准输入传进来，TaskBelay 处理完把决定写到标准输出。输出的 JSON 只用 ASCII 字符，中文等其他字符写成 `\u` 转义，这样不管经过哪个平台的哪种 shell，内容都不会被转码。输出里只写用到的字段，因为 Codex 遇到它不认识的字段时，会把整个输出当作出错。
-- **MCP**：Agent 启动时运行 `taskbelay mcp`，得到 [任务账本](requirements-ledger.md) 里定义的 8 个工具。
-- **skill**：[半自动模式](semi-auto.md) 写方案用的两个 skill，write-technical-plans 和 write-a-well-document，随 TaskBelay 一起安装到两个 Agent 的用户级 skill 目录。
-- **事前提示**：要告诉 Agent 的规矩，在 session 开始时通过 hook 注入。
+每次 hook 启动 `taskbelay hook <agent> <事件>`，JSON 通过标准输入输出传递。输出仅包含该 Agent 支持的字段，中文用 ASCII 转义输出。MCP 使用 stdio，每个 session 一个 `taskbelay mcp` 进程，提供 [任务账本](requirements-ledger.md) 的八个工具。
 
-| 时机 | hook | TaskBelay 做什么 | 会不会阻止 |
-| --- | --- | --- | --- |
-| session 开始、恢复、清空、压缩之后 | SessionStart | 记录 session；注入事前提示和接续摘要 | 不会 |
-| 用户发出消息 | UserPromptSubmit | 记下消息原文和此刻的工作区状态；把上一轮没解决的提示交给 Agent | 不会 |
-| Agent 运行 shell 命令之前 | PreToolUse，接 shell 工具 | 识别验证命令，按验证过程的规则拦下或提示；记下验证记录 | 规则结论是拦截时拦下命令 |
-| Agent 用编辑工具改文件之前 | PreToolUse，接编辑工具 | 半自动模式下，方案待确认时拦下对工作区文件的编辑 | 会 |
-| 命令运行之后 | PostToolUse，Claude Code 另接 PostToolUseFailure，都只接 shell 工具 | 补上验证记录的结果 | 不会 |
-| Agent 准备结束这一轮 | Stop | 检查本次任务的改动，拦截一次或放行；把没解决的问题告诉用户 | 拦截时阻止结束一次 |
-
-hook 按工具名匹配，两个 Agent 的工具名不同：
+| 时机 | hook | 处理 |
+| --- | --- | --- |
+| 开始、恢复、清空、压缩或分叉 session | SessionStart | 核对任务上下文和当前文件，注入提示与接续摘要 |
+| 用户消息到达 | UserPromptSubmit | 保存原文和快照，更新当前决定与任务上下文 |
+| shell 命令前 | PreToolUse | 分类、记录验证请求，按 V1 至 V3 处理 |
+| 编辑工具前 | PreToolUse | 读取目标文件，发现工作区更新，核对过期编辑和方案范围 |
+| 命令或编辑后 | PostToolUse；Claude Code 另接 PostToolUseFailure | 核对实际结果，记录编辑及工作区更新，补验证结果 |
+| 本轮准备结束 | Stop | 处理待交付任务，或保存普通停顿的进度与提示 |
 
 | 工具 | Claude Code | Codex |
 | --- | --- | --- |
-| shell 工具 | `Bash`、`PowerShell` | `Bash`（包括 `exec_command`） |
-| 编辑工具 | `Edit`、`Write`、`NotebookEdit` | `apply_patch` |
+| shell | Bash、PowerShell | Bash，包括 exec_command |
+| 编辑 | Edit、Write、NotebookEdit | apply_patch |
 
-Claude Code 的 PowerShell 工具在 Windows 上默认开启；macOS 和 Linux 上要装好 PowerShell 7（`pwsh`）并设置 `CLAUDE_CODE_USE_POWERSHELL_TOOL=1` 才有。它的输入字段和 Bash 工具相同，只匹配 `Bash` 会漏掉它。
+后置 hook 同时匹配 shell 和编辑工具。用户直接在 IDE 或终端修改，不需要触发 Agent 工具；下次观察文件时将变化记为工作区更新。
 
-下图是一轮里各个 hook 的先后顺序，以第一次结束被拦截、改完后放行为例：
+## SessionStart
 
-```mermaid
-%%{init: {"theme": "base", "themeVariables": {"fontFamily": "PingFang SC, Microsoft YaHei, sans-serif", "fontSize": "15px"}}}%%
-sequenceDiagram
-    participant U as 用户
-    participant A as Agent
-    participant T as TaskBelay
-    U->>A: 发消息
-    A->>T: UserPromptSubmit
-    T-->>A: 记下消息和工作区状态
-    A->>T: MCP requirement_save
-    T-->>A: R1 是原话需求
-    Note over A: 改代码
-    A->>T: PreToolUse：go test ./internal/export
-    T-->>A: 不是重复验证，照常运行
-    A->>T: PostToolUse：命令结果
-    A->>T: Stop
-    T-->>A: 拦截：问题清单
-    Note over A: 按说明修改
-    A->>T: Stop
-    T-->>A: 放行
-    A-->>U: 回复用户
-```
+记录 session 和事件，再比较当前文件、分支上下文、账本及有效设置。按 [任务接续](handoff.md) 生成摘要。恢复和分叉也核对工作区，不能只凭账本没变就沿用旧上下文。
 
-## 每个 hook 做什么
+新开、清空和压缩后注入事前提示；恢复时有模式或规则变化则更新对应部分。摘要与提示共用长度预算。另一个 session 最近有活动时，附一条共享工作区提示。
 
-### SessionStart
+## UserPromptSubmit
 
-TaskBelay 先记下这个 session，再用 `additionalContext` 注入两样东西：
+保存完整消息、轮次和快照，作为任务起点及引用来源。Agent 根据消息更新需求和用户决定。工作区有更新时，补充当前内容变化；上一轮相同提示已交付且没有新事实时不重复注入。
 
-- **事前提示**：session 新开（`startup`）、清空（`clear`）、压缩之后（`compact`）注入。恢复（`resume`）和分叉（`fork`）时，原来的上下文里还有它，不再重复。内容由两份判定文档的“事前提示”一节规定；工作模式是半自动时，再加上 [半自动模式](semi-auto.md) 的事前提示。
-- **接续摘要**：什么情况下给、写什么，由 [任务接续](handoff.md) 规定。
+## PreToolUse：shell
 
-两者加起来的长度上限由 [任务接续](handoff.md) 规定，定在两个 Agent 的注入上限以内，两边的上限见下文“Claude Code 和 Codex 的差异”。
+适配器给出命令、实际目录、shell 写法和工具调用编号。shell 解析器分类后，非验证命令记录必要的活动信息并快速返回。有验证时保存输入和环境标识，按 [过度测试判定](over-testing.md) 判断。
 
-[任务接续](handoff.md) 要求提醒“另一个 session 也在这个工作区”时，提醒写进注入内容交给 Agent，同时用 `systemMessage` 告诉用户。
+V1 满足拦截条件且本次还未提示过时返回 deny；用户重跑决定有效时允许运行并消耗一次授权。提示只返回 additionalContext，不返回强制 allow，保留 Agent 原有权限流程。
 
-### UserPromptSubmit
+POSIX 与 PowerShell 按实际工具确定；外层为 `bash -lc`、`pwsh -Command` 等形式时解析内部命令。未识别的命令仍照常执行，记录为其他命令。
 
-TaskBelay 记下消息原文、session、轮次和此刻的工作区状态，作为原话引用的来源和起点快照的候选。
+## PreToolUse：编辑
 
-如果上一轮结束时留下了没解决的提示档命中，TaskBelay 用 `additionalContext` 把它们简短地交给 Agent。用户把拦截强度设为只提示时，没解决的拦截档命中也通过这里交给 Agent。
+先读取目标文件，把当前内容与最近观察及请求中的前置内容核对。未变化的片段正常编辑；发现更新时，附上变化位置。请求准备覆盖已变化片段时退回这次编辑，把当前版本交给 Agent 重新读取；只提示模式仅补充当前内容和冲突位置。
 
-这个 hook 只做记录和补充上下文。
+尚未建立任务时也读取有效工作模式；半自动按首次方案待确认处理。再按 [半自动模式](semi-auto.md) 检查是否已授权编辑目标。首次确认前拦下工作区编辑，增补待确认时只拦新增范围。只提示模式下把方案问题交给 Agent，不拒绝调用。
 
-### PreToolUse：shell 命令
+保存工具请求、编辑前标识及可推导的预期改动，用于后置核对。不为每次编辑扫描整个仓库。
 
-1. 确定命令的写法，再把命令拆段、分类，分类方法见 [过度测试判定](over-testing.md) 的“哪些命令算验证命令”一节。命令里有“其他命令”时，更新这个 session 的“最后一次运行其他命令的时间”。
-2. 命令里没有验证命令时，直接结束，不输出任何东西。绝大多数命令走这一步。
-3. 有验证命令时，计算工作区状态，按验证过程的规则判断。命令没被拦下时记下验证记录，结果先记为未知。
-4. 规则结论是拦截时，返回 `permissionDecision: "deny"` 和说明，命令不运行；结论是提示时，只返回 `additionalContext`，命令照常运行。拦截强度设为只提示时，拦截也按提示处理。
+## PostToolUse 与失败事件
 
-提示时只返回 `additionalContext`，是因为在 Claude Code 里，`permissionDecision: "allow"` 会让这条命令跳过用户自己设置的权限确认。
+以工具调用编号找到前置记录。编辑请求与实际内容一致时保存 Agent 编辑；出现其他变化或没有足够信息时保存工作区更新。shell 的前后差异也按这条规则处理，不能把期间的用户修改归给命令。
 
-命令的写法按 Agent 实际使用的 shell 来定：
+验证结果按可取得的信息保存：Claude Code 的成功和失败事件可核对退出状态，Codex 的 shell 响应只有输出文本时记为未知。长命令只有启动结果、还在后台运行时记为正在运行，后续拿不到结束信息就保留未知，V1 不复用它。
 
-| 情况 | 按哪种写法解析 |
-| --- | --- |
-| Claude Code 的 Bash 工具：macOS 和 Linux 上是用户的 bash 或 zsh，Windows 上是 Git Bash | POSIX |
-| Claude Code 的 PowerShell 工具 | PowerShell |
-| Codex 在 macOS 和 Linux 上 | POSIX |
-| Codex 在 Windows 上 | PowerShell |
-
-命令文本整体是 `powershell -Command "…"`、`pwsh -Command "…"`、`bash -lc "…"` 这种形式时，先取出引号里的命令，再按里面的写法解析。
-
-### PreToolUse：编辑工具
-
-只在工作模式是半自动、最新一版方案还在等用户确认时起作用，其余时候直接结束。
-
-1. 取出这次编辑要改的文件：Claude Code 的 `Edit`、`Write` 取 `tool_input.file_path`，`NotebookEdit` 取 `tool_input.notebook_path`；Codex 的 `apply_patch` 从 `tool_input.command` 的补丁文本里取 `*** Add File:`、`*** Update File:`、`*** Delete File:`、`*** Move to:` 后面的路径。
-2. 有任何一个文件在工作区里，返回 `permissionDecision: "deny"` 和 [半自动模式](semi-auto.md) S1 的说明。拦截强度设为只提示时，只返回 `additionalContext`。
-
-### PostToolUse 和 PostToolUseFailure
-
-TaskBelay 用 `tool_use_id` 找到 PreToolUse 时记下的验证记录，补上结果：
-
-- **Claude Code**：Bash 和 PowerShell 工具相同。命令成功时触发 PostToolUse，结果记为通过；退出码不为 0 时触发 PostToolUseFailure，`error` 字段第一行是 `Exit code N`，结果记为失败并记下退出码；命令被中断时记为未知。
-- **Codex**：不管退出码是多少都触发 PostToolUse，而 shell 命令的 `tool_response` 只是一段文字，内容是命令的输出，不带退出码；命令失败但没有输出时，和成功且没有输出的命令完全一样（见 [openai/codex#34289](https://github.com/openai/codex/issues/34289)）。所以 Codex 里的验证记录结果一律记为未知。
-
-### Stop
-
-Stop 是判定规则真正起作用的地方。检查结果里包括两份判定文档的规则，半自动模式下还包括 [半自动模式](semi-auto.md) 的 S1、S2。TaskBelay 按下图决定放行还是拦截：
+## Stop 与交付
 
 ```mermaid
-%%{init: {"theme": "base", "themeVariables": {"fontFamily": "PingFang SC, Microsoft YaHei, sans-serif", "fontSize": "16px", "edgeLabelBackground": "#ffffff", "lineColor": "#64748b"}, "flowchart": {"curve": "basis", "nodeSpacing": 40, "rankSpacing": 36}}}%%
 flowchart TB
-    START["Agent 准备结束"] --> TASK{"有进行中的任务？"}
-    TASK -->|"没有"| CHANGED{"这一轮改过文件？"}
-    CHANGED -->|"没改"| PASS["放行"]
-    CHANGED -->|"改了"| NOTASK["结论：拦截<br/>先记录需求"]
-    TASK -->|"有"| CHECK["取当前代码和需求版本的<br/>检查结果，没有就现在检查"]
-    CHECK --> RESULT{"结论是拦截？"}
-    RESULT -->|"不是"| PASS2["放行"]
-    RESULT -->|"是"| NOTASK2["结论：拦截"]
-    NOTASK --> ONCE{"这次检查结果还没拦过<br/>这个 session，且这一轮<br/>拦截不到 3 次？"}
-    NOTASK2 --> ONCE
-    ONCE -->|"是"| BLOCK["阻止结束<br/>把说明交给 Agent"]
-    ONCE -->|"否"| SHOW["不再阻止结束<br/>把没解决的问题显示给用户"]
-
-    classDef gray fill:#f8fafc,stroke:#94a3b8,color:#0f172a;
-    classDef orange fill:#fff7ed,stroke:#fb923c,color:#9a3412;
-    classDef green fill:#f0fdf4,stroke:#4ade80,color:#166534;
-    classDef red fill:#fef2f2,stroke:#f87171,color:#991b1b;
-    class START,CHECK,NOTASK,NOTASK2 gray;
-    class TASK,CHANGED,RESULT,ONCE orange;
-    class PASS,PASS2,SHOW green;
-    class BLOCK red;
+    A[Stop 到达] --> B{本轮有交付请求}
+    B -->|没有| C[保存进度和已有提示，结束]
+    B -->|有| D[读取请求中的任务和有效输入]
+    D --> E[复用有效结果，或运行交付检查]
+    E --> F{检查期间输入有变化}
+    F -->|有| G[保存历史结果，任务继续进行]
+    F -->|没有| H{有尚未处理的拦截问题}
+    H -->|是且未拦过| I[反馈给 Agent，保留本轮交付请求]
+    H -->|否或已反馈| J[保存完成状态和交付报告]
 ```
 
-几点说明：
+- `task_finish` 只提交交付请求，Stop 使用请求中的任务编号，不因待交付状态走“没有任务”的分支。
+- 普通分析、问问题或等待确认时，不启动完整交付检查和动态测试。没有记录需求却已有 Agent 编辑时，给 Agent 补记提示，保留这轮观察。
+- 交付先做静态检查；项目开启或本次请求了动态检查时才运行测试。完整输入版本见 [任务账本](requirements-ledger.md)。
+- 同一问题按稳定编号对每个 session 最多拦一次，每轮最多三次。位置或其他文件变化不重置身份。
+- 首次反馈后保留本轮交付请求；输入未变就再次 Stop 时，展示未处理问题并完成。Agent 继续修改或更新需求、授权时，请求过期，任务回到进行中，之后重新申请交付并复用有效分析。
+- 检查期间用户或其他 session 修改了输入时，保存结果版本，提示 Agent 按当前内容接续，本轮不使用旧结果拦截。
+- 交付完成后显示需求、位置、用户决定、工作区更新及检查完成情况。普通提示去重后最多展示五条，其余可用 `taskbelay status` 查看。
 
-- **“这一轮改过文件”**，指当前工作区状态和这一轮用户消息到达时的状态不同。这时还没有任务，说明 Agent 动了代码却没记录需求。拦下时的说明是：用 `requirement_save` 记录需求（会自动开始任务），改完后填写实现位置。
-- **同一次检查结果，对同一个 session 只拦一次。** 检查结果对应“工作区状态加需求版本”，见 [任务账本](requirements-ledger.md)。Agent 被拦下后改了代码，或者补了实现位置、原话引用，下次结束时会重新检查，还有问题就再拦。Agent 什么都没改又结束了，说明它决定保留，或者要停下来问用户，这时不再阻止，但没解决的问题会显示给用户，也会留在任务完成报告里，并不算放行。这样 Agent 不会被卡在结束这一步，没解决的问题也不会被悄悄放过。换一个 session 遇到同样的检查结果，会再拦一次，让新的 Agent 也看到这些问题。
-- **每轮最多拦 3 次。** 防止 Agent 每次只改一点、反复被拦。Claude Code 自己的上限是连续 8 次，Codex 的文档没写上限，所以 TaskBelay 自己设一个更低的上限。
-- **放行时有没解决的问题**，TaskBelay 用 `systemMessage` 显示给用户，最多列 5 条，后面写“还有 N 条，运行 taskbelay status 查看”。其中的提示档命中，会在下一轮的 UserPromptSubmit 时交给 Agent。
-- **这一轮里任务被标为已完成时**，`systemMessage` 显示任务完成报告：每条需求对应哪些实现位置，新增的对外入口和凭原话放行的地方单独标出，并附上原话；半自动模式下再附上确认方案时用户的原话。
-- **拦截强度设为只提示时**，所有命中都按“放行时有没解决的问题”处理。
-- **拦截的方式**：两边都返回 `decision: "block"`，`reason` 里放说明。Claude Code 会让 Agent 带着说明继续这一轮；Codex 会把 `reason` 作为新的提示，让 Agent 继续。
-- **轮次怎样识别**：Claude Code 用输入里的 `prompt_id`，Codex 用 `turn_id`。
+Stop 超时设为 300 秒，动态检查自己的预算是 120 秒。只提示模式下同样生成报告，不拒绝工具调用或阻止结束。
 
-Stop 的检查可能要编译和运行测试，所以这个 hook 的超时设为 300 秒。运行测试的部分有自己的时间预算，见 [过度测试判定](over-testing.md)。
+## Agent 与平台能力
 
-## Claude Code 和 Codex 的差异
+适配器按已支持的输入字段读写，缺失的退出码或结果保留未知。Codex 的 write_stdin 等后续路径可能没有对应前置事件，交付检查仍以观察到的实际文件为准。
 
 | 项目 | Claude Code | Codex |
 | --- | --- | --- |
-| hook 配置写在哪里 | 用户目录下 `.claude/settings.json` 的 `hooks` | 用户目录下 `.codex/hooks.json` |
-| MCP 怎样注册 | `claude mcp add --scope user` | `codex mcp add`，写入用户目录下 `.codex/config.toml` 的 `[mcp_servers.taskbelay]` |
-| skill 装在哪里 | 用户目录下 `.claude/skills/` | 用户目录下 `.agents/skills/` |
-| hook 什么时候生效 | 安装后新开的 session | 用户在 Codex 里用 `/hooks` 确认信任之后；hook 配置变了要重新确认 |
-| 轮次标识 | `prompt_id` | `turn_id` |
-| 命令失败时 | 触发 PostToolUseFailure，`error` 第一行是 `Exit code N` | 仍触发 PostToolUse，`tool_response` 只有输出文字，不带退出码 |
-| 注入内容的上限 | 每段 10,000 字符 | 默认约 2,500 token |
-| Stop 连续阻止的上限 | 8 次 | 文档没写 |
-| shell 命令的覆盖范围 | Bash 和 PowerShell 工具 | Bash 和 `exec_command`；后续的 `write_stdin` 不会再触发 PreToolUse |
-
-Codex 的文档说明，tool hook 是“有用的护栏，但不是完整的强制边界”，有少数专用的工具路径不经过 hook。所以在 Codex 里，个别命令和编辑可能绕过 PreToolUse 的检查。Stop 时的检查看的是工作区里的实际改动，不受影响。
+| hook 配置 | `~/.claude/settings.json` 的 hooks | `~/.codex/hooks.json` |
+| MCP 注册 | `claude mcp add --scope user` | `codex mcp add` |
+| skill 目录 | `~/.claude/skills/` | `~/.agents/skills/` |
+| hook 生效 | 安装后新 session | 用户用 `/hooks` 确认信任后 |
+| 轮次 | prompt_id | turn_id |
+| 验证结果 | 按成功、失败或中断事件记录 | 没有可核对退出状态时记未知 |
 
 ## 三个平台的差异
 
@@ -188,7 +114,7 @@ Codex 用自己运行命令的那个 shell 运行 hook 命令，所以 Codex 的
 
 **安装 Claude Code 的接入：`taskbelay install claude`。**
 
-1. 在 Claude Code 的 `settings.json` 的 `hooks` 里加入 7 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 两个，一个匹配 `Bash|PowerShell`，一个匹配 `Edit|Write|NotebookEdit`；PostToolUse、PostToolUseFailure 各一个，匹配 `Bash|PowerShell`。每个条目用 exec 形式写 taskbelay 的绝对路径和参数，绝对路径保证 Agent 运行时找得到它。Stop 的超时设为 300 秒，其他设为 30 秒。用户原有的配置保持不动。
+1. 在 Claude Code 的 `settings.json` 的 `hooks` 里加入 7 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 两个，一个匹配 `Bash|PowerShell`，一个匹配 `Edit|Write|NotebookEdit`；PostToolUse、PostToolUseFailure 各一个，匹配 `Bash|PowerShell|Edit|Write|NotebookEdit`。每个条目用 exec 形式写 taskbelay 的绝对路径和参数，绝对路径保证 Agent 运行时找得到它。Stop 的超时设为 300 秒，其他设为 30 秒。用户原有的配置保持不动。
 2. 运行 `claude mcp add --scope user taskbelay -- <taskbelay 的绝对路径> mcp`。
 3. 安装两个 skill。
 
@@ -218,7 +144,7 @@ Codex 用自己运行命令的那个 shell 运行 hook 命令，所以 Codex 的
 
 **安装 Codex 的接入：`taskbelay install codex`。**
 
-1. 在 Codex 的 `hooks.json` 里加入 6 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 两个，一个匹配 `Bash`，一个匹配 `apply_patch`；PostToolUse 一个，匹配 `Bash`。命令的写法见上一节“三个平台的差异”，超时和 Claude Code 相同。
+1. 在 Codex 的 `hooks.json` 里加入 6 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 两个，一个匹配 `Bash`，一个匹配 `apply_patch`；PostToolUse 一个，匹配 `Bash|apply_patch`。命令的写法见上一节“三个平台的差异”，超时和 Claude Code 相同。
 2. 运行 `codex mcp add taskbelay -- <taskbelay 的绝对路径> mcp`。
 3. 安装两个 skill。
 4. 提示用户打开 Codex，用 `/hooks` 确认信任 TaskBelay 的 hook。不确认的话，hook 不会运行。
@@ -231,7 +157,7 @@ Codex 用自己运行命令的那个 shell 运行 hook 命令，所以 Codex 的
 
 ## TaskBelay 出错时
 
-TaskBelay 自己出了问题，比如数据库打不开、git 命令失败、代码加载失败、检查超时，hook 都正常退出、不输出内容，Agent 照常工作。
+TaskBelay 自己出了问题，比如数据库打不开、git 命令失败、代码加载失败、检查超时，hook 正常退出，Agent 的原操作照常进行。
 
 错误写进日志（位置见 [系统架构](product-architecture.md)）。Stop 时检查没能完成的，用 `systemMessage` 告诉用户“TaskBelay 这次没有完成检查”和原因，`taskbelay status` 里也能看到。
 

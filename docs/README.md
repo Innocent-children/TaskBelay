@@ -1,79 +1,58 @@
 # 文档说明
 
-本目录的文档描述 TaskBelay 这个产品。本文说明文档分哪几层、怎样命名、每份文档负责什么，以及所有文档共用的术语。
+本目录描述 TaskBelay 的产品目标、判定算法及实现设计。各份文档围绕同一条原则：用户照常开发，TaskBelay 记录事实，帮助 Agent 完成当前要求。
 
 ## 文档的层次
 
-文档分三层，每一层依据上一层来写：
+1. **产品需求**：[product.md](product.md) 定义产品解决什么问题、正常使用方式和成功标准。
+2. **核心设计**：[requirements.md](requirements.md) 定义任务、需求、工作区更新和改动归属；[over-design.md](over-design.md) 与 [over-testing.md](over-testing.md) 定义检查；[languages.md](languages.md) 把通用概念对应到各语言；[handoff.md](handoff.md) 与 [semi-auto.md](semi-auto.md) 定义接续和方案流程。
+3. **衍生设计**：账本、Agent 接入、系统架构和评估依据前两层展开。核心行为改变时，同步修改数据、事件、执行流程和验收场景。
 
-1. **产品需求**：[product.md](product.md) 是源头，写用户要的功能。
-2. **算法**：[requirements.md](requirements.md)、[over-design.md](over-design.md)、[over-testing.md](over-testing.md)、[languages.md](languages.md)、[handoff.md](handoff.md)、[semi-auto.md](semi-auto.md) 写怎样做到这些功能，是 TaskBelay 的核心。这几份会随讨论和评估反复修改。
-3. **衍生文档**：[requirements-ledger.md](requirements-ledger.md)、[product-agent-integration.md](product-agent-integration.md)、[product-architecture.md](product-architecture.md)、[product-evaluation.md](product-evaluation.md) 在算法确定之后才能写：算法要用什么数据，账本就记什么；算法要在什么时机介入，就接哪些 hook；架构把算法实现出来；评估衡量算法的效果。
-
-前两层是元文档，决定其他文档写什么；第三层由元文档推出。上一层改了，下一层跟着改。
-
-## 文档怎样命名
-
-元文档按内容直接命名，比如 `over-design.md`。衍生文档的名字是“所依据的元文档的名字-自己的名字”：任务账本记录的是 [requirements.md](requirements.md) 定义的任务、需求和实现位置，所以叫 `requirements-ledger.md`；Agent 接入、系统架构、算法评估依据的是整个产品，所以名字以 `product-` 开头。
+每件事在负责它的文档中完整定义，其余文档引用，不另立一套规则。
 
 ## 每份文档负责什么
 
-| 文档 | 负责 |
+| 文档 | 内容 |
 | --- | --- |
-| [product.md](product.md) | 要解决的问题、目标用户、两种工作模式、功能、支持范围、默认行为、成功标准 |
-| [requirements.md](requirements.md) | 任务的开始、结束和范围；需求和原话引用；实现位置；改动怎样归属到需求；凭用户原话放行 |
-| [over-design.md](over-design.md) | 过度设计的判定规则、参数、事前提示、给 Agent 的说明、会在哪里判错、例子 |
-| [over-testing.md](over-testing.md) | 过度测试的判定规则（测试代码和验证过程）、参数、事前提示、给 Agent 的说明、会在哪里判错、例子 |
-| [languages.md](languages.md) | 语言支持的三级和每一级能做的检查；文件怎样归到语言；声明、引用、接口、错误类型、对外入口、依赖、测试用例、风险在各种语言里的写法；怎样单独运行一条用例、做变异、算出受影响的测试范围 |
-| [handoff.md](handoff.md) | 什么时候给接续摘要、摘要写什么、摘要的长度上限、Agent 要记下什么、怎样判断新消息是不是另一件事、两个 session 同时在一个工作区时怎样处理 |
-| [semi-auto.md](semi-auto.md) | 半自动模式的流程：方案怎样写、写什么、怎样提交和确认，待确认期间怎样保持工作区不变，确认之后方案起什么作用；这个模式下的规则、参数、事前提示、例子 |
-| [requirements-ledger.md](requirements-ledger.md) | 账本里有哪些记录和字段、谁在什么时候写、保留多久；Agent 读写账本的 MCP 工具 |
-| [product-agent-integration.md](product-agent-integration.md) | 接了 Claude Code 和 Codex 的哪些 hook、每个 hook 做什么、拦截和提示怎样生效、两个 Agent 和三个平台的差异、安装和卸载、TaskBelay 出错时怎样处理 |
-| [product-architecture.md](product-architecture.md) | 进程怎样组织、命令、项目结构和扩展方式（包括加一种语言）、内部流程、快照和代码分析和运行测试的实现、存储、性能预算、依赖、平台和安装 |
-| [product-evaluation.md](product-evaluation.md) | 怎样衡量算法的效果、一次算法修改怎样决定采不采用、参数怎样调整、三个平台上怎样验证 |
+| [product.md](product.md) | 目标用户、正常开发场景、功能、模式、默认行为和成功标准 |
+| [requirements.md](requirements.md) | 任务开始、暂停、恢复、交付；累计 diff；用户修改；需求变更、位置与归属 |
+| [over-design.md](over-design.md) | D1 至 D8、项目惯例、用户决定、问题身份和反馈 |
+| [over-testing.md](over-testing.md) | T1 至 T6、V1 至 V3、风险建议、动态检查和运行预算 |
+| [languages.md](languages.md) | 分级能力、各语言语法、测试工具、依赖和运行方式 |
+| [handoff.md](handoff.md) | 接续时机、摘要内容和预算、用户修改与多 session 协作 |
+| [semi-auto.md](semi-auto.md) | 方案范围、确认、增补、模式切换、S1 和 S2 |
+| [requirements-ledger.md](requirements-ledger.md) | 记录、字段、修订、MCP 工具和保留期限 |
+| [product-agent-integration.md](product-agent-integration.md) | hook、MCP、skill、Agent 与平台差异、安装和故障处理 |
+| [product-architecture.md](product-architecture.md) | 进程、模块、快照、观察与编辑核对、检查执行、存储和性能 |
+| [product-evaluation.md](product-evaluation.md) | 规则例子、正常开发场景、端到端对比、正确性和使用成本 |
 
-每件事只在负责它的那份文档里写清楚，其他文档用到时，写一句话加链接。
+## 共同术语
 
-## 术语
-
-所有文档按下表用词，一个词只指一样东西。“详见”一列是这个词的完整定义所在的文档。
-
-| 术语 | 含义 | 详见 |
+| 术语 | 含义 | 定义 |
 | --- | --- | --- |
 | Agent | Claude Code 或 Codex | |
-| session | Agent 的一次会话。Codex 里叫 thread，本项目统一叫 session | |
-| 一轮 | 从用户发出一条消息，到 Agent 停下来等用户 | |
-| 工作区 | 一个 git 工作区的根目录。同一个仓库的不同 worktree 是不同的工作区 | [requirements.md](requirements.md) |
-| 任务 | 用户在一个工作区里要 Agent 完成的一件事，可以跨多个 session 和 Agent | [requirements.md](requirements.md) |
-| 用户消息 | 用户发给 Agent 的消息原文，由 TaskBelay 记录 | [requirements.md](requirements.md) |
-| 原话引用 | 从本任务的用户消息里原样摘出的一段文字 | [requirements.md](requirements.md) |
-| 需求 | 用户要的一项结果，编号 R1、R2…… | [requirements.md](requirements.md) |
-| 原话需求、推断需求 | 有原话引用的需求是原话需求；没有的是推断需求 | [requirements.md](requirements.md) |
-| 实现位置 | Agent 为每条需求列出的位置：代码声明、其他文件、测试用例、对外入口、依赖 | [requirements.md](requirements.md) |
-| 归属 | 一处改动为哪条需求服务 | [requirements.md](requirements.md) |
-| 需求代码 | 归属一条需求的改动声明，加上它的实现位置里列出的代码声明 | [requirements.md](requirements.md) |
-| 工作区状态 | 代表工作区里文件内容的一个标识，包括没提交的改动和新文件，不包括被 `.gitignore` 忽略的文件。内容相同，状态就相同 | 计算方法见 [product-architecture.md](product-architecture.md) |
-| 起点快照 | 任务的起点消息到达时的工作区状态 | [requirements.md](requirements.md) |
-| diff | 当前工作区和起点快照之间的差别，包括没提交的改动 | [requirements.md](requirements.md) |
-| 声明 | 代码里有名字、可以被别处引用的定义：函数、方法、类、接口、类型、顶层的常量和变量 | [languages.md](languages.md) |
-| 其他文件 | TaskBelay 不按声明分析、只按整个文件看待的文件：文档、配置，以及没有内置语法的语言的源文件 | [requirements.md](requirements.md) |
-| 语言支持的级别 | 文件级、代码级、测试级，决定一个文件能做哪些检查 | [languages.md](languages.md) |
-| 改动声明 | diff 里新增或修改的声明。只改了空白和格式的不算 | [requirements.md](requirements.md) |
-| 对外入口 | 用户或其他程序直接接触的东西：命令行参数、子命令、环境变量、HTTP 路由、配置字段 | [over-design.md](over-design.md) |
-| 测试 | 写出来的测试代码 | |
-| 测试用例 | 一条可以单独运行的测试 | [over-testing.md](over-testing.md) |
-| 验证 | 运行测试、构建、静态检查这类命令的动作 | |
-| 验证命令 | 用来验证的命令，例如 `go test`、`pytest`、`npm test`、`cargo build` | [over-testing.md](over-testing.md) |
-| 检查 | TaskBelay 按算法文档的规则检查改动、测试和命令 | |
-| 命中 | 一处改动、一条用例或一条命令符合某条规则 | |
-| 结论 | 一次检查的结果：放行（没有命中）、提示（只有提示档的命中）、拦截（至少有一处拦截档的命中）。按项目惯例或用户原话放行的地方不算命中 | |
-| 拦截强度 | 用户的一项设置：拦截一次（默认），或者只提示 | [product.md](product.md) |
-| 工作模式 | 用户的一项设置：全自动（默认）或半自动 | [product.md](product.md) |
-| 全自动模式 | 用户给出需求后，Agent 直接开发 | [product.md](product.md) |
-| 半自动模式 | Agent 先交出方案，用户确认后才开始开发 | [semi-auto.md](semi-auto.md) |
-| 方案 | 半自动模式下 Agent 提交的技术方案，带“涉及的改动”一节，按版本编号 v1、v2…… | [semi-auto.md](semi-auto.md) |
-| 已确认方案 | 用户用原话确认过的最新一版方案 | [semi-auto.md](semi-auto.md) |
-| 待确认期间 | 从任务开始，或者从提交新一版方案，到这一版被确认之前的这段时间 | [semi-auto.md](semi-auto.md) |
-| 任务账本 | TaskBelay 对一个任务的全部记录 | [requirements-ledger.md](requirements-ledger.md) |
-| 接续摘要 | 新 session 开始时 TaskBelay 交给 Agent 的任务摘要 | [handoff.md](handoff.md) |
-| 事前提示 | session 开始时 TaskBelay 告诉 Agent 的做事规矩 | 内容见两份判定文档和 [semi-auto.md](semi-auto.md) |
+| session | Agent 的一次会话，Codex 的 thread 在本文也称 session | |
+| 一轮 | 用户消息到达至 Agent 停下等待用户 | |
+| 工作区 | 一个 git 工作区，worktree 分别管理 | [任务和需求](requirements.md) |
+| 当前任务 | 该工作区当前接续和检查的一件事，可以跨提交与 session | [任务和需求](requirements.md) |
+| 暂停任务 | 保存进度、等待恢复的任务 | [任务和需求](requirements.md) |
+| 用户消息、原话引用 | 保存的消息原文，以及有明确来源的引用 | [任务和需求](requirements.md) |
+| 需求 | 用户要的一项结果，编号 R1、R2…… | [任务和需求](requirements.md) |
+| 原话需求、推断需求 | 有可核对来源的需求，以及 Agent 提议的需求 | [任务和需求](requirements.md) |
+| 实现判断 | 完成需求所需的接线、处理和内部组织 | [任务和需求](requirements.md) |
+| 实现位置、归属 | 需求落到哪里，以及改动与需求的联系 | [任务和需求](requirements.md) |
+| 工作区状态 | git 管理的内容与未忽略新文件组成的 tree 标识 | [系统架构](product-architecture.md) |
+| 起点快照、累计 diff | 任务起点状态，以及当前状态与它的差别 | [任务和需求](requirements.md) |
+| 观察点 | 某时刻的完整状态或目标文件内容标识 | [任务账本](requirements-ledger.md) |
+| Agent 编辑 | 工具请求与实际前后内容能够对应的改动 | [任务和需求](requirements.md) |
+| 工作区更新 | 观察到、但不能归入已核对 Agent 编辑的变化 | [任务和需求](requirements.md) |
+| 需求代码 | 与需求关联的改动声明及列出的声明 | [任务和需求](requirements.md) |
+| 声明 | 函数、方法、类、接口、类型、顶层常量和变量等具名定义 | [语言支持](languages.md) |
+| 其他文件 | 按文件分析的文档、配置和未解析语言文件 | [任务和需求](requirements.md) |
+| 对外入口 | 参数、子命令、环境变量、HTTP 路由和配置字段 | [过度设计判定](over-design.md) |
+| 测试用例、验证 | 一条可单独运行的测试，以及运行测试、构建、检查等动作 | [过度测试判定](over-testing.md) |
+| 检查问题 | 带稳定身份、事实、建议和处理状态的一处检查结果 | [过度设计判定](over-design.md) |
+| 检查结论 | 放行、提示或拦截，完成情况另外记录 | [过度设计判定](over-design.md) |
+| 工作模式、拦截强度 | 全自动或半自动；拦截一次或只提示 | [产品需求](product.md) |
+| 有效方案、待确认增补 | 已确认并仍有效的范围，以及新提出的范围变化 | [半自动模式](semi-auto.md) |
+| 接续摘要 | 根据账本和当前工作区生成的任务摘要 | [任务接续](handoff.md) |

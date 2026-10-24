@@ -2,7 +2,7 @@
 
 TaskBelay 是一个 Go 写的命令行程序，运行在 Windows、macOS 和 Linux 上，接入 Claude Code 和 Codex。它没有常驻进程：Agent 每触发一次 hook，就启动一个短进程，处理完立刻退出；每个 Agent session 各自启动一个 MCP server 进程，session 结束时随之退出。这些进程通过同一个 SQLite 文件共享任务账本，通过 git 命令读取工作区，用内置的语法分析读代码，通过项目自己的测试工具运行测试。
 
-所有工作都由 Agent 的事件触发，每次事件起一个短进程就够了，也省去了常驻进程的启动、保活、升级和多版本共存这些问题。
+开发期间的自动工作由 Agent 事件触发，每次事件启动短进程；用户也可用命令主动查看状态和运行检查。
 
 ## 组成
 
@@ -45,11 +45,12 @@ flowchart LR
 | --- | --- | --- |
 | `taskbelay install claude`、`taskbelay install codex` | 接入 Agent，见 [Agent 接入](product-agent-integration.md) | 用户 |
 | `taskbelay uninstall claude`、`taskbelay uninstall codex` | 移除接入 | 用户 |
-| `taskbelay status` | 显示当前工作区的接续摘要和最近一次检查结果 | 用户 |
-| `taskbelay check` | 在当前工作区立即检查并打印结果 | 用户 |
-| `taskbelay config get <设置项>` | 显示一项设置当前的值，设置项是 `workflow` 或 `enforcement` | 用户 |
-| `taskbelay config set workflow auto` 或 `semi` | 设置工作模式：全自动或半自动 | 用户 |
-| `taskbelay config set enforcement block` 或 `hint` | 设置拦截强度：拦截一次或只提示 | 用户 |
+| `taskbelay status` | 显示当前任务、可恢复任务、接续摘要和最近检查 | 用户 |
+| `taskbelay check`、`taskbelay check --tests` | 在当前工作区检查；--tests 请求一次动态检查 | 用户 |
+| `taskbelay config get <设置项>` | 显示合并后的有效设置和来源 | 用户 |
+| `taskbelay config set workflow auto` 或 `semi` | 设置默认工作模式；`--project` 或 `--task` 指定作用范围 | 用户 |
+| `taskbelay config set enforcement block` 或 `hint` | 设置拦截强度；支持用户、项目和当前任务范围 | 用户 |
+| `taskbelay config set analysis.tests on` 或 `off` | 开启或关闭动态检查，支持 `--project`、`--task` | 用户 |
 | `taskbelay hits --since 14d` | 导出最近的拦截命中和 Agent 的处理方式，见 [算法评估](product-evaluation.md) | 维护者 |
 | `taskbelay hook <agent> <事件>` | 处理一次 hook 调用 | Agent |
 | `taskbelay mcp` | 运行 MCP server | Agent |
@@ -156,8 +157,8 @@ flowchart TB
 | session 开始 | SessionStart | 开始方式：新开、恢复、清空、压缩之后、分叉 |
 | 用户消息 | UserPromptSubmit | 消息原文 |
 | 命令请求 | PreToolUse，shell 工具 | 命令文本、命令写法（POSIX 或 PowerShell）、工具调用编号 |
-| 编辑请求 | PreToolUse，编辑工具 | 要改的文件列表 |
-| 命令结束 | PostToolUse、PostToolUseFailure | 工具调用编号、结果（通过、失败、未知）、退出码 |
+| 编辑请求 | PreToolUse，编辑工具 | 文件列表、前置内容和拟写入内容或补丁 |
+| 工具结束 | PostToolUse、PostToolUseFailure | 工具调用编号、实际编辑或命令结果、可取得的退出码 |
 | 准备结束 | Stop | 无 |
 
 决定有五种，可以组合：不做什么；给 Agent 补充上下文；拒绝这次工具调用；阻止结束；给用户看的提示。
@@ -185,11 +186,11 @@ type Adapter interface {
 
 平台用构建约束，不用运行时的接口，因为一个程序文件只会在一个平台上运行，编译时选定就够了。
 
-**路径比较。** 同一个目录在不同地方可能有不同的写法：Windows 和 macOS 默认不区分大小写，Linux 区分；macOS 上 `/tmp` 是 `/private/tmp` 的符号链接；Windows 上分隔符可能是 `\` 也可能是 `/`。hook 输入里的 `cwd`、编辑工具给出的文件路径、git 给出的根目录，写法不一定一致。所以工作区一律取 `git rev-parse --show-toplevel` 的结果，并解析符号链接；比较两个路径之前先统一成正斜杠，在 Windows 和 macOS 上不区分大小写，在 Linux 上区分。这条规则也由 `internal/platform` 提供，macOS 和 Linux 只在区不区分大小写这一点上不同。
+**路径比较。** 工作区采用 git 返回的规范根目录，并解析已存在路径的符号链接。路径统一分隔符，大小写规则读取实际卷或目录属性，不按操作系统一律转成小写。新文件通过最近的已存在父目录定位；工作区身份同时使用 git 目录与 worktree 信息。
 
 ### 命令写法
 
-`internal/shell` 把一条命令拆成几段，并给出每段的命令名，供 [过度测试判定](over-testing.md) 分类。`posix/` 基于 `mvdan.cc/sh` 解析 bash、zsh 和 Git Bash 的写法；`pwsh/` 是自己写的 PowerShell 解析，只做拆段、去掉引号、识别命令名和别名这几件事，规则少，不值得引入依赖。用哪一个，由适配器在命令请求事件里写明。
+`internal/shell` 把一条命令拆成几段，并给出每段的命令名，供 [过度测试判定](over-testing.md) 分类。`posix/` 基于 `mvdan.cc/sh` 解析 bash、zsh 和 Git Bash 的写法；`pwsh/` 是自己写的 PowerShell 解析，只做拆段、去掉引号、识别命令名和别名这几件事，保留引号内字面值并识别重定向；未识别的结构归入其他命令，交给原 shell 照常执行。用哪一个，由适配器在命令请求事件里写明。
 
 ### 语言
 
@@ -206,116 +207,122 @@ type Adapter interface {
 | 加一种语言的规则 | 在 `internal/lang/` 下加一个子目录，填好规则表，同时在 [语言支持](languages.md) 里加一张表；要支持到测试级，再实现 `Runner`。内置语法里没有这门语言时，先在 gotreesitter 里加上它的语法和 tags 查询 |
 | 修改算法 | `internal/check` 和 `internal/plan`；参数集中在 `internal/check/params.go`，和算法文档的参数表一一对应 |
 
-接口和构建约束只用在现在就有两种以上实现的地方：两个 Agent，两类平台（macOS 和 Linux 一类，Windows 一类），两种命令写法，五张语言规则表（JavaScript 和 TypeScript 共用一张）。这和 [过度设计判定](over-design.md) 对抽象的要求一致。
+Agent 适配器、两种命令解析器和语言 Runner 各自实现统一接口；平台函数由构建约束选择。JavaScript 和 TypeScript 共用一张语言规则表。
 
 ## 关键流程
 
-### 用户发消息
+### 用户消息与任务接续
 
-UserPromptSubmit 触发一个短进程：适配器把输入转成用户消息事件；`hook` 算出当前工作区状态，把消息原文、session、轮次和工作区状态写进账本，再查上一轮有没有没解决的提示，有就作为补充上下文交回去。
+适配器把消息转成统一事件，记录原文与工作区快照。`hook` 核对上下文、当前任务及未被编辑记录解释的文件变化，写入账本，再交给 `summary` 生成必要的补充内容。任务的起点和生命周期由 [任务和需求](requirements.md) 定义。
 
-### Agent 运行命令前
+SessionStart 也读取当前文件状态。恢复 session 时比较账本修订和实际状态，用户在 Agent 停下期间手改的内容因此进入摘要。
 
-PreToolUse 触发一个短进程：适配器给出命令文本和写法，`shell` 把命令拆段、分类。绝大多数命令里没有验证命令，到这里就结束。有验证命令时，再算工作区状态，查这个 session 的验证记录，按验证过程的规则判断；对写了受影响范围的测试命令，还要由这门语言的 `Runner` 算出它会跑哪些测试，比如对 `go test` 用 `go list` 展开包参数。
+### 编辑前后
 
-### Agent 用编辑工具改文件前
+PreToolUse 只读取目标文件，得到当前 blob 标识，核对最近观察及工具请求的前置内容。`Edit` 的原文、`apply_patch` 的上下文和 `Write` 的整份目标内容都作为请求保存。发现当前内容已变时，把变化位置交给 Agent；编辑与更新相交时按拦截强度退回过期请求或补充冲突信息，其他片段继续编辑。
 
-PreToolUse 触发一个短进程：只有当前任务是半自动模式、方案在等确认时，`plan` 才检查要改的文件是否在工作区里，在就拒绝这次编辑。其余情况立刻结束。
+编辑结束后，重新读取目标文件。预期改动与实际前后内容能对应时保存 Agent 编辑；多出的内容记为工作区更新。记录采用文件与片段的内容标识，只有移动或改名能唯一对应时才自动迁移逻辑位置。没有足够信息的 shell 写入在下一次完整观察中作为工作区更新保存。
 
-### Agent 准备结束
+Agent 的读文件动作不需要由 TaskBelay 全量追踪。发生冲突后，Agent 按当前内容重新组织编辑；TaskBelay 每次核对具体前置内容，不靠“已经提醒过”就允许过期内容覆盖。没有可核对前置内容的整文件写入，若与工作区更新重叠，Agent 先读取当前文件，再用带当前上下文的编辑表达改动。
 
-Stop 触发一个短进程，是最重的一步：
+### 命令前后
+
+`shell` 解析执行目录、参数、环境前缀和命令段。没有验证命令时走快速路径。有验证时，再计算输入状态，读取验证记录和当前重跑决定。V1 的完整条件由 [过度测试判定](over-testing.md) 定义。
+
+后置事件补充命令结果。无法核对退出状态的记录保持未知；不能从输出为空推断成功。命令前的环境标识只保存比较摘要，原始凭据不进入账本。
+
+### 交付
+
+`task_finish` 在短事务中保存待交付请求及本轮任务编号，立即返回已有检查。Stop 根据该请求组织检查；普通停顿只保存观察和已有提示。
 
 ```mermaid
-%%{init: {"theme": "base", "themeVariables": {"fontFamily": "PingFang SC, Microsoft YaHei, sans-serif", "fontSize": "16px", "edgeLabelBackground": "#ffffff", "lineColor": "#64748b"}, "flowchart": {"curve": "basis", "nodeSpacing": 40, "rankSpacing": 36}}}%%
 flowchart TB
-    STATE["算出工作区状态"] --> CACHED{"这个状态和需求版本<br/>检查过？"}
-    CACHED -->|"检查过"| DECIDE["按 Agent 接入的规则<br/>决定拦截或放行"]
-    CACHED -->|"没有"| DIFF["和起点快照比较<br/>得到 diff 和改动声明"]
-    DIFF --> LOAD["解析工作区的源文件<br/>建立引用关系"]
-    LOAD --> DESIGN["过度设计的规则"]
-    LOAD --> TESTS{"本次任务有新增<br/>或修改的用例？"}
-    TESTS -->|"有"| RUN["逐条运行用例、统计覆盖<br/>按需要做变异<br/>受时间预算限制"]
-    TESTS -->|"没有<br/>跳过运行"| TCODE
-    RUN --> TCODE["测试代码的规则"]
-    DIFF --> SEMI["半自动模式的规则<br/>只在半自动模式下"]
-    DESIGN --> MERGE["合并成一个结论<br/>写入检查结果"]
-    TCODE --> MERGE
-    SEMI --> MERGE
-    MERGE --> DECIDE
-
-    classDef gray fill:#f8fafc,stroke:#94a3b8,color:#0f172a;
-    classDef orange fill:#fff7ed,stroke:#fb923c,color:#9a3412;
-    classDef green fill:#f0fdf4,stroke:#4ade80,color:#166534;
-    class STATE,DIFF,LOAD,DESIGN,RUN,TCODE,SEMI,MERGE gray;
-    class CACHED,TESTS orange;
-    class DECIDE green;
+    A[读取交付请求与输入版本] --> B[捕获固定快照]
+    B --> C{存在完整且有效的结果}
+    C -->|有| F[核对输入仍有效]
+    C -->|没有| D[声明、归属和静态规则]
+    D --> E[按设置运行动态检查]
+    E --> F
+    F --> G{输入是否变化}
+    G -->|变化| H[保存历史结果，任务继续]
+    G -->|未变化| I[按具体问题决定反馈或完成]
 ```
 
-检查结果按工作区状态和需求版本保存，两者都没变就不再检查。Agent 先调用了 `check_run`、之后什么都没改就结束时，Stop 直接用已有的结果，不用再等一遍。
+检查输入包含任务、快照、需求、方案、编辑记录、规则、分析设置和工具能力版本。静态结果与动态结果分开复用。未变化的观察和 hook 活动不增加输入修订。方案确认、授权变化或工具恢复后，只重算受影响部分；超时和缺失工具不会变成完整检查的缓存。
+
+检查完成时再次核对输入修订和当前状态，再用短事务发布结果和交付状态。期间有用户修改或其他 session 写入时，结果保留为历史，当前任务继续进行。计算和测试期间不持有数据库写锁，不锁工作区，不循环重试直到工作区停止变化。
 
 ## 工作区状态和快照
 
-**工作区状态**是工作区全部文件内容的一个 git tree 哈希，算法是：把工作区的 git 索引复制一份到临时文件，用 `GIT_INDEX_FILE` 指向这份副本，运行 `git add -A`，再运行 `git write-tree`。复制的索引里有每个文件上次的大小和修改时间，没变的文件不用重新读取，所以大仓库里也很快。改的始终是副本，用户真正的索引保持原样，`git status` 看到的东西不受影响。路径一律通过 git 命令得到（比如 `git rev-parse --git-path index`），这样 worktree 也能正常处理。Windows 上同样用这几条 git 命令，换行符按仓库的 `core.autocrlf` 设置处理，和用户自己 `git add` 时一致。
+工作区状态用 git tree 表示。复制当前索引到临时文件，以 `GIT_INDEX_FILE` 指向副本，运行 `git add -A` 和 `git write-tree`。真正的索引不变，暂存与未暂存的划分保留。索引路径由 `git rev-parse --git-path index` 获取，worktree 分别处理。
 
-**起点快照**是起点消息到达时的工作区状态（定义见 [任务和需求](requirements.md)）。TaskBelay 用 `git commit-tree` 给这个 tree 包一个 commit，再用 `refs/taskbelay/<任务编号>` 这个引用指向它，任务结束时删除这个引用。这样做是为了防止快照被 `git gc` 清掉，同时又不会出现在分支列表里。其他工作区状态只写进 git 对象库，不加引用，由 git 按自己的规则清理。
+快照包含 git 管理的文件和未忽略的新文件。子模块与嵌套仓库记录边界和所引用版本；需要检查其中的修改时，按各自工作区建立任务联系，不把它们当作普通目录展开。
 
-**diff** 用 `git diff <起点快照> <当前状态>` 得到。
+起点、恢复观察点和检查所需的内容通过 TaskBelay 自己的引用保留。用 `git commit-tree` 包装 tree，并写入 `refs/taskbelay/<任务编号>/<快照编号>`；任务完成后三十天清理这些引用。尚未绑定任务的起点候选在本 session 或被选择的任务仍需要时保留。其他只用于临时比较的状态按 git 的对象管理方式回收。
 
-这套做法的一个副作用是：没被 `.gitignore` 忽略的大文件，比如误放在工作区里的构建产物，也会被写进 git 对象库。
+累计 diff 用起点快照与当前 tree 比较，和用户提交了多少次无关。工作区更新与 Agent 编辑分别存证，不通过 commit 作者猜测来源。大文件采集纳入快照预算，结果中记录未完成的范围，不为采集修改用户的忽略规则。
 
 ## 代码分析
 
-- **解析**：用 gotreesitter 解析工作区状态里 TaskBelay 能解析语法的源文件，生成的代码和依赖目录下的文件除外。gotreesitter 是 tree-sitter 的纯 Go 实现，各种语言的语法和 tags 查询都打包在程序里，不需要 cgo，也不需要机器上装各语言的工具链。
-- **声明和改动声明**：按 [语言支持](languages.md) 的做法从语法树里取出声明。从 git 里读出改动文件在起点快照中的版本，同样解析，按“文件、所属类型、名字”对上同一个声明，再比较两边的叶子节点序列，分辨出“只改了格式”“只改了字面量和注释”“只改了名字”这几种情况。
-- **引用关系**：每个声明里出现的标识符，按名字连到同名的声明。所有声明的名字先建一张索引，查一个名字只要一次查表。
-- **用法统计**：[过度设计判定](over-design.md) 里要数的各种用法，按 [语言支持](languages.md) 里各语言的写法，从语法树里数出来。
+- 用 gotreesitter 解析固定 tree 中支持的源文件，语法和 tags 查询内置，无需 cgo。
+- 以文件、所属类型和名字定位声明，比较叶子节点序列，区分格式、字面量、注释和名字变化。
+- 声明改名或移动时，先采用工具记录，再尝试唯一结构匹配。匹配不唯一时保留旧位置和待更新标记。
+- 引用按名字建立候选索引，分析用到候选集合时计入预算。归属与各条规则使用 [语言支持](languages.md) 的具体方式。
+- 项目惯例读取起点版本，用户之后的约定作为单独决定参与分析。
 
-## 运行用例
+## 运行测试
 
-- **选择运行方式**：每条用例按它所在测试文件的语言，交给这门语言的 `Runner`。具体命令见 [语言支持](languages.md)。
-- **逐条运行**：每条新增和修改的用例单独运行一次，覆盖结果写到临时目录，读出它执行过的行。能先编译、再逐条运行的语言先编译一次，比如 Go 为每个测试包编译一个测试程序，Windows 上编译出的程序以 `.exe` 结尾。
-- **变异**：在临时副本里做。用 `git archive` 把当前工作区状态的文件导出到临时目录，再把规则表列出的依赖目录链接过去；每做一个变异，把改过的源文件写进副本，运行组里的用例，再把文件改回来。用户工作区里的文件始终保持原样。
-- **时间预算**：整个测试部分受 [过度测试判定](over-testing.md) 参数表里的时间预算限制，按 CPU 核数并行运行，到时间就停下。
+所有动态分析围绕一次固定快照，在临时目录导出源文件。Runner 使用项目已有的工具链、命令前缀、准备步骤和测试选择方式，确认覆盖率对应的是副本源码，再运行基线和变异。
 
-用例在用户的工作区里运行，和 Agent 自己运行测试时一样，会有同样的副作用，比如写临时文件、连本地数据库。
+依赖目录按语言与项目配置复用，源码和构建产物放在临时目录，运行输出也写入临时目录。访问数据库、服务和端口的测试使用项目声明的环境及并行条件。默认串行；可独立运行的用例可按配置并行，最多四个。
 
-## 存储
+每种 Runner 都执行准备、枚举、编译、单条运行、覆盖读取和终止，返回有效结果及运行错误的分类。编译失败或基础设施失败不记作变异被发现。120 秒预算覆盖整个动态阶段；到期或收到取消时终止本次启动的进程组并清理临时资源。
 
-TaskBelay 的数据都放在用户目录下的 `.taskbelay` 目录里，macOS 和 Linux 上是 `~/.taskbelay`，Windows 上是 `%USERPROFILE%\.taskbelay`。
+项目未开启动态检查时，Stop 只使用静态结果和已有验证记录；`check_run(depth="tests")` 可以请求一次动态检查。准备过程无法在预算内完成时，保存已经完成的观察。
 
-- **账本**：`taskbelay.db`，一个 SQLite 文件，所有工作区共用。用 `modernc.org/sqlite`，纯 Go 实现，不需要 cgo，三个平台都能直接编译。打开 WAL 模式，等锁超时设为 5 秒。两个 Agent 的多个 hook 进程和 MCP server 同时读写时，由 SQLite 保证写入一个接一个进行。记什么、保留多久见 [任务账本](requirements-ledger.md)。
-- **方案**：`plans/<任务编号>/v<版本>.md`。`plan_save` 收到方案正文和三项清单后，由 TaskBelay 写成文件，“涉及的改动”一节附在末尾。方案放在工作区之外，不会出现在任务的 diff 里。
-- **快照**：存在工作区自己的 git 对象库里，做法见上面的“工作区状态和快照”一节。
-- **设置**：工作模式和拦截强度两项设置存在账本里。
-- **日志**：`logs/`，按天一个文件，保留 7 天。
+## 存储和修订
+
+数据目录在 macOS、Linux 为 `~/.taskbelay`，Windows 为 `%USERPROFILE%\\.taskbelay`。
+
+- `taskbelay.db` 使用 modernc.org/sqlite，开启 WAL。观察、编辑、需求与方案修订、问题和 hook 活动的字段见 [任务账本](requirements-ledger.md)。
+- 方案为 `plans/<任务编号>/v<版本>.md`，保存完整方案及变更摘要。
+- 起点和必要的内容证据在 git 对象库，用 TaskBelay 引用保留。
+- 用户默认、项目和任务设置保存在账本里，按作用范围合并。
+- `logs/` 按天记录，保留七天；任务及其引用按账本保留期限一起清理。
+
+写入用短事务，需求和方案采用读取版本核对；旧版本冲突返回最新内容。数据库等待时间按当前事件剩余预算设置，快速事件最多等待二十毫秒，消息和普通 MCP 最多二百毫秒。失败的写入不发布半成品记录，Agent 的原工具操作照常结束。
+
+同一工具调用重复到达时复用其记录，避免重复建立任务或消耗授权。TaskBelay 自己的错误及本次未完成的检查，写入状态和日志。
 
 ## 性能预算
 
-用户能感受到的速度要求，写在 [产品需求](product.md) 的成功标准里；运行测试的时间预算，写在 [过度测试判定](over-testing.md) 的参数表里。为了达到这些要求，下面几个环节另有自己的预算：
-
-| 环节 | 预算 |
+| 路径 | 目标 |
 | --- | --- |
-| PreToolUse，命令里没有验证命令 | 50 毫秒内。Agent 运行的绝大多数命令走这条路，它决定了 TaskBelay 会不会拖慢 Agent |
-| PreToolUse，编辑工具 | 50 毫秒内，理由同上 |
-| SessionStart | 1 秒内 |
-| `check_run` 以外的 MCP 工具 | 1 秒内 |
+| 非验证命令前 | 五十毫秒，只解析和记录必要活动 |
+| 编辑前 | 五十毫秒，只核对目标文件和授权 |
+| SessionStart、UserPromptSubmit | 一秒，超时保留已采集内容，后续观察补齐 |
+| 普通 MCP、task_finish | 一秒，不在事务中运行检查和测试 |
+| 静态交付检查 | 五万行项目二十秒 |
+| 动态检查 | 最多一百二十秒，项目选择开启 |
+| check_run | 按请求深度使用对应检查预算 |
+
+各阶段使用共同的截止时间。达到预算时返回完成情况，下一次主动刷新可以继续未完成部分。性能通过 [算法评估](product-evaluation.md) 的场景测量。
 
 ## 依赖
 
 | 依赖 | 用途 |
 | --- | --- |
-| `github.com/odvcencio/gotreesitter` | 解析各种语言的源代码，自带语法和 tags 查询 |
-| `modernc.org/sqlite` | 账本存储 |
-| `github.com/modelcontextprotocol/go-sdk` | MCP server，官方的 Go SDK |
-| `mvdan.cc/sh/v3` | 解析 POSIX 写法的命令 |
+| `github.com/odvcencio/gotreesitter` | 内置语言语法和 tags 查询 |
+| `modernc.org/sqlite` | 任务账本 |
+| `github.com/modelcontextprotocol/go-sdk` | MCP server |
+| `mvdan.cc/sh/v3` | POSIX 命令解析 |
 
-运行时还需要：`git` 2.5 或更高版本（`git rev-parse --git-path` 从 2.5 开始有），Windows 上是 Git for Windows；检查测试代码时，需要项目自己的测试工具和 [语言支持](languages.md) 列出的覆盖率工具；安装接入时需要 `claude` 或 `codex` 命令，Claude Code 要 2.1.139 或更高版本（hook 的 exec 形式从这个版本开始有）。
+运行时需要 git 2.5 或更高版本；动态分析使用项目自己的测试和覆盖率工具；接入安装需要 claude 或 codex 命令。Claude Code 的 exec 形式安装要求 2.1.139 或更高版本。
 
 ## 平台和安装
 
-支持 Windows、macOS 和 Linux。用 `go install github.com/Innocent-children/taskbelay/cmd/taskbelay@latest` 安装，需要 Go 1.26；Windows 上装好的程序是 `taskbelay.exe`。
+Windows、macOS、Linux 各编译一个程序。`go install github.com/Innocent-children/taskbelay/cmd/taskbelay@latest` 安装需要 Go 1.26；Windows 程序名为 taskbelay.exe。接入和卸载见 [Agent 接入](product-agent-integration.md)。
 
-## TaskBelay 自己的测试
+## TaskBelay 自己的验证
 
-TaskBelay 自己的测试按 [过度测试判定](over-testing.md) 的规则来写。判定规则的行为由 `eval/cases` 里的例子集验证，`internal/check` 不再为同样的行为另写一套用例。例子集在三个平台上怎样运行，见 [算法评估](product-evaluation.md)。
+规则行为由 eval/cases 验证，避免为同一行为重复建测试。任务切换、观察与编辑核对、修订冲突、缓存失效和交付流程，用 [算法评估](product-evaluation.md) 的开发场景测试验证；平台和 Agent 适配在对应环境运行。
