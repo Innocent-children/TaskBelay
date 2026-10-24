@@ -1,6 +1,6 @@
 # 系统架构
 
-TaskBelay 是一个 Go 写的命令行程序，运行在 Windows、macOS 和 Linux 上，接入 Claude Code 和 Codex。它没有常驻进程：Agent 每触发一次 hook，就启动一个短进程，处理完立刻退出；每个 Agent session 各自启动一个 MCP server 进程，session 结束时随之退出。这些进程通过同一个 SQLite 文件共享任务账本，通过 git 命令读取工作区，通过用户机器上的 Go 工具链加载代码和运行测试。
+TaskBelay 是一个 Go 写的命令行程序，运行在 Windows、macOS 和 Linux 上，接入 Claude Code 和 Codex。它没有常驻进程：Agent 每触发一次 hook，就启动一个短进程，处理完立刻退出；每个 Agent session 各自启动一个 MCP server 进程，session 结束时随之退出。这些进程通过同一个 SQLite 文件共享任务账本，通过 git 命令读取工作区，用内置的语法分析读代码，通过项目自己的测试工具运行测试。
 
 所有工作都由 Agent 的事件触发，每次事件起一个短进程就够了，也省去了常驻进程的启动、保活、升级和多版本共存这些问题。
 
@@ -25,7 +25,8 @@ flowchart LR
     MCP --> LEDGER
     CHECK --> LEDGER
     CHECK --> GIT["git<br/>工作区状态、快照、diff"]
-    CHECK --> GO["Go 工具链<br/>加载代码、编译和运行测试"]
+    CHECK --> CODE["语法分析<br/>内置各种语言的语法"]
+    CHECK --> TOOLS["项目的测试工具<br/>运行用例、统计覆盖"]
 
     classDef gray fill:#f8fafc,stroke:#94a3b8,color:#0f172a;
     classDef orange fill:#fff7ed,stroke:#fb923c,color:#9a3412;
@@ -35,7 +36,7 @@ flowchart LR
     class HOOK,MCP gray;
     class CHECK orange;
     class LEDGER teal;
-    class GIT,GO gray;
+    class GIT,CODE,TOOLS gray;
 ```
 
 ## 命令
@@ -55,13 +56,14 @@ flowchart LR
 
 ## 项目结构
 
-TaskBelay 要在三个平台上接入两个 Agent。项目结构围绕三处差异来组织：
+TaskBelay 要在三个平台上接入两个 Agent，检查各种语言的代码。项目结构围绕四处差异来组织：
 
 - **Agent**：Claude Code 和 Codex 的 hook 输入输出格式、工具名、配置文件和 skill 目录各不相同。
 - **平台**：Windows 和另外两个平台的用户目录、程序文件名、hook 命令的写法不同；macOS 和 Linux 之间在这些方面相同。
 - **命令写法**：Agent 运行的命令有 POSIX 和 PowerShell 两种写法，用哪种取决于 Agent 和平台。
+- **编程语言**：各种语言的接口、错误类型、对外入口、测试框架写法不同，运行一条用例的方式也不同。
 
-这三处差异各自只出现在一个目录里。其余代码只和统一的事件、决定打交道，不知道自己面对的是哪个 Agent、哪个平台。
+这四处差异各自只出现在一个目录里。其余代码只和统一的事件、决定、声明和用例打交道，不知道自己面对的是哪个 Agent、哪个平台、哪种语言。
 
 ### 代码目录
 
@@ -84,7 +86,14 @@ internal/
   mcpserver/            MCP 工具
   ledger/               任务账本的读写
   gitstate/             工作区状态、快照、diff
-  goscan/               Go 代码分析；运行用例、统计覆盖率、做变异
+  lang/                 各种语言的规则表，和 languages.md 的“各语言的规则”一一对应
+    golang/
+    python/
+    javascript/         JavaScript 和 TypeScript
+    java/
+    rust/
+  codescan/             代码分析：用 tree-sitter 解析源文件，得到声明、引用、改动声明和各种用法
+  testrun/              运行用例：单独运行一条用例、读出执行过的行，在临时副本里做变异
 skills/                 内置的两个 skill。这个目录本身是一个 Go 包，用 go:embed 把两个 skill 打包进程序，适配器安装时复制给 Agent
   write-technical-plans/
   write-a-well-document/
@@ -115,24 +124,28 @@ flowchart TB
     MCPS --> CHECK
     MCPS --> PLAN
 
-    CHECK --> GOSCAN["goscan"]
+    CHECK --> CODESCAN["codescan"]
+    CHECK --> TESTRUN["testrun"]
     CHECK --> GITSTATE["gitstate"]
     CHECK --> LEDGER["ledger"]
     PLAN --> GITSTATE
     PLAN --> LEDGER
     SUMMARY --> LEDGER
+    CODESCAN --> LANG["lang<br/>golang、python、javascript、java、rust"]
+    TESTRUN --> LANG
+    TESTRUN --> GITSTATE
 
     classDef entry fill:#eff6ff,stroke:#60a5fa,color:#1e3a8a;
     classDef diff fill:#fff7ed,stroke:#fb923c,color:#9a3412;
     classDef logic fill:#f8fafc,stroke:#94a3b8,color:#0f172a;
     classDef data fill:#f0fdfa,stroke:#2dd4bf,color:#115e59;
     class CMD entry;
-    class AGENT,PLATFORM,SHELL diff;
+    class AGENT,PLATFORM,SHELL,LANG diff;
     class EVENT,HOOK,MCPS,CHECK,PLAN,SUMMARY logic;
-    class GOSCAN,GITSTATE,LEDGER,SKILLS data;
+    class CODESCAN,TESTRUN,GITSTATE,LEDGER,SKILLS data;
 ```
 
-橙色是放平台和 Agent 差异的地方。`hook` 只认识 `event` 里的统一事件，不导入任何 Agent 的适配器；一次 hook 调用由 `cmd/taskbelay` 串起来：找到对应的适配器，把输入转成统一事件，交给 `hook` 处理，再把得到的决定交回适配器，转成这个 Agent 要的输出。
+橙色是放平台、Agent、命令写法和语言差异的地方。`hook` 只认识 `event` 里的统一事件，不导入任何 Agent 的适配器；一次 hook 调用由 `cmd/taskbelay` 串起来：找到对应的适配器，把输入转成统一事件，交给 `hook` 处理，再把得到的决定交回适配器，转成这个 Agent 要的输出。
 
 ### 统一的事件和决定
 
@@ -178,15 +191,22 @@ type Adapter interface {
 
 `internal/shell` 把一条命令拆成几段，并给出每段的命令名，供 [过度测试判定](over-testing.md) 分类。`posix/` 基于 `mvdan.cc/sh` 解析 bash、zsh 和 Git Bash 的写法；`pwsh/` 是自己写的 PowerShell 解析，只做拆段、去掉引号、识别命令名和别名这几件事，规则少，不值得引入依赖。用哪一个，由适配器在命令请求事件里写明。
 
+### 语言
+
+`internal/lang` 下每种语言一个子目录，各提供一张规则表：一个结构体，字段和 [语言支持](languages.md) 规则表里的各项一一对应，比如扩展名、测试代码在哪里、接口的实现怎样认、对外入口有哪些写法。没有规定的字段留空，`codescan` 就按通用做法处理，通用做法也没有的，对应的检查不做。测试级的语言另外实现一个 `Runner`：从语法树里列出用例和用例名，单独运行一条用例并返回执行过的行，算出一条测试命令跑的范围和受影响的范围。
+
+没有子目录的语言，只要内置语法里有它和它的 tags 查询，`codescan` 就按通用做法分析，它就是代码级的语言。
+
 ### 怎样扩展
 
 | 要做的事 | 改哪里 |
 | --- | --- |
 | 接入一个新的 Agent | 在 `internal/agent/` 下加一个子目录，实现 `Adapter`，加进适配器列表。这个 Agent 用了新的命令写法时，在 `internal/shell/` 下加一个子目录 |
 | 支持一个新的平台 | 在 `internal/platform/` 下加一个对应后缀的文件，提供同一组函数；必要时在各适配器里补上这个平台的 hook 写法 |
+| 加一种语言的规则 | 在 `internal/lang/` 下加一个子目录，填好规则表，同时在 [语言支持](languages.md) 里加一张表；要支持到测试级，再实现 `Runner`。内置语法里没有这门语言时，先在 gotreesitter 里加上它的语法和 tags 查询 |
 | 修改算法 | `internal/check` 和 `internal/plan`；参数集中在 `internal/check/params.go`，和算法文档的参数表一一对应 |
 
-接口和构建约束只用在现在就有两种以上实现的地方：两个 Agent，两类平台（macOS 和 Linux 一类，Windows 一类），两种命令写法。这和 [过度设计判定](over-design.md) 对抽象的要求一致。
+接口和构建约束只用在现在就有两种以上实现的地方：两个 Agent，两类平台（macOS 和 Linux 一类，Windows 一类），两种命令写法，五张语言规则表（JavaScript 和 TypeScript 共用一张）。这和 [过度设计判定](over-design.md) 对抽象的要求一致。
 
 ## 关键流程
 
@@ -196,7 +216,7 @@ UserPromptSubmit 触发一个短进程：适配器把输入转成用户消息事
 
 ### Agent 运行命令前
 
-PreToolUse 触发一个短进程：适配器给出命令文本和写法，`shell` 把命令拆段、分类。绝大多数命令里没有验证命令，到这里就结束。有验证命令时，再算工作区状态，查这个 session 的验证记录，按验证过程的规则判断；对 `go test` 还要用 `go list` 展开包参数，算出它会跑哪些包。
+PreToolUse 触发一个短进程：适配器给出命令文本和写法，`shell` 把命令拆段、分类。绝大多数命令里没有验证命令，到这里就结束。有验证命令时，再算工作区状态，查这个 session 的验证记录，按验证过程的规则判断；对写了受影响范围的测试命令，还要由这门语言的 `Runner` 算出它会跑哪些测试，比如对 `go test` 用 `go list` 展开包参数。
 
 ### Agent 用编辑工具改文件前
 
@@ -212,7 +232,7 @@ flowchart TB
     STATE["算出工作区状态"] --> CACHED{"这个状态和需求版本<br/>检查过？"}
     CACHED -->|"检查过"| DECIDE["按 Agent 接入的规则<br/>决定拦截或放行"]
     CACHED -->|"没有"| DIFF["和起点快照比较<br/>得到 diff 和改动声明"]
-    DIFF --> LOAD["加载改动所在的模块<br/>建立引用关系"]
+    DIFF --> LOAD["解析工作区的源文件<br/>建立引用关系"]
     LOAD --> DESIGN["过度设计的规则"]
     LOAD --> TESTS{"本次任务有新增<br/>或修改的用例？"}
     TESTS -->|"有"| RUN["逐条运行用例、统计覆盖<br/>按需要做变异<br/>受时间预算限制"]
@@ -244,18 +264,18 @@ flowchart TB
 
 这套做法的一个副作用是：没被 `.gitignore` 忽略的大文件，比如误放在工作区里的构建产物，也会被写进 git 对象库。
 
-## Go 代码分析
+## 代码分析
 
-- **加载**：用 `golang.org/x/tools/go/packages` 加载改动所在的模块，取得语法树和类型信息。用的是默认构建标签和当前平台，被构建标签排除的文件不会加载。仓库里有多个模块时，逐个加载改动过的模块。
-- **改动声明**：从 git 里读出改动文件在起点快照中的版本，和当前版本分别解析，按“包、接收者类型、名字”对上同一个声明，再比较语法树。比较时忽略位置和空白，所以能分辨出“只改了格式”“只改了字面量和注释”“只改了名字”这几种情况。
-- **引用关系**：根据类型信息，找出每个声明里用到了哪些其他声明；通过接口调用的方法，连到这个接口方法在已加载代码里的所有实现。
-- **用法统计**：[过度设计判定](over-design.md) 里要数的各种用法，都从类型信息里的类型转换、实例化记录和赋值中统计。
+- **解析**：用 gotreesitter 解析工作区状态里 TaskBelay 能解析语法的源文件，生成的代码和依赖目录下的文件除外。gotreesitter 是 tree-sitter 的纯 Go 实现，各种语言的语法和 tags 查询都打包在程序里，不需要 cgo，也不需要机器上装各语言的工具链。
+- **声明和改动声明**：按 [语言支持](languages.md) 的做法从语法树里取出声明。从 git 里读出改动文件在起点快照中的版本，同样解析，按“文件、所属类型、名字”对上同一个声明，再比较两边的叶子节点序列，分辨出“只改了格式”“只改了字面量和注释”“只改了名字”这几种情况。
+- **引用关系**：每个声明里出现的标识符，按名字连到同名的声明。所有声明的名字先建一张索引，查一个名字只要一次查表。
+- **用法统计**：[过度设计判定](over-design.md) 里要数的各种用法，按 [语言支持](languages.md) 里各语言的写法，从语法树里数出来。
 
 ## 运行用例
 
-- **编译**：对每个包含新增或修改用例的测试包，运行一次 `go test -c -cover -covermode=set -coverpkg=<需求代码所在的包>`，把测试程序编译到临时目录。Windows 上编译出的测试程序以 `.exe` 结尾。
-- **逐条运行**：对每条用例运行编译好的测试程序，用 `-test.run` 只选中这一条，用 `-test.coverprofile` 记下覆盖到的代码块。表格行和子测试的名字，先用 `-test.v` 运行一次外层测试函数得到。
-- **变异**：把改过的源文件写到临时目录，用 `go test` 的 `-overlay` 参数，让编译器用它替换原文件，重新编译测试程序，再运行组里的用例。用户工作区里的文件始终保持原样。
+- **选择运行方式**：每条用例按它所在测试文件的语言，交给这门语言的 `Runner`。具体命令见 [语言支持](languages.md)。
+- **逐条运行**：每条新增和修改的用例单独运行一次，覆盖结果写到临时目录，读出它执行过的行。能先编译、再逐条运行的语言先编译一次，比如 Go 为每个测试包编译一个测试程序，Windows 上编译出的程序以 `.exe` 结尾。
+- **变异**：在临时副本里做。用 `git archive` 把当前工作区状态的文件导出到临时目录，再把规则表列出的依赖目录链接过去；每做一个变异，把改过的源文件写进副本，运行组里的用例，再把文件改回来。用户工作区里的文件始终保持原样。
 - **时间预算**：整个测试部分受 [过度测试判定](over-testing.md) 参数表里的时间预算限制，按 CPU 核数并行运行，到时间就停下。
 
 用例在用户的工作区里运行，和 Agent 自己运行测试时一样，会有同样的副作用，比如写临时文件、连本地数据库。
@@ -285,12 +305,12 @@ TaskBelay 的数据都放在用户目录下的 `.taskbelay` 目录里，macOS �
 
 | 依赖 | 用途 |
 | --- | --- |
-| `golang.org/x/tools` | 加载 Go 代码和类型信息 |
+| `github.com/odvcencio/gotreesitter` | 解析各种语言的源代码，自带语法和 tags 查询 |
 | `modernc.org/sqlite` | 账本存储 |
 | `github.com/modelcontextprotocol/go-sdk` | MCP server，官方的 Go SDK |
 | `mvdan.cc/sh/v3` | 解析 POSIX 写法的命令 |
 
-运行时还需要：`git` 2.5 或更高版本（`git rev-parse --git-path` 从 2.5 开始有），Windows 上是 Git for Windows；Go 项目需要 Go 工具链；安装接入时需要 `claude` 或 `codex` 命令，Claude Code 要 2.1.139 或更高版本（hook 的 exec 形式从这个版本开始有）。
+运行时还需要：`git` 2.5 或更高版本（`git rev-parse --git-path` 从 2.5 开始有），Windows 上是 Git for Windows；检查测试代码时，需要项目自己的测试工具和 [语言支持](languages.md) 列出的覆盖率工具；安装接入时需要 `claude` 或 `codex` 命令，Claude Code 要 2.1.139 或更高版本（hook 的 exec 形式从这个版本开始有）。
 
 ## 平台和安装
 

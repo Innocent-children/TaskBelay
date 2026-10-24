@@ -81,9 +81,9 @@ Agent 运行测试、构建这类命令之前，TaskBelay 会拦下结果已经�
 ## 支持范围
 
 - **Agent**：Claude Code、Codex。
-- **语言**：过度设计和测试代码的检查针对 Go 项目，因为它们要深入分析 Go 代码、运行 Go 测试。其他语言的项目里，任务接续和验证命令的检查照常工作。
+- **语言**：任何语言的开发任务都能用，检查得多深取决于语言。所有文件都能按整个文件检查改动和需求的对应、新增的依赖和验证命令；TaskBelay 内置了语法的语言，比如 Go、Python、JavaScript、TypeScript、Java、Rust、C、C++、C#、Ruby、PHP，还能按函数、类这样的声明检查多余的代码和抽象；Go、Python、JavaScript、TypeScript、Java、Rust 还能逐条运行测试用例，检查重复和多余的测试。语言支持不到而没做的检查，任务完成报告里会写明。各种语言支持到哪一级，见 [语言支持](languages.md)。
 - **平台**：Windows、macOS、Linux，三个平台上都能接入 Claude Code 和 Codex。在 Windows 的 WSL 里使用 Agent 时，TaskBelay 按 Linux 安装和运行；两个 Agent 都在 WSL 里，或者都在 Windows 上，才共用同一本任务账本。
-- **前提**：代码在 git 工作区里；Go 项目所在的机器上装有 Go 工具链。不在 git 工作区里时，TaskBelay 什么都不做。
+- **前提**：代码在 git 工作区里。检查测试代码时要运行测试，机器上要装有项目自己的测试工具，以及 [语言支持](languages.md) 列出的覆盖率工具。不在 git 工作区里时，TaskBelay 什么都不做。
 - **接入**：安装之后，用一条命令分别接入 Claude Code 和 Codex，对这台电脑上所有的 git 工作区生效，见 [Agent 接入](product-agent-integration.md)。
 - **数据**：只存在本机。
 
@@ -106,4 +106,4 @@ Agent 运行测试、构建这类命令之前，TaskBelay 会拦下结果已经�
 | 接续 | 中途换 Agent 后，隐藏验收测试的通过率和不中断时相差不超过 5 个百分点 |
 | 误判 | 拦截的问题里，人工判断不该拦的不超过 10% |
 | 半自动 | 半自动模式下，方案确认之前工作区里没有文件被改动；任务结束时，改动过的非测试文件都在已确认方案里 |
-| 速度 | 用户发消息、Agent 运行命令前，TaskBelay 在 1 秒内处理完；Agent 准备结束时的检查，除去运行测试的部分，在 5 万行以内的 Go 项目上 20 秒内完成 |
+| 速度 | 用户发消息、Agent 运行命令前，TaskBelay 在 1 秒内处理完；Agent 准备结束时的检查，除去运行测试的部分，在 5 万行以内的项目上 20 秒内完成 |
