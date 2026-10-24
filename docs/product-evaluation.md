@@ -40,7 +40,7 @@
 
 验证过程的规则（V1 到 V3）和半自动模式在编辑时的拦截（S1 的第 1 步）用另一种例子：`ledger.yaml` 里按顺序写一串命令或编辑，以及每一步发生时的工作区状态和方案状态，`expected.yaml` 写每一步期望的结果。命令例子同时包括 POSIX 和 PowerShell 两种写法。
 
-例子集在 macOS 和 Windows 上都要全部通过。
+例子集在 macOS、Linux 和 Windows 上都要全部通过。
 
 ### 统计
 
@@ -139,9 +139,9 @@ flowchart TB
 
 每次运行结束后，用账本核对 [产品需求](product.md) 成功标准里“半自动”一项：方案确认之前，工作区状态始终等于待确认期间开始时的状态；任务结束时，改动过的非测试文件都在最后一版已确认方案的“涉及的文件”里。
 
-### Windows 上的运行
+### Windows 和 Linux 上的运行
 
-上面的端到端对比在 macOS 上运行，用来判断算法的效果。Windows 上另跑一组，确认接入在 Windows 上正常工作：从 30 个任务里取 10 个，2 个 Agent，开启 TaskBelay，各跑 1 次，共 20 次。每次运行都要满足两点：账本里有这个 session 的 SessionStart 和 Stop 记录；Agent 运行过的验证命令都有验证记录，命令写法覆盖 Git Bash 和 PowerShell 两种。
+上面的端到端对比在 macOS 上运行，用来判断算法的效果。Windows 和 Linux 上各另跑一组，确认接入在这两个平台上正常工作：从 30 个任务里取 10 个，2 个 Agent，开启 TaskBelay，各跑 1 次，每个平台 20 次。每次运行都要满足两点：账本里有这个 session 的 SessionStart 和 Stop 记录；Agent 运行过的验证命令都有验证记录。Windows 上的命令写法要覆盖 Git Bash 和 PowerShell 两种。
 
 ### 接续评估
 

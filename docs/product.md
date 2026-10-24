@@ -82,7 +82,7 @@ Agent 运行测试、构建这类命令之前，TaskBelay 会拦下结果已经�
 
 - **Agent**：Claude Code、Codex。
 - **语言**：过度设计和测试代码的检查针对 Go 项目，因为它们要深入分析 Go 代码、运行 Go 测试。其他语言的项目里，任务接续和验证命令的检查照常工作。
-- **平台**：Windows、macOS。两个平台上都能接入 Claude Code 和 Codex。
+- **平台**：Windows、macOS、Linux，三个平台上都能接入 Claude Code 和 Codex。在 Windows 的 WSL 里使用 Agent 时，TaskBelay 按 Linux 安装和运行；两个 Agent 都在 WSL 里，或者都在 Windows 上，才共用同一本任务账本。
 - **前提**：代码在 git 工作区里；Go 项目所在的机器上装有 Go 工具链。不在 git 工作区里时，TaskBelay 什么都不做。
 - **接入**：安装之后，用一条命令分别接入 Claude Code 和 Codex，对这台电脑上所有的 git 工作区生效，见 [Agent 接入](product-agent-integration.md)。
 - **数据**：只存在本机。

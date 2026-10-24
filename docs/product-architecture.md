@@ -1,6 +1,6 @@
 # 系统架构
 
-TaskBelay 是一个 Go 写的命令行程序，运行在 Windows 和 macOS 上，接入 Claude Code 和 Codex。它没有常驻进程：Agent 每触发一次 hook，就启动一个短进程，处理完立刻退出；每个 Agent session 各自启动一个 MCP server 进程，session 结束时随之退出。这些进程通过同一个 SQLite 文件共享任务账本，通过 git 命令读取工作区，通过用户机器上的 Go 工具链加载代码和运行测试。
+TaskBelay 是一个 Go 写的命令行程序，运行在 Windows、macOS 和 Linux 上，接入 Claude Code 和 Codex。它没有常驻进程：Agent 每触发一次 hook，就启动一个短进程，处理完立刻退出；每个 Agent session 各自启动一个 MCP server 进程，session 结束时随之退出。这些进程通过同一个 SQLite 文件共享任务账本，通过 git 命令读取工作区，通过用户机器上的 Go 工具链加载代码和运行测试。
 
 所有工作都由 Agent 的事件触发，每次事件起一个短进程就够了，也省去了常驻进程的启动、保活、升级和多版本共存这些问题。
 
@@ -46,6 +46,7 @@ flowchart LR
 | `taskbelay uninstall claude`、`taskbelay uninstall codex` | 移除接入 | 用户 |
 | `taskbelay status` | 显示当前工作区的接续摘要和最近一次检查结果 | 用户 |
 | `taskbelay check` | 在当前工作区立即检查并打印结果 | 用户 |
+| `taskbelay config get <设置项>` | 显示一项设置当前的值，设置项是 `workflow` 或 `enforcement` | 用户 |
 | `taskbelay config set workflow auto` 或 `semi` | 设置工作模式：全自动或半自动 | 用户 |
 | `taskbelay config set enforcement block` 或 `hint` | 设置拦截强度：拦截一次或只提示 | 用户 |
 | `taskbelay hits --since 14d` | 导出最近的拦截命中和 Agent 的处理方式，见 [算法评估](product-evaluation.md) | 维护者 |
@@ -54,10 +55,10 @@ flowchart LR
 
 ## 项目结构
 
-TaskBelay 要在两个平台上接入两个 Agent。项目结构围绕三处差异来组织：
+TaskBelay 要在三个平台上接入两个 Agent。项目结构围绕三处差异来组织：
 
 - **Agent**：Claude Code 和 Codex 的 hook 输入输出格式、工具名、配置文件和 skill 目录各不相同。
-- **平台**：Windows 和 macOS 的用户目录、程序文件名、hook 命令的写法各不相同。
+- **平台**：Windows 和另外两个平台的用户目录、程序文件名、hook 命令的写法不同；macOS 和 Linux 之间在这些方面相同。
 - **命令写法**：Agent 运行的命令有 POSIX 和 PowerShell 两种写法，用哪种取决于 Agent 和平台。
 
 这三处差异各自只出现在一个目录里。其余代码只和统一的事件、决定打交道，不知道自己面对的是哪个 Agent、哪个平台。
@@ -71,7 +72,7 @@ internal/
   agent/                Agent 适配器的接口和已注册的适配器列表
     claude/             Claude Code 适配器
     codex/              Codex 适配器
-  platform/             平台差异，用文件名后缀 _darwin.go、_windows.go 区分
+  platform/             平台差异，分 platform_unix.go（macOS、Linux）和 platform_windows.go
   shell/                把命令拆段、分类
     posix/              bash、zsh、Git Bash 的写法
     pwsh/               PowerShell 的写法
@@ -164,9 +165,11 @@ type Adapter interface {
 
 ### 平台
 
-平台差异放在 `internal/platform` 里，用 Go 的构建约束区分：`platform_darwin.go` 和 `platform_windows.go` 提供同一组函数，编译时只会选中其中一个。它们回答这几个问题：用户目录在哪里；TaskBelay 的数据目录在哪里；程序文件叫什么；Claude Code 和 Codex 的 hook 命令在这个平台上怎样写；Codex 在这个平台上用哪种命令写法。
+平台差异放在 `internal/platform` 里，用 Go 的构建约束区分：`platform_unix.go`（构建约束是 `unix`，macOS 和 Linux 共用）和 `platform_windows.go` 提供同一组函数，编译时只会选中其中一个。macOS 和 Linux 在下面这些问题上的答案相同，所以共用一个文件。它们回答这几个问题：用户目录在哪里；TaskBelay 的数据目录在哪里；程序文件叫什么；Claude Code 和 Codex 的 hook 命令在这个平台上怎样写；Codex 在这个平台上用哪种命令写法。
 
 平台用构建约束，不用运行时的接口，因为一个程序文件只会在一个平台上运行，编译时选定就够了。
+
+**路径比较。** 同一个目录在不同地方可能有不同的写法：Windows 和 macOS 默认不区分大小写，Linux 区分；macOS 上 `/tmp` 是 `/private/tmp` 的符号链接；Windows 上分隔符可能是 `\` 也可能是 `/`。hook 输入里的 `cwd`、编辑工具给出的文件路径、git 给出的根目录，写法不一定一致。所以工作区一律取 `git rev-parse --show-toplevel` 的结果，并解析符号链接；比较两个路径之前先统一成正斜杠，在 Windows 和 macOS 上不区分大小写，在 Linux 上区分。这条规则也由 `internal/platform` 提供，macOS 和 Linux 只在区不区分大小写这一点上不同。
 
 ### 命令写法
 
@@ -180,7 +183,7 @@ type Adapter interface {
 | 支持一个新的平台 | 在 `internal/platform/` 下加一个对应后缀的文件，提供同一组函数；必要时在各适配器里补上这个平台的 hook 写法 |
 | 修改算法 | `internal/check` 和 `internal/plan`；参数集中在 `internal/check/params.go`，和算法文档的参数表一一对应 |
 
-接口和构建约束只用在现在就有两种以上实现的地方：两个 Agent，两个平台，两种命令写法。这和 [过度设计判定](over-design.md) 对抽象的要求一致。
+接口和构建约束只用在现在就有两种以上实现的地方：两个 Agent，两类平台（macOS 和 Linux 一类，Windows 一类），两种命令写法。这和 [过度设计判定](over-design.md) 对抽象的要求一致。
 
 ## 关键流程
 
@@ -256,9 +259,9 @@ flowchart TB
 
 ## 存储
 
-TaskBelay 的数据都放在用户目录下的 `.taskbelay` 目录里，macOS 上是 `~/.taskbelay`，Windows 上是 `%USERPROFILE%\.taskbelay`。
+TaskBelay 的数据都放在用户目录下的 `.taskbelay` 目录里，macOS 和 Linux 上是 `~/.taskbelay`，Windows 上是 `%USERPROFILE%\.taskbelay`。
 
-- **账本**：`taskbelay.db`，一个 SQLite 文件，所有工作区共用。用 `modernc.org/sqlite`，纯 Go 实现，不需要 cgo，两个平台都能直接编译。打开 WAL 模式，等锁超时设为 5 秒。两个 Agent 的多个 hook 进程和 MCP server 同时读写时，由 SQLite 保证写入一个接一个进行。记什么、保留多久见 [任务账本](requirements-ledger.md)。
+- **账本**：`taskbelay.db`，一个 SQLite 文件，所有工作区共用。用 `modernc.org/sqlite`，纯 Go 实现，不需要 cgo，三个平台都能直接编译。打开 WAL 模式，等锁超时设为 5 秒。两个 Agent 的多个 hook 进程和 MCP server 同时读写时，由 SQLite 保证写入一个接一个进行。记什么、保留多久见 [任务账本](requirements-ledger.md)。
 - **方案**：`plans/<任务编号>/v<版本>.md`。`plan_save` 收到方案正文和三项清单后，由 TaskBelay 写成文件，“涉及的改动”一节附在末尾。方案放在工作区之外，不会出现在任务的 diff 里。
 - **快照**：存在工作区自己的 git 对象库里，做法见上面的“工作区状态和快照”一节。
 - **设置**：工作模式和拦截强度两项设置存在账本里。
@@ -288,8 +291,8 @@ TaskBelay 的数据都放在用户目录下的 `.taskbelay` 目录里，macOS �
 
 ## 平台和安装
 
-支持 Windows 和 macOS。用 `go install github.com/Innocent-children/taskbelay/cmd/taskbelay@latest` 安装，需要 Go 1.26；Windows 上装好的程序是 `taskbelay.exe`。
+支持 Windows、macOS 和 Linux。用 `go install github.com/Innocent-children/taskbelay/cmd/taskbelay@latest` 安装，需要 Go 1.26；Windows 上装好的程序是 `taskbelay.exe`。
 
 ## TaskBelay 自己的测试
 
-TaskBelay 自己的测试按 [过度测试判定](over-testing.md) 的规则来写。判定规则的行为由 `eval/cases` 里的例子集验证，`internal/check` 不再为同样的行为另写一套用例。例子集在两个平台上怎样运行，见 [算法评估](product-evaluation.md)。
+TaskBelay 自己的测试按 [过度测试判定](over-testing.md) 的规则来写。判定规则的行为由 `eval/cases` 里的例子集验证，`internal/check` 不再为同样的行为另写一套用例。例子集在三个平台上怎样运行，见 [算法评估](product-evaluation.md)。

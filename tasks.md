@@ -5,8 +5,9 @@
 ## 怎样使用
 
 - 组内的任务按编号顺序做，组和组按下图的先后做。第 7 组只依赖第 3 组，可以和第 4 到第 6 组同时进行。
-- 凡是涉及 Agent 的验收，都在 macOS 和 Windows 上，对 Claude Code 和 Codex 各做一遍，共四种组合。
-- TaskBelay 自己的测试按 [over-testing.md](docs/over-testing.md) 的规则写。判定规则的行为由例子集验证，例子集在 macOS 和 Windows 上都要通过。
+- 凡是涉及 Agent 的验收，都在 macOS、Linux 和 Windows 上，对 Claude Code 和 Codex 各做一遍，共六种组合。
+- 各平台差异可能带来的问题记在 [notice.md](notice.md) 里，做到相关的组时，按那里写的办法验证。
+- TaskBelay 自己的测试按 [over-testing.md](docs/over-testing.md) 的规则写。判定规则的行为由例子集验证，例子集在三个平台上都要通过。
 
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"fontFamily": "PingFang SC, Microsoft YaHei, sans-serif", "fontSize": "15px", "edgeLabelBackground": "#ffffff", "lineColor": "#64748b"}, "flowchart": {"curve": "linear", "nodeSpacing": 24, "rankSpacing": 40}}}%%
@@ -32,21 +33,21 @@ flowchart LR
 
 ## 第 1 组：项目骨架和基础设施
 
-这组做完，TaskBelay 能在两个平台上编译运行，能读写设置，能算出工作区状态、建立和删除快照。
+这组做完，TaskBelay 能在三个平台上编译运行，能读写设置，能算出工作区状态、建立和删除快照。
 
 | 编号 | 任务 | 依据 |
 | --- | --- | --- |
-| 1.1 | 按项目结构建立代码目录；建立 `cmd/taskbelay` 入口和子命令分发，本组接上 `config` 子命令 | [product-architecture.md](docs/product-architecture.md)「项目结构」「命令」 |
-| 1.2 | `internal/platform`：用户目录、数据目录、程序文件名，分 `platform_darwin.go` 和 `platform_windows.go` 两个文件 | [product-architecture.md](docs/product-architecture.md)「平台」「存储」 |
+| 1.1 | 按项目结构建立本组用到的包：`cmd/taskbelay`、`internal/platform`、`internal/ledger`、`internal/gitstate`，其余目录由用到它们的组建立；建立 `cmd/taskbelay` 入口和子命令分发，本组接上 `config` 子命令 | [product-architecture.md](docs/product-architecture.md)「项目结构」「命令」 |
+| 1.2 | `internal/platform`：用户目录下的数据目录。平台不同的部分（程序文件名、hook 命令的写法、Codex 的命令写法）由第 2 组在 `platform_unix.go`（macOS、Linux）和 `platform_windows.go` 里加上 | [product-architecture.md](docs/product-architecture.md)「平台」「存储」 |
 | 1.3 | 日志：写到数据目录下的 `logs/`，按天一个文件，保留 7 天 | [product-architecture.md](docs/product-architecture.md)「存储」 |
 | 1.4 | `internal/ledger`：打开 SQLite（WAL 模式，等锁 5 秒），建好账本的全部记录 | [requirements-ledger.md](docs/requirements-ledger.md)「记录和字段」；[product-architecture.md](docs/product-architecture.md)「存储」 |
-| 1.5 | 设置的读写：工作模式（默认全自动）、拦截强度（默认拦截一次）；`taskbelay config set workflow`、`taskbelay config set enforcement` | [product.md](docs/product.md)「默认行为」；[product-architecture.md](docs/product-architecture.md)「命令」 |
+| 1.5 | 设置的读写：工作模式（默认全自动）、拦截强度（默认拦截一次）；`taskbelay config get`、`taskbelay config set` | [product.md](docs/product.md)「默认行为」；[product-architecture.md](docs/product-architecture.md)「命令」 |
 | 1.6 | `internal/gitstate`：找到工作区根目录；按“复制索引、`git add -A`、`git write-tree`”算出工作区状态 | [product-architecture.md](docs/product-architecture.md)「工作区状态和快照」 |
 | 1.7 | `internal/gitstate`：给快照包一个 commit，建立和删除 `refs/taskbelay/<任务编号>`；算出两个状态之间的 diff，精确到行 | [product-architecture.md](docs/product-architecture.md)「工作区状态和快照」 |
 
 **验收**
 
-- 两个平台上都能用 `go install` 装好程序，Windows 上的程序是 `taskbelay.exe`。
+- 三个平台上都能用 `go install` 装好程序，Windows 上的程序是 `taskbelay.exe`。
 - 不做任何设置时，读到的工作模式是全自动、拦截强度是拦截一次；设置之后重新读取，值一致。
 - 在一个 git 仓库里：文件不变时，两次算出的工作区状态相同；改一个文件、加一个没被忽略的新文件，状态都会变；改被 `.gitignore` 忽略的文件，状态不变；算状态前后 `git status` 的输出一致。
 - 建立快照引用后，`git branch` 里看不到它；运行 `git gc` 之后快照还在；删除引用后快照不再被保留。
@@ -63,7 +64,7 @@ flowchart LR
 | 2.4 | Codex 适配器：同上，工具是 Bash 和 apply_patch，轮次取 `turn_id` | 同上 |
 | 2.5 | `taskbelay hook <agent> <事件>`：适配器、`internal/hook`、适配器三步串起来；不在 git 工作区里直接退出；出错时正常退出、不输出内容，错误写进日志 | [product-agent-integration.md](docs/product-agent-integration.md)「TaskBelay 出错时」；[product-architecture.md](docs/product-architecture.md)「关键流程」 |
 | 2.6 | `internal/hook`：每次调用更新 session 记录和最后活动时间；UserPromptSubmit 时记下用户消息原文和到达时的工作区状态 | [requirements-ledger.md](docs/requirements-ledger.md)「session」「用户消息」 |
-| 2.7 | `taskbelay install claude`、`uninstall claude`：写入和删除 hook 条目；macOS 写程序的绝对路径，Windows 加 `"shell": "powershell"`；保留用户原有配置，可以重复运行 | [product-agent-integration.md](docs/product-agent-integration.md)「安装和卸载」「Windows 和 macOS 的差异」 |
+| 2.7 | `taskbelay install claude`、`uninstall claude`：写入和删除 hook 条目；macOS 和 Linux 写加了单引号的程序绝对路径，Windows 加 `"shell": "powershell"`；保留用户原有配置，可以重复运行 | [product-agent-integration.md](docs/product-agent-integration.md)「安装和卸载」「三个平台的差异」 |
 | 2.8 | `taskbelay install codex`、`uninstall codex`：写入和删除 `hooks.json` 条目，Windows 上用 `commandWindows`；安装后提示用户用 `/hooks` 确认信任 | 同上 |
 | 2.9 | `taskbelay status`：显示当前工作区记到的 session 和最近的用户消息，第 8 组扩展成完整内容 | [product-architecture.md](docs/product-architecture.md)「命令」 |
 
@@ -113,7 +114,7 @@ flowchart LR
 
 - 用 [requirements.md](docs/requirements.md)「归属」一节的例子写成测试：`main`、`formatRow`、`columnNames` 归属 R1，`log.Debugf` 没有归属。
 - 只用 gofmt 重排过的声明不算改动声明；只改了字符串的声明标为“只改字面量和注释”；只改了名字的声明标为“只改名字”。
-- 两个平台上结果相同。
+- 三个平台上结果相同。
 
 ## 第 5 组：过度设计判定和结束检查
 
@@ -136,7 +137,7 @@ flowchart LR
 
 **验收**
 
-- OD-01 到 OD-11 在两个平台上全部通过。
+- OD-01 到 OD-11 在三个平台上全部通过。
 - 复现 [product.md](docs/product.md)「一个完整的例子」里和过度设计有关的部分：Agent 加了 `Exporter` 接口和 `--delimiter` 参数，结束时被拦一次，说明里有 D4 和 D3；Agent 不改就再次结束，不再阻止，用户看到没解决的问题；Agent 改掉之后检查通过，任务完成报告列出 `--format` 和它的原话。
 - 拦截强度设为只提示时，同样的改动不阻止 Agent 结束。
 - 在 5 万行以内的 Go 项目上，过度设计部分的检查在 20 秒内完成。
@@ -158,7 +159,7 @@ flowchart LR
 
 **验收**
 
-- OT-01 到 OT-08 在两个平台上全部通过。
+- OT-01 到 OT-08 在三个平台上全部通过。
 - 复现 [product.md](docs/product.md)「一个完整的例子」里测试的部分：测同一段代码的 3 条重复用例被退回，留下的用例检查通过。
 - 检查前后，用户工作区里的文件内容不变。
 - 把时间预算调小到不够用，结果里标出“未检查”的用例，不因此拦截。
@@ -179,7 +180,7 @@ flowchart LR
 
 **验收**
 
-- 本组的例子在两个平台上全部通过。
+- 本组的例子在三个平台上全部通过。
 - 测试失败后不改代码、原样再跑一遍，被拦下；Claude Code 的说明里有上次的结果和退出码，Codex 的说明里只有上次运行的时间。
 - 两次运行之间执行过 `docker start` 这类其他命令时，不拦。
 - Windows 上 Codex 和 Claude Code 的 PowerShell 工具运行的验证命令同样被识别和记录。
@@ -223,7 +224,7 @@ flowchart LR
 
 **验收**
 
-- SA-01 到 SA-03 在两个平台上全部通过。
+- SA-01 到 SA-03 在三个平台上全部通过。
 - 复现 [product.md](docs/product.md)「一个完整的例子」里的半自动部分：方案确认之前，Agent 用编辑工具改文件被拦下；Agent 交出带“涉及的改动”的方案后停下；用户回复“可以，按这个做”之后开始开发；改 `internal/log/log.go` 时被 S2 拦下。
 - 用户本机已有同名 skill 时，安装后用户的版本保持原样；卸载只删除 TaskBelay 复制过去的 skill。
 - 半自动模式下换 Agent，摘要里写明方案的版本、路径和确认状态。
@@ -239,7 +240,7 @@ flowchart LR
 | 10.3 | 端到端脚本：用 `claude -p`、`codex exec` 驱动 Agent，回复固定的话并在同一个 session 里继续，核对 hook 是否运行过，统计各项指标 | [product-evaluation.md](docs/product-evaluation.md)「运行方式」「指标」 |
 | 10.4 | 开启和关闭 TaskBelay 的对比，按任务逐个比较正确性 | [product-evaluation.md](docs/product-evaluation.md)「怎样判断开启后更好」 |
 | 10.5 | 半自动模式的运行和核对 | [product-evaluation.md](docs/product-evaluation.md)「半自动模式」 |
-| 10.6 | Windows 上的运行 | [product-evaluation.md](docs/product-evaluation.md)「Windows 上的运行」 |
+| 10.6 | Windows 和 Linux 上的运行 | [product-evaluation.md](docs/product-evaluation.md)「Windows 和 Linux 上的运行」 |
 | 10.7 | 接续评估 | [product-evaluation.md](docs/product-evaluation.md)「接续评估」 |
 
 **验收**

@@ -1,10 +1,10 @@
 # Agent 接入
 
-TaskBelay 在 Windows 和 macOS 上接入 Claude Code 和 Codex，靠的是三样东西：hook、MCP 和 skill。两个 Agent 的 hook 机制几乎一样：事件名称相同，输入都是一段 JSON，都能拦下工具调用、阻止 Agent 结束、往 Agent 的上下文里加内容。所以 TaskBelay 用同一套逻辑处理两边的事件，只在输入输出格式、平台和几处能力上分开处理。本文说明接了哪些 hook、每个 hook 做什么、两个 Agent 和两个平台有什么差异、怎样安装和卸载，以及 TaskBelay 自己出错时怎样处理。
+TaskBelay 在 Windows、macOS 和 Linux 上接入 Claude Code 和 Codex，靠的是三样东西：hook、MCP 和 skill。两个 Agent 的 hook 机制几乎一样：事件名称相同，输入都是一段 JSON，都能拦下工具调用、阻止 Agent 结束、往 Agent 的上下文里加内容。所以 TaskBelay 用同一套逻辑处理两边的事件，只在输入输出格式、平台和几处能力上分开处理。本文说明接了哪些 hook、每个 hook 做什么、两个 Agent 和三个平台有什么差异、怎样安装和卸载，以及 TaskBelay 自己出错时怎样处理。各平台差异可能带来的问题，记在项目根目录的 `notice.md` 里。
 
 ## 接入方式
 
-- **hook**：接 5 个事件。每次触发时 Agent 运行 `taskbelay hook <agent> <事件>`，把事件的 JSON 从标准输入传进来，TaskBelay 处理完把决定写到标准输出。
+- **hook**：接 5 个事件。每次触发时 Agent 运行 `taskbelay hook <agent> <事件>`，把事件的 JSON 从标准输入传进来，TaskBelay 处理完把决定写到标准输出。输出的 JSON 只用 ASCII 字符，中文等其他字符写成 `\u` 转义，这样不管经过哪个平台的哪种 shell，内容都不会被转码。
 - **MCP**：Agent 启动时运行 `taskbelay mcp`，得到 [任务账本](requirements-ledger.md) 里定义的 8 个工具。
 - **skill**：[半自动模式](semi-auto.md) 写方案用的两个 skill，write-technical-plans 和 write-a-well-document，随 TaskBelay 一起安装到两个 Agent 的用户级 skill 目录。
 - **事前提示**：要告诉 Agent 的规矩，在 session 开始时通过 hook 注入。
@@ -25,7 +25,7 @@ hook 按工具名匹配，两个 Agent 的工具名不同：
 | shell 工具 | `Bash`、`PowerShell` | `Bash`（包括 `exec_command`） |
 | 编辑工具 | `Edit`、`Write`、`NotebookEdit` | `apply_patch` |
 
-Claude Code 的 PowerShell 工具只在 Windows 上默认开启，它的输入字段和 Bash 工具相同；只匹配 `Bash` 会漏掉它。
+Claude Code 的 PowerShell 工具在 Windows 上默认开启；macOS 和 Linux 上要装好 PowerShell 7（`pwsh`）并设置 `CLAUDE_CODE_USE_POWERSHELL_TOOL=1` 才有。它的输入字段和 Bash 工具相同，只匹配 `Bash` 会漏掉它。
 
 下图是一轮里各个 hook 的先后顺序，以第一次结束被拦截、改完后放行为例：
 
@@ -86,9 +86,9 @@ TaskBelay 记下消息原文、session、轮次和此刻的工作区状态，作
 
 | 情况 | 按哪种写法解析 |
 | --- | --- |
-| Claude Code 的 Bash 工具：macOS 上是系统的 bash 或 zsh，Windows 上是 Git Bash | POSIX |
+| Claude Code 的 Bash 工具：macOS 和 Linux 上是用户的 bash 或 zsh，Windows 上是 Git Bash | POSIX |
 | Claude Code 的 PowerShell 工具 | PowerShell |
-| Codex 在 macOS 上 | POSIX |
+| Codex 在 macOS 和 Linux 上 | POSIX |
 | Codex 在 Windows 上 | PowerShell |
 
 命令文本整体是 `powershell -Command "…"`、`pwsh -Command "…"`、`bash -lc "…"` 这种形式时，先取出引号里的命令，再按里面的写法解析。
@@ -166,17 +166,23 @@ Stop 的检查可能要编译和运行测试，所以这个 hook 的超时设为
 
 Codex 的文档说明，tool hook 是“有用的护栏，但不是完整的强制边界”，有少数专用的工具路径不经过 hook。所以在 Codex 里，个别命令和编辑可能绕过 PreToolUse 的检查。Stop 时的检查看的是工作区里的实际改动，不受影响。
 
-## Windows 和 macOS 的差异
+## 三个平台的差异
 
-| 项目 | macOS | Windows |
+macOS 和 Linux 的做法相同，Windows 不同：
+
+| 项目 | macOS、Linux | Windows |
 | --- | --- | --- |
 | 用户目录 | `~` | `%USERPROFILE%` |
 | TaskBelay 程序 | `taskbelay` | `taskbelay.exe` |
-| Agent 运行命令用的 shell | Claude Code、Codex 都是 bash 或 zsh | Claude Code 是 Git Bash 或 PowerShell，Codex 是 PowerShell |
-| Claude Code 的 hook 条目 | `command` 直接写 taskbelay 的绝对路径和参数 | 加上 `"shell": "powershell"`，`command` 写成 `& 'C:\Users\dev\go\bin\taskbelay.exe' hook claude stop` |
-| Codex 的 hook 条目 | `command` 直接写 taskbelay 的绝对路径和参数 | `command` 和 `commandWindows` 都写 taskbelay.exe 的绝对路径和参数 |
+| Agent 运行命令用的 shell | Claude Code、Codex 都是用户的 bash 或 zsh | Claude Code 是 Git Bash 或 PowerShell，Codex 是 PowerShell |
+| Claude Code 的 hook 条目 | `command` 写 taskbelay 的绝对路径和参数，路径用 POSIX 的写法加单引号 | 加上 `"shell": "powershell"`，`command` 写成 `& 'C:\Users\dev\go\bin\taskbelay.exe' hook claude stop` |
+| Codex 的 hook 条目 | `command` 写 taskbelay 的绝对路径和参数，路径用 POSIX 的写法加单引号 | `command` 和 `commandWindows` 都写 taskbelay.exe 的绝对路径和参数 |
 
 Windows 上，Claude Code 的 hook 条目指定用 PowerShell 运行，是因为 Claude Code 默认用 Git Bash 运行 hook 命令，而 PowerShell 不依赖 Git Bash，Windows 路径里的反斜杠也不用转义。Codex 的 `commandWindows` 是 Windows 上专用的命令写法。
+
+程序路径里可能有空格、中文或引号，比如用户名带空格。所以路径一律加单引号：POSIX 写法里，路径中的单引号写成 `'\''`；PowerShell 写法里，路径中的单引号写成两个单引号。
+
+在 Windows 的 WSL 里运行的 Agent 是 Linux 程序，按 Linux 接入：TaskBelay 装在 WSL 里，配置和数据都在 WSL 的用户目录下。
 
 ## 安装和卸载
 
@@ -186,7 +192,7 @@ Windows 上，Claude Code 的 hook 条目指定用 PowerShell 运行，是因为
 2. 运行 `claude mcp add --scope user taskbelay -- <taskbelay 的绝对路径> mcp`。
 3. 安装两个 skill。
 
-macOS 上写入的 hook 条目是这个样子（只列出两个）：
+macOS 和 Linux 上写入的 hook 条目是这个样子（只列出两个，路径以 macOS 为例）：
 
 ```json
 {
@@ -195,14 +201,14 @@ macOS 上写入的 hook 条目是这个样子（只列出两个）：
       {
         "matcher": "Bash|PowerShell",
         "hooks": [
-          { "type": "command", "command": "/Users/dev/go/bin/taskbelay hook claude pre-tool-use", "timeout": 30 }
+          { "type": "command", "command": "'/Users/dev/go/bin/taskbelay' hook claude pre-tool-use", "timeout": 30 }
         ]
       }
     ],
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "/Users/dev/go/bin/taskbelay hook claude stop", "timeout": 300 }
+          { "type": "command", "command": "'/Users/dev/go/bin/taskbelay' hook claude stop", "timeout": 300 }
         ]
       }
     ]

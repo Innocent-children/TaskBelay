@@ -27,9 +27,9 @@
 | [handoff.md](handoff.md) | 什么时候给接续摘要、摘要写什么、摘要的长度上限、Agent 要记下什么、怎样判断新消息是不是另一件事、两个 session 同时在一个工作区时怎样处理 |
 | [semi-auto.md](semi-auto.md) | 半自动模式的流程：方案怎样写、写什么、怎样提交和确认，待确认期间怎样保持工作区不变，确认之后方案起什么作用；这个模式下的规则、参数、事前提示、例子 |
 | [requirements-ledger.md](requirements-ledger.md) | 账本里有哪些记录和字段、谁在什么时候写、保留多久；Agent 读写账本的 MCP 工具 |
-| [product-agent-integration.md](product-agent-integration.md) | 接了 Claude Code 和 Codex 的哪些 hook、每个 hook 做什么、拦截和提示怎样生效、两个 Agent 和两个平台的差异、安装和卸载、TaskBelay 出错时怎样处理 |
+| [product-agent-integration.md](product-agent-integration.md) | 接了 Claude Code 和 Codex 的哪些 hook、每个 hook 做什么、拦截和提示怎样生效、两个 Agent 和三个平台的差异、安装和卸载、TaskBelay 出错时怎样处理 |
 | [product-architecture.md](product-architecture.md) | 进程怎样组织、命令、项目结构和扩展方式、内部流程、快照和代码分析和运行测试的实现、存储、性能预算、依赖、平台和安装 |
-| [product-evaluation.md](product-evaluation.md) | 怎样衡量算法的效果、一次算法修改怎样决定采不采用、参数怎样调整、两个平台上怎样验证 |
+| [product-evaluation.md](product-evaluation.md) | 怎样衡量算法的效果、一次算法修改怎样决定采不采用、参数怎样调整、三个平台上怎样验证 |
 
 每件事只在负责它的那份文档里写清楚，其他文档用到时，写一句话加链接。
 
