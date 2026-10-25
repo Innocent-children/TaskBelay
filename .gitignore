@@ -1,0 +1,15 @@
+# Local evaluation records and generated workspaces.
+/eval/results/
+
+# Local IDE and macOS files.
+/.idea/
+.DS_Store
+
+# Locally built executables.
+/taskbelay
+/taskbelay.exe
+
+# Python bytecode caches.
+__pycache__/
+*.pyc
+*.pyo
