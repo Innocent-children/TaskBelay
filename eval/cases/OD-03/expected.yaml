@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D5",
+      "at": "main.go:writeCSV.sep",
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": []
+}

@@ -1,0 +1,16 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D1",
+      "at": "main.go:export",
+      "block_on_delivery": false,
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": [],
+  "preserved": {
+    "main.go": "package main\nimport \"errors\"\nfunc main() {}\nfunc export(input string) error { if input == \"\" { return errors.New(\"empty input\") }; return nil }\n"
+  }
+}

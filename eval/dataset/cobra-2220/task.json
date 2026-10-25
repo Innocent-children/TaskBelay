@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "id": "cobra-2220",
+  "language": "Go",
+  "kind": "feature",
+  "repository": "spf13/cobra",
+  "repository_url": "https://github.com/spf13/cobra.git",
+  "pull_request": "https://github.com/spf13/cobra/pull/2220",
+  "pull_request_number": 2220,
+  "merged": true,
+  "merged_at": "2025-01-22T01:34:05Z",
+  "merge_commit": "6c3c1163c6df19860515103199e880122ba49e80",
+  "api_base_sha": "01ffff4eca5a08384ef2b85f39ec0dac192a5f7b",
+  "base_commit": "01ffff4eca5a08384ef2b85f39ec0dac192a5f7b",
+  "base_tree": "4a25b6914c44f51079ae8076654f6ba210e0dac1",
+  "source_changed_lines": 24,
+  "files": [
+    {
+      "path": "command.go",
+      "added": 1,
+      "deleted": 1,
+      "category": "source"
+    },
+    {
+      "path": "completions.go",
+      "added": 17,
+      "deleted": 5,
+      "category": "source"
+    }
+  ],
+  "hidden_upstream_files": [],
+  "hidden_authored_files": [
+    "taskbelay_completion_type_test.go"
+  ],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {
+      "GOTOOLCHAIN": "go1.26.0"
+    },
+    "existing": [
+      [
+        "go",
+        "test",
+        "./..."
+      ]
+    ],
+    "hidden": [
+      [
+        "go",
+        "test",
+        "./..."
+      ]
+    ],
+    "baseline_failure_patterns": [
+      "undefined: cobra.CompletionFunc"
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE.txt"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE.txt": "5e3400b93bbb099e83e52bab885e7441750673c21f97988ca3f1240639b63283",
+    "hidden.patch": "d37f47c0483b6f546da0267e5728d3a9647c5b41721089a09ef6362a052e55fa",
+    "implementation.patch": "f806d7c46945a5712f180c03c350901c5d694640812cf5dbb1b50ee8734dc9d3",
+    "reference.patch": "f806d7c46945a5712f180c03c350901c5d694640812cf5dbb1b50ee8734dc9d3",
+    "request.md": "a605da09544d062b5122f07e6f2049b111d6eb1418f86ee4a33fdcc2b754928e"
+  }
+}

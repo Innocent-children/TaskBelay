@@ -1,0 +1,9 @@
+{
+  "status": "complete",
+  "absent": [
+    {
+      "rule": "D6",
+      "at": "main.go:wrapper"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+--- a/main.go
++++ b/main.go
+@@ -1,2 +1,4 @@
+ package main
+-func main() {}
++import "flag"
++func main() { sep := flag.String("separator", ",", "separator"); println(writeCSV(*sep)) }
++func writeCSV(sep string) string { return "a"+sep+"b" }

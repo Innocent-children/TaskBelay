@@ -1,0 +1,1 @@
+CharSequenceInputStream 在字符编码结束后必须输出编码器 flush 的全部字节，直到所有尾部字节读取完才返回 EOF，包括有状态字符集和小缓冲。mark/reset 按字节位置恢复，即使处于编码器 flush 阶段；skip 能跨缓冲继续前进。close 后 available 为零、读取为 EOF、零长度读取为零、skip 为零，mark/reset 无效果；编码错误保持可重现。

@@ -1,0 +1,7 @@
+--- a/main.go
++++ b/main.go
+@@ -1,3 +1,2 @@
+ package main
+-func old() int { return 3 }
+-func main() { _ = old() }
++func main() {}

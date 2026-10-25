@@ -1,0 +1,291 @@
+diff --git a/library/CHANGELOG.md b/library/CHANGELOG.md
+index 3ee8a919c..0825c1f2c 100644
+--- a/library/CHANGELOG.md
++++ b/library/CHANGELOG.md
+@@ -8,6 +8,8 @@ All notable changes to the library will be documented in this file.
+ - Add `ksuid` validation action to validate KSUIDs (pull request #1370)
+ - Change Standard Schema properties to use eager initialization for faster schema construction and replace internal `_getStandardProps` utility with `_standardSchema` (pull request #1534)
+ - Fix `stringifyJson` action to preserve the dataset value when `JSON.stringify` returns `undefined` (pull request #1476)
++- Fix `literal` schema and `value`, `values`, `notValue` and `notValues` actions to treat `NaN` as equal to itself (pull request #1573)
++- Fix `intersect` schema to merge matching `NaN` values and invalid dates (pull request #1573)
+ 
+ ## v1.4.2 (June 28, 2026)
+ 
+diff --git a/library/src/actions/notValue/notValue.ts b/library/src/actions/notValue/notValue.ts
+index e05d6c2a1..0fda4466d 100644
+--- a/library/src/actions/notValue/notValue.ts
++++ b/library/src/actions/notValue/notValue.ts
+@@ -3,7 +3,7 @@ import type {
+   BaseValidation,
+   ErrorMessage,
+ } from '../../types/index.ts';
+-import { _addIssue, _stringify } from '../../utils/index.ts';
++import { _addIssue, _isValueMatch, _stringify } from '../../utils/index.ts';
+ import type { ValueInput } from '../types.ts';
+ 
+ /**
+@@ -115,11 +115,7 @@ export function notValue(
+     requirement,
+     message,
+     '~run'(dataset, config) {
+-      if (
+-        dataset.typed &&
+-        this.requirement <= dataset.value &&
+-        this.requirement >= dataset.value
+-      ) {
++      if (dataset.typed && _isValueMatch(this.requirement, dataset.value)) {
+         _addIssue(this, 'value', dataset, config, {
+           received:
+             dataset.value instanceof Date
+diff --git a/library/src/actions/notValues/notValues.ts b/library/src/actions/notValues/notValues.ts
+index 26e4c09c4..f6e0044c4 100644
+--- a/library/src/actions/notValues/notValues.ts
++++ b/library/src/actions/notValues/notValues.ts
+@@ -3,7 +3,12 @@ import type {
+   BaseValidation,
+   ErrorMessage,
+ } from '../../types/index.ts';
+-import { _addIssue, _joinExpects, _stringify } from '../../utils/index.ts';
++import {
++  _addIssue,
++  _isValueMatch,
++  _joinExpects,
++  _stringify,
++} from '../../utils/index.ts';
+ import type { ValueInput } from '../types.ts';
+ 
+ /**
+@@ -119,8 +124,8 @@ export function notValues(
+     '~run'(dataset, config) {
+       if (
+         dataset.typed &&
+-        this.requirement.some(
+-          (value) => value <= dataset.value && value >= dataset.value
++        this.requirement.some((requirement) =>
++          _isValueMatch(requirement, dataset.value)
+         )
+       ) {
+         _addIssue(this, 'value', dataset, config, {
+diff --git a/library/src/actions/value/value.ts b/library/src/actions/value/value.ts
+index 82af0005b..37f08890b 100644
+--- a/library/src/actions/value/value.ts
++++ b/library/src/actions/value/value.ts
+@@ -3,7 +3,7 @@ import type {
+   BaseValidation,
+   ErrorMessage,
+ } from '../../types/index.ts';
+-import { _addIssue, _stringify } from '../../utils/index.ts';
++import { _addIssue, _isValueMatch, _stringify } from '../../utils/index.ts';
+ import type { ValueInput } from '../types.ts';
+ 
+ /**
+@@ -113,12 +113,7 @@ export function value(
+     requirement,
+     message,
+     '~run'(dataset, config) {
+-      if (
+-        dataset.typed &&
+-        !(
+-          this.requirement <= dataset.value && this.requirement >= dataset.value
+-        )
+-      ) {
++      if (dataset.typed && !_isValueMatch(this.requirement, dataset.value)) {
+         _addIssue(this, 'value', dataset, config, {
+           received:
+             dataset.value instanceof Date
+diff --git a/library/src/actions/values/values.ts b/library/src/actions/values/values.ts
+index 1d0f2fa2a..4b860393f 100644
+--- a/library/src/actions/values/values.ts
++++ b/library/src/actions/values/values.ts
+@@ -3,7 +3,12 @@ import type {
+   BaseValidation,
+   ErrorMessage,
+ } from '../../types/index.ts';
+-import { _addIssue, _joinExpects, _stringify } from '../../utils/index.ts';
++import {
++  _addIssue,
++  _isValueMatch,
++  _joinExpects,
++  _stringify,
++} from '../../utils/index.ts';
+ import type { ValueInput } from '../types.ts';
+ 
+ /**
+@@ -117,8 +122,8 @@ export function values(
+     '~run'(dataset, config) {
+       if (
+         dataset.typed &&
+-        !this.requirement.some(
+-          (value) => value <= dataset.value && value >= dataset.value
++        !this.requirement.some((requirement) =>
++          _isValueMatch(requirement, dataset.value)
+         )
+       ) {
+         _addIssue(this, 'value', dataset, config, {
+diff --git a/library/src/schemas/intersect/utils/_merge/_merge.ts b/library/src/schemas/intersect/utils/_merge/_merge.ts
+index 49b327dc1..a19488a3d 100644
+--- a/library/src/schemas/intersect/utils/_merge/_merge.ts
++++ b/library/src/schemas/intersect/utils/_merge/_merge.ts
+@@ -1,3 +1,5 @@
++import { _isSameValueZero } from '../../../../utils/index.ts';
++
+ /**
+  * Merge dataset type.
+  */
+@@ -21,8 +23,10 @@ export function _merge(value1: unknown, value2: unknown): MergeDataset {
+   if (typeof value1 === typeof value2) {
+     // Return first value if both are equal
+     if (
+-      value1 === value2 ||
+-      (value1 instanceof Date && value2 instanceof Date && +value1 === +value2)
++      _isSameValueZero(value1, value2) ||
++      (value1 instanceof Date &&
++        value2 instanceof Date &&
++        _isSameValueZero(+value1, +value2))
+     ) {
+       return { value: value1 };
+     }
+diff --git a/library/src/schemas/literal/literal.ts b/library/src/schemas/literal/literal.ts
+index 1d903d19b..967fb7864 100644
+--- a/library/src/schemas/literal/literal.ts
++++ b/library/src/schemas/literal/literal.ts
+@@ -4,7 +4,12 @@ import type {
+   ErrorMessage,
+   OutputDataset,
+ } from '../../types/index.ts';
+-import { _addIssue, _standardSchema, _stringify } from '../../utils/index.ts';
++import {
++  _addIssue,
++  _isSameValueZero,
++  _standardSchema,
++  _stringify,
++} from '../../utils/index.ts';
+ 
+ /**
+  * Literal type.
+@@ -92,7 +97,7 @@ export function literal(
+     literal: literal_,
+     message,
+     '~run'(dataset, config) {
+-      if (dataset.value === this.literal) {
++      if (_isSameValueZero(dataset.value, this.literal)) {
+         // @ts-expect-error
+         dataset.typed = true;
+       } else {
+diff --git a/library/src/utils/_isSameValueZero/_isSameValueZero.ts b/library/src/utils/_isSameValueZero/_isSameValueZero.ts
+new file mode 100644
+index 000000000..ae5054fd9
+--- /dev/null
++++ b/library/src/utils/_isSameValueZero/_isSameValueZero.ts
+@@ -0,0 +1,15 @@
++/**
++ * Compares two values using the SameValueZero algorithm, which treats `NaN`
++ * as equal to itself unlike `===`.
++ *
++ * @param value1 The first value.
++ * @param value2 The second value.
++ *
++ * @returns Whether the values are equal.
++ *
++ * @internal
++ */
++// @__NO_SIDE_EFFECTS__
++export function _isSameValueZero(value1: unknown, value2: unknown): boolean {
++  return value1 === value2 || (Number.isNaN(value1) && Number.isNaN(value2));
++}
+diff --git a/library/src/utils/_isSameValueZero/index.ts b/library/src/utils/_isSameValueZero/index.ts
+new file mode 100644
+index 000000000..86daba59e
+--- /dev/null
++++ b/library/src/utils/_isSameValueZero/index.ts
+@@ -0,0 +1 @@
++export * from './_isSameValueZero.ts';
+diff --git a/library/src/utils/_isValueMatch/_isValueMatch.ts b/library/src/utils/_isValueMatch/_isValueMatch.ts
+new file mode 100644
+index 000000000..34e8ccac9
+--- /dev/null
++++ b/library/src/utils/_isValueMatch/_isValueMatch.ts
+@@ -0,0 +1,24 @@
++import type { ValueInput } from '../../actions/types.ts';
++
++/**
++ * Checks whether a value matches a value action requirement.
++ *
++ * @param requirement The value action requirement.
++ * @param value The value to check.
++ *
++ * @returns Whether the value matches the requirement.
++ *
++ * @internal
++ */
++// @__NO_SIDE_EFFECTS__
++export function _isValueMatch(
++  requirement: ValueInput,
++  value: ValueInput
++): boolean {
++  // Match NaN explicitly and compare other values by ordering so that invalid
++  // dates never match, even when both values reference the same object.
++  return (
++    (Number.isNaN(requirement) && Number.isNaN(value)) ||
++    (requirement <= value && requirement >= value)
++  );
++}
+diff --git a/library/src/utils/_isValueMatch/index.ts b/library/src/utils/_isValueMatch/index.ts
+new file mode 100644
+index 000000000..a96537faf
+--- /dev/null
++++ b/library/src/utils/_isValueMatch/index.ts
+@@ -0,0 +1 @@
++export * from './_isValueMatch.ts';
+diff --git a/library/src/utils/index.ts b/library/src/utils/index.ts
+index 244ec0646..ec844534d 100644
+--- a/library/src/utils/index.ts
++++ b/library/src/utils/index.ts
+@@ -7,7 +7,9 @@ export * from './_getGraphemeCount/index.ts';
+ export * from './_getLastMetadata/index.ts';
+ export * from './_getWordCount/index.ts';
+ export * from './_isLuhnAlgo/index.ts';
++export * from './_isSameValueZero/index.ts';
+ export * from './_isValidObjectKey/index.ts';
++export * from './_isValueMatch/index.ts';
+ export * from './_joinExpects/index.ts';
+ export * from './_standardSchema/index.ts';
+ export * from './_stringify/index.ts';
+diff --git a/packages/to-json-schema/CHANGELOG.md b/packages/to-json-schema/CHANGELOG.md
+index 2c637fd4a..1eddebf24 100644
+--- a/packages/to-json-schema/CHANGELOG.md
++++ b/packages/to-json-schema/CHANGELOG.md
+@@ -7,6 +7,7 @@ All notable changes to the library will be documented in this file.
+ - Add support for `ksuid` action (pull request #1370)
+ - Add passthrough of other `metadata` action properties to support custom annotations and standard keywords like `format`, which take precedence over generated properties (pull request #1591)
+ - Fix `examples` property type of `JsonSchema` to always be an array (pull request #1607)
++- Fix JSON compatibility validation of `literal` schemas to reject `NaN` and infinite numbers by default (pull request #1573)
+ 
+ ## v1.7.1 (June 08, 2026)
+ 
+diff --git a/packages/to-json-schema/src/converters/convertSchema/convertSchema.ts b/packages/to-json-schema/src/converters/convertSchema/convertSchema.ts
+index ae5f32865..6e37bad21 100644
+--- a/packages/to-json-schema/src/converters/convertSchema/convertSchema.ts
++++ b/packages/to-json-schema/src/converters/convertSchema/convertSchema.ts
+@@ -4,7 +4,7 @@ import type {
+   ConversionContext,
+   JsonSchema,
+ } from '../../types/index.ts';
+-import { addError, handleError } from '../../utils/index.ts';
++import { addError, handleError, isJsonConstValue } from '../../utils/index.ts';
+ import { convertAction } from '../convertAction/index.ts';
+ 
+ /**
+@@ -533,11 +533,7 @@ export function convertSchema(
+     }
+ 
+     case 'literal': {
+-      if (
+-        typeof valibotSchema.literal !== 'boolean' &&
+-        typeof valibotSchema.literal !== 'number' &&
+-        typeof valibotSchema.literal !== 'string'
+-      ) {
++      if (!isJsonConstValue(valibotSchema.literal)) {
+         errors = addError(
+           errors,
+           'The value of the "literal" schema is not JSON compatible.'

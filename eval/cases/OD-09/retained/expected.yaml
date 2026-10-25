@@ -1,0 +1,16 @@
+{
+  "status": "partial",
+  "issues": [
+    {
+      "rule": "D6",
+      "at": "main.go:wrapper",
+      "level": "hint",
+      "status": "retained",
+      "handled": true
+    }
+  ],
+  "absent": [],
+  "missing": [
+    "D5"
+  ]
+}

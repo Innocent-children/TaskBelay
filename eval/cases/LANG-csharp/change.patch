@@ -1,0 +1,5 @@
+--- a/Export.cs
++++ b/Export.cs
+@@ -1 +1 @@
+-class Export {}
++class Export { public string WriteCSV() { return "csv"; } }

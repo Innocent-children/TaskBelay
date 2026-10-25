@@ -1,0 +1,9 @@
+{
+  "status": "complete",
+  "issues": [],
+  "absent": [],
+  "blocked_edits": 1,
+  "preserved": {
+    "internal/log/log.go": "package log\nfunc Log() { println(\"log\") }\n"
+  }
+}

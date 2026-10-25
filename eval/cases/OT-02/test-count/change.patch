@@ -1,0 +1,13 @@
+--- a/work.go
++++ b/work.go
+@@ -1 +1,2 @@
+ package p
++func work(x int) int { return x+1 }
+--- /dev/null
++++ b/work_test.go
+@@ -0,0 +1,5 @@
++package p
++import "testing"
++func Test0(t *testing.T){if work(0)!=1{t.Fatal("result")}}
++func Test1(t *testing.T){if work(1)!=2{t.Fatal("result")}}
++func Test2(t *testing.T){if work(2)!=3{t.Fatal("result")}}

@@ -12,6 +12,7 @@ TaskBelay 通过 hook 记录开发过程，通过 MCP 让 Agent 保存需求、�
 | 用户消息到达 | UserPromptSubmit | 保存原文和快照，更新当前决定与任务上下文 |
 | shell 命令前 | PreToolUse | 分类、记录验证请求，按 V1 至 V3 处理 |
 | 编辑工具前 | PreToolUse | 读取目标文件，发现工作区更新，核对过期编辑和方案范围 |
+| Claude Code 调用 TaskBelay MCP 工具前 | PreToolUse | 记录本次调用的 session、轮次和工具调用编号，供 MCP 精确关联 |
 | 命令或编辑后 | PostToolUse；Claude Code 另接 PostToolUseFailure | 核对实际结果，记录编辑及工作区更新，补验证结果 |
 | 本轮准备结束 | Stop | 处理待交付任务，或保存普通停顿的进度与提示 |
 
@@ -39,6 +40,16 @@ TaskBelay 通过 hook 记录开发过程，通过 MCP 让 Agent 保存需求、�
 V1 满足拦截条件且本次还未提示过时返回 deny；用户重跑决定有效时允许运行并消耗一次授权。提示只返回 additionalContext，不返回强制 allow，保留 Agent 原有权限流程。
 
 POSIX 与 PowerShell 按实际工具确定；外层为 `bash -lc`、`pwsh -Command` 等形式时解析内部命令。未识别的命令仍照常执行，记录为其他命令。
+
+## PreToolUse：Claude Code 的 MCP 调用身份
+
+Claude Code 的 hook 提供 `session_id`、`prompt_id` 和 `tool_use_id`，但 MCP 请求不保证携带轮次。为使写入对应到准确的用户消息，单独注册匹配 `^mcp__taskbelay__.*$` 的 PreToolUse 条目：只保存工作区、Agent、session、轮次、工具调用编号和工具名，不检查业务内容、不改写工具参数，也不返回 allow 或 deny。该事件沿用快速事件预算。
+
+Claude Code 启动 MCP 子进程时提供 `CLAUDE_CODE_SESSION_ID`，工具请求的 `_meta["claudecode/toolUseId"]` 提供原生调用编号。MCP 用这两项和当前工作区读取前置记录，核对工具名后取得轮次；不使用最近活动或 JSON-RPC 请求编号猜测。相同身份重发可以复用，重复编号对应了不同轮次或工具则报冲突，不覆盖原记录。
+
+前置 hook 缺失、未加载、超时或身份字段不全时，hook 仍正常退出；MCP 写工具说明身份无法核对，不写账本。`task_get` 仍可查询已有任务。已完成调用的重试继续按原生工具调用编号返回原结果，旧轮次的新写入仍按账本规则拒绝。
+
+Codex 从 MCP 请求的 `callId` 和 `x-codex-turn-metadata` 中读取工具调用编号、`session_id`、`turn_id`，核对同时出现的 `sessionId`；`threadId` 不代替 hook 的 session。它不增加身份记录 hook。两种方式均只适配已有传输字段，不向 MCP 工具参数增加身份字段。
 
 ## PreToolUse：编辑
 
@@ -114,7 +125,7 @@ Codex 用自己运行命令的那个 shell 运行 hook 命令，所以 Codex 的
 
 **安装 Claude Code 的接入：`taskbelay install claude`。**
 
-1. 在 Claude Code 的 `settings.json` 的 `hooks` 里加入 7 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 两个，一个匹配 `Bash|PowerShell`，一个匹配 `Edit|Write|NotebookEdit`；PostToolUse、PostToolUseFailure 各一个，匹配 `Bash|PowerShell|Edit|Write|NotebookEdit`。每个条目用 exec 形式写 taskbelay 的绝对路径和参数，绝对路径保证 Agent 运行时找得到它。Stop 的超时设为 300 秒，其他设为 30 秒。用户原有的配置保持不动。
+1. 在 Claude Code 的 `settings.json` 的 `hooks` 里加入 8 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 三个，分别匹配 `Bash|PowerShell`、`Edit|Write|NotebookEdit`、`^mcp__taskbelay__.*$`，第三个只记录 MCP 调用身份；PostToolUse、PostToolUseFailure 各一个，匹配 `Bash|PowerShell|Edit|Write|NotebookEdit`。每个条目用 exec 形式写 taskbelay 的绝对路径和参数，绝对路径保证 Agent 运行时找得到它。Stop 的超时设为 300 秒，其他设为 30 秒。用户原有的配置保持不动。
 2. 运行 `claude mcp add --scope user taskbelay -- <taskbelay 的绝对路径> mcp`。
 3. 安装两个 skill。
 

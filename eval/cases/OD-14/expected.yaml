@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "issues": [],
+  "absent": [
+    {
+      "rule": "D2",
+      "at": ""
+    }
+  ]
+}

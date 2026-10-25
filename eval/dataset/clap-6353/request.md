@@ -1,0 +1,1 @@
+为 ValueCompleter 和 ArgValueCompleter 增加 complete_at(arg_index, current)，让多值参数能按当前值的零起始位置返回不同补全，例如 --set-upstream 的第一个值补全 remote，第二个补全 branch。位置按 shell 参数计算，不随 value_delimiter 拆分；单值入口使用零。没有实现 complete_at 的既有类型和闭包继续委托 complete，前缀过滤与现有补全保持兼容。

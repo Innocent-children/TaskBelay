@@ -1,0 +1,9 @@
+--- a/main.go
++++ b/main.go
+@@ -20,3 +20,6 @@
+ func (base40) base4Method() {}
+ type base41 struct{}
+ func (base41) base4Method() {}
++type writer interface { writerMethod() }
++type writer0 struct{}
++func (writer0) writerMethod() {}

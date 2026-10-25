@@ -1,0 +1,13 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D4",
+      "at": "main.go:writer",
+      "status": "convention",
+      "handled": true,
+      "level": "hint"
+    }
+  ],
+  "absent": []
+}

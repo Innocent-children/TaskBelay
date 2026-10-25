@@ -1,0 +1,5 @@
+--- a/Export.java
++++ b/Export.java
+@@ -1 +1 @@
+-class Export {}
++class Export { static String writeCSV() { return "csv"; } }

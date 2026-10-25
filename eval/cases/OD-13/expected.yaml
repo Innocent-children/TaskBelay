@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "issues": [],
+  "absent": [
+    {
+      "rule": "D5",
+      "at": "main.go:state.done"
+    }
+  ]
+}

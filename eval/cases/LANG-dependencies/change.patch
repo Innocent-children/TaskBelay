@@ -1,0 +1,5 @@
+--- a/package.json
++++ b/package.json
+@@ -1 +1 @@
+-{"dependencies":{}}
++{"dependencies":{"csv-stringify":"6.0.0"}}

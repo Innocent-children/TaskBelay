@@ -1,0 +1,13 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "T3",
+      "at": "",
+      "level": "hint",
+      "status": "open",
+      "block_on_delivery": false
+    }
+  ],
+  "absent": []
+}

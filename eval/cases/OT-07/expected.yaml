@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "T6",
+      "at": "",
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": []
+}

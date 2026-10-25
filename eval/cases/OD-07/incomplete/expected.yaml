@@ -1,0 +1,13 @@
+{
+  "status": "partial",
+  "issues": [
+    {
+      "rule": "D1",
+      "at": "main.go:unused",
+      "block_on_delivery": false,
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": []
+}

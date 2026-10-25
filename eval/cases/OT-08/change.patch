@@ -1,0 +1,15 @@
+--- /dev/null
++++ b/range.go
+@@ -0,0 +1,3 @@
++package main
++func Allowed(n int) bool { return n < 5 }
++func Other(n int) bool { return n > 0 }
+--- /dev/null
++++ b/range_test.go
+@@ -0,0 +1,6 @@
++package main
++import "testing"
++func TestRange(t *testing.T) {
++ rows := []struct{name string; n int; want bool}{{"inside",4,true},{"edge",5,false}}
++ for _,row:=range rows {t.Run(row.name,func(t *testing.T){if Allowed(row.n)!=row.want{t.Errorf("got %v",Allowed(row.n))}})}
++}

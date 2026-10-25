@@ -1,0 +1,12 @@
+--- /dev/null
++++ b/value.go
+@@ -0,0 +1,2 @@
++package main
++func Value() string { return "fixed" }
+--- /dev/null
++++ b/value_test.go
+@@ -0,0 +1,4 @@
++package main
++import "testing"
++func TestFirst(t *testing.T){if Value()!="fixed"{t.Fatal("value")}}
++func TestSecond(t *testing.T){if Value()!="fixed"{t.Fatal("value")}}

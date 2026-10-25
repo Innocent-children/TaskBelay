@@ -1,0 +1,123 @@
+diff --git a/packages/to-json-schema/CHANGELOG.md b/packages/to-json-schema/CHANGELOG.md
+index 6d7ccde82..55ec93516 100644
+--- a/packages/to-json-schema/CHANGELOG.md
++++ b/packages/to-json-schema/CHANGELOG.md
+@@ -6,6 +6,9 @@ All notable changes to the library will be documented in this file.
+ 
+ - Add support for `ksuid` action (pull request #1370)
+ - Add passthrough of other `metadata` action properties to support custom annotations and standard keywords like `format`, which take precedence over generated properties (pull request #1591)
++- Fix overlapping `values`, `notValue` and `notValues` actions to preserve all restrictions, including `value` actions for OpenAPI 3.0 (pull request #1613)
++- Fix `value` actions to report conflicting constant restrictions by default (pull request #1613)
++- Fix empty and duplicate requirements of `values` and `notValues` actions to produce valid enum restrictions or an impossible schema (pull request #1613)
+ - Fix overlapping numeric, length, and object entry bounds to preserve the stricter constraints, including combinations with `nonEmpty` and `safeInteger` actions (pull request #1611)
+ - Fix `minValue`, `maxValue`, `gtValue` and `ltValue` actions to reject `NaN` and infinite requirements by default and skip them in `warn` and `ignore` error modes (pull request #1611)
+ - Fix `length`, `minLength`, `maxLength`, `entries`, `minEntries` and `maxEntries` actions to require non-negative integers by default and skip invalid requirements in `warn` and `ignore` error modes (pull request #1611)
+diff --git a/packages/to-json-schema/src/converters/convertAction/convertAction.ts b/packages/to-json-schema/src/converters/convertAction/convertAction.ts
+index 83c1377eb..d0ae43bcf 100644
+--- a/packages/to-json-schema/src/converters/convertAction/convertAction.ts
++++ b/packages/to-json-schema/src/converters/convertAction/convertAction.ts
+@@ -214,6 +214,47 @@ function getUpperBound(current: number | undefined, value: number): number {
+   return current;
+ }
+ 
++/**
++ * Returns the combined not restriction.
++ *
++ * @param current The current not restriction.
++ * @param value The new not restriction.
++ *
++ * @returns The combined not restriction.
++ */
++// @__NO_SIDE_EFFECTS__
++function getNotRestriction(
++  current: JsonSchema['not'],
++  value: JsonSchema
++): JsonSchema {
++  // Negate the union to preserve both exclusions.
++  return current !== undefined ? { anyOf: [current, value] } : value;
++}
++
++/**
++ * Intersects allowed values with an existing enum restriction.
++ *
++ * @param jsonSchema The JSON Schema object.
++ * @param values The allowed values.
++ */
++function intersectEnum(
++  jsonSchema: JsonSchema,
++  values: (boolean | number | string)[]
++): void {
++  let enumValues = jsonSchema.enum ?? values;
++  if (jsonSchema.enum) {
++    const valueSet = new Set<unknown>(values);
++    enumValues = enumValues.filter((value) => valueSet.has(value));
++  }
++  if (enumValues.length) {
++    jsonSchema.enum = [...new Set(enumValues)];
++  } else {
++    // An empty enum is invalid, so reject every value with "not".
++    delete jsonSchema.enum;
++    jsonSchema.not = getNotRestriction(jsonSchema.not, {});
++  }
++}
++
+ /**
+  * Converts any supported Valibot action to the JSON Schema format.
+  *
+@@ -706,11 +747,12 @@ export function convertAction(
+         );
+         break;
+       }
+-      if (config?.target === 'openapi-3.0') {
+-        jsonSchema.not = { enum: [valibotAction.requirement] };
+-      } else {
+-        jsonSchema.not = { const: valibotAction.requirement };
+-      }
++      jsonSchema.not = getNotRestriction(
++        jsonSchema.not,
++        config?.target === 'openapi-3.0'
++          ? { enum: [valibotAction.requirement] }
++          : { const: valibotAction.requirement }
++      );
+       break;
+     }
+ 
+@@ -722,7 +764,11 @@ export function convertAction(
+         );
+         break;
+       }
+-      jsonSchema.not = { enum: valibotAction.requirement };
++      if (valibotAction.requirement.length) {
++        jsonSchema.not = getNotRestriction(jsonSchema.not, {
++          enum: [...new Set(valibotAction.requirement)],
++        });
++      }
+       break;
+     }
+ 
+@@ -798,7 +844,15 @@ export function convertAction(
+       if (config?.target === 'openapi-3.0') {
+         // Hint: OpenAPI 3.0 does not support const. That's why we use an
+         // enum instead.
+-        jsonSchema.enum = [valibotAction.requirement];
++        intersectEnum(jsonSchema, [valibotAction.requirement]);
++      } else if (
++        'const' in jsonSchema &&
++        jsonSchema.const !== valibotAction.requirement
++      ) {
++        errors = addError(
++          errors,
++          `The "${valibotAction.type}" action is not supported in combination with a different "const" restriction.`
++        );
+       } else {
+         jsonSchema.const = valibotAction.requirement;
+       }
+@@ -813,7 +867,7 @@ export function convertAction(
+         );
+         break;
+       }
+-      jsonSchema.enum = valibotAction.requirement;
++      intersectEnum(jsonSchema, valibotAction.requirement);
+       break;
+     }
+ 

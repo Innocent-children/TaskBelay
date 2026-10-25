@@ -1,0 +1,16 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D3",
+      "at": "flag:--progress",
+      "block_on_delivery": true,
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": [],
+  "delivery_blocks": [
+    "D3"
+  ]
+}

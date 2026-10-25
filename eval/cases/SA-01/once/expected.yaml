@@ -1,0 +1,13 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "S1",
+      "at": "",
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": [],
+  "blocked_edits": 1
+}

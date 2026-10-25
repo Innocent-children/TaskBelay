@@ -1,0 +1,13 @@
+{
+  "request": "实现当前要求，保留用户明确要求的行为",
+  "commands": [
+    {
+      "text": "cd one && go test ./...",
+      "exit_code": 0
+    },
+    {
+      "text": "cd two && go test ./...",
+      "exit_code": 0
+    }
+  ]
+}

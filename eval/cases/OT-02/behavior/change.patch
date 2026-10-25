@@ -1,0 +1,11 @@
+--- /dev/null
++++ b/value.go
+@@ -0,0 +1,2 @@
++package main
++func Value() int { value := 1; return value+1 }
+--- /dev/null
++++ b/value_test.go
+@@ -0,0 +1,3 @@
++package main
++import "testing"
++func TestValue(t *testing.T){if Value()!=2{t.Fatal("value")}}

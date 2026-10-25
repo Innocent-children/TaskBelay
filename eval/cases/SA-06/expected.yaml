@@ -1,0 +1,14 @@
+{
+  "status": "complete",
+  "issues": [],
+  "absent": [
+    {
+      "rule": "S1",
+      "at": ""
+    },
+    {
+      "rule": "S2",
+      "at": ""
+    }
+  ]
+}

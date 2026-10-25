@@ -1,0 +1,6 @@
+--- a/work.py
++++ b/work.py
+@@ -1 +1,2 @@
+-# base
++def export():
++    return "csv"

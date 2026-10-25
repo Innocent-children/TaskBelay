@@ -1,0 +1,13 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "T4",
+      "at": "test:state_test.go:TestDefault",
+      "status": "open",
+      "block_on_delivery": false,
+      "level": "hint"
+    }
+  ],
+  "absent": []
+}

@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "id": "zod-6652",
+  "language": "TypeScript",
+  "kind": "bug",
+  "repository": "colinhacks/zod",
+  "repository_url": "https://github.com/colinhacks/zod.git",
+  "pull_request": "https://github.com/colinhacks/zod/pull/6652",
+  "pull_request_number": 6652,
+  "merged": true,
+  "merged_at": "2026-10-09T19:50:22Z",
+  "merge_commit": "e06a510b6fc1e6e28e3201fd116ca2a76212f6be",
+  "api_base_sha": "0b216ef674e297ebe41d8bf902262e56f8755822",
+  "base_commit": "0b216ef674e297ebe41d8bf902262e56f8755822",
+  "base_tree": "24b5b50586a05b5f1965c6ee6b2b2b442b6eeffb",
+  "source_changed_lines": 53,
+  "files": [
+    {
+      "path": "packages/zod/src/v4/classic/tests/array.test.ts",
+      "added": 27,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "packages/zod/src/v4/classic/tests/map.test.ts",
+      "added": 7,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "packages/zod/src/v4/classic/tests/set.test.ts",
+      "added": 6,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "packages/zod/src/v4/core/compile.ts",
+      "added": 9,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "packages/zod/src/v4/core/schemas.ts",
+      "added": 31,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "packages/zod/src/v4/core/util.ts",
+      "added": 13,
+      "deleted": 0,
+      "category": "source"
+    }
+  ],
+  "hidden_upstream_files": [
+    "packages/zod/src/v4/classic/tests/array.test.ts",
+    "packages/zod/src/v4/classic/tests/map.test.ts",
+    "packages/zod/src/v4/classic/tests/set.test.ts"
+  ],
+  "hidden_authored_files": [],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {
+      "CI": "true"
+    },
+    "prepare": [
+      [
+        "nub",
+        "install",
+        "--frozen-lockfile",
+        "--ignore-scripts"
+      ],
+      [
+        "nub",
+        "run",
+        "--ignore-scripts",
+        "-r",
+        "--filter",
+        "zod",
+        "--filter",
+        "@zod/mini",
+        "build"
+      ],
+      [
+        "nub",
+        "scripts/write-stub-package-jsons.ts"
+      ]
+    ],
+    "existing": [
+      [
+        "nub",
+        "exec",
+        "--node",
+        "vitest",
+        "run",
+        "--maxWorkers",
+        "2"
+      ]
+    ],
+    "hidden": [
+      [
+        "nub",
+        "exec",
+        "--node",
+        "vitest",
+        "run",
+        "--maxWorkers",
+        "2",
+        "packages/zod/src/v4/classic/tests/array.test.ts",
+        "packages/zod/src/v4/classic/tests/map.test.ts",
+        "packages/zod/src/v4/classic/tests/set.test.ts"
+      ]
+    ],
+    "versions": [
+      [
+        "nub",
+        "exec",
+        "--node",
+        "vitest",
+        "--version"
+      ]
+    ],
+    "baseline_failure_patterns": [
+      "FAIL.*array.test.ts > an upper size bound fails before any element is parsed"
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE": "3f1189b28e3866e0d979968d466b78f813f76827cfdca1fbb124cc0a5c8841f8",
+    "hidden.patch": "17b04af14e3e82d2e3a68a81c1df2499f2ab3ba28679b0ef4e97e3ed51228752",
+    "implementation.patch": "91c103b61f86c901c29fc4569fe31bd20f507d9165cab009f9e8238346a82501",
+    "reference.patch": "78f1cf4e3ac43a0bae1c535b073502e2ab35646ecd144f25357d70ca33116cb2",
+    "request.md": "50ed2d49e85b38d872cdbfa08ae5efe289fb216bac95c7c70257600d67d0b1cc"
+  }
+}

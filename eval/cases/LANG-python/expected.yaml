@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D2",
+      "at": "work.py:export",
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": []
+}

@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "id": "clap-6455",
+  "language": "Rust",
+  "kind": "feature",
+  "repository": "clap-rs/clap",
+  "repository_url": "https://github.com/clap-rs/clap.git",
+  "pull_request": "https://github.com/clap-rs/clap/pull/6455",
+  "pull_request_number": 6455,
+  "merged": true,
+  "merged_at": "2026-07-27T14:31:10Z",
+  "merge_commit": "2246e8b0c7c8b5ccb2d24a461862b43150d08e0d",
+  "api_base_sha": "466b2be56c5811d1af62c407f5a00456350ece62",
+  "base_commit": "466b2be56c5811d1af62c407f5a00456350ece62",
+  "base_tree": "c4a26a4f4824874560329ce62e84d7e324a31add",
+  "source_changed_lines": 119,
+  "files": [
+    {
+      "path": "clap_complete/src/engine/complete.rs",
+      "added": 40,
+      "deleted": 32,
+      "category": "source"
+    },
+    {
+      "path": "clap_complete/src/engine/custom.rs",
+      "added": 45,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "clap_complete/src/engine/mod.rs",
+      "added": 2,
+      "deleted": 0,
+      "category": "source"
+    }
+  ],
+  "hidden_upstream_files": [],
+  "hidden_authored_files": [
+    "clap_complete/tests/taskbelay_possible_values.rs"
+  ],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {
+      "CARGO_BUILD_JOBS": "2"
+    },
+    "existing": [
+      [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "clap_complete",
+        "--features",
+        "unstable-dynamic"
+      ]
+    ],
+    "hidden": [
+      [
+        "cargo",
+        "test",
+        "--locked",
+        "-p",
+        "clap_complete",
+        "--features",
+        "unstable-dynamic"
+      ]
+    ],
+    "baseline_failure_exit_codes": [
+      101
+    ],
+    "baseline_failure_patterns": [
+      "unresolved imports .*complete_possible_values"
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE-APACHE",
+    "UPSTREAM-LICENSE-MIT"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE-APACHE": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08",
+    "UPSTREAM-LICENSE-MIT": "6efb0476a1cc085077ed49357026d8c173bf33017278ef440f222fb9cbcb66e6",
+    "hidden.patch": "78652e1a31fa153ab3e032b58bf5f2e32535964f6ed5fa31ffb1604c7f294645",
+    "implementation.patch": "7d232e6e3d32c22c30de3d1b96c8852ec4fdc87f378a6b6ded6516e4c9ac5598",
+    "reference.patch": "7d232e6e3d32c22c30de3d1b96c8852ec4fdc87f378a6b6ded6516e4c9ac5598",
+    "request.md": "3895d27d890a9187864ac5875beaf17582769a18e5bcbe2a5ca147368adea271"
+  }
+}

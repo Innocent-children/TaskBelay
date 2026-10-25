@@ -1,0 +1,7 @@
+--- a/export.rb
++++ b/export.rb
+@@ -1 +1,3 @@
+-# base
++def write_csv
++  "csv"
++end

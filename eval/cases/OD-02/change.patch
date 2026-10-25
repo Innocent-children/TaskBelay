@@ -1,0 +1,9 @@
+--- a/main.go
++++ b/main.go
+@@ -27,3 +27,6 @@
+ func (other6) method6() {}
+ type other7 struct{}
+ func (other7) method7() {}
++type writer interface { write() }
++type writerImpl struct{}
++func (writerImpl) write() {}

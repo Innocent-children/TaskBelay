@@ -1,0 +1,43 @@
+diff --git a/tests/test_itsdangerous/test_jws.py b/tests/test_itsdangerous/test_jws.py
+index 63ce111..1e268d6 100644
+--- a/tests/test_itsdangerous/test_jws.py
++++ b/tests/test_itsdangerous/test_jws.py
+@@ -67,6 +67,17 @@ class TestJWSSerializer(TestSerializer):
+ 
+         assert match in str(exc_info.value)
+ 
++    def test_secret_keys(self):
++        with pytest.deprecated_call():
++            serializer = JSONWebSignatureSerializer("a")
++
++        dumped = serializer.dumps("value")
++
++        with pytest.deprecated_call():
++            serializer = JSONWebSignatureSerializer(["a", "b"])
++
++        assert serializer.loads(dumped) == "value"
++
+ 
+ class TestTimedJWSSerializer(TestJWSSerializer, TestTimedSerializer):
+     @pytest.fixture()
+diff --git a/tests/test_itsdangerous/test_signer.py b/tests/test_itsdangerous/test_signer.py
+index 17599ee..01f14f6 100644
+--- a/tests/test_itsdangerous/test_signer.py
++++ b/tests/test_itsdangerous/test_signer.py
+@@ -91,6 +91,16 @@ class TestSigner:
+         if algorithm is None:
+             assert signer.algorithm.digest_method == signer.digest_method
+ 
++    def test_secret_keys(self):
++        signer = Signer("a")
++        signed = signer.sign("my string")
++        assert isinstance(signed, bytes)
++
++        signer = Signer(["a", "b"])
++        assert signer.validate(signed)
++        out = signer.unsign(signed)
++        assert out == b"my string"
++
+ 
+ def test_abstract_algorithm():
+     alg = SigningAlgorithm()

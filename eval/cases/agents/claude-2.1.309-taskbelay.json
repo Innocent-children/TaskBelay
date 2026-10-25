@@ -1,0 +1,114 @@
+{
+  "verification": {
+    "date": "2026-10-24",
+    "platform": "darwin/arm64",
+    "agent": "Claude Code 2.1.309",
+    "mode": "print, restricted, temporary configuration and git workspace, local simulated Anthropic endpoint",
+    "taskbelay_entry": "CLI test helpers call the real run entry with a temporary data directory; native event input and MCP metadata are unchanged",
+    "scope": "SessionStart, UserPromptSubmit, MCP PreToolUse, task_start, requirement_save and Stop; model responses are simulated; no edit tools or permission denial exercised"
+  },
+  "process": {
+    "exit_code": 0,
+    "stdout": "验证完成\n",
+    "stderr": "",
+    "model_requests": 3
+  },
+  "message": {
+    "id": "m1",
+    "actor": {
+      "agent": "claude",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "round_id": "ca579e34-24c8-4bea-a367-dfbf171220bc"
+    },
+    "text": "验证当前功能"
+  },
+  "mcp_contexts": [
+    {
+      "agent": "claude",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "call_id": "toolu_taskbelay_native_start",
+      "round_id": "ca579e34-24c8-4bea-a367-dfbf171220bc",
+      "tool_name": "task_start"
+    },
+    {
+      "agent": "claude",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "call_id": "toolu_taskbelay_native_requirement",
+      "round_id": "ca579e34-24c8-4bea-a367-dfbf171220bc",
+      "tool_name": "requirement_save"
+    }
+  ],
+  "hook_events": [
+    {
+      "kind": "session_start",
+      "round_id": "",
+      "tool_call_id": "",
+      "state": "recorded",
+      "error": ""
+    },
+    {
+      "kind": "user_prompt",
+      "round_id": "ca579e34-24c8-4bea-a367-dfbf171220bc",
+      "tool_call_id": "",
+      "state": "recorded",
+      "error": ""
+    },
+    {
+      "kind": "mcp_use",
+      "round_id": "ca579e34-24c8-4bea-a367-dfbf171220bc",
+      "tool_call_id": "toolu_taskbelay_native_start",
+      "state": "recorded",
+      "error": ""
+    },
+    {
+      "kind": "mcp_use",
+      "round_id": "ca579e34-24c8-4bea-a367-dfbf171220bc",
+      "tool_call_id": "toolu_taskbelay_native_requirement",
+      "state": "recorded",
+      "error": ""
+    },
+    {
+      "kind": "stop",
+      "round_id": "ca579e34-24c8-4bea-a367-dfbf171220bc",
+      "tool_call_id": "",
+      "state": "recorded",
+      "error": ""
+    }
+  ],
+  "identity_hooks_retain_business_input": false,
+  "task": {
+    "id": "t1",
+    "title": "本地接入验证",
+    "state": "active",
+    "start_message_id": "m1"
+  },
+  "requirement": {
+    "id": "R1",
+    "task_id": "t1",
+    "kind": "sourced",
+    "citation": {
+      "source_id": "m1",
+      "quote": "验证当前功能",
+      "start": 0,
+      "end": 18
+    },
+    "author": {
+      "agent": "claude",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "round_id": "ca579e34-24c8-4bea-a367-dfbf171220bc",
+      "tool_call_id": "toolu_taskbelay_native_requirement"
+    }
+  },
+  "tool_results": [
+    {
+      "tool_use_id": "toolu_taskbelay_native_start",
+      "is_error": false,
+      "result_id": "t1"
+    },
+    {
+      "tool_use_id": "toolu_taskbelay_native_requirement",
+      "is_error": false,
+      "result_id": "R1"
+    }
+  ]
+}

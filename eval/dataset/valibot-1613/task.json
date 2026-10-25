@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "id": "valibot-1613",
+  "language": "TypeScript",
+  "kind": "bug",
+  "repository": "open-circle/valibot",
+  "repository_url": "https://github.com/open-circle/valibot.git",
+  "pull_request": "https://github.com/open-circle/valibot/pull/1613",
+  "pull_request_number": 1613,
+  "merged": true,
+  "merged_at": "2026-09-11T01:12:54Z",
+  "merge_commit": "4acb7d685b7c1f31b2090e07b38a358f97ed0baf",
+  "api_base_sha": "3d4c6424a4817425fce07ee270089c1221a96fa1",
+  "base_commit": "3d4c6424a4817425fce07ee270089c1221a96fa1",
+  "base_tree": "e8739f276682664ffb38c5fc059585848c02092d",
+  "source_changed_lines": 70,
+  "files": [
+    {
+      "path": "packages/to-json-schema/CHANGELOG.md",
+      "added": 3,
+      "deleted": 0,
+      "category": "other"
+    },
+    {
+      "path": "packages/to-json-schema/src/converters/convertAction/convertAction.test.ts",
+      "added": 212,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "packages/to-json-schema/src/converters/convertAction/convertAction.ts",
+      "added": 62,
+      "deleted": 8,
+      "category": "source"
+    },
+    {
+      "path": "packages/to-json-schema/src/functions/toJsonSchema/toJsonSchema.test.ts",
+      "added": 87,
+      "deleted": 0,
+      "category": "test"
+    }
+  ],
+  "hidden_upstream_files": [
+    "packages/to-json-schema/src/converters/convertAction/convertAction.test.ts",
+    "packages/to-json-schema/src/functions/toJsonSchema/toJsonSchema.test.ts"
+  ],
+  "hidden_authored_files": [],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {
+      "CI": "true"
+    },
+    "prepare": [
+      [
+        "pnpm",
+        "install",
+        "--frozen-lockfile",
+        "--ignore-scripts"
+      ]
+    ],
+    "existing": [
+      {
+        "cwd": "library",
+        "argv": [
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--typecheck",
+          "--maxWorkers",
+          "2"
+        ]
+      },
+      {
+        "cwd": "packages/to-json-schema",
+        "argv": [
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--typecheck",
+          "--maxWorkers",
+          "2"
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "cwd": "packages/to-json-schema",
+        "argv": [
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--typecheck",
+          "--maxWorkers",
+          "2",
+          "src/converters/convertAction/convertAction.test.ts",
+          "src/functions/toJsonSchema/toJsonSchema.test.ts"
+        ]
+      }
+    ],
+    "versions": [
+      {
+        "cwd": "library",
+        "argv": [
+          "pnpm",
+          "exec",
+          "vitest",
+          "--version"
+        ]
+      }
+    ],
+    "baseline_failure_patterns": [
+      "FAIL.*should merge multiple not restrictions"
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE.md"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE.md": "1ca6c9ca372cffe26c313464b9d9f0aef2417b27b2bad20396f4769005122d4d",
+    "hidden.patch": "123063cb6a176c5fe687f2441ea88a98c0f86d140b27074a67b2245b4bfc453f",
+    "implementation.patch": "24d43a30826f9b1812215df81a2b0553a860814fa7c6dda4552f220dbba2b584",
+    "reference.patch": "fc12a2d4404d2e46068e4f0ba75df34fff798834d6b8ddd647c31f82732d74d6",
+    "request.md": "0c52878fe9fa36d09fb20c59b34b820c2aea03190143573cd4d2f346e2b64bd6"
+  }
+}

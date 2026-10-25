@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "id": "json-1205",
+  "language": "Rust",
+  "kind": "refactor",
+  "repository": "serde-rs/json",
+  "repository_url": "https://github.com/serde-rs/json.git",
+  "pull_request": "https://github.com/serde-rs/json/pull/1205",
+  "pull_request_number": 1205,
+  "merged": true,
+  "merged_at": "2024-10-19T16:20:49Z",
+  "merge_commit": "4cb90ce66de2e0b52572d40ab518ad6d634e43d1",
+  "api_base_sha": "a810ba985095ecd5bb3f8741f0e6d71e36975cb6",
+  "base_commit": "a810ba985095ecd5bb3f8741f0e6d71e36975cb6",
+  "base_tree": "4e8a90b1def0e28c95b5b3e3a4485cfcc7c9156f",
+  "source_changed_lines": 108,
+  "files": [
+    {
+      "path": "src/de.rs",
+      "added": 63,
+      "deleted": 45,
+      "category": "source"
+    }
+  ],
+  "hidden_upstream_files": [],
+  "hidden_authored_files": [
+    "tests/taskbelay_sequence_map.rs"
+  ],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {
+      "CARGO_BUILD_JOBS": "2"
+    },
+    "existing": [
+      [
+        "cargo",
+        "test"
+      ],
+      [
+        "cargo",
+        "test",
+        "--features",
+        "preserve_order"
+      ]
+    ],
+    "hidden": [
+      [
+        "cargo",
+        "test"
+      ],
+      [
+        "cargo",
+        "test",
+        "--features",
+        "preserve_order"
+      ]
+    ],
+    "baseline_hidden": "pass",
+    "baseline_failure_exit_codes": [
+      101
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE-APACHE",
+    "UPSTREAM-LICENSE-MIT"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE-APACHE": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a",
+    "UPSTREAM-LICENSE-MIT": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3",
+    "hidden.patch": "acfebba11b6fe58294c38280ddc56e3cdf5557c9fdd7513a4d1df7c29e2d373a",
+    "implementation.patch": "671f2ee7f97c1435f1304eac6ea5f830f968df1075e78770c7324becd8b753d3",
+    "reference.patch": "671f2ee7f97c1435f1304eac6ea5f830f968df1075e78770c7324becd8b753d3",
+    "request.md": "61adf217884e2f7ef7b78cd0a186083dfab83c82a0f5be288d74f4186dbc9556"
+  }
+}

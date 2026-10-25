@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "id": "click-3860",
+  "language": "Python",
+  "kind": "feature",
+  "repository": "pallets/click",
+  "repository_url": "https://github.com/pallets/click.git",
+  "pull_request": "https://github.com/pallets/click/pull/3860",
+  "pull_request_number": 3860,
+  "merged": true,
+  "merged_at": "2026-09-21T18:31:00Z",
+  "merge_commit": "bb695aaecdef95832d167fc1d508921745aa824e",
+  "api_base_sha": "86949d19b930ef68a45566544cb4b9508d895d0d",
+  "base_commit": "70689853e39c30e36eb0d83d586cc914a74db9d3",
+  "base_tree": "fe31c7ba1af9a6d1ae132e1a9887ed957efddd50",
+  "source_changed_lines": 32,
+  "files": [
+    {
+      "path": "CHANGES.md",
+      "added": 5,
+      "deleted": 0,
+      "category": "other"
+    },
+    {
+      "path": "docs/arguments.md",
+      "added": 2,
+      "deleted": 1,
+      "category": "other"
+    },
+    {
+      "path": "docs/documentation.md",
+      "added": 4,
+      "deleted": 0,
+      "category": "other"
+    },
+    {
+      "path": "src/click/core.py",
+      "added": 20,
+      "deleted": 12,
+      "category": "source"
+    },
+    {
+      "path": "tests/test_arguments.py",
+      "added": 93,
+      "deleted": 0,
+      "category": "test"
+    }
+  ],
+  "hidden_upstream_files": [
+    "tests/test_arguments.py"
+  ],
+  "hidden_authored_files": [],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {
+      "PYTHONPATH": "src{pathsep}{variant_directory}/site-packages"
+    },
+    "existing": [
+      [
+        "python",
+        "-m",
+        "pytest",
+        "-q"
+      ]
+    ],
+    "hidden": [
+      [
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/test_arguments.py"
+      ]
+    ],
+    "baseline_failure_patterns": [
+      "FAILED tests/test_arguments.py::test_argument_help_lists_undocumented_arguments"
+    ],
+    "prepare": [
+      [
+        "uv",
+        "pip",
+        "install",
+        "--python",
+        "python",
+        "--target",
+        "{variant_directory}/site-packages",
+        "--no-deps",
+        "."
+      ]
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE.txt"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE.txt": "9a8ad106a394e853bfe21f42f4e72d592819a22805d991b5f3275029292b658d",
+    "hidden.patch": "098f5682e4b169d229bf8bf117776a195828517a194a776d11d7903f1eda7dd3",
+    "implementation.patch": "5ed309499576100b680b8ca4bd3da25f42c1b626f5bf596227e7d172c4184670",
+    "reference.patch": "d4061dcbb12845013130ae2fcc12f76b7dedaf623ba9b3269cfbf9e250324a36",
+    "request.md": "319560d69eea80c83544b2b2e01c948be2b0d21d9b589e6f7c41ee21d99efa57"
+  }
+}

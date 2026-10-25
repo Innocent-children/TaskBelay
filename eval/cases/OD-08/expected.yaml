@@ -1,0 +1,15 @@
+{
+  "status": "partial",
+  "issues": [
+    {
+      "rule": "D7",
+      "at": "main.go:old",
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": [],
+  "missing": [
+    "D5"
+  ]
+}

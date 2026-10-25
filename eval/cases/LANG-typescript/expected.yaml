@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D2",
+      "at": "work.ts:writeCSV",
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": []
+}

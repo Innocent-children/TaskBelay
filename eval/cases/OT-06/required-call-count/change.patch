@@ -1,0 +1,6 @@
+--- /dev/null
++++ b/charge_test.go
+@@ -0,0 +1,3 @@
++package p
++import("testing";"github.com/stretchr/testify/mock")
++func TestNoRepeat(t *testing.T){var m mock.Mock;m.AssertNumberOfCalls(t,"Charge",1)}

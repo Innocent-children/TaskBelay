@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D8",
+      "at": "dep:csv-stringify",
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": []
+}

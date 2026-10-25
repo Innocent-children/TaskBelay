@@ -1,0 +1,1 @@
+公开 CompletionFunc 类型，表示接收 Command、已经输入的参数和待补全文本，并返回候选列表及 ShellCompDirective 的补全回调。Command.ValidArgsFunction、参数补全的注册与查询、FixedCompletions 和 NoFileCompletions 使用一致的公开契约，便于调用方声明和复用回调。保持现有候选内容、指令与解析行为兼容。

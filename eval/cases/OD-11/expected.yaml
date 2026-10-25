@@ -1,0 +1,17 @@
+{
+  "status": "partial",
+  "issues": [],
+  "absent": [
+    {
+      "rule": "D2",
+      "at": ""
+    },
+    {
+      "rule": "D3",
+      "at": ""
+    }
+  ],
+  "missing": [
+    "D5"
+  ]
+}

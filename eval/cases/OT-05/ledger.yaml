@@ -1,0 +1,24 @@
+{
+  "request": "实现当前要求，保留用户明确要求的行为",
+  "requirements": [
+    {
+      "content": "实现当前要求，保留用户明确要求的行为",
+      "acceptance": "当前要求得到实现",
+      "quote": "实现当前要求，保留用户明确要求的行为",
+      "implemented_by": [
+        {
+          "at": "state.go:NewState",
+          "purpose": "实现当前要求"
+        },
+        {
+          "at": "test:state_test.go:TestDefault",
+          "purpose": "安全默认值必须关闭",
+          "citation": {
+            "source_id": "$message",
+            "quote": "实现当前要求，保留用户明确要求的行为"
+          }
+        }
+      ]
+    }
+  ]
+}

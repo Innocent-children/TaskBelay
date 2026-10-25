@@ -1,0 +1,29 @@
+diff --git a/taskbelay_completion_type_test.go b/taskbelay_completion_type_test.go
+new file mode 100644
+--- /dev/null
++++ b/taskbelay_completion_type_test.go
+@@ -0,0 +1,24 @@
++package cobra_test
++
++import (
++	"reflect"
++	"testing"
++
++	"github.com/spf13/cobra"
++)
++
++func TestTaskBelayCompletionFuncPublicContract(t *testing.T) {
++	var fixed cobra.CompletionFunc = cobra.FixedCompletions([]string{"alpha", "beta"}, cobra.ShellCompDirectiveNoFileComp)
++	command := &cobra.Command{Use: "fixture", ValidArgsFunction: fixed}
++	command.Flags().String("choice", "", "choice")
++	if err := command.RegisterFlagCompletionFunc("choice", fixed); err != nil { t.Fatal(err) }
++	registered, ok := command.GetFlagCompletionFunc("choice")
++	if !ok { t.Fatal("registered completer missing") }
++	for _, completion := range []cobra.CompletionFunc{command.ValidArgsFunction, registered} {
++		values, directive := completion(command, nil, "a")
++		if !reflect.DeepEqual(values, []string{"alpha", "beta"}) || directive != cobra.ShellCompDirectiveNoFileComp { t.Fatalf("values=%v directive=%v", values, directive) }
++	}
++	var none cobra.CompletionFunc = cobra.NoFileCompletions
++	values, directive := none(command, nil, "")
++	if len(values) != 0 || directive != cobra.ShellCompDirectiveNoFileComp { t.Fatalf("values=%v directive=%v", values, directive) }
++}

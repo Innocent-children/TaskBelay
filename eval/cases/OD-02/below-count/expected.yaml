@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D4",
+      "at": "main.go:writer",
+      "status": "open",
+      "level": "hint",
+      "handled": false
+    }
+  ]
+}

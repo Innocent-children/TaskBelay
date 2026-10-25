@@ -1,0 +1,166 @@
+diff --git a/src/itsdangerous/jws.py b/src/itsdangerous/jws.py
+index 73ee84c..4ca6877 100644
+--- a/src/itsdangerous/jws.py
++++ b/src/itsdangerous/jws.py
+@@ -57,7 +57,7 @@ class JSONWebSignatureSerializer(Serializer):
+             stacklevel=2,
+         )
+         super().__init__(
+-            secret_key=secret_key,
++            secret_key,
+             salt=salt,
+             serializer=serializer,
+             serializer_kwargs=serializer_kwargs,
+@@ -138,7 +138,7 @@ class JSONWebSignatureSerializer(Serializer):
+             algorithm = self.algorithm
+ 
+         return self.signer(
+-            self.secret_key,
++            self.secret_keys,
+             salt=salt,
+             sep=".",
+             key_derivation=key_derivation,
+diff --git a/src/itsdangerous/serializer.py b/src/itsdangerous/serializer.py
+index 98274b2..d0142ce 100644
+--- a/src/itsdangerous/serializer.py
++++ b/src/itsdangerous/serializer.py
+@@ -82,7 +82,17 @@ class Serializer:
+         signer_kwargs=None,
+         fallback_signers=None,
+     ):
+-        self.secret_key = want_bytes(secret_key)
++        if isinstance(secret_key, list):
++            secret_keys = [want_bytes(s) for s in secret_key]
++        else:
++            secret_keys = [want_bytes(secret_key)]
++
++        #: The list of secret keys to try for verifying signatures, from
++        #: oldest to newest. The newest (last) key is used for signing.
++        #:
++        #: This allows a key rotation system to keep a list of allowed
++        #: keys and remove expired ones.
++        self.secret_keys = secret_keys
+         self.salt = want_bytes(salt)
+ 
+         if serializer is None:
+@@ -103,6 +113,13 @@ class Serializer:
+         self.fallback_signers = fallback_signers
+         self.serializer_kwargs = serializer_kwargs or {}
+ 
++    @property
++    def secret_key(self):
++        """The newest (last) entry in the :attr:`secret_keys` list. This
++        is for compatibility from before key rotation support was added.
++        """
++        return self.secret_keys[-1]
++
+     def load_payload(self, payload, serializer=None):
+         """Loads the encoded object. This function raises
+         :class:`.BadPayload` if the payload is not valid. The
+@@ -141,7 +158,7 @@ class Serializer:
+         """
+         if salt is None:
+             salt = self.salt
+-        return self.signer(self.secret_key, salt=salt, **self.signer_kwargs)
++        return self.signer(self.secret_keys, salt=salt, **self.signer_kwargs)
+ 
+     def iter_unsigners(self, salt=None):
+         """Iterates over all signers to be tried for unsigning. Starts
+@@ -162,7 +179,8 @@ class Serializer:
+             else:
+                 kwargs = self.signer_kwargs
+ 
+-            yield fallback(self.secret_key, salt=salt, **kwargs)
++            for secret_key in self.secret_keys:
++                yield fallback(secret_key, salt=salt, **kwargs)
+ 
+     def dumps(self, obj, salt=None):
+         """Returns a signed string serialized with the internal
+diff --git a/src/itsdangerous/signer.py b/src/itsdangerous/signer.py
+index 2dd4c80..3378a5a 100644
+--- a/src/itsdangerous/signer.py
++++ b/src/itsdangerous/signer.py
+@@ -97,7 +97,17 @@ class Signer:
+         digest_method=None,
+         algorithm=None,
+     ):
+-        self.secret_key = want_bytes(secret_key)
++        if isinstance(secret_key, list):
++            secret_keys = [want_bytes(s) for s in secret_key]
++        else:
++            secret_keys = [want_bytes(secret_key)]
++
++        #: The list of secret keys to try for verifying signatures, from
++        #: oldest to newest. The newest (last) key is used for signing.
++        #:
++        #: This allows a key rotation system to keep a list of allowed
++        #: keys and remove expired ones.
++        self.secret_keys = secret_keys
+         self.sep = want_bytes(sep)
+ 
+         if self.sep in _base64_alphabet:
+@@ -124,25 +134,37 @@ class Signer:
+ 
+         self.algorithm = algorithm
+ 
+-    def derive_key(self):
++    @property
++    def secret_key(self):
++        """The newest (last) entry in the :attr:`secret_keys` list. This
++        is for compatibility from before key rotation support was added.
++        """
++        return self.secret_keys[-1]
++
++    def derive_key(self, secret_key=None):
+         """This method is called to derive the key. The default key
+         derivation choices can be overridden here. Key derivation is not
+         intended to be used as a security method to make a complex key
+         out of a short password. Instead you should use large random
+         secret keys.
+         """
++        if secret_key is None:
++            secret_key = self.secret_keys[-1]
++        else:
++            secret_key = want_bytes(secret_key)
++
+         salt = want_bytes(self.salt)
+ 
+         if self.key_derivation == "concat":
+-            return self.digest_method(salt + self.secret_key).digest()
++            return self.digest_method(salt + secret_key).digest()
+         elif self.key_derivation == "django-concat":
+-            return self.digest_method(salt + b"signer" + self.secret_key).digest()
++            return self.digest_method(salt + b"signer" + secret_key).digest()
+         elif self.key_derivation == "hmac":
+-            mac = hmac.new(self.secret_key, digestmod=self.digest_method)
++            mac = hmac.new(secret_key, digestmod=self.digest_method)
+             mac.update(salt)
+             return mac.digest()
+         elif self.key_derivation == "none":
+-            return self.secret_key
++            return secret_key
+         else:
+             raise TypeError("Unknown key derivation method")
+ 
+@@ -159,14 +181,18 @@ class Signer:
+ 
+     def verify_signature(self, value, sig):
+         """Verifies the signature for the given value."""
+-        key = self.derive_key()
+-
+         try:
+             sig = base64_decode(sig)
+         except Exception:
+             return False
+ 
+-        return self.algorithm.verify_signature(key, value, sig)
++        for secret_key in reversed(self.secret_keys):
++            key = self.derive_key(secret_key)
++
++            if self.algorithm.verify_signature(key, value, sig):
++                return True
++
++        return False
+ 
+     def unsign(self, signed_value):
+         """Unsigns the given string."""

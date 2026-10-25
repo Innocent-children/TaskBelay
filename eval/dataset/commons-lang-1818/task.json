@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "id": "commons-lang-1818",
+  "language": "Java",
+  "kind": "bug",
+  "repository": "apache/commons-lang",
+  "repository_url": "https://github.com/apache/commons-lang.git",
+  "pull_request": "https://github.com/apache/commons-lang/pull/1818",
+  "pull_request_number": 1818,
+  "merged": true,
+  "merged_at": "2026-10-15T13:28:57Z",
+  "merge_commit": "e871e5b3052df0e6047180ff9c5d2e8d17e06c85",
+  "api_base_sha": "baa862fd56639d834705c19aa7c62d2d1126a799",
+  "base_commit": "4775ef5bc839efffd66053e65a8b94212edb6136",
+  "base_tree": "1e862da323d6c3ce0e7a91c9bcc5710b62fe65c0",
+  "source_changed_lines": 24,
+  "files": [
+    {
+      "path": "src/main/java/org/apache/commons/lang3/ClassUtils.java",
+      "added": 13,
+      "deleted": 11,
+      "category": "source"
+    },
+    {
+      "path": "src/test/java/org/apache/commons/lang3/ClassUtilsShortClassNameTest.java",
+      "added": 48,
+      "deleted": 0,
+      "category": "test"
+    }
+  ],
+  "hidden_upstream_files": [
+    "src/test/java/org/apache/commons/lang3/ClassUtilsShortClassNameTest.java"
+  ],
+  "hidden_authored_files": [],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {},
+    "existing": [
+      [
+        "mvn",
+        "-B",
+        "-ntp",
+        "test"
+      ]
+    ],
+    "hidden": [
+      [
+        "mvn",
+        "-B",
+        "-ntp",
+        "-Dtest=ClassUtilsShortClassNameTest",
+        "test"
+      ]
+    ],
+    "baseline_failure_patterns": [
+      "\\[ERROR\\]\\s+ClassUtilsShortClassNameTest\\.testMemberOfLocalClass:"
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE.txt",
+    "UPSTREAM-NOTICE.txt"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE.txt": "b1d2870f1a00e4d7f56576e5f0870cba109e041f8af66866cf5b499478e654e7",
+    "UPSTREAM-NOTICE.txt": "cf09f75076609b76308528f42dd3c1595643a9a1fc5c275600fd578c567f1821",
+    "hidden.patch": "e1470d07f9450ccdf7ade1270d1988ecd6b56e0281f9ce76738698d15be2ce1f",
+    "implementation.patch": "676879b830da0fd20a750afa573e96c216eb43cabfc4e46a42025962a1f62d4c",
+    "reference.patch": "2641d7b7289ca0c4db3055592ed273f4e7ece3d5fd33c61654d621a5a3b97d2a",
+    "request.md": "e59ad8290ff4efdbefcd5c86e27707d77c3cbb2e3e69a055f046ad91bc3dcb94"
+  }
+}

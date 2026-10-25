@@ -1,0 +1,15 @@
+{
+  "status": "complete",
+  "issues": [],
+  "absent": [
+    {
+      "rule": "T2",
+      "at": ""
+    }
+  ],
+  "dynamic": {
+    "complete": true,
+    "observations": 2,
+    "no_candidates": true
+  }
+}

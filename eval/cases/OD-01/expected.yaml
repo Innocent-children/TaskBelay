@@ -1,0 +1,18 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D4",
+      "at": "main.go:writer",
+      "status": "open",
+      "level": "hint",
+      "fact_contains": [
+        "接口实现",
+        "生产用法 0",
+        "候选 1"
+      ],
+      "handled": false
+    }
+  ],
+  "absent": []
+}

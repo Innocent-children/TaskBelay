@@ -1,0 +1,25 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D2",
+      "at": "settings.json",
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": [
+    {
+      "rule": "D1",
+      "at": ""
+    },
+    {
+      "rule": "D4",
+      "at": ""
+    },
+    {
+      "rule": "D5",
+      "at": ""
+    }
+  ]
+}

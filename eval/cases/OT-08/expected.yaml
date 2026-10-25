@@ -1,0 +1,20 @@
+{
+  "status": "complete",
+  "issues": [],
+  "absent": [
+    {
+      "rule": "T2",
+      "at": ""
+    }
+  ],
+  "dynamic": {
+    "complete": true,
+    "observations": 2,
+    "no_candidates": true,
+    "keep": [
+      "test:range_test.go:TestRange/inside",
+      "test:range_test.go:TestRange/edge"
+    ],
+    "minimum_mutations": 1
+  }
+}

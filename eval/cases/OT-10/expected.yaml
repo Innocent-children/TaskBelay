@@ -1,0 +1,13 @@
+{
+  "status": "complete",
+  "issues": [],
+  "absent": [],
+  "commands": {
+    "states": [
+      "passed"
+    ],
+    "denied": 0,
+    "executed": 1,
+    "scope_hints": 1
+  }
+}

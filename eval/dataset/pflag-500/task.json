@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "id": "pflag-500",
+  "language": "Go",
+  "kind": "bug",
+  "repository": "spf13/pflag",
+  "repository_url": "https://github.com/spf13/pflag.git",
+  "pull_request": "https://github.com/spf13/pflag/pull/500",
+  "pull_request_number": 500,
+  "merged": true,
+  "merged_at": "2026-10-19T08:37:44Z",
+  "merge_commit": "90846195fe0ff281cbfc56609e8536de9b3cecf7",
+  "api_base_sha": "c966cfef47379dcb01e7929504d66d94b540945b",
+  "base_commit": "f8b36860536c793db8ac97bb57c592d2c4d488ec",
+  "base_tree": "5ca5d1ba401dc5a9ddc1603b366e4024894a8dd3",
+  "source_changed_lines": 20,
+  "files": [
+    {
+      "path": "flag.go",
+      "added": 13,
+      "deleted": 7,
+      "category": "source"
+    },
+    {
+      "path": "flag_test.go",
+      "added": 27,
+      "deleted": 0,
+      "category": "test"
+    }
+  ],
+  "hidden_upstream_files": [
+    "flag_test.go"
+  ],
+  "hidden_authored_files": [],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {
+      "GOTOOLCHAIN": "go1.26.0"
+    },
+    "existing": [
+      [
+        "go",
+        "test",
+        "./..."
+      ]
+    ],
+    "hidden": [
+      [
+        "go",
+        "test",
+        "./..."
+      ]
+    ],
+    "baseline_failure_patterns": [
+      "FAIL: TestDeprecatedFlagUsageAlias"
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE": "b8514c577c1c4b46cee454d5a882b15fa411e72c5bd7f801f241591789fce61a",
+    "hidden.patch": "81b400a57ed4e83fe5f188a4c0437e86b4836b2288efcf3d0bd1908b97fc22fc",
+    "implementation.patch": "ed80d2b2d78c14c91ce2f6cce685b0cc8dd44ea6225bbbd639d40db59eb86b3f",
+    "reference.patch": "b5284ff1bfb9f10cf4e35b7630e8aaf64454fc2dc4449d6ccaa2c0db4fcba971",
+    "request.md": "79055ed029439455644de855ce234de3f483cf67f506fb3c6c28290ee32247c9"
+  }
+}

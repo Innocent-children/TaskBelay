@@ -1,0 +1,18 @@
+{
+  "status": "complete",
+  "issues": [],
+  "absent": [
+    {
+      "rule": "T6",
+      "at": ""
+    },
+    {
+      "rule": "T1",
+      "at": ""
+    },
+    {
+      "rule": "T2",
+      "at": ""
+    }
+  ]
+}

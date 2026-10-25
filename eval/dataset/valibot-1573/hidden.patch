@@ -1,0 +1,188 @@
+diff --git a/library/src/actions/notValue/notValue.test.ts b/library/src/actions/notValue/notValue.test.ts
+index d9363f192..d47e87ad4 100644
+--- a/library/src/actions/notValue/notValue.test.ts
++++ b/library/src/actions/notValue/notValue.test.ts
+@@ -415,6 +415,14 @@ describe('notValue', () => {
+       );
+     });
+ 
++    test('for invalid NaN', () => {
++      expectActionIssue(
++        notValue(NaN, 'message'),
++        { ...baseInfo, expected: '!NaN', requirement: NaN },
++        [NaN, Number.NaN]
++      );
++    });
++
+     test('for invalid non-numbers', () => {
+       expectActionIssue(
+         notValue(123, 'message'),
+diff --git a/library/src/actions/notValues/notValues.test.ts b/library/src/actions/notValues/notValues.test.ts
+index 49385ffdd..739da6eca 100644
+--- a/library/src/actions/notValues/notValues.test.ts
++++ b/library/src/actions/notValues/notValues.test.ts
+@@ -558,6 +558,14 @@ describe('notValues', () => {
+       );
+     });
+ 
++    test('for invalid NaN', () => {
++      expectActionIssue(
++        notValues([NaN], 'message'),
++        { ...baseInfo, expected: '!NaN', requirement: [NaN] },
++        [NaN, Number.NaN]
++      );
++    });
++
+     test('for invalid non-numbers', () => {
+       expectActionIssue(
+         notValues([10, 11, 12], 'message'),
+diff --git a/library/src/actions/value/value.test.ts b/library/src/actions/value/value.test.ts
+index efa62643b..cef40566e 100644
+--- a/library/src/actions/value/value.test.ts
++++ b/library/src/actions/value/value.test.ts
+@@ -168,6 +168,10 @@ describe('value', () => {
+       expectNoActionIssue(value(123), [123, 123.0, Number('123')]);
+     });
+ 
++    test('for valid NaN', () => {
++      expectNoActionIssue(value(NaN), [NaN, Number.NaN]);
++    });
++
+     test('for valid non-numbers', () => {
+       expectNoActionIssue(value(123), [
+         123n,
+diff --git a/library/src/actions/values/values.test.ts b/library/src/actions/values/values.test.ts
+index 8c3e0bcbe..da186d05d 100644
+--- a/library/src/actions/values/values.test.ts
++++ b/library/src/actions/values/values.test.ts
+@@ -213,6 +213,10 @@ describe('values', () => {
+       expectNoActionIssue(values([0]), [0]);
+     });
+ 
++    test('for valid NaN', () => {
++      expectNoActionIssue(values([NaN]), [NaN, Number.NaN]);
++    });
++
+     test('for valid non-numbers', () => {
+       expectNoActionIssue(values([-123, 456]), [
+         -123n,
+diff --git a/library/src/schemas/intersect/utils/_merge/_merge.test.ts b/library/src/schemas/intersect/utils/_merge/_merge.test.ts
+index 91bd0b788..e85f433ef 100644
+--- a/library/src/schemas/intersect/utils/_merge/_merge.test.ts
++++ b/library/src/schemas/intersect/utils/_merge/_merge.test.ts
+@@ -13,6 +13,25 @@ describe('_merge', () => {
+       });
+     });
+ 
++    test('for NaN primitives', () => {
++      const result = _merge(NaN, NaN);
++      expect(result.issue).toBeUndefined();
++      expect(Number.isNaN((result as { value: unknown }).value)).toBe(true);
++    });
++
++    test('for zero values with different signs', () => {
++      const negativeZeroResult = _merge(-0, 0);
++      expect(negativeZeroResult.issue).toBeUndefined();
++      expect(
++        Object.is((negativeZeroResult as { value: unknown }).value, -0)
++      ).toBe(true);
++      const positiveZeroResult = _merge(0, -0);
++      expect(positiveZeroResult.issue).toBeUndefined();
++      expect(
++        Object.is((positiveZeroResult as { value: unknown }).value, 0)
++      ).toBe(true);
++    });
++
+     test('for valid dates', () => {
+       const date = new Date();
+       expect(_merge(date, date)).toStrictEqual({ value: date });
+@@ -21,6 +40,15 @@ describe('_merge', () => {
+       });
+     });
+ 
++    test('for invalid dates', () => {
++      const invalidDate = new Date(NaN);
++      const result = _merge(invalidDate, new Date(NaN));
++      expect(result.issue).toBeUndefined();
++      const value = (result as { value: Date }).value;
++      expect(value).toBeInstanceOf(Date);
++      expect(Number.isNaN(+value)).toBe(true);
++    });
++
+     test('for valid objects', () => {
+       expect(_merge({ key: 1 }, { key: 1 })).toStrictEqual({
+         value: { key: 1 },
+diff --git a/library/src/schemas/literal/literal.test.ts b/library/src/schemas/literal/literal.test.ts
+index d38a39fd2..6f495e8a8 100644
+--- a/library/src/schemas/literal/literal.test.ts
++++ b/library/src/schemas/literal/literal.test.ts
+@@ -63,6 +63,15 @@ describe('literal', () => {
+       expectNoSchemaIssue(literal(45.67), [45.67]);
+     });
+ 
++    test('for valid NaN literal', () => {
++      expectNoSchemaIssue(literal(NaN), [NaN, Number.NaN]);
++    });
++
++    test('for valid signed zero literal', () => {
++      expectNoSchemaIssue(literal(0), [-0]);
++      expectNoSchemaIssue(literal(-0), [0]);
++    });
++
+     test('for valid string literal', () => {
+       expectNoSchemaIssue(literal(''), ['']);
+       expectNoSchemaIssue(literal('foo'), ['foo']);
+@@ -139,6 +148,29 @@ describe('literal', () => {
+       );
+     });
+ 
++    test('for invalid NaN literal', () => {
++      expectSchemaIssue(
++        literal(NaN, 'message'),
++        { ...baseIssue, expected: 'NaN' },
++        [
++          123n,
++          true,
++          false,
++          null,
++          -123,
++          0,
++          45.67,
++          undefined,
++          'foo',
++          Symbol(),
++          {},
++          [],
++          // eslint-disable-next-line @typescript-eslint/no-empty-function
++          () => {},
++        ]
++      );
++    });
++
+     test('for invalid string literal', () => {
+       expectSchemaIssue(
+         literal('123', 'message'),
+diff --git a/packages/to-json-schema/src/converters/convertSchema/convertSchema.test.ts b/packages/to-json-schema/src/converters/convertSchema/convertSchema.test.ts
+index 8ca948306..a82ced730 100644
+--- a/packages/to-json-schema/src/converters/convertSchema/convertSchema.test.ts
++++ b/packages/to-json-schema/src/converters/convertSchema/convertSchema.test.ts
+@@ -1060,6 +1060,19 @@ describe('convertSchema', () => {
+       ).toThrowError(error);
+     });
+ 
++    test.each(['draft-07', 'draft-2020-12', 'openapi-3.0'] as const)(
++      'should reject non-finite numeric literals for %s',
++      (target) => {
++        for (const literal of [NaN, Infinity, -Infinity]) {
++          expect(() =>
++            convertSchema({}, v.literal(literal), { target }, createContext())
++          ).toThrowError(
++            'The value of the "literal" schema is not JSON compatible.'
++          );
++        }
++      }
++    );
++
+     test('should warn error for unsupported literal schema', () => {
+       expect(
+         convertSchema(

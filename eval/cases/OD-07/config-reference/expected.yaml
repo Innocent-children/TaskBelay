@@ -1,0 +1,10 @@
+{
+  "status": "complete",
+  "issues": [],
+  "absent": [
+    {
+      "rule": "D1",
+      "at": "main.go:unused"
+    }
+  ]
+}

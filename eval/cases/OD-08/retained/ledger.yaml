@@ -1,0 +1,10 @@
+{
+  "request": "实现当前要求，保留用户明确要求的行为",
+  "retain": [
+    {
+      "rule": "D7",
+      "at": "main.go:old",
+      "message": "保留 main.go:old，现有工作区外调用方尚未完成迁移。"
+    }
+  ]
+}

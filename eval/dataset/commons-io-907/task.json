@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "id": "commons-io-907",
+  "language": "Java",
+  "kind": "bug",
+  "repository": "apache/commons-io",
+  "repository_url": "https://github.com/apache/commons-io.git",
+  "pull_request": "https://github.com/apache/commons-io/pull/907",
+  "pull_request_number": 907,
+  "merged": true,
+  "merged_at": "2026-10-23T20:21:18Z",
+  "merge_commit": "1fa6a45add29a6716bbbbb187b43a7fef36bfbcc",
+  "api_base_sha": "7e6d001e3b5d491559acc989b31a67248dadae0c",
+  "base_commit": "22ff206a25cc339f2710954240a33e35086fece2",
+  "base_tree": "59ce4a7102be955c8da236ac80cc57b0e4f4962a",
+  "source_changed_lines": 165,
+  "files": [
+    {
+      "path": "src/conf/spotbugs-exclude-filter.xml",
+      "added": 5,
+      "deleted": 0,
+      "category": "other"
+    },
+    {
+      "path": "src/main/java/org/apache/commons/io/input/CharSequenceInputStream.java",
+      "added": 110,
+      "deleted": 55,
+      "category": "source"
+    },
+    {
+      "path": "src/test/java/org/apache/commons/io/input/CharSequenceInputStreamTest.java",
+      "added": 302,
+      "deleted": 0,
+      "category": "test"
+    }
+  ],
+  "hidden_upstream_files": [
+    "src/test/java/org/apache/commons/io/input/CharSequenceInputStreamTest.java"
+  ],
+  "hidden_authored_files": [],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {},
+    "existing": [
+      [
+        "mvn",
+        "-B",
+        "-ntp",
+        "test"
+      ]
+    ],
+    "hidden": [
+      [
+        "mvn",
+        "-B",
+        "-ntp",
+        "-Dtest=CharSequenceInputStreamTest",
+        "test"
+      ]
+    ],
+    "baseline_failure_patterns": [
+      "\\[ERROR\\].*CharSequenceInputStreamTest\\.testEncoderFlushedAtEndOfInputFillAligned",
+      "\\[ERROR\\].*CharSequenceInputStreamTest\\.testSkipAcrossBufferBoundary"
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE.txt",
+    "UPSTREAM-NOTICE.txt"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE.txt": "c1d1a38c99c48ccad170890ade6066e2e240bb6ce59861d4eb7f672eddd2a4c6",
+    "UPSTREAM-NOTICE.txt": "85394d154ee5c7b48057f0a29329b6d4c80d2513d4c02b233a69207c522763cf",
+    "hidden.patch": "5b17ee5837f7cef7e7c57e464280dab26202ff84f21dc426f9353baa595e3f1a",
+    "implementation.patch": "e62c31d8cd87df6e6164e762d3b40f1963fddf114cebe60facae8318a71ce550",
+    "reference.patch": "12239284b80b4fa462d87587462f481457d2d85dd46f67d7590fc62710f68608",
+    "request.md": "cbd26e60a81bfec1d9deb68184fbadd1906c17fb91a89052e78b66434ca3eaaf"
+  }
+}

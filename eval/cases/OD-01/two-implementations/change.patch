@@ -1,0 +1,10 @@
+--- a/main.go
++++ b/main.go
+@@ -1,2 +1,7 @@
+ package main
+ func main() {}
++type writer interface { write() }
++type writerImpl struct{}
++func (writerImpl) write() {}
++type second struct{}
++func (second) write() {}

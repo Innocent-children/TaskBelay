@@ -1,0 +1,269 @@
+{
+  "schema_version": 1,
+  "id": "valibot-1573",
+  "language": "TypeScript",
+  "kind": "bug",
+  "repository": "open-circle/valibot",
+  "repository_url": "https://github.com/open-circle/valibot.git",
+  "pull_request": "https://github.com/open-circle/valibot/pull/1573",
+  "pull_request_number": 1573,
+  "merged": true,
+  "merged_at": "2026-09-06T01:06:08Z",
+  "merge_commit": "0681f437b4a6b64feeb646269c3d8e3363c28931",
+  "api_base_sha": "98ef8b4efc7858c210926c47cf515604b0c7a6f2",
+  "base_commit": "98ef8b4efc7858c210926c47cf515604b0c7a6f2",
+  "base_tree": "e427acf4ef559ff0800e8f4310394d93afbd18f1",
+  "source_changed_lines": 107,
+  "files": [
+    {
+      "path": "library/CHANGELOG.md",
+      "added": 2,
+      "deleted": 0,
+      "category": "other"
+    },
+    {
+      "path": "library/src/actions/notValue/notValue.test.ts",
+      "added": 8,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "library/src/actions/notValue/notValue.ts",
+      "added": 2,
+      "deleted": 6,
+      "category": "source"
+    },
+    {
+      "path": "library/src/actions/notValues/notValues.test.ts",
+      "added": 8,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "library/src/actions/notValues/notValues.ts",
+      "added": 8,
+      "deleted": 3,
+      "category": "source"
+    },
+    {
+      "path": "library/src/actions/value/value.test.ts",
+      "added": 4,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "library/src/actions/value/value.ts",
+      "added": 2,
+      "deleted": 7,
+      "category": "source"
+    },
+    {
+      "path": "library/src/actions/values/values.test.ts",
+      "added": 4,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "library/src/actions/values/values.ts",
+      "added": 8,
+      "deleted": 3,
+      "category": "source"
+    },
+    {
+      "path": "library/src/schemas/intersect/utils/_merge/_merge.test.ts",
+      "added": 28,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "library/src/schemas/intersect/utils/_merge/_merge.ts",
+      "added": 6,
+      "deleted": 2,
+      "category": "source"
+    },
+    {
+      "path": "library/src/schemas/literal/literal.test.ts",
+      "added": 32,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "library/src/schemas/literal/literal.ts",
+      "added": 7,
+      "deleted": 2,
+      "category": "source"
+    },
+    {
+      "path": "library/src/utils/_isSameValueZero/_isSameValueZero.test.ts",
+      "added": 12,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "library/src/utils/_isSameValueZero/_isSameValueZero.ts",
+      "added": 15,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "library/src/utils/_isSameValueZero/index.ts",
+      "added": 1,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "library/src/utils/_isValueMatch/_isValueMatch.test.ts",
+      "added": 40,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "library/src/utils/_isValueMatch/_isValueMatch.ts",
+      "added": 24,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "library/src/utils/_isValueMatch/index.ts",
+      "added": 1,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "library/src/utils/index.ts",
+      "added": 2,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "packages/to-json-schema/CHANGELOG.md",
+      "added": 1,
+      "deleted": 0,
+      "category": "other"
+    },
+    {
+      "path": "packages/to-json-schema/src/converters/convertSchema/convertSchema.test.ts",
+      "added": 13,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "packages/to-json-schema/src/converters/convertSchema/convertSchema.ts",
+      "added": 2,
+      "deleted": 6,
+      "category": "source"
+    }
+  ],
+  "hidden_upstream_files": [
+    "library/src/actions/notValue/notValue.test.ts",
+    "library/src/actions/notValues/notValues.test.ts",
+    "library/src/actions/value/value.test.ts",
+    "library/src/actions/values/values.test.ts",
+    "library/src/schemas/intersect/utils/_merge/_merge.test.ts",
+    "library/src/schemas/literal/literal.test.ts",
+    "packages/to-json-schema/src/converters/convertSchema/convertSchema.test.ts"
+  ],
+  "hidden_authored_files": [],
+  "hidden_excluded_files": [
+    "library/src/utils/_isSameValueZero/_isSameValueZero.test.ts",
+    "library/src/utils/_isValueMatch/_isValueMatch.test.ts"
+  ],
+  "exclusion_reason": "New private helper tests do not define the requested public behavior.",
+  "checks": {
+    "environment": {
+      "CI": "true"
+    },
+    "prepare": [
+      [
+        "pnpm",
+        "install",
+        "--frozen-lockfile",
+        "--ignore-scripts"
+      ]
+    ],
+    "existing": [
+      {
+        "cwd": "library",
+        "argv": [
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--typecheck",
+          "--maxWorkers",
+          "2"
+        ]
+      },
+      {
+        "cwd": "packages/to-json-schema",
+        "argv": [
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--typecheck",
+          "--maxWorkers",
+          "2"
+        ]
+      }
+    ],
+    "hidden": [
+      {
+        "cwd": "library",
+        "argv": [
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--typecheck",
+          "--maxWorkers",
+          "2",
+          "src/actions/notValue/notValue.test.ts",
+          "src/actions/notValues/notValues.test.ts",
+          "src/actions/value/value.test.ts",
+          "src/actions/values/values.test.ts",
+          "src/schemas/intersect/utils/_merge/_merge.test.ts",
+          "src/schemas/literal/literal.test.ts"
+        ]
+      },
+      {
+        "cwd": "packages/to-json-schema",
+        "argv": [
+          "pnpm",
+          "exec",
+          "vitest",
+          "run",
+          "--typecheck",
+          "--maxWorkers",
+          "2",
+          "src/converters/convertSchema/convertSchema.test.ts"
+        ]
+      }
+    ],
+    "versions": [
+      {
+        "cwd": "library",
+        "argv": [
+          "pnpm",
+          "exec",
+          "vitest",
+          "--version"
+        ]
+      }
+    ],
+    "baseline_failure_patterns": [
+      "FAIL.*for valid NaN literal",
+      "FAIL.*should reject non-finite numeric literals"
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE.md"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE.md": "1ca6c9ca372cffe26c313464b9d9f0aef2417b27b2bad20396f4769005122d4d",
+    "hidden.patch": "df72d7fe4bc378cfa26997b285204cc02fbe056338e982166972c64f1265e413",
+    "implementation.patch": "5e389ede01c7fe5c8b5b012becb011d6b4bfe44a1ea56c1ac137c7103ce99739",
+    "reference.patch": "db99119a2c2621565838c6d47f97481d6b25db07bdfc4de6dde251ef0b4d8c1a",
+    "request.md": "b12f0b48011a6ca46615937d7f582e92c3729ece0baefd38aa1a2fc0824869fa"
+  }
+}

@@ -150,7 +150,7 @@ flowchart TB
 
 ### 统一的事件和决定
 
-`event` 定义 TaskBelay 关心的六种事件，以及处理之后给出的决定。每个事件都带 Agent、session、轮次和工作目录。
+`event` 定义 TaskBelay 关心的七种事件，以及处理之后给出的决定。每个事件都带 Agent、session、轮次和工作目录。
 
 | 事件 | 来自哪个 hook | 带什么 |
 | --- | --- | --- |
@@ -158,6 +158,7 @@ flowchart TB
 | 用户消息 | UserPromptSubmit | 消息原文 |
 | 命令请求 | PreToolUse，shell 工具 | 命令文本、命令写法（POSIX 或 PowerShell）、工具调用编号 |
 | 编辑请求 | PreToolUse，编辑工具 | 文件列表、前置内容和拟写入内容或补丁 |
+| MCP 调用身份 | PreToolUse，需要补齐 MCP 身份的 Agent | 工具调用编号、工具名；仅建立调用到 session 和轮次的对应关系 |
 | 工具结束 | PostToolUse、PostToolUseFailure | 工具调用编号、实际编辑或命令结果、可取得的退出码 |
 | 准备结束 | Stop | 无 |
 
@@ -179,6 +180,8 @@ type Adapter interface {
 ```
 
 适配器负责这个 Agent 的全部特殊之处：工具名对应哪种事件，命令按哪种写法解析，决定写成什么 JSON，配置文件和 skill 目录在哪里，hook 条目怎样写。这些具体是什么，见 [Agent 接入](product-agent-integration.md)。两个 Agent 的 hook 配置结构相同，用到的输出字段也相同，这两部分放在 `hookjson` 里共用；修改配置文件时保持用户原有内容和键的顺序不变。
+
+MCP 的原生身份字段也由适配层读取，入口负责把身份交给共用账本。Claude Code 的调用身份事件只做短事务登记，不采集完整快照、不检查工具业务参数，也不返回权限决定。MCP 进程随后按同一工作区、session 和原生工具调用编号回读轮次；字段或前置记录缺失时拒绝身份不明的写入，仍允许只读查询。
 
 ### 平台
 
@@ -299,7 +302,7 @@ flowchart TB
 | 路径 | 目标 |
 | --- | --- |
 | 非验证命令前 | 五十毫秒，只解析和记录必要活动 |
-| 编辑前 | 五十毫秒，只核对目标文件和授权 |
+| 编辑前 | 三百毫秒，只核对目标文件和授权 |
 | SessionStart、UserPromptSubmit | 一秒，超时保留已采集内容，后续观察补齐 |
 | 普通 MCP、task_finish | 一秒，不在事务中运行检查和测试 |
 | 静态交付检查 | 五万行项目二十秒 |

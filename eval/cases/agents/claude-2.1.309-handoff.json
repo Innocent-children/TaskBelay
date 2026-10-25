@@ -1,0 +1,176 @@
+{
+  "verification": {
+    "date": "2026-10-24",
+    "platform": "darwin/arm64",
+    "agent": "Claude Code 2.1.309",
+    "mode": "print, restricted, temporary configuration and git workspace, local simulated Anthropic endpoint",
+    "taskbelay_entry": "CLI test helpers call the real run entry with a temporary data directory; native event input and MCP metadata are unchanged",
+    "scope": "Native startup, resume and fork SessionStart hooks; task_start, requirement_save, silent user update, summary reaching model requests and unchanged UserPromptSubmit deduplication. Model responses are simulated. Clear, compact, native editing and Codex are not exercised."
+  },
+  "processes": [
+    {
+      "stage": "startup",
+      "exit_code": 0,
+      "stdout": "验证完成\n",
+      "stderr": "",
+      "model_requests": 3,
+      "has_summary_footer": true,
+      "has_user_update": false
+    },
+    {
+      "stage": "resume",
+      "exit_code": 0,
+      "stdout": "验证完成\n",
+      "stderr": "",
+      "model_requests": 1,
+      "has_summary_footer": true,
+      "has_user_update": true
+    },
+    {
+      "stage": "fork",
+      "exit_code": 0,
+      "stdout": "验证完成\n",
+      "stderr": "",
+      "model_requests": 1,
+      "has_summary_footer": true,
+      "has_user_update": true
+    }
+  ],
+  "hook_events": [
+    {
+      "kind": "session_start",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 339,
+      "contains_user_update": false,
+      "contains_shared_workspace_hint": false,
+      "native_source": "startup",
+      "start_mode": "new"
+    },
+    {
+      "kind": "user_prompt",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 0,
+      "contains_user_update": false,
+      "contains_shared_workspace_hint": false
+    },
+    {
+      "kind": "mcp_use",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 0,
+      "contains_user_update": false,
+      "contains_shared_workspace_hint": false
+    },
+    {
+      "kind": "mcp_use",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 0,
+      "contains_user_update": false,
+      "contains_shared_workspace_hint": false
+    },
+    {
+      "kind": "stop",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 0,
+      "contains_user_update": false,
+      "contains_shared_workspace_hint": false
+    },
+    {
+      "kind": "session_start",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 224,
+      "contains_user_update": true,
+      "contains_shared_workspace_hint": false,
+      "native_source": "resume",
+      "start_mode": "resume"
+    },
+    {
+      "kind": "user_prompt",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 0,
+      "contains_user_update": false,
+      "contains_shared_workspace_hint": false
+    },
+    {
+      "kind": "stop",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 0,
+      "contains_user_update": false,
+      "contains_shared_workspace_hint": false
+    },
+    {
+      "kind": "session_start",
+      "session_id": "e1297e9c-2731-410d-91f1-b8ea94cccff6",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 397,
+      "contains_user_update": true,
+      "contains_shared_workspace_hint": true,
+      "native_source": "fork",
+      "start_mode": "fork"
+    },
+    {
+      "kind": "user_prompt",
+      "session_id": "e1297e9c-2731-410d-91f1-b8ea94cccff6",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 0,
+      "contains_user_update": false,
+      "contains_shared_workspace_hint": false
+    },
+    {
+      "kind": "stop",
+      "session_id": "e1297e9c-2731-410d-91f1-b8ea94cccff6",
+      "state": "recorded",
+      "error": "",
+      "summary_tokens": 0,
+      "contains_user_update": false,
+      "contains_shared_workspace_hint": false
+    }
+  ],
+  "session_summaries": [
+    {
+      "agent": "claude",
+      "session_id": "12345678-1234-4234-8234-123456789abc",
+      "observation_id": 6
+    },
+    {
+      "agent": "claude",
+      "session_id": "e1297e9c-2731-410d-91f1-b8ea94cccff6",
+      "observation_id": 9
+    }
+  ],
+  "ledger_counts": {
+    "messages": 3,
+    "mcp_contexts": 2,
+    "tasks": 1,
+    "requirement_versions": 1,
+    "hook_events": 11,
+    "session_summaries": 2
+  },
+  "user_file": {
+    "path": "native_user_update.txt",
+    "after_resume_and_fork": "user current version\n"
+  },
+  "requirement_after_handoff": {
+    "id": "R1",
+    "task_id": "t1",
+    "status": "pending",
+    "revision": 1
+  }
+}

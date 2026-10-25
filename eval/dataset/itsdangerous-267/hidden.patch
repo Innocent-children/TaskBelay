@@ -1,0 +1,53 @@
+diff --git a/tests/test_taskbelay_exception_causes.py b/tests/test_taskbelay_exception_causes.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_taskbelay_exception_causes.py
+@@ -0,0 +1,48 @@
++import warnings
++
++import pytest
++from itsdangerous import BadData, BadHeader, BadPayload, Serializer, URLSafeSerializer
++from itsdangerous.encoding import base64_decode
++from itsdangerous.jws import JSONWebSignatureSerializer, TimedJSONWebSignatureSerializer
++
++
++@pytest.mark.parametrize("operation,error", [
++    (lambda: base64_decode(b"a"), BadData),
++    (lambda: Serializer("key").load_payload(b"{"), BadPayload),
++    (lambda: URLSafeSerializer("key").load_payload(b"a"), BadPayload),
++    (lambda: URLSafeSerializer("key").load_payload(b".YQ"), BadPayload),
++    (lambda: JSONWebSignatureSerializer("key").load_payload(b"a.e30"), BadHeader),
++    (lambda: JSONWebSignatureSerializer("key").load_payload(b"e30.a"), BadPayload),
++    (lambda: JSONWebSignatureSerializer("key").load_payload(b"ew.e30"), BadHeader),
++])
++def test_explicit_failure_cause(operation, error):
++    with warnings.catch_warnings():
++        warnings.simplefilter("ignore", DeprecationWarning)
++        with pytest.raises(error) as caught:
++            operation()
++    assert caught.value.__cause__ is not None
++    assert caught.value.__suppress_context__
++    if hasattr(caught.value, "original_error"):
++        assert caught.value.__cause__ is caught.value.original_error
++
++
++def test_unsupported_algorithm_suppresses_internal_lookup_error():
++    with warnings.catch_warnings():
++        warnings.simplefilter("ignore", DeprecationWarning)
++        with pytest.raises(NotImplementedError) as caught:
++            JSONWebSignatureSerializer("key").make_algorithm("not-an-algorithm")
++    assert caught.value.__cause__ is None
++    assert caught.value.__suppress_context__
++
++
++def test_invalid_signed_expiration_has_conversion_cause():
++    with warnings.catch_warnings():
++        warnings.simplefilter("ignore", DeprecationWarning)
++        serializer = TimedJSONWebSignatureSerializer("key")
++        header = serializer.make_header(None)
++        header["exp"] = "invalid"
++        payload = serializer.dump_payload(header, {"value": 1})
++        signed = serializer.make_signer().sign(payload)
++        with pytest.raises(BadHeader) as caught:
++            serializer.loads(signed)
++    assert isinstance(caught.value.__cause__, ValueError)

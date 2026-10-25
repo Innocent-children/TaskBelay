@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "T5",
+      "at": "test:charge_test.go:TestNoRepeat",
+      "status": "open",
+      "level": "hint"
+    }
+  ],
+  "absent": []
+}

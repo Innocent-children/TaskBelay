@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "id": "pflag-429",
+  "language": "Go",
+  "kind": "feature",
+  "repository": "spf13/pflag",
+  "repository_url": "https://github.com/spf13/pflag.git",
+  "pull_request": "https://github.com/spf13/pflag/pull/429",
+  "pull_request_number": 429,
+  "merged": true,
+  "merged_at": "2025-05-24T21:06:39Z",
+  "merge_commit": "bca0664b6991016400b98ac29aae5a73f926bd71",
+  "api_base_sha": "196624cc28da007ab68e13213b7fb6447211ad31",
+  "base_commit": "196624cc28da007ab68e13213b7fb6447211ad31",
+  "base_tree": "3f0a00c49539532d92fdb83775999d9a948bb16c",
+  "source_changed_lines": 77,
+  "files": [
+    {
+      "path": "bool_func.go",
+      "added": 40,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "bool_func_test.go",
+      "added": 147,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "func.go",
+      "added": 37,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "func_test.go",
+      "added": 153,
+      "deleted": 0,
+      "category": "test"
+    }
+  ],
+  "hidden_upstream_files": [
+    "bool_func_test.go",
+    "func_test.go"
+  ],
+  "hidden_authored_files": [],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {
+      "GOTOOLCHAIN": "go1.26.0"
+    },
+    "existing": [
+      [
+        "go",
+        "test",
+        "./..."
+      ]
+    ],
+    "hidden": [
+      [
+        "go",
+        "test",
+        "./..."
+      ]
+    ],
+    "baseline_failure_patterns": [
+      "BoolFunc undefined",
+      "Func undefined"
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE": "b8514c577c1c4b46cee454d5a882b15fa411e72c5bd7f801f241591789fce61a",
+    "hidden.patch": "4d1de5220aef2a26ef2ef43baa2f1b09848faa45fa761a77baf45f517624d629",
+    "implementation.patch": "fc9aa4d8e8544d12223d9afb67a2d1cb52a3ee3dc8720c4bf44dfd78092d8fb4",
+    "reference.patch": "2c30e53b7fac0aa8e69ff291e34946b49df56871c725ee28868e312d8aaac3f9",
+    "request.md": "d41666a544ad4b4ecfda216554dbf4c6f7e8f3399545f50ceb835faf482c81b3"
+  }
+}

@@ -1,0 +1,5 @@
+--- /dev/null
++++ b/internal/log/log.go
+@@ -0,0 +1,2 @@
++package log
++func Log() { println("log") }

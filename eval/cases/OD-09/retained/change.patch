@@ -1,0 +1,7 @@
+--- a/main.go
++++ b/main.go
+@@ -1,2 +1,4 @@
+ package main
+ func main() {}
++func target(x int) int { return x+1 }
++func wrapper(x int) int { return target(x) }

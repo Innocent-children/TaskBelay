@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "id": "cobra-1003",
+  "language": "Go",
+  "kind": "feature",
+  "repository": "spf13/cobra",
+  "repository_url": "https://github.com/spf13/cobra.git",
+  "pull_request": "https://github.com/spf13/cobra/pull/1003",
+  "pull_request_number": 1003,
+  "merged": true,
+  "merged_at": "2022-10-10T20:59:11Z",
+  "merge_commit": "2169adb5749372c64cdd303864ae8a444da6350f",
+  "api_base_sha": "212ea4078323771dc49b6f25a41d84efbaac3a4c",
+  "base_commit": "212ea4078323771dc49b6f25a41d84efbaac3a4c",
+  "base_tree": "2503e0fc8e38383c4b7209349a622bc8d740cc95",
+  "source_changed_lines": 81,
+  "files": [
+    {
+      "path": "README.md",
+      "added": 1,
+      "deleted": 0,
+      "category": "other"
+    },
+    {
+      "path": "command.go",
+      "added": 77,
+      "deleted": 3,
+      "category": "source"
+    },
+    {
+      "path": "command_test.go",
+      "added": 95,
+      "deleted": 0,
+      "category": "test"
+    },
+    {
+      "path": "completions.go",
+      "added": 1,
+      "deleted": 0,
+      "category": "source"
+    },
+    {
+      "path": "user_guide.md",
+      "added": 7,
+      "deleted": 0,
+      "category": "other"
+    }
+  ],
+  "hidden_upstream_files": [
+    "command_test.go"
+  ],
+  "hidden_authored_files": [],
+  "hidden_excluded_files": [],
+  "exclusion_reason": null,
+  "checks": {
+    "environment": {
+      "GOTOOLCHAIN": "go1.26.0"
+    },
+    "existing": [
+      [
+        "go",
+        "test",
+        "./..."
+      ]
+    ],
+    "hidden": [
+      [
+        "go",
+        "test",
+        "./..."
+      ]
+    ],
+    "baseline_failure_patterns": [
+      "undefined: Group",
+      "AddGroup undefined"
+    ]
+  },
+  "licenses": [
+    "UPSTREAM-LICENSE.txt"
+  ],
+  "sha256": {
+    "UPSTREAM-LICENSE.txt": "5e3400b93bbb099e83e52bab885e7441750673c21f97988ca3f1240639b63283",
+    "hidden.patch": "704af1453ac21bc18fed5c5e6d21aa1c94188c28bc0f39b5ce89fd1fb7683720",
+    "implementation.patch": "f554d875dd2e6ac4d0ad343efb4773021e7ffd0f01414ff4fb0f4447a93ac627",
+    "reference.patch": "f89f63d93e03844da8ef3af72e3d4b39a1f6e013475324114282bcc61f8e3210",
+    "request.md": "c10bc77365c999f45bac7d1a9871ca1dc4b203fad355d1c2dc2518faf339744b"
+  }
+}

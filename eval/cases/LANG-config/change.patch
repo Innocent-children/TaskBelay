@@ -1,0 +1,5 @@
+--- a/settings.json
++++ b/settings.json
+@@ -1 +1 @@
+-{}
++{"format":"csv"}

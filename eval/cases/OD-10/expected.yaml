@@ -1,0 +1,12 @@
+{
+  "status": "complete",
+  "issues": [
+    {
+      "rule": "D4",
+      "at": "main.go:exportError",
+      "level": "hint",
+      "status": "open"
+    }
+  ],
+  "absent": []
+}

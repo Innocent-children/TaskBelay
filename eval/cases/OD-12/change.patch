@@ -1,0 +1,7 @@
+--- a/main.go
++++ b/main.go
+@@ -1,2 +1,4 @@
+ package main
++import "errors"
+ func main() {}
++func export(input string) error { if input == "" { return errors.New("empty input") }; return nil }
