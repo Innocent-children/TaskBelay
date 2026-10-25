@@ -14,18 +14,25 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/platform"
+	"github.com/Innocent-children/taskbelay/internal/terminal"
 )
 
 const usage = `TaskBelay：记录需求和开发事实，帮助 Agent 完成当前任务。
 
 用法：
+  taskbelay                         打开交互菜单
+  taskbelay menu
+  taskbelay --version
+  taskbelay doctor
+  taskbelay update
+  taskbelay uninstall --all [--yes]
   taskbelay install <claude|codex>
   taskbelay uninstall <claude|codex>
   taskbelay hook <claude|codex> <事件>
   taskbelay mcp
   taskbelay status
   taskbelay hits --since 14d
-  taskbelay check [--refresh]
+  taskbelay check [--tests] [--refresh]
   taskbelay config get <设置项>
   taskbelay config set <设置项> <值> [--project | --task]
 
@@ -74,11 +81,30 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, env platform.Env, dir string, output io.Writer) error {
+	if len(args) == 0 && terminal.Available(os.Stdin, output) {
+		return runMenu(ctx, env, dir, output)
+	}
 	if len(args) == 0 || (len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help")) {
 		_, err := io.WriteString(output, usage)
 		return err
 	}
 	if args[0] != "config" {
+		if len(args) == 1 {
+			switch args[0] {
+			case "menu":
+				return runMenu(ctx, env, dir, output)
+			case "--version":
+				_, err := fmt.Fprintln(output, versionText())
+				return err
+			case "doctor":
+				return runDoctor(ctx, env, output)
+			case "update":
+				return runUpdate(ctx, env, output)
+			}
+		}
+		if len(args) >= 2 && args[0] == "uninstall" && args[1] == "--all" {
+			return runUninstallAll(ctx, args[2:], env, output)
+		}
 		if args[0] == "hook" {
 			return runHook(ctx, args[1:], env, os.Stdin, output)
 		}

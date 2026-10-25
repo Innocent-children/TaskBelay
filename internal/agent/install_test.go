@@ -270,6 +270,41 @@ func TestConfigSymlinkAndOwnedHandlerMixedWithUserHandler(t *testing.T) {
 	}
 }
 
+func TestInspectInstalledResourcesWithoutChangingConfiguration(t *testing.T) {
+	for _, name := range []string{"claude", "codex"} {
+		t.Run(name, func(t *testing.T) {
+			env, native, exe := fixture(t)
+			if _, err := Install(env, exe, name, native.run); err != nil {
+				t.Fatal(err)
+			}
+			if name == "codex" {
+				if err := os.WriteFile(filepath.Join(env.HomeDir, ".codex", "config.toml"), []byte("# fixture\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			config, _, _ := installPaths(env, name)
+			before := readConfig(t, config)
+			native.calls = nil
+			state, err := Inspect(t.Context(), env, name, native.run)
+			want := 6
+			if name == "claude" {
+				want = 8
+			}
+			if err != nil || state.Hooks != want || state.Skills != 2 || !state.MCP || state.ForeignMCP {
+				t.Fatalf("inspection = %+v, err = %v", state, err)
+			}
+			if !bytes.Equal(before, readConfig(t, config)) {
+				t.Fatal("inspection changed hooks")
+			}
+			for _, call := range native.calls {
+				if len(call) < 3 || call[1] != "mcp" || call[2] != "get" {
+					t.Fatalf("inspection executed a write command: %v", call)
+				}
+			}
+		})
+	}
+}
+
 func TestUninstallPreservesForeignMCPAndUnmarkedSkills(t *testing.T) {
 	env, native, _ := fixture(t)
 	native.command = filepath.Join(env.HomeDir, "foreign")

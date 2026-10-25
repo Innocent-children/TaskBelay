@@ -123,6 +123,40 @@ Codex 用自己运行命令的那个 shell 运行 hook 命令，所以 Codex 的
 
 ## 安装和卸载
 
+### 安装程序
+
+macOS、Linux 在项目目录执行 `bash install.sh --source`；Windows 在 PowerShell 中执行 `& .\install.ps1 -Source`。源码安装需要 Go 1.26 或更高，构建成功后才替换已安装程序。
+
+发布版本后，可直接下载脚本安装预编译程序，无需 Go：
+
+```sh
+curl -fsSL https://github.com/Innocent-children/TaskBelay/releases/latest/download/install.sh | bash
+```
+
+```powershell
+irm https://github.com/Innocent-children/TaskBelay/releases/latest/download/install.ps1 | iex
+```
+
+脚本默认下载最新发布版本；`install.sh --version vX.Y.Z` 或 `install.ps1 -Version vX.Y.Z` 可指定版本。发布资产名为 `taskbelay-<系统>-<架构>`，Windows 增加 `.exe` 后缀，系统为 darwin、linux、windows，架构为 amd64、arm64。`SHA256SUMS` 列出每个程序的 SHA-256；下载或校验失败时保留旧版。没有发布包时使用源码安装，不把下载失败当作安装完成。
+
+macOS、Linux 安装到 `~/.local/bin/taskbelay`，将该目录加入 bash、zsh 的用户启动文件；Windows 安装到 `%LOCALAPPDATA%\Programs\TaskBelay\taskbelay.exe`，加入用户 PATH。重新打开终端后运行 `taskbelay`；安装结束也会打印当前终端可直接运行的完整路径。脚本只安装程序，Agent 接入由用户在菜单中选择。
+
+### 交互管理
+
+`taskbelay` 在交互终端中打开菜单，`taskbelay menu` 显式打开。上下方向键选择，右方向键或回车进入，左方向键、Esc 或 `q` 返回，空格勾选，Ctrl+C 退出菜单。Agent 列表可多选，回车执行；未勾选时不修改接入。菜单包括：
+
+- 安装或修复 Claude Code、Codex 接入，以及移除接入。
+- 查看本机版本、程序和数据位置、Agent 命令、TaskBelay hook 和 MCP 注册。发现配置不完整时说明具体原因；本机诊断不证明 Agent 已信任或实际执行 hook。
+- 在用户、项目或当前任务范围设置工作模式、拦截强度和动态检查。显示有效设置及来源；项目、任务范围沿用现有命令的工作区要求。
+- 查看当前任务和最近检查，主动运行静态检查；一次动态检查需要单独确认。
+- 更新程序，或移除两个 Agent 的接入后卸载程序。卸载默认取消，确认后才执行；接入移除失败时保留程序并说明未完成部分。
+
+无交互终端时不读取按键；无参数显示帮助，显式 `menu` 返回说明。子命令始终可单独调用。`taskbelay update` 仅更新程序，完成后重新打开菜单；已运行的 Agent session 仍需重启才能加载新程序。`taskbelay uninstall --all --yes` 用于明确要求无交互卸载的脚本。
+
+安装脚本在程序旁写入 `.taskbelay-install` 标记。自更新、自卸载核对用户安装位置和标记，不删除 Go 安装或其他包管理器管理的程序。macOS、Linux 的旧入口若是符号链接，安装脚本通过本机 Go 的构建信息确认它指向 TaskBelay 后，可用新程序替换链接本身，原 Go 程序保留；其他链接和未标记的普通文件不覆盖。Windows 运行中的旧程序通过重命名退役；若暂时无法删除，输出待清理文件路径，关闭使用旧版的 Agent 后可手动删除该文件。任务账本、日志、用户原有配置及用户 PATH 中的目录条目保留；卸载不递归删除用户目录。
+
+### 接入和移除 Agent
+
 **安装 Claude Code 的接入：`taskbelay install claude`。**
 
 1. 在 Claude Code 的 `settings.json` 的 `hooks` 里加入 8 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 三个，分别匹配 `Bash|PowerShell`、`Edit|Write|NotebookEdit`、`^mcp__taskbelay__.*$`，第三个只记录 MCP 调用身份；PostToolUse、PostToolUseFailure 各一个，匹配 `Bash|PowerShell|Edit|Write|NotebookEdit`。每个条目用 exec 形式写 taskbelay 的绝对路径和参数，绝对路径保证 Agent 运行时找得到它。Stop 的超时设为 300 秒，其他设为 30 秒。用户原有的配置保持不动。

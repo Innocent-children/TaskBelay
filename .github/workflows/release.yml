@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify installation maintenance
+        run: go test ./internal/agent ./internal/platform ./internal/distribution ./cmd/taskbelay
+      - name: Build release assets
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+          CGO_ENABLED: '0'
+        run: |
+          [[ "$RELEASE_VERSION" =~ ^v[0-9][A-Za-z0-9._-]*$ ]]
+          mkdir -p dist
+          for system in darwin linux windows; do
+            for arch in amd64 arm64; do
+              asset="taskbelay-$system-$arch"
+              if [ "$system" = windows ]; then asset="$asset.exe"; fi
+              GOOS="$system" GOARCH="$arch" go build -trimpath -ldflags "-s -w -X main.version=$RELEASE_VERSION" -o "dist/$asset" ./cmd/taskbelay
+            done
+          done
+          cp install.sh install.ps1 dist/
+          cd dist
+          sha256sum taskbelay-* > SHA256SUMS
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_VERSION" dist/* --verify-tag --generate-notes

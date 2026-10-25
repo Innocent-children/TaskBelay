@@ -43,6 +43,10 @@ flowchart LR
 
 | 命令 | 做什么 | 谁用 |
 | --- | --- | --- |
+| `taskbelay`、`taskbelay menu` | 打开终端管理菜单；无参数且没有交互终端时显示帮助 | 用户 |
+| `taskbelay --version`、`taskbelay doctor` | 查看版本、本机程序路径、Agent 命令与接入状态 | 用户 |
+| `taskbelay update` | 校验下载包后更新由安装脚本管理的程序 | 用户 |
+| `taskbelay uninstall --all` | 移除本机两个 Agent 的接入和受管理程序，保留账本；需交互确认，脚本可显式加 `--yes` | 用户 |
 | `taskbelay install claude`、`taskbelay install codex` | 接入 Agent，见 [Agent 接入](product-agent-integration.md) | 用户 |
 | `taskbelay uninstall claude`、`taskbelay uninstall codex` | 移除接入 | 用户 |
 | `taskbelay status` | 显示当前任务、可恢复任务、接续摘要和最近检查 | 用户 |
@@ -71,6 +75,8 @@ TaskBelay 要在三个平台上接入两个 Agent，检查各种语言的代码�
 ```text
 cmd/taskbelay/          命令行入口：解析子命令，把下面各部分组装起来
 internal/
+  distribution/         发布包下载、校验和受管理程序的更新、卸载
+  terminal/             终端菜单、按键选择；具体操作由命令行入口调用已有服务
   event/                统一的事件和决定
   agent/                Agent 适配器的接口和已注册的适配器列表
     claude/             Claude Code 适配器
@@ -319,12 +325,13 @@ flowchart TB
 | `modernc.org/sqlite` | 任务账本 |
 | `github.com/modelcontextprotocol/go-sdk` | MCP server |
 | `mvdan.cc/sh/v3` | POSIX 命令解析 |
+| `golang.org/x/term` | 识别交互终端、切换和恢复终端输入模式 |
 
 运行时需要 git 2.5 或更高版本；动态分析使用项目自己的测试和覆盖率工具；接入安装需要 claude 或 codex 命令。Claude Code 的 exec 形式安装要求 2.1.139 或更高版本。
 
 ## 平台和安装
 
-Windows、macOS、Linux 各编译一个程序。`go install github.com/Innocent-children/taskbelay/cmd/taskbelay@latest` 安装需要 Go 1.26；Windows 程序名为 taskbelay.exe。接入和卸载见 [Agent 接入](product-agent-integration.md)。
+Windows、macOS、Linux 分别发布 amd64、arm64 程序及 SHA-256 校验清单；Windows 程序名为 taskbelay.exe。根目录 `install.sh`、`install.ps1` 下载适合本机的程序，也支持从当前源码构建后安装。GitHub Actions 在推送版本标签时构建发布资产；安装脚本和更新器使用同一资产命名。`go install github.com/Innocent-children/taskbelay/cmd/taskbelay@latest` 仍可使用，需要 Go 1.26。安装位置、菜单和卸载行为见 [Agent 接入](product-agent-integration.md)。
 
 ## TaskBelay 自己的验证
 
