@@ -1,5 +1,0 @@
---- a/work.js
-+++ b/work.js
-@@ -1 +1 @@
--// base
-+export function writeCSV() { return "csv"; }

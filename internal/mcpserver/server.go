@@ -16,7 +16,7 @@ import (
 type ContextResolver func(context.Context, *mcp.CallToolRequest) (ledger.Actor, error)
 
 /**
- * 原生 Agent 到 MCP 的身份映射由接入层提供；默认元数据约定见 notice.md 的 N07。
+ * 原生 Agent 到 MCP 的身份映射由接入层提供；身份字段与关联规则见 docs/product-agent-integration.md。
  * 不使用 MCP 连接编号代替 Agent session，也不从最近活动猜测当前轮次。
  */
 func MetadataContext(_ context.Context, request *mcp.CallToolRequest) (ledger.Actor, error) {

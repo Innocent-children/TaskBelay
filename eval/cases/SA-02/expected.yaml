@@ -1,8 +1,0 @@
-{
-  "status": "complete",
-  "issues": [],
-  "absent": [],
-  "preserved": {
-    "internal/export/export.go": "package export\nfunc Export() string { return \"csv\" }\n"
-  }
-}

@@ -1,1 +1,0 @@
-record 的输入含有自有 __proto__ 键时，应和其他键一样先执行键 schema 的校验。refine、regex 或 partialRecord 枚举拒绝该键时返回相应 invalid_key 或 unrecognized_keys 问题，不能提前跳过校验。即使键 schema 接受或转换为 __proto__，输出也不得写入该键；looseRecord 继续剥离它，解释执行与编译解析保持一致。

@@ -1,6 +1,3 @@
-# Local evaluation records and generated workspaces.
-/eval/results/
-
 # Local IDE and macOS files.
 /.idea/
 .DS_Store

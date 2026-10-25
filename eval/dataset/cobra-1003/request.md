@@ -1,1 +1,0 @@
-支持在父命令帮助中把子命令分组显示。公开 Group 的 ID、Title，Command.GroupID，以及 AddGroup、Groups、ContainsGroup、AllChildCommandsHaveGroup；通过 SetHelpCommandGroupID 和 SetCompletionCommandGroupID 为默认 help、completion 分组。有组时按组列出，未分组命令放在 Additional Commands；没有组时保持现有 Available Commands 输出。引用未声明的组时给出明确错误。

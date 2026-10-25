@@ -24,7 +24,7 @@
 | [requirements-ledger.md](requirements-ledger.md) | 记录、字段、修订、MCP 工具和保留期限 |
 | [product-agent-integration.md](product-agent-integration.md) | hook、MCP、skill、Agent 与平台差异、安装和故障处理 |
 | [product-architecture.md](product-architecture.md) | 进程、模块、快照、观察与编辑核对、检查执行、存储和性能 |
-| [product-evaluation.md](product-evaluation.md) | 规则例子、正常开发场景、端到端对比、正确性和使用成本 |
+| [product-evaluation.md](product-evaluation.md) | 当前测试维护范围，以及历史规则例子、开发场景、效果与成本评估口径 |
 
 ## 共同术语
 

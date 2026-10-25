@@ -98,7 +98,7 @@ internal/
 skills/                 内置的两个 skill。这个目录本身是一个 Go 包，用 go:embed 把两个 skill 打包进程序，适配器安装时复制给 Agent
   write-technical-plans/
   write-a-well-document/
-eval/                   判定例子集和端到端对比脚本
+eval/                   历史评估说明；本机 results/ 保留旧证据，不随 Git 分发
 ```
 
 各目录之间的依赖只朝下：
@@ -328,4 +328,6 @@ Windows、macOS、Linux 各编译一个程序。`go install github.com/Innocent-
 
 ## TaskBelay 自己的验证
 
-规则行为由 eval/cases 验证，避免为同一行为重复建测试。任务切换、观察与编辑核对、修订冲突、缓存失效和交付流程，用 [算法评估](product-evaluation.md) 的开发场景测试验证；平台和 Agent 适配在对应环境运行。
+长期只保留打包、安装及必要安装维护的基础测试。模块修改需要验证时，按本次确认的需求和当前实现编写临时测试，通过后删除测试代码及专用辅助资料，记录验证范围、环境、命令和结论。能通过阅读差异与引用确认的改动不为走流程新增测试。
+
+历史规则例子和场景测试已删除，旧结果继续保留，维护范围及历史评估说明见 [算法评估](product-evaluation.md)。平台和 Agent 的实际运行结论只对应已经验证的环境。

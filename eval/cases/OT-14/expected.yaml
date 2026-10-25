@@ -1,8 +1,0 @@
-{
-  "status": "expired",
-  "issues": [],
-  "absent": [],
-  "preserved": {
-    "range.go": "package main\nfunc Allowed(n int) bool { return n < 3 } // user boundary\n"
-  }
-}

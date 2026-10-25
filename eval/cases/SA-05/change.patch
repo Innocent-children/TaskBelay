@@ -1,5 +1,0 @@
---- /dev/null
-+++ b/internal/export/export.go
-@@ -0,0 +1,2 @@
-+package export
-+func Export() string { return "csv" }

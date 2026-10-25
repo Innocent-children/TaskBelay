@@ -1,7 +1,0 @@
---- a/main.go
-+++ b/main.go
-@@ -1,2 +1,3 @@
- package main
--func main() {}
-+func main() { _ = writeCSV(','); _ = writeCSV(';') }
-+func writeCSV(sep rune) string { return string(sep) }
