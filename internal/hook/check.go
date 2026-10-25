@@ -28,8 +28,11 @@ func (t Tasks) reportCheck(record ledger.CheckRecord) {
 	if record.Static != nil {
 		t.reportCheck(*record.Static)
 	}
-	for _, gap := range record.Missing {
+	for _, gap := range record.Missing[:min(5, len(record.Missing))] {
 		t.ReportError(fmt.Errorf("%s 检查未完成（任务 %s，%s %s）：%s", record.Depth, record.Input.TaskID, gap.Operation, gap.At, gap.Reason))
+	}
+	if len(record.Missing) > 5 {
+		t.ReportError(fmt.Errorf("%s 检查另有 %d 条未完成记录（任务 %s）；原因和数量见 taskbelay status", record.Depth, len(record.Missing)-5, record.Input.TaskID))
 	}
 }
 

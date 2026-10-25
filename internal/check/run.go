@@ -69,9 +69,13 @@ func runStatic(ctx context.Context, store *ledger.Store, workspace gitstate.Work
 			result.Issues[i].BlockOnDelivery = false
 		}
 	}
-	publish, endPublish := context.WithDeadline(context.WithoutCancel(ctx), minTime(deadline, time.Now().Add(event.MCPBudget)))
+	publishDeadline := minTime(deadline, time.Now().Add(event.MCPBudget))
+	publish, endPublish := context.WithDeadline(context.WithoutCancel(ctx), publishDeadline)
 	defer endPublish()
-	current, captureErr := workspace.Capture(publish)
+	// 工作区复核不能用完发布预算，否则连未完成报告也无法写入。
+	capture, endCapture := context.WithDeadline(publish, publishDeadline.Add(-event.MCPBudget/2))
+	current, captureErr := workspace.Capture(capture)
+	endCapture()
 	currentTree := current.Tree
 	if captureErr != nil || !current.Complete() {
 		currentTree = ""

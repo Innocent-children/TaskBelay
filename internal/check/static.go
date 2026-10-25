@@ -31,6 +31,13 @@ type staticAnalysis struct {
 	references  codescan.References
 	conventions map[string]convention
 	evaluated   map[string]bool
+	missing     map[ledger.CheckGap]struct{}
+	gapGroups   map[[2]string]*gapGroup
+}
+
+type gapGroup struct {
+	count        int
+	summaryIndex int
 }
 
 func excluded(file *codescan.File) bool {
@@ -71,6 +78,9 @@ func staticCheck(ctx context.Context, input ledger.CheckInput, view ledger.TaskV
 				continue
 			}
 			for _, missing := range file.Missing {
+				if err := ctx.Err(); err != nil {
+					return s.result, err
+				}
 				if missing.Operation != "tests" && missing.Operation != "risks" {
 					s.gap(path, missing.Operation, missing.Reason)
 				}
@@ -133,7 +143,13 @@ func staticCheck(ctx context.Context, input ledger.CheckInput, view ledger.TaskV
 	})
 	sort.Slice(s.result.Missing, func(i, j int) bool {
 		a, b := s.result.Missing[i], s.result.Missing[j]
-		return a.At+"\x00"+a.Operation+"\x00"+a.Reason < b.At+"\x00"+b.Operation+"\x00"+b.Reason
+		if a.At != b.At {
+			return a.At < b.At
+		}
+		if a.Operation != b.Operation {
+			return a.Operation < b.Operation
+		}
+		return a.Reason < b.Reason
 	})
 	s.result.Level = ledger.HighestLevel(s.result.Issues)
 	if view.Task != nil && view.Task.State == ledger.TaskPending && view.Settings.Values["enforcement"].Value != "hint" {
@@ -166,8 +182,30 @@ func (s *staticAnalysis) scope(rule, at string) {
 
 func (s *staticAnalysis) gap(at, operation, reason string) {
 	gap := ledger.CheckGap{At: at, Operation: operation, Reason: reason}
-	if !slices.Contains(s.result.Missing, gap) {
+	if s.missing == nil {
+		s.missing = make(map[ledger.CheckGap]struct{})
+		s.gapGroups = make(map[[2]string]*gapGroup)
+	}
+	if _, exists := s.missing[gap]; exists {
+		return
+	}
+	s.missing[gap] = struct{}{}
+	key := [2]string{at, operation}
+	group := s.gapGroups[key]
+	if group == nil {
+		group = &gapGroup{}
+		s.gapGroups[key] = group
+	}
+	group.count++
+	if group.count <= 5 {
 		s.result.Missing = append(s.result.Missing, gap)
+	} else {
+		// 保留具体原因和未完成数量，避免大量候选引用耗尽报告写入预算。
+		if group.count == 6 {
+			group.summaryIndex = len(s.result.Missing)
+			s.result.Missing = append(s.result.Missing, gap)
+		}
+		s.result.Missing[group.summaryIndex].Reason = fmt.Sprintf("另有 %d 项未完成；已保留前 5 项原因，当前范围仍未完整核对", group.count-5)
 	}
 	s.result.Status = ledger.CheckPartial
 }

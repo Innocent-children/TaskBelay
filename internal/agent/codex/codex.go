@@ -86,21 +86,11 @@ func (Adapter) ParseEvent(hook string, data []byte) (event.Event, error) {
 	}
 	if hook == "post-tool-use" {
 		e.Kind = event.ToolEnd
-		e.Result = &event.ToolResult{State: event.Unknown, Output: string(in.Response), Edits: e.Edits}
-		var r struct {
-			ExitCode  *int            `json:"exit_code"`
-			SessionID json.RawMessage `json:"session_id"`
+		e.Result = &event.ToolResult{State: event.Unknown, Output: string(in.Response)}
+		if e.Command != nil {
+			e.Result = commandResult(in.Response)
 		}
-		if json.Unmarshal(in.Response, &r) == nil {
-			if r.ExitCode != nil {
-				e.Result.ExitCode, e.Result.State = r.ExitCode, event.Completed
-				if *r.ExitCode != 0 {
-					e.Result.State = event.Failed
-				}
-			} else if len(r.SessionID) > 0 && string(r.SessionID) != "null" {
-				e.Result.State = event.Running
-			}
-		}
+		e.Result.Edits = e.Edits
 	}
 	return e, nil
 }

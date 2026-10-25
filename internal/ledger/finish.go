@@ -13,6 +13,15 @@ func finishRequest(ctx context.Context, q queryer, workspace string, actor Actor
 	var data, state string
 	err := q.QueryRowContext(ctx, "SELECT state,data FROM finish_requests WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=?", workspace, actor.Agent, actor.SessionID, actor.RoundID).Scan(&state, &data)
 	if errors.Is(err, sql.ErrNoRows) {
+		// 失败的 Stop 可以由同一 session 的当前轮次接续；不接管其他任务或迟到轮次。
+		err = q.QueryRowContext(ctx, `SELECT f.state,f.data FROM finish_requests f
+JOIN workspaces w ON w.id=f.workspace_id AND w.current_task_id=f.task_id
+JOIN tasks t ON t.id=f.task_id AND t.state=?
+JOIN task_sessions s ON s.workspace_id=f.workspace_id AND s.agent=f.agent AND s.session_id=f.session_id
+WHERE f.workspace_id=? AND f.agent=? AND f.session_id=? AND f.state='pending' AND s.round_id=?
+ORDER BY f.rowid DESC LIMIT 1`, TaskPending, workspace, actor.Agent, actor.SessionID, actor.RoundID).Scan(&state, &data)
+	}
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

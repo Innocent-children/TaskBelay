@@ -134,8 +134,15 @@ func Format(record ledger.CheckRecord, hintLimit int) string {
 	for _, update := range record.Report.WorkspaceUpdates {
 		fmt.Fprintf(&text, "工作区更新：%s；观察点=%d，保留当前内容\n", update.Path, update.AfterObservation)
 	}
-	for _, missing := range record.Missing {
+	missingLimit := len(record.Missing)
+	if hintLimit > 0 {
+		missingLimit = min(missingLimit, hintLimit)
+	}
+	for _, missing := range record.Missing[:missingLimit] {
 		fmt.Fprintf(&text, "未完成检查：%s %s；%s\n", missing.Operation, missing.At, missing.Reason)
+	}
+	if missingLimit < len(record.Missing) {
+		fmt.Fprintf(&text, "另有 %d 项未完成检查，可用 taskbelay status 查看。\n", len(record.Missing)-missingLimit)
 	}
 	for _, notRun := range record.Report.NotRun {
 		fmt.Fprintln(&text, "未运行："+notRun)
