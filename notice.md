@@ -719,3 +719,14 @@ D241 延续本次已发生额度失败的处理，为原 Rust 批次增加独立
 此项不是 N29 的编辑前超时，也不是用户要求停止后取消的第二份重复位置；两类事实分别保留。目前仅确认这个 Claude 原生样本的工作区边界，不扩展为其他 Agent／平台已验证的行为，也不因此增加工作区外编辑支持。按用户最新单轮要求，不再重跑该位置；G15 的完整接入、正式比较及采用结论继续保留缺口。
 
 Python 单轮最终记录（2026-10-25，D258、D260）：六个开启位置完成，五个接入有效且已有／隐藏验收通过，itsdangerous-141 第一份因工作区外编辑失效，不以原生测试通过抵消接入失败。六个关闭位置复用旧记录，已有 6/6、隐藏 5/6；参数化新增测试数量无法只读确认的一项继续 unknown。16,586 份证据已封存，清单摘要 `3a1be492ba0862a0d9cc4d77574448d2e2288a53072cea4940460d6fd7a1acef`。未执行新的原生数量测试、followup 或替换失败结果；其他 Agent／平台不由本机结果推定通过。
+
+## N36：Codex 用户配置层同时声明两种 hook
+
+**状态：macOS 本机配置已整理；客户端重载与迁移条目的信任确认待核验。涉及 G04-07、G15-09、G15-17。**
+
+2026-10-25，本机安装 Codex 接入后，客户端提示同时从 `/Users/innocent-children/.codex/hooks.json` 和 `/Users/innocent-children/.codex/config.toml` 加载 hook。配置核对确认：`config.toml` 原有一组用于输出代码检索提示的 `SessionStart`，TaskBelay 的六组事件写在 `hooks.json`。按照 [Codex 官方 hooks 文档](https://developers.openai.com/codex/hooks)，同层的两种事件定义会合并加载并产生警告，不能把此提示直接判断为 TaskBelay hook 执行失败。当前安装器只维护文档约定的 `hooks.json`，不会自动迁移原有内联事件。
+
+本次备份两个文件后，将原有 `SessionStart` 追加到 `hooks.json`，仅从 `config.toml` 删除该事件的两段数组表，保留全部 `[hooks.state]` 与其他配置。JSON／TOML 解析和内容对照确认原有命令、匹配条件以及 TaskBelay 六组事件未变；没有补写信任记录。备份保存在 `/Users/innocent-children/.codex/backups/taskbelay-hook-config-20261025-205013/`。原有提示 hook 的来源路径发生变化，可能需要用户通过 `/hooks` 重新确认；TaskBelay 已有事件的位置和编号保持不变。
+
+本轮没有运行项目测试或启动新的 Agent session。重新加载 Codex 后是否不再显示双来源警告、迁移条目的实际信任状态及执行情况，仍以客户端结果为准；Windows、Linux 和其他 Codex 配置层未在本轮验证。后续安装遇到同类布局时按接入文档先整理事件定义，不以修改信任状态或关闭 hook 消除提示。
+

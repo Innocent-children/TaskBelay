@@ -164,6 +164,8 @@ Codex 用自己运行命令的那个 shell 运行 hook 命令，所以 Codex 的
 
 两条安装命令都可以重复运行，重复运行只更新 TaskBelay 自己的条目。安装写的是用户级配置，对这台电脑上所有的 git 工作区生效；配置文件是符号链接时，修改它指向的文件。安装前先检查版本：git 要 2.5 或更高，安装 Claude Code 的接入时 Claude Code 要 2.1.139 或更高，不满足时报错并说明要求，不写入任何配置。安装时找不到 `claude` 或 `codex` 命令，TaskBelay 会报错，并打印需要手动写入的配置。
 
+Codex 允许在 `hooks.json` 或 `config.toml` 中声明 hook。同一个配置层同时包含两种事件定义时，两边都会加载，但启动时会提示 `prefer a single representation for this layer`。TaskBelay 安装器只维护 `hooks.json`，不会自动迁移用户在 `config.toml` 中定义的 hook。遇到该提示时，先备份两个文件，将原有事件组完整合并到 `hooks.json`，再从 `config.toml` 移除对应的事件定义；保留其他配置以及 `[hooks.state]` 中由 Codex 管理的启用和信任记录。迁移不得改变命令、匹配条件或超时，也不手工补写信任记录；来源路径变化后，按 `/hooks` 提示重新核对需要信任的条目。配置来源与信任机制见 [Codex hooks 文档](https://developers.openai.com/codex/hooks)。
+
 **卸载：`taskbelay uninstall claude`、`taskbelay uninstall codex`。** 删除命令里带 taskbelay 路径和 `hook` 子命令的条目，运行 `claude mcp remove --scope user taskbelay` 或 `codex mcp remove taskbelay`，再删除带 `.taskbelay` 标记的 skill 目录。任务账本里的数据保留。
 
 ## TaskBelay 出错时
