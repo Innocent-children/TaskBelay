@@ -36,6 +36,7 @@ func runStatic(ctx context.Context, store *ledger.Store, workspace gitstate.Work
 	if err != nil {
 		return ledger.CheckRecord{}, err
 	}
+	ledger.DebugRecord(ctx, "check.input", input)
 	if !observation.Full || !observation.Complete || observation.Tree != input.Tree || ledger.NewCheckInput(*view.Task, observation.Tree, view.Settings, view.EffectiveDecisions, RulesVersion, CapabilitiesVersion).Version() != input.Version() {
 		return ledger.CheckRecord{}, ledger.ErrCheckInputChanged
 	}
@@ -47,14 +48,17 @@ func runStatic(ctx context.Context, store *ledger.Store, workspace gitstate.Work
 		if cached != nil && cached.Status == ledger.CheckComplete {
 			cached.Report.Verifications = view.Verifications
 			cached.Report.ValidationNotes = validationNotes(view)
+			ledger.DebugRecord(ctx, "check.cache", map[string]any{"depth": "static", "reused": true, "record_id": cached.ID, "input_version": input.Version()})
 			return ledger.WithDelivery(*cached, view.Task.State == ledger.TaskPending && view.Settings.Values["enforcement"].Value != "hint"), nil
 		}
 	}
+	ledger.DebugRecord(ctx, "check.cache", map[string]any{"depth": "static", "reused": false, "refresh": options.Refresh})
 	started := time.Now().UTC()
 	deadline, _ := ctx.Deadline()
 	analysisCtx, cancel := context.WithDeadline(ctx, deadline.Add(-event.MCPBudget))
 	defer cancel()
 	result, analyzeErr := analyze(analysisCtx, store, workspace, view, observation, input)
+	ledger.DebugRecord(ctx, "check.analysis.end", map[string]any{"record": result, "returned": analyzeErr == nil})
 	result.Input, result.InputVersion, result.Depth, result.StartedAt = input, input.Version(), "static", started
 	if analyzeErr != nil {
 		result.Status = ledger.CheckFailed
@@ -76,6 +80,7 @@ func runStatic(ctx context.Context, store *ledger.Store, workspace gitstate.Work
 	capture, endCapture := context.WithDeadline(publish, publishDeadline.Add(-event.MCPBudget/2))
 	current, captureErr := workspace.Capture(capture)
 	endCapture()
+	ledger.DebugRecord(ctx, "check.workspace_recheck", map[string]any{"snapshot": current, "returned": captureErr == nil})
 	currentTree := current.Tree
 	if captureErr != nil || !current.Complete() {
 		currentTree = ""
@@ -93,10 +98,12 @@ func analyze(ctx context.Context, store *ledger.Store, workspace gitstate.Worksp
 			return result, nil
 		}
 	}
+	ledger.DebugRecord(ctx, "check.origin_tree.start", map[string]any{"tree": input.OriginTree})
 	before, err := AnalyzeTree(ctx, workspace, input.OriginTree)
 	if err != nil {
 		return result, err
 	}
+	ledger.DebugRecord(ctx, "check.current_tree.start", map[string]any{"tree": input.Tree})
 	after, err := AnalyzeTree(ctx, workspace, input.Tree)
 	if err != nil {
 		return result, err
@@ -141,6 +148,7 @@ func analyze(ctx context.Context, store *ledger.Store, workspace gitstate.Worksp
 	if err != nil {
 		return result, err
 	}
+	ledger.DebugRecord(ctx, "check.association", map[string]any{"changes": changes, "association": association, "edits": edits})
 	var blobs []string
 	for _, edit := range edits {
 		if edit.Before.Blob != "" && edit.Before.Mode != "160000" {

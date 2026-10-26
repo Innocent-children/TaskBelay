@@ -36,6 +36,7 @@ func (t Tasks) HandleOutput(ctx context.Context, e event.Event, raw []byte, outp
 	if err != nil {
 		return fmt.Errorf("登记 hook 开始: %w", err)
 	}
+	ledger.DebugRecord(ctx, "hook.registered", map[string]any{"hook_id": id, "event": e.Kind})
 	var before int64
 	if e.Kind == event.ToolEnd {
 		state, readErr := t.Store.ObservationState(ctx, t.Workspace.ID, []string{})
@@ -46,7 +47,9 @@ func (t Tasks) HandleOutput(ctx context.Context, e event.Event, raw []byte, outp
 	}
 	var d event.Decision
 	if err == nil {
+		ledger.DebugRecord(ctx, "hook.dispatch.start", nil)
 		d, err = t.dispatch(ctx, e)
+		ledger.DebugRecord(ctx, "hook.dispatch.end", map[string]any{"decision": d, "completed": err == nil})
 		if err != nil {
 			err = fmt.Errorf("处理 %s 事件: %w", e.Kind, err)
 		}
@@ -56,6 +59,7 @@ func (t Tasks) HandleOutput(ctx context.Context, e event.Event, raw []byte, outp
 	if err == nil && e.Kind == event.ToolEnd {
 		var changes []ledger.FileChange
 		changes, err = t.Store.Changes(ctx, t.Workspace.ID, before)
+		ledger.DebugRecord(ctx, "workspace.changes", changes)
 		if err != nil {
 			err = fmt.Errorf("读取后置工作区更新: %w", err)
 		}
@@ -67,12 +71,14 @@ func (t Tasks) HandleOutput(ctx context.Context, e event.Event, raw []byte, outp
 		}
 	}
 	if err == nil && needsSummary {
+		ledger.DebugRecord(ctx, "summary.start", nil)
 		var text string
 		text, delivery, err = t.prepareSummary(ctx, e)
 		if err != nil {
 			err = fmt.Errorf("准备接续摘要: %w", err)
 		}
 		d.AdditionalContext = strings.TrimSpace(d.AdditionalContext + "\n" + text)
+		ledger.DebugRecord(ctx, "summary.end", map[string]any{"text": text, "completed": err == nil})
 	}
 	if err == nil {
 		err = output(d)
@@ -87,6 +93,7 @@ func (t Tasks) HandleOutput(ctx context.Context, e event.Event, raw []byte, outp
 		}
 	}
 	finishErr := t.Store.FinishHook(ctx, id, d, err)
+	ledger.DebugRecord(ctx, "hook.recorded", map[string]any{"hook_id": id, "decision": d, "completed": err == nil && finishErr == nil})
 	if finishErr != nil {
 		finishErr = fmt.Errorf("登记 hook 结束: %w", finishErr)
 	}

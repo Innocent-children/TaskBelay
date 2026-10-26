@@ -40,6 +40,7 @@ const usage = `TaskBelay：记录需求和开发事实，帮助 Agent 完成当�
   workflow                 auto（默认）或 semi
   enforcement              block（默认）或 hint
   analysis.tests           off（默认）或 on
+  debug                    off（默认）或 on，详细过程写入数据目录 debug/日期/任务编号.jsonl
   test.<语言>.command      测试命令或前缀，默认使用 Runner 的方式
   test.<语言>.prepare      临时副本的准备命令，默认无
   test.<语言>.parallel     1 至 4，默认 1

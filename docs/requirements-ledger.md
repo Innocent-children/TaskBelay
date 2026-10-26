@@ -30,11 +30,14 @@ Agent 通过 MCP 写自己的记录，用户消息和工具观察保留原始内
 | `workflow` | `auto` 或 `semi`，默认 auto |
 | `enforcement` | `block` 或 `hint`，默认 block |
 | `analysis.tests` | `on` 或 `off`，默认 off |
+| `debug` | `on` 或 `off`，默认 off；详细记录当前任务的使用过程 |
 | `test.<语言>.command` | 项目现有的测试命令或前缀，默认采用语言 Runner 的方式 |
 | `test.<语言>.prepare` | 临时副本中的准备命令，默认无 |
 | `test.<语言>.parallel` | 一至四，默认一；大于一表示这些测试可独立运行 |
 
 命令按对应平台的 shell 解析，动态阶段开启后才执行准备和测试。CLI 用 `config set <设置项> <值>` 保存用户默认值，`--project`、`--task` 保存更具体的范围。当前会话中的明确要求由 Agent 记入任务决定，不要求用户另行编辑设置。
+
+`debug` 只控制诊断记录，不改变检查输入、授权或拦截规则。记录独立保存为任务 JSONL 文件，具体内容和保留方式见 [系统架构](product-architecture.md#调试记录)。
 
 ### 任务
 

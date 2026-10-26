@@ -156,6 +156,9 @@ func (t Tasks) Start(ctx context.Context, actor ledger.Actor, input ledger.Start
 	}
 	var result ledger.TaskRecord
 	if found, err := t.Store.Replay(ctx, call, &result); found || err != nil {
+		if found && err == nil {
+			ledger.DebugBindTask(ctx, result.ID)
+		}
 		return result, err
 	}
 	if err := t.Store.ValidateSession(ctx, t.Workspace.ID, actor); err != nil {
@@ -176,7 +179,11 @@ func (t Tasks) Start(ctx context.Context, actor ledger.Actor, input ledger.Start
 			return result, err
 		}
 	}
-	return t.Store.StartTask(ctx, call, view.CurrentTaskID, observation.ID, input, changes)
+	result, err = t.Store.StartTask(ctx, call, view.CurrentTaskID, observation.ID, input, changes)
+	if err == nil {
+		ledger.DebugBindTask(ctx, result.ID)
+	}
+	return result, err
 }
 
 func (t Tasks) SaveRequirement(ctx context.Context, actor ledger.Actor, input ledger.RequirementInput) (ledger.Requirement, error) {
@@ -186,6 +193,9 @@ func (t Tasks) SaveRequirement(ctx context.Context, actor ledger.Actor, input le
 	}
 	var result ledger.Requirement
 	if found, err := t.Store.Replay(ctx, call, &result); found || err != nil {
+		if found && err == nil {
+			ledger.DebugBindTask(ctx, result.TaskID)
+		}
 		return result, err
 	}
 	if err := t.Store.ValidateSession(ctx, t.Workspace.ID, actor); err != nil {
@@ -207,7 +217,11 @@ func (t Tasks) SaveRequirement(ctx context.Context, actor ledger.Actor, input le
 		}
 		input.ImplementedBy = &locations
 	}
-	return t.Store.SaveRequirement(ctx, call, view.CurrentTaskID, observation.ID, input)
+	result, err = t.Store.SaveRequirement(ctx, call, view.CurrentTaskID, observation.ID, input)
+	if err == nil {
+		ledger.DebugBindTask(ctx, result.TaskID)
+	}
+	return result, err
 }
 
 func (t Tasks) AddNote(ctx context.Context, actor ledger.Actor, input ledger.NoteInput) (ledger.Note, error) {

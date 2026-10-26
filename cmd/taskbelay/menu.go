@@ -106,11 +106,11 @@ func menuAgents(ctx context.Context, menu *terminal.Menu, action string, env pla
 }
 
 func menuSettings(ctx context.Context, menu *terminal.Menu, env platform.Env, dir string, output io.Writer) error {
-	choice, err := menu.Select(ctx, "常用设置", []string{"查看有效设置及来源", "工作模式", "拦截强度", "动态测试检查"}, false)
+	choice, err := menu.Select(ctx, "常用设置", []string{"查看有效设置及来源", "工作模式", "拦截强度", "动态测试检查", "debug 详细过程记录"}, false)
 	if err != nil {
 		return err
 	}
-	keys := []string{"workflow", "enforcement", "analysis.tests"}
+	keys := []string{"workflow", "enforcement", "analysis.tests", "debug"}
 	if choice[0] == 0 {
 		for _, name := range keys {
 			if err := run(ctx, []string{"config", "get", name}, env, dir, output); err != nil {
@@ -124,8 +124,8 @@ func menuSettings(ctx context.Context, menu *terminal.Menu, env platform.Env, di
 	if err != nil {
 		return err
 	}
-	values := [][]string{{"auto", "semi"}, {"block", "hint"}, {"off", "on"}}[choice[0]-1]
-	labels := [][]string{{"全自动：直接开发", "半自动：先确认方案"}, {"同一问题有限拦截", "只提示"}, {"关闭", "开启：允许在临时副本运行测试"}}[choice[0]-1]
+	values := [][]string{{"auto", "semi"}, {"block", "hint"}, {"off", "on"}, {"off", "on"}}[choice[0]-1]
+	labels := [][]string{{"全自动：直接开发", "半自动：先确认方案"}, {"同一问题有限拦截", "只提示"}, {"关闭", "开启：允许在临时副本运行测试"}, {"关闭", "开启：详细记录任务过程，保留在本机"}}[choice[0]-1]
 	value, err := menu.Select(ctx, "选择 "+key, labels, false)
 	if err != nil {
 		return err

@@ -11,13 +11,22 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/testrun"
 )
 
-func (t Tasks) Check(ctx context.Context, actor ledger.Actor, options check.RunInput) (ledger.CheckRecord, error) {
+func (t Tasks) Check(ctx context.Context, actor ledger.Actor, options check.RunInput) (record ledger.CheckRecord, failure error) {
+	ctx, trace := t.Store.StartDebug(ctx, t.Workspace.ID, nil, actor, "check", t.ReportError)
+	returned := false
+	defer func() {
+		if !returned && failure == nil {
+			failure = fmt.Errorf("检查未正常返回，过程记录不完整")
+		}
+		trace.Finish(ctx, record, failure)
+	}()
 	view, observation, err := t.observeTask(ctx, actor)
 	if err != nil {
 		return ledger.CheckRecord{}, err
 	}
-	record, err := check.Run(ctx, t.Store, t.Workspace, actor, view, observation, options)
+	record, err = check.Run(ctx, t.Store, t.Workspace, actor, view, observation, options)
 	t.reportCheck(record)
+	returned = true
 	return record, err
 }
 
@@ -90,10 +99,12 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 		return event.Decision{}, err
 	}
 	request, err := t.Store.FinishRequest(ctx, t.Workspace.ID, actor)
+	ledger.DebugRecord(ctx, "delivery.request", request)
 	if err != nil {
 		return event.Decision{}, err
 	}
 	if request == nil || request.State != "pending" {
+		ledger.DebugRecord(ctx, "delivery.ordinary_stop", nil)
 		return t.ordinaryStop(ctx, actor, view, request)
 	}
 	if view.Task == nil || view.Task.ID != request.TaskID || view.Task.State != ledger.TaskPending {
@@ -104,6 +115,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 		return event.Decision{}, err
 	}
 	var record ledger.CheckRecord
+	ledger.DebugRecord(ctx, "delivery.input", input)
 	if input.Version() != request.InputVersion {
 		record = ledger.CheckRecord{Input: request.Input, InputVersion: request.InputVersion, Status: ledger.CheckExpired}
 	} else {
@@ -115,6 +127,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 			}
 		}
 		if cached != nil {
+			ledger.DebugRecord(ctx, "delivery.cache", map[string]any{"depth": "static", "record": cached, "reason": "本次交付已反馈且输入未变化"})
 			record = *cached
 		} else {
 			record, err = check.Run(ctx, t.Store, t.Workspace, actor, view, observation, check.RunInput{Depth: "static"})
@@ -136,6 +149,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 			}
 		}
 		if dynamic == nil {
+			ledger.DebugRecord(ctx, "delivery.dynamic.start", nil)
 			checked, err := check.Run(ctx, t.Store, t.Workspace, actor, view, observation, check.RunInput{Depth: "tests"})
 			if err != nil {
 				return event.Decision{}, err
@@ -155,6 +169,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 		currentTree = ""
 	}
 	delivery, err := t.Store.Deliver(ctx, t.Workspace.ID, actor, currentTree, record)
+	ledger.DebugRecord(ctx, "delivery.result", map[string]any{"current_tree": currentTree, "delivery": delivery, "dynamic": dynamic, "completed": err == nil})
 	if err != nil {
 		return event.Decision{}, err
 	}

@@ -16,15 +16,18 @@ import (
 )
 
 func Run(ctx context.Context, store *ledger.Store, workspace gitstate.Workspace, actor ledger.Actor, view ledger.TaskView, observation ledger.Observation, options RunInput) (ledger.CheckRecord, error) {
+	ledger.DebugRecord(ctx, "check.start", map[string]any{"options": options, "task": view.Task, "observation": observation, "rules": RulesVersion, "capabilities": CapabilitiesVersion, "requirements": view.Requirements, "decisions": view.EffectiveDecisions})
 	if options.Depth != "" && options.Depth != "static" && options.Depth != "tests" {
 		return ledger.CheckRecord{}, fmt.Errorf("depth 只能为 static 或 tests")
 	}
 	static, err := runStatic(ctx, store, workspace, actor, view, observation, RunInput{Depth: "static", Refresh: options.Refresh})
+	ledger.DebugRecord(ctx, "check.static.end", map[string]any{"record": static, "returned": err == nil})
 	if err != nil || options.Depth != "tests" {
 		return static, err
 	}
 	dynamic, err := runDynamic(ctx, store, workspace, actor, view, static, options)
 	dynamic.Static = &static
+	ledger.DebugRecord(ctx, "check.dynamic.end", map[string]any{"record": dynamic, "returned": err == nil})
 	return dynamic, err
 }
 
@@ -73,10 +76,12 @@ func runDynamic(ctx context.Context, store *ledger.Store, workspace gitstate.Wor
 					if err == nil && inputErr == nil && currentInput.Version() == static.InputVersion && current.Complete() && current.Tree == static.Input.Tree {
 						cached.Report.Verifications = view.Verifications
 						cached.Report.ValidationNotes = validationNotes(view)
+						ledger.DebugRecord(ctx, "check.cache", map[string]any{"depth": "tests", "reused": true, "record_id": cached.ID, "input_version": static.InputVersion})
 						return *cached, nil
 					}
 				}
 			}
+			ledger.DebugRecord(ctx, "check.cache", map[string]any{"depth": "tests", "reused": false, "refresh": options.Refresh})
 			request, err := dynamicRequest(work, workspace, static)
 			if err != nil {
 				missing(err.Error())

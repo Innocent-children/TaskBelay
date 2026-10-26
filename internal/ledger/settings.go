@@ -40,7 +40,7 @@ func DefaultValue(name string) (string, error) {
 		return "auto", nil
 	case "enforcement":
 		return "block", nil
-	case "analysis.tests":
+	case "analysis.tests", "debug":
 		return "off", nil
 	}
 	parts := strings.Split(name, ".")
@@ -73,9 +73,9 @@ func ValidateSetting(name, value string) error {
 		if value != "block" && value != "hint" {
 			return fmt.Errorf("enforcement 只能是 block 或 hint")
 		}
-	case name == "analysis.tests":
+	case name == "analysis.tests" || name == "debug":
 		if value != "on" && value != "off" {
-			return fmt.Errorf("analysis.tests 只能是 on 或 off")
+			return fmt.Errorf("%s 只能是 on 或 off", name)
 		}
 	case strings.HasSuffix(name, ".parallel"):
 		if value != "1" && value != "2" && value != "3" && value != "4" {
@@ -139,7 +139,7 @@ func (s *Store) Settings(ctx context.Context, workspaceID string) (EffectiveSett
 
 func effectiveSettings(ctx context.Context, q queryer, workspaceID, taskID string, current bool) (EffectiveSettings, error) {
 	values := make(map[string]Setting)
-	names := []string{"workflow", "enforcement", "analysis.tests"}
+	names := []string{"workflow", "enforcement", "analysis.tests", "debug"}
 	for _, language := range testLanguages {
 		for _, field := range []string{"command", "prepare", "parallel"} {
 			names = append(names, "test."+language+"."+field)
@@ -173,7 +173,14 @@ ORDER BY CASE scope WHEN 'user' THEN 0 WHEN 'project' THEN 1 ELSE 2 END, name`, 
 	if err := rows.Err(); err != nil {
 		return EffectiveSettings{}, err
 	}
-	encoded, err := json.Marshal(values)
+	// 调试开关不改变接续、授权和检查的版本，避免开启记录触发业务重算。
+	versioned := make(map[string]Setting, len(values))
+	for name, value := range values {
+		if name != "debug" {
+			versioned[name] = value
+		}
+	}
+	encoded, err := json.Marshal(versioned)
 	if err != nil {
 		return EffectiveSettings{}, err
 	}

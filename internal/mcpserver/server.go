@@ -136,7 +136,7 @@ func withView(ctx context.Context, service hook.Tasks, actor ledger.Actor, id st
 }
 
 func register[Input any](server *mcp.Server, name, description string, write bool, service hook.Tasks, unavailable error, resolver ContextResolver, handle func(context.Context, ledger.Actor, Input) (any, error)) {
-	mcp.AddTool(server, &mcp.Tool{Name: name, Description: description}, func(ctx context.Context, request *mcp.CallToolRequest, input Input) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: name, Description: description}, func(ctx context.Context, request *mcp.CallToolRequest, input Input) (toolResult *mcp.CallToolResult, result any, protocolErr error) {
 		budget := event.MCPBudget
 		if name == "check_run" {
 			budget = event.StaticBudget
@@ -146,7 +146,9 @@ func register[Input any](server *mcp.Server, name, description string, write boo
 		}
 		ctx, cancel := context.WithTimeout(ctx, budget)
 		defer cancel()
+		failure := fmt.Errorf("MCP 调用未正常返回，过程记录不完整")
 		toolFailure := func(err error) (*mcp.CallToolResult, any, error) {
+			failure = err
 			if service.ReportError != nil {
 				service.ReportError(fmt.Errorf("MCP %s: %w", name, err))
 			}
@@ -156,6 +158,18 @@ func register[Input any](server *mcp.Server, name, description string, write boo
 			return toolFailure(unavailable)
 		}
 		actor, err := resolver(ctx, request)
+		var target *string
+		switch options := any(input).(type) {
+		case getInput:
+			if options.TaskID != "" {
+				target = &options.TaskID
+			}
+		case ledger.StartTaskInput:
+			target = &options.TaskID
+		}
+		ctx, trace := service.Store.StartDebug(ctx, service.Workspace.ID, target, actor, "mcp."+name, service.ReportError)
+		defer func() { trace.Finish(ctx, result, failure) }()
+		ledger.DebugRecord(ctx, "mcp.input", map[string]any{"arguments": input, "identity_resolved": err == nil, "write": write})
 		if write && err != nil {
 			return toolFailure(err)
 		}
@@ -172,10 +186,13 @@ func register[Input any](server *mcp.Server, name, description string, write boo
 				return toolFailure(err)
 			}
 		}
-		result, err := handle(ctx, actor, input)
+		ledger.DebugRecord(ctx, "mcp.handle.start", nil)
+		result, err = handle(ctx, actor, input)
 		if err != nil {
 			return toolFailure(err)
 		}
+		ledger.DebugRecord(ctx, "mcp.handle.end", map[string]any{"result": result})
+		failure = nil
 		return nil, result, nil
 	})
 }

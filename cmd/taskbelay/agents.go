@@ -52,6 +52,20 @@ func runHook(ctx context.Context, args []string, env platform.Env, input io.Read
 	var adapter agent.Adapter
 	var hookName string
 	var workspaceID string
+	var store *ledger.Store
+	var trace *ledger.DebugTrace
+	var traceErr error
+	returned := false
+	traceContext := ctx
+	defer func() {
+		if !returned && traceErr == nil {
+			traceErr = fmt.Errorf("hook 未正常返回，过程记录不完整")
+		}
+		trace.Finish(traceContext, nil, traceErr)
+		if store != nil {
+			store.Close()
+		}
+	}()
 	if len(args) == 2 {
 		hookName = args[1]
 	}
@@ -93,21 +107,25 @@ func runHook(ctx context.Context, args []string, env platform.Env, input io.Read
 		if err != nil {
 			return event.Decision{}, fmt.Errorf("定位工作区: %w", err)
 		}
-		store, err := ledger.Open(ctx, env.DataDir, wait)
+		store, err = ledger.Open(ctx, env.DataDir, wait)
 		if err != nil {
 			return event.Decision{}, fmt.Errorf("打开账本: %w", err)
 		}
-		defer store.Close()
 		if err := store.RegisterGitWorkspace(ctx, workspace); err != nil {
 			return event.Decision{}, fmt.Errorf("登记工作区: %w", err)
 		}
 		workspaceID = workspace.ID
 		service := hook.Tasks{Observer: hook.Observer{Store: store, Workspace: workspace}, ReportError: func(cause error) { _ = logWorkspaceError(env, workspace.ID, cause) }}
+		ctx, trace = store.StartDebug(ctx, workspace.ID, nil, ledger.Actor{Agent: e.Agent, SessionID: e.SessionID, RoundID: e.RoundID, CallID: e.ToolCallID}, "hook."+hookName, service.ReportError)
+		traceContext = ctx
+		hook.DebugInput(ctx, e, data)
+		ledger.DebugRecord(ctx, "hook.setup", map[string]any{"version": versionText(), "workspace": workspace, "budget_ms": budget.Milliseconds(), "setup_ms": time.Since(started).Milliseconds()})
 		err = service.HandleOutput(ctx, e, data, func(d event.Decision) error {
 			encoded, err := adapter.RenderDecision(hookName, d)
 			if err == nil && len(encoded) > 0 {
 				_, err = output.Write(append(encoded, '\n'))
 			}
+			ledger.DebugRecord(ctx, "hook.output", map[string]any{"decision": d, "encoded_output": string(encoded), "written": err == nil})
 			return err
 		})
 		if err == nil && e.Kind == event.SessionStart {
@@ -115,6 +133,7 @@ func runHook(ctx context.Context, args []string, env platform.Env, input io.Read
 		}
 		return event.Decision{}, err
 	}()
+	traceErr = err
 	if err != nil {
 		_ = logWorkspaceError(env, workspaceID, fmt.Errorf("hook %s: %w", hookName, err))
 		d = event.Decision{}
@@ -126,12 +145,16 @@ func runHook(ctx context.Context, args []string, env platform.Env, input io.Read
 		data, renderErr := adapter.RenderDecision(hookName, d)
 		if renderErr != nil {
 			_ = logError(env, renderErr)
+			traceErr = errors.Join(traceErr, renderErr)
 		} else if len(data) > 0 {
 			if _, err := output.Write(append(data, '\n')); err != nil {
 				_ = logError(env, err)
+				traceErr = errors.Join(traceErr, err)
 			}
+			ledger.DebugRecord(traceContext, "hook.fallback_output", map[string]any{"decision": d, "encoded_output": string(data)})
 		}
 	}
 	// 自身失败不能覆盖 Agent 的原权限判断，也不能使原工具失败。
+	returned = true
 	return nil
 }
