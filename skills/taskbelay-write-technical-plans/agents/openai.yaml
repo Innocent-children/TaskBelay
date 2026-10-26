@@ -1,0 +1,4 @@
+interface:
+  display_name: "taskbelay-write-technical-plans"
+  short_description: "把技术问题和解决思路写成读一遍就懂、可以直接拿去评审的技术方案。"
+  default_prompt: "使用 $taskbelay-write-technical-plans，把当前问题和已经想好的解决思路整理成一份技术方案。"

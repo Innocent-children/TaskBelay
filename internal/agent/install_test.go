@@ -165,9 +165,13 @@ func TestInstallRepeatAndUninstallPreserveUserConfiguration(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(userSkill, ".taskbelay")); !os.IsNotExist(err) {
 				t.Fatal("marked user skill")
 			}
-			bundle, _ := skills.Files.ReadFile("write-technical-plans/references/diagrams.md")
-			if !bytes.Equal(readConfig(t, filepath.Join(skillPath, "write-technical-plans", "references", "diagrams.md")), bundle) {
+			bundle, _ := skills.Files.ReadFile("taskbelay-write-technical-plans/references/diagrams.md")
+			if !bytes.Equal(readConfig(t, filepath.Join(skillPath, "taskbelay-write-technical-plans", "references", "diagrams.md")), bundle) {
 				t.Fatal("missing embedded references")
+			}
+			documentSkill, err := skills.Files.ReadFile("taskbelay-write-a-well-document/SKILL.md")
+			if err != nil || !bytes.Equal(readConfig(t, filepath.Join(skillPath, "taskbelay-write-a-well-document", "SKILL.md")), documentSkill) {
+				t.Fatal("namespaced document skill was not installed alongside the user skill", err)
 			}
 			if native.command != exe {
 				t.Fatal("MCP did not receive exact executable path")
@@ -179,8 +183,11 @@ func TestInstallRepeatAndUninstallPreserveUserConfiguration(t *testing.T) {
 			if !bytes.Contains(last, []byte("echo taskbelay hook codex stop")) || !bytes.Contains(last, []byte("user-hook")) || !bytes.Contains(last, []byte(`"extra": "keep"`)) {
 				t.Fatal("deleted user hooks")
 			}
-			if _, err := os.Stat(filepath.Join(skillPath, "write-technical-plans")); !os.IsNotExist(err) {
+			if _, err := os.Stat(filepath.Join(skillPath, "taskbelay-write-technical-plans")); !os.IsNotExist(err) {
 				t.Fatal("owned skill retained")
+			}
+			if _, err := os.Stat(filepath.Join(skillPath, "taskbelay-write-a-well-document")); !os.IsNotExist(err) {
+				t.Fatal("owned document skill retained")
 			}
 			if string(readConfig(t, filepath.Join(userSkill, "SKILL.md"))) != "user version" || string(readConfig(t, filepath.Join(env.DataDir, "keep"))) != "ledger" {
 				t.Fatal("deleted user data")
@@ -309,7 +316,7 @@ func TestUninstallPreservesForeignMCPAndUnmarkedSkills(t *testing.T) {
 	env, native, _ := fixture(t)
 	native.command = filepath.Join(env.HomeDir, "foreign")
 	_, skills, _ := installPaths(env, "codex")
-	target := filepath.Join(skills, "write-technical-plans")
+	target := filepath.Join(skills, "taskbelay-write-technical-plans")
 	if err := os.MkdirAll(target, 0o700); err != nil {
 		t.Fatal(err)
 	}

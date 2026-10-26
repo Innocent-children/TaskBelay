@@ -191,7 +191,7 @@ func register[Input any](server *mcp.Server, name, description string, write boo
 		if err != nil {
 			return toolFailure(err)
 		}
-		ledger.DebugRecord(ctx, "mcp.handle.end", map[string]any{"result": result})
+		ledger.DebugRecord(ctx, "mcp.handle.end", nil)
 		failure = nil
 		return nil, result, nil
 	})

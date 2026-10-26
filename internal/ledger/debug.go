@@ -157,7 +157,7 @@ func (t *DebugTrace) record(phase string, details any) {
 	}
 	now := time.Now()
 	t.sequence++
-	entry := debugEntry{Format: 1, Time: now, TaskID: t.task, WorkspaceID: t.workspace, Actor: t.actor, PID: os.Getpid(), TraceID: t.id, Sequence: t.sequence, Operation: t.operation, Phase: phase, ElapsedMS: float64(now.Sub(t.started).Microseconds()) / 1000, Details: details}
+	entry := debugEntry{Format: 2, Time: now, TaskID: t.task, WorkspaceID: t.workspace, Actor: t.actor, PID: os.Getpid(), TraceID: t.id, Sequence: t.sequence, Operation: t.operation, Phase: phase, ElapsedMS: float64(now.Sub(t.started).Microseconds()) / 1000, Details: details}
 	if t.task == "" {
 		t.pending = append(t.pending, entry)
 		return
@@ -179,10 +179,6 @@ func (t *DebugTrace) append(entry debugEntry) error {
 	if !strings.HasPrefix(entry.TaskID, "t") || len(entry.TaskID) < 2 || strings.Trim(entry.TaskID[1:], "0123456789") != "" {
 		return fmt.Errorf("无效的调试任务编号 %q", entry.TaskID)
 	}
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return err
-	}
 	root, err := os.OpenRoot(t.store.dataDir)
 	if err != nil {
 		return err
@@ -190,6 +186,13 @@ func (t *DebugTrace) append(entry debugEntry) error {
 	defer root.Close()
 	dir := filepath.Join("debug", entry.Time.Format("2006-01-02"))
 	if err := root.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if entry.Details != nil {
+		entry.Details = debugValue{root: root, directory: dir, task: entry.TaskID, value: entry.Details}
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
 		return err
 	}
 	file, err := root.OpenFile(filepath.Join(dir, entry.TaskID+".jsonl"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)

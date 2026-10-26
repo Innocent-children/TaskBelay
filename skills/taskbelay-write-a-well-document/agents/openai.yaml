@@ -1,7 +1,7 @@
 interface:
-  display_name: write-a-well-document
+  display_name: taskbelay-write-a-well-document
   short_description: 如何写好一篇文档
-  default_prompt: 使用 $write-a-well-document，写一篇不知道上下文的第三者能独立理解的完整文档，默认输出 Markdown。
+  default_prompt: 使用 $taskbelay-write-a-well-document，写一篇不知道上下文的第三者能独立理解的完整文档，默认输出 Markdown。
   icon_small: assets/icon.svg
   icon_large: assets/icon.svg
 policy:

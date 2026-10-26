@@ -1,5 +1,5 @@
 ---
-name: write-a-well-document
+name: taskbelay-write-a-well-document
 description: 如何写好一篇文档，写文档时务必阅读这个文件。
 ---
 

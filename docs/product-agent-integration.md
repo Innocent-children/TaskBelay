@@ -195,7 +195,7 @@ macOS、Linux 安装到 `~/.local/bin/taskbelay`，将该目录加入 bash、zsh
 3. 安装两个 skill。
 4. 提示用户打开 Codex，用 `/hooks` 确认信任 TaskBelay 的 hook。不确认的话，hook 不会运行。
 
-**两个 skill 怎样安装。** 两个 skill 的文件内置在 TaskBelay 项目的 `skills/` 目录里，编译时打包进程序。安装时，把它们复制到 Agent 的 skill 目录，每个 skill 一个子目录：`write-technical-plans/` 和 `write-a-well-document/`。目录里已经有同名的子目录时，保留用户原有的那份。TaskBelay 在自己复制过去的目录里放一个 `.taskbelay` 标记文件，卸载时只删除带这个标记的目录。
+**两个 skill 怎样安装。** 两个 skill 的文件内置在 TaskBelay 项目的 `skills/` 目录里，编译时打包进程序。安装时，把它们复制到 Agent 的 skill 目录，每个 skill 一个子目录：`taskbelay-write-technical-plans/` 和 `taskbelay-write-a-well-document/`。目录里已经有同名的子目录时，保留用户原有的那份。TaskBelay 在自己复制过去的目录里放一个 `.taskbelay` 标记文件，卸载时只删除带这个标记的目录。
 
 两条安装命令都可以重复运行，重复运行只更新 TaskBelay 自己的条目。安装写的是用户级配置，对这台电脑上所有的 git 工作区生效；配置文件是符号链接时，修改它指向的文件。安装前先检查版本：git 要 2.5 或更高，安装 Claude Code 的接入时 Claude Code 要 2.1.139 或更高，不满足时报错并说明要求，不写入任何配置。安装时找不到 `claude` 或 `codex` 命令，TaskBelay 会报错，并打印需要手动写入的配置。
 

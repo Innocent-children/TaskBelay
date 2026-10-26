@@ -1,5 +1,5 @@
 ---
-name: write-technical-plans
+name: taskbelay-write-technical-plans
 description: 把一个技术问题和想好的解决思路，写成同事或领导读一遍就能看懂、可以直接拿去评审的技术方案（Markdown，配 Mermaid 图）。适用于改造、优化、整改、迁移、选型、新功能设计等方案。用户说"写个方案""整理成方案""出个技术方案/改造方案""写成文档给领导/团队看""方案评审要用"，或讨论完怎么做之后要写成文档时使用。
 ---
 

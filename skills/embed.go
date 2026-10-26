@@ -2,7 +2,7 @@ package skills
 
 import "embed"
 
-//go:embed write-a-well-document write-technical-plans
+//go:embed taskbelay-write-a-well-document taskbelay-write-technical-plans
 var Files embed.FS
 
-var Names = []string{"write-a-well-document", "write-technical-plans"}
+var Names = []string{"taskbelay-write-a-well-document", "taskbelay-write-technical-plans"}
