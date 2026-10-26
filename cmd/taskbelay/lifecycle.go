@@ -68,7 +68,7 @@ func runDoctor(ctx context.Context, env platform.Env, output io.Writer) error {
 		} else if state.ForeignMCP {
 			mcp = "同名注册属于其他程序"
 		}
-		fmt.Fprintf(output, "TaskBelay hook：%d；受管理 skill：%d；MCP：%s\n", state.Hooks, state.Skills, mcp)
+		fmt.Fprintf(output, "TaskBelay hook：%d；MCP：%s\n", state.Hooks, mcp)
 	}
 	fmt.Fprintln(output, "\n接入配置不代表 hook 已实际运行；Codex 仍需在 /hooks 中确认信任。")
 	return errors.Join(problems...)
@@ -116,7 +116,7 @@ func runUninstallAll(ctx context.Context, args []string, env platform.Env, outpu
 		if err != nil {
 			return fmt.Errorf("无法核对 %s 接入，已保留程序: %w", name, err)
 		}
-		if state.Hooks > 0 || state.Skills > 0 || state.MCP {
+		if state.Hooks > 0 || state.MCP {
 			installed = append(installed, name)
 		}
 	}

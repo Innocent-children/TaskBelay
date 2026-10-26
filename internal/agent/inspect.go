@@ -10,19 +10,17 @@ import (
 
 	"github.com/Innocent-children/taskbelay/internal/agent/hookjson"
 	"github.com/Innocent-children/taskbelay/internal/platform"
-	"github.com/Innocent-children/taskbelay/skills"
 )
 
 type Installation struct {
 	Command    string
 	Hooks      int
-	Skills     int
 	MCP        bool
 	ForeignMCP bool
 }
 
 func Inspect(ctx context.Context, env platform.Env, name string, run Runner) (result Installation, resultErr error) {
-	config, skillPath, err := installPaths(env, name)
+	config, err := installPath(env, name)
 	if err != nil {
 		return result, err
 	}
@@ -58,15 +56,6 @@ func Inspect(ctx context.Context, env platform.Env, name string, run Runner) (re
 					}
 				}
 			}
-		}
-	}
-	for _, skill := range skills.Names {
-		data, err := os.ReadFile(filepath.Join(skillPath, skill, ".taskbelay"))
-		if err != nil && !os.IsNotExist(err) {
-			return result, err
-		}
-		if string(data) == skillMarker {
-			result.Skills++
 		}
 	}
 	// 没有用户配置时无需启动 Agent，首次安装前也能查看状态和卸载程序。

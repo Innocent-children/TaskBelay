@@ -1,6 +1,6 @@
 # TaskBelay
 
-TaskBelay 是一个在本机运行的 Go 命令行工具，通过 hook、MCP 和 skill 接入 Claude Code 与 Codex。它把 Agent 的改动与当前需求对应起来，帮助减少多余的功能、抽象、测试和重复验证，并保存跨 Agent、跨会话继续工作所需的上下文。
+TaskBelay 是一个在本机运行的 Go 命令行工具，通过 hook 和 MCP 接入 Claude Code 与 Codex。它把 Agent 的改动与当前需求对应起来，帮助减少多余的功能、抽象、测试和重复验证，并保存跨 Agent、跨会话继续工作所需的上下文。
 
 你照常提需求、编辑代码、提交和切换分支。TaskBelay 记录开发过程，向 Agent 提供有依据的检查反馈；你手动修改代码后，Agent 从当前文件继续工作。
 
@@ -74,7 +74,7 @@ taskbelay install claude
 taskbelay install codex
 ```
 
-接入命令会配置 hook、注册 MCP，并安装 `taskbelay-write-technical-plans` 和 `taskbelay-write-a-well-document` 两个 skill。安装使用用户级配置，对本机该 Agent 的 Git 工作区生效；已有同名 skill 和用户原有的其他配置会保留。重复执行安装命令可更新或修复 TaskBelay 自己的接入配置。
+接入命令会配置 hook 并注册 MCP。安装使用用户级配置，对本机该 Agent 的 Git 工作区生效，用户原有的其他配置会保留。重复执行安装命令可更新或修复 TaskBelay 自己的接入配置。
 
 - **Claude Code**：新建会话以加载接入配置。
 - **Codex**：重新打开会话，再用 `/hooks` 确认信任 TaskBelay 的 hook；完成信任后 hook 才会运行。

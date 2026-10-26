@@ -23,14 +23,14 @@ func runCommand(ctx context.Context, name string, args ...string) ([]byte, error
 	return exec.CommandContext(ctx, name, args...).CombinedOutput()
 }
 
-func installPaths(env platform.Env, name string) (config, skills string, err error) {
+func installPath(env platform.Env, name string) (string, error) {
 	switch name {
 	case "claude":
-		return filepath.Join(env.HomeDir, ".claude", "settings.json"), filepath.Join(env.HomeDir, ".claude", "skills"), nil
+		return filepath.Join(env.HomeDir, ".claude", "settings.json"), nil
 	case "codex":
-		return filepath.Join(env.HomeDir, ".codex", "hooks.json"), filepath.Join(env.HomeDir, ".agents", "skills"), nil
+		return filepath.Join(env.HomeDir, ".codex", "hooks.json"), nil
 	default:
-		return "", "", fmt.Errorf("不支持 Agent %q", name)
+		return "", fmt.Errorf("不支持 Agent %q", name)
 	}
 }
 
@@ -244,7 +244,7 @@ func mcpOwned(ctx context.Context, env platform.Env, name string, run Runner) (e
 }
 
 func Install(env platform.Env, exe, name string, run Runner) (string, error) {
-	path, skillPath, err := installPaths(env, name)
+	path, err := installPath(env, name)
 	if err != nil {
 		return "", err
 	}
@@ -297,7 +297,7 @@ func Install(env platform.Env, exe, name string, run Runner) (string, error) {
 	if err := file.Write(data); err != nil {
 		return "", err
 	}
-	partial := "TaskBelay hook 配置已写入；MCP 或 skill 尚未全部完成，可修复原因后重试。\n"
+	partial := "TaskBelay hook 配置已写入；MCP 注册尚未完成，可修复原因后重试。\n"
 	if exists {
 		if _, err := run(ctx, name, mcpArgs(name, "remove", "")...); err != nil {
 			return partial, fmt.Errorf("移除旧 MCP 注册: %w", err)
@@ -306,10 +306,7 @@ func Install(env platform.Env, exe, name string, run Runner) (string, error) {
 	if _, err := run(ctx, name, mcpArgs(name, "add", exe)...); err != nil {
 		return partial, fmt.Errorf("注册 MCP: %w", err)
 	}
-	if err := installSkills(skillPath); err != nil {
-		return partial, err
-	}
-	message := "已写入 TaskBelay hook、注册 stdio MCP，并安装不存在的 skill。\n"
+	message := "已写入 TaskBelay hook 并注册 stdio MCP。\n"
 	if name == "codex" {
 		message += "请在 Codex 中用 /hooks 确认信任；未确认前 hook 不会运行。\n"
 	} else {
@@ -319,7 +316,7 @@ func Install(env platform.Env, exe, name string, run Runner) (string, error) {
 }
 
 func Uninstall(env platform.Env, name string, run Runner) (string, error) {
-	path, skillPath, err := installPaths(env, name)
+	path, err := installPath(env, name)
 	if err != nil {
 		return "", err
 	}
@@ -350,13 +347,10 @@ func Uninstall(env platform.Env, name string, run Runner) (string, error) {
 	}
 	if exists && owned {
 		if _, err := run(ctx, name, mcpArgs(name, "remove", "")...); err != nil {
-			return "hook 已移除，MCP 和 skill 卸载未完成。\n", fmt.Errorf("移除 MCP: %w", err)
+			return "hook 已移除，MCP 卸载未完成。\n", fmt.Errorf("移除 MCP: %w", err)
 		}
 	}
-	if err := uninstallSkills(skillPath); err != nil {
-		return "", err
-	}
-	message := "已移除 TaskBelay hook、所属 MCP 和带标记的 skill；账本数据保留。\n"
+	message := "已移除 TaskBelay hook 和所属 MCP；账本数据保留。\n"
 	if exists && !owned {
 		message += "同名 MCP 属于其他程序，已保留。\n"
 	}

@@ -13,7 +13,6 @@ import (
 
 	"github.com/Innocent-children/taskbelay/internal/agent/hookjson"
 	"github.com/Innocent-children/taskbelay/internal/platform"
-	"github.com/Innocent-children/taskbelay/skills"
 )
 
 type nativeFixture struct {
@@ -84,19 +83,12 @@ func TestInstallRepeatAndUninstallPreserveUserConfiguration(t *testing.T) {
 	for _, name := range []string{"claude", "codex"} {
 		t.Run(name, func(t *testing.T) {
 			env, native, exe := fixture(t)
-			config, skillPath, _ := installPaths(env, name)
+			config, _ := installPath(env, name)
 			if err := os.MkdirAll(filepath.Dir(config), 0o700); err != nil {
 				t.Fatal(err)
 			}
 			original := []byte(`{"z-user":{"second":2,"first":1},"hooks":{"PreToolUse":[{"matcher":"user","extra":"keep","hooks":[{"type":"command","command":"echo taskbelay hook codex stop"}]}],"Stop":[{"hooks":[{"type":"command","command":"user-hook"}]}]},"a-user":true}`)
 			if err := os.WriteFile(config, original, 0o640); err != nil {
-				t.Fatal(err)
-			}
-			userSkill := filepath.Join(skillPath, "write-a-well-document")
-			if err := os.MkdirAll(userSkill, 0o700); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(userSkill, "SKILL.md"), []byte("user version"), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.MkdirAll(env.DataDir, 0o700); err != nil {
@@ -159,20 +151,6 @@ func TestInstallRepeatAndUninstallPreserveUserConfiguration(t *testing.T) {
 			if count != want {
 				t.Fatalf("hooks=%d", count)
 			}
-			if string(readConfig(t, filepath.Join(userSkill, "SKILL.md"))) != "user version" {
-				t.Fatal("replaced user skill")
-			}
-			if _, err := os.Stat(filepath.Join(userSkill, ".taskbelay")); !os.IsNotExist(err) {
-				t.Fatal("marked user skill")
-			}
-			bundle, _ := skills.Files.ReadFile("taskbelay-write-technical-plans/references/diagrams.md")
-			if !bytes.Equal(readConfig(t, filepath.Join(skillPath, "taskbelay-write-technical-plans", "references", "diagrams.md")), bundle) {
-				t.Fatal("missing embedded references")
-			}
-			documentSkill, err := skills.Files.ReadFile("taskbelay-write-a-well-document/SKILL.md")
-			if err != nil || !bytes.Equal(readConfig(t, filepath.Join(skillPath, "taskbelay-write-a-well-document", "SKILL.md")), documentSkill) {
-				t.Fatal("namespaced document skill was not installed alongside the user skill", err)
-			}
 			if native.command != exe {
 				t.Fatal("MCP did not receive exact executable path")
 			}
@@ -183,13 +161,7 @@ func TestInstallRepeatAndUninstallPreserveUserConfiguration(t *testing.T) {
 			if !bytes.Contains(last, []byte("echo taskbelay hook codex stop")) || !bytes.Contains(last, []byte("user-hook")) || !bytes.Contains(last, []byte(`"extra": "keep"`)) {
 				t.Fatal("deleted user hooks")
 			}
-			if _, err := os.Stat(filepath.Join(skillPath, "taskbelay-write-technical-plans")); !os.IsNotExist(err) {
-				t.Fatal("owned skill retained")
-			}
-			if _, err := os.Stat(filepath.Join(skillPath, "taskbelay-write-a-well-document")); !os.IsNotExist(err) {
-				t.Fatal("owned document skill retained")
-			}
-			if string(readConfig(t, filepath.Join(userSkill, "SKILL.md"))) != "user version" || string(readConfig(t, filepath.Join(env.DataDir, "keep"))) != "ledger" {
+			if string(readConfig(t, filepath.Join(env.DataDir, "keep"))) != "ledger" {
 				t.Fatal("deleted user data")
 			}
 			if _, err := Uninstall(env, name, native.run); err != nil {
@@ -203,7 +175,7 @@ func TestInstallPreflightDoesNotWriteAndMissingCommandShowsManualConfig(t *testi
 	for _, test := range []string{"old git", "old claude", "missing", "foreign MCP", "malformed config", "add failure"} {
 		t.Run(test, func(t *testing.T) {
 			env, native, exe := fixture(t)
-			config, _, _ := installPaths(env, "claude")
+			config, _ := installPath(env, "claude")
 			switch test {
 			case "old git":
 				native.gitVersion = "git version 2.4.9"
@@ -236,7 +208,7 @@ func TestInstallPreflightDoesNotWriteAndMissingCommandShowsManualConfig(t *testi
 			if test == "missing" && (!strings.Contains(message, `"SessionStart"`) || !strings.Contains(message, "MCP")) {
 				t.Fatal(message)
 			}
-			if test == "add failure" && !strings.Contains(message, "尚未全部完成") {
+			if test == "add failure" && !strings.Contains(message, "MCP 注册尚未完成") {
 				t.Fatal("hid partial installation")
 			}
 		})
@@ -245,7 +217,7 @@ func TestInstallPreflightDoesNotWriteAndMissingCommandShowsManualConfig(t *testi
 
 func TestConfigSymlinkAndOwnedHandlerMixedWithUserHandler(t *testing.T) {
 	env, native, exe := fixture(t)
-	path, _, _ := installPaths(env, "codex")
+	path, _ := installPath(env, "codex")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +261,7 @@ func TestInspectInstalledResourcesWithoutChangingConfiguration(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			config, _, _ := installPaths(env, name)
+			config, _ := installPath(env, name)
 			before := readConfig(t, config)
 			native.calls = nil
 			state, err := Inspect(t.Context(), env, name, native.run)
@@ -297,7 +269,7 @@ func TestInspectInstalledResourcesWithoutChangingConfiguration(t *testing.T) {
 			if name == "claude" {
 				want = 8
 			}
-			if err != nil || state.Hooks != want || state.Skills != 2 || !state.MCP || state.ForeignMCP {
+			if err != nil || state.Hooks != want || !state.MCP || state.ForeignMCP {
 				t.Fatalf("inspection = %+v, err = %v", state, err)
 			}
 			if !bytes.Equal(before, readConfig(t, config)) {
@@ -312,25 +284,14 @@ func TestInspectInstalledResourcesWithoutChangingConfiguration(t *testing.T) {
 	}
 }
 
-func TestUninstallPreservesForeignMCPAndUnmarkedSkills(t *testing.T) {
+func TestUninstallPreservesForeignMCP(t *testing.T) {
 	env, native, _ := fixture(t)
 	native.command = filepath.Join(env.HomeDir, "foreign")
-	_, skills, _ := installPaths(env, "codex")
-	target := filepath.Join(skills, "taskbelay-write-technical-plans")
-	if err := os.MkdirAll(target, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(target, ".taskbelay"), []byte("user file"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	message, err := Uninstall(env, "codex", native.run)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(message, "同名 MCP") || native.command == "" {
 		t.Fatal(message)
-	}
-	if _, err := os.Stat(target); err != nil {
-		t.Fatal("removed unowned skill")
 	}
 }

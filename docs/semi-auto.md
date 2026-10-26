@@ -20,7 +20,7 @@ Agent 在方案确认前做分析、记录需求和提交方案。首次确认�
 
 ## 方案写什么
 
-方案正文说明为什么做、成功标准、核心做法和具体步骤。TaskBelay 提供 taskbelay-write-technical-plans 和 taskbelay-write-a-well-document 两个 skill，分别用于写作和自查。
+方案正文说明为什么做、成功标准、核心做法和具体步骤。
 
 提交时附三项清单，TaskBelay 整理成末尾的“涉及的改动”：
 

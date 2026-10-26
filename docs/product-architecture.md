@@ -64,7 +64,7 @@ flowchart LR
 
 TaskBelay 要在三个平台上接入两个 Agent，检查各种语言的代码。项目结构围绕四处差异来组织：
 
-- **Agent**：Claude Code 和 Codex 的 hook 输入输出格式、工具名、配置文件和 skill 目录各不相同。
+- **Agent**：Claude Code 和 Codex 的 hook 输入输出格式、工具名和配置文件各不相同。
 - **平台**：Windows 和另外两个平台的用户目录、程序文件名、hook 命令的写法不同；macOS 和 Linux 之间在这些方面相同。
 - **命令写法**：Agent 运行的命令有 POSIX 和 PowerShell 两种写法，用哪种取决于 Agent 和平台。
 - **编程语言**：各种语言的接口、错误类型、对外入口、测试框架写法不同，运行一条用例的方式也不同。
@@ -102,9 +102,6 @@ internal/
     rust/
   codescan/             代码分析：用 tree-sitter 解析源文件，得到声明、引用、改动声明和各种用法
   testrun/              运行用例：单独运行一条用例、读出执行过的行，在临时副本里做变异
-skills/                 内置的两个 skill。这个目录本身是一个 Go 包，用 go:embed 把两个 skill 打包进程序，适配器安装时复制给 Agent
-  taskbelay-write-technical-plans/
-  taskbelay-write-a-well-document/
 eval/                   历史评估说明；本机 results/ 保留旧证据，不随 Git 分发
 ```
 
@@ -120,7 +117,6 @@ flowchart TB
     CMD --> MCPS["mcpserver"]
 
     AGENT --> PLATFORM["platform"]
-    AGENT --> SKILLS["skills"]
     AGENT --> EVENT["event"]
     HOOK --> EVENT
     HOOK --> LEDGER
@@ -150,7 +146,7 @@ flowchart TB
     class CMD entry;
     class AGENT,PLATFORM,SHELL,LANG diff;
     class EVENT,HOOK,MCPS,CHECK,PLAN,SUMMARY logic;
-    class CODESCAN,TESTRUN,GITSTATE,LEDGER,SKILLS data;
+    class CODESCAN,TESTRUN,GITSTATE,LEDGER data;
 ```
 
 橙色是放平台、Agent、命令写法和语言差异的地方。`hook` 只认识 `event` 里的统一事件，不导入任何 Agent 的适配器；一次 hook 调用由 `cmd/taskbelay` 串起来：找到对应的适配器，把输入转成统一事件，交给 `hook` 处理，再把得到的决定交回适配器，转成这个 Agent 要的输出。
@@ -186,7 +182,7 @@ type Adapter interface {
 }
 ```
 
-适配器负责这个 Agent 的全部特殊之处：工具名对应哪种事件，命令按哪种写法解析，决定写成什么 JSON，配置文件和 skill 目录在哪里，hook 条目怎样写。这些具体是什么，见 [Agent 接入](product-agent-integration.md)。两个 Agent 的 hook 配置结构相同，用到的输出字段也相同，这两部分放在 `hookjson` 里共用；修改配置文件时保持用户原有内容和键的顺序不变。
+适配器负责这个 Agent 的全部特殊之处：工具名对应哪种事件，命令按哪种写法解析，决定写成什么 JSON，配置文件在哪里，hook 条目怎样写。这些具体是什么，见 [Agent 接入](product-agent-integration.md)。两个 Agent 的 hook 配置结构相同，用到的输出字段也相同，这两部分放在 `hookjson` 里共用；修改配置文件时保持用户原有内容和键的顺序不变。
 
 MCP 的原生身份字段也由适配层读取，入口负责把身份交给共用账本。Claude Code 的调用身份事件只做短事务登记，不采集完整快照、不检查工具业务参数，也不返回权限决定。MCP 进程随后按同一工作区、session 和原生工具调用编号回读轮次；字段或前置记录缺失时拒绝身份不明的写入，仍允许只读查询。
 

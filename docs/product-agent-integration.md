@@ -1,6 +1,6 @@
 # Agent 接入
 
-TaskBelay 通过 hook 记录开发过程，通过 MCP 让 Agent 保存需求、方案和决定，通过 skill 提供方案写作方法。平台和 Agent 的格式差异放在适配器里，任务和判定逻辑共用。
+TaskBelay 通过 hook 记录开发过程，通过 MCP 让 Agent 保存需求、方案和决定。平台和 Agent 的格式差异放在适配器里，任务和判定逻辑共用。
 
 ## 接入方式
 
@@ -99,7 +99,6 @@ Stop 超时设为 300 秒，动态检查自己的预算是 120 秒。只提示�
 | --- | --- | --- |
 | hook 配置 | `~/.claude/settings.json` 的 hooks | `~/.codex/hooks.json` |
 | MCP 注册 | `claude mcp add --scope user` | `codex mcp add` |
-| skill 目录 | `~/.claude/skills/` | `~/.agents/skills/` |
 | hook 生效 | 安装后新 session | 用户用 `/hooks` 确认信任后 |
 | 轮次 | prompt_id | turn_id |
 | 验证结果 | 按成功、失败或中断事件记录 | 没有可核对退出状态时记未知 |
@@ -162,7 +161,6 @@ macOS、Linux 安装到 `~/.local/bin/taskbelay`，将该目录加入 bash、zsh
 
 1. 在 Claude Code 的 `settings.json` 的 `hooks` 里加入 8 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 三个，分别匹配 `Bash|PowerShell`、`Edit|Write|NotebookEdit`、`^mcp__taskbelay__.*$`，第三个只记录 MCP 调用身份；PostToolUse、PostToolUseFailure 各一个，匹配 `Bash|PowerShell|Edit|Write|NotebookEdit`。每个条目用 exec 形式写 taskbelay 的绝对路径和参数，绝对路径保证 Agent 运行时找得到它。Stop 的超时设为 300 秒，其他设为 30 秒。用户原有的配置保持不动。
 2. 运行 `claude mcp add --scope user taskbelay -- <taskbelay 的绝对路径> mcp`。
-3. 安装两个 skill。
 
 写入的 hook 条目是这个样子（只列出两个，路径以 macOS 为例，Windows 上是 taskbelay.exe 的路径）：
 
@@ -192,16 +190,13 @@ macOS、Linux 安装到 `~/.local/bin/taskbelay`，将该目录加入 bash、zsh
 
 1. 在 Codex 的 `hooks.json` 里加入 6 个条目：SessionStart、UserPromptSubmit、Stop 各一个；PreToolUse 两个，一个匹配 `Bash`，一个匹配 `apply_patch`；PostToolUse 一个，匹配 `Bash|apply_patch`。命令的写法见上一节“三个平台的差异”，超时和 Claude Code 相同。
 2. 运行 `codex mcp add taskbelay -- <taskbelay 的绝对路径> mcp`。
-3. 安装两个 skill。
-4. 提示用户打开 Codex，用 `/hooks` 确认信任 TaskBelay 的 hook。不确认的话，hook 不会运行。
-
-**两个 skill 怎样安装。** 两个 skill 的文件内置在 TaskBelay 项目的 `skills/` 目录里，编译时打包进程序。安装时，把它们复制到 Agent 的 skill 目录，每个 skill 一个子目录：`taskbelay-write-technical-plans/` 和 `taskbelay-write-a-well-document/`。目录里已经有同名的子目录时，保留用户原有的那份。TaskBelay 在自己复制过去的目录里放一个 `.taskbelay` 标记文件，卸载时只删除带这个标记的目录。
+3. 提示用户打开 Codex，用 `/hooks` 确认信任 TaskBelay 的 hook。不确认的话，hook 不会运行。
 
 两条安装命令都可以重复运行，重复运行只更新 TaskBelay 自己的条目。安装写的是用户级配置，对这台电脑上所有的 git 工作区生效；配置文件是符号链接时，修改它指向的文件。安装前先检查版本：git 要 2.5 或更高，安装 Claude Code 的接入时 Claude Code 要 2.1.139 或更高，不满足时报错并说明要求，不写入任何配置。安装时找不到 `claude` 或 `codex` 命令，TaskBelay 会报错，并打印需要手动写入的配置。
 
 Codex 允许在 `hooks.json` 或 `config.toml` 中声明 hook。同一个配置层同时包含两种事件定义时，两边都会加载，但启动时会提示 `prefer a single representation for this layer`。TaskBelay 安装器只维护 `hooks.json`，不会自动迁移用户在 `config.toml` 中定义的 hook。遇到该提示时，先备份两个文件，将原有事件组完整合并到 `hooks.json`，再从 `config.toml` 移除对应的事件定义；保留其他配置以及 `[hooks.state]` 中由 Codex 管理的启用和信任记录。迁移不得改变命令、匹配条件或超时，也不手工补写信任记录；来源路径变化后，按 `/hooks` 提示重新核对需要信任的条目。配置来源与信任机制见 [Codex hooks 文档](https://developers.openai.com/codex/hooks)。
 
-**卸载：`taskbelay uninstall claude`、`taskbelay uninstall codex`。** 删除命令里带 taskbelay 路径和 `hook` 子命令的条目，运行 `claude mcp remove --scope user taskbelay` 或 `codex mcp remove taskbelay`，再删除带 `.taskbelay` 标记的 skill 目录。任务账本里的数据保留。
+**卸载：`taskbelay uninstall claude`、`taskbelay uninstall codex`。** 删除命令里带 taskbelay 路径和 `hook` 子命令的条目，运行 `claude mcp remove --scope user taskbelay` 或 `codex mcp remove taskbelay`。任务账本里的数据保留。
 
 ## TaskBelay 出错时
 
@@ -217,4 +212,3 @@ TaskBelay 自己出了问题，比如数据库打不开、git 命令失败、代
 - [Claude Code 工具说明（含 PowerShell 工具）](https://code.claude.com/docs/en/tools-reference)
 - [Codex hooks 文档](https://developers.openai.com/codex/hooks)
 - [Codex MCP 文档](https://developers.openai.com/codex/mcp)
-- [Codex skill 文档](https://developers.openai.com/codex/skills)
