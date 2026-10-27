@@ -1,6 +1,7 @@
 package codex
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -34,6 +35,10 @@ func (Adapter) ParseEvent(hook string, data []byte) (event.Event, error) {
 		return event.Event{}, err
 	}
 	e, err := hookjson.Base(in, "codex", in.TurnID)
+	if err == nil && e.Kind == event.UserPrompt {
+		// Codex 的追加消息会复用 turn_id；原文摘要区分消息并保持重送幂等。
+		e.MessageID = fmt.Sprintf("%s:%x", in.TurnID, sha256.Sum256([]byte(in.Prompt)))
+	}
 	if err != nil || e.Kind != "" {
 		return e, err
 	}
@@ -88,7 +93,7 @@ func (Adapter) ParseEvent(hook string, data []byte) (event.Event, error) {
 		e.Kind = event.ToolEnd
 		e.Result = &event.ToolResult{State: event.Unknown, Output: string(in.Response)}
 		if e.Command != nil {
-			e.Result = commandResult(in.Response)
+			e.Result = commandResult(in)
 		}
 		e.Result.Edits = e.Edits
 	}

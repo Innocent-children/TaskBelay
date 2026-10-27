@@ -20,6 +20,7 @@ type Input struct {
 	SessionID   string          `json:"session_id"`
 	PromptID    string          `json:"prompt_id"`
 	TurnID      string          `json:"turn_id"`
+	Transcript  string          `json:"transcript_path"`
 	CWD         string          `json:"cwd"`
 	Event       string          `json:"hook_event_name"`
 	Source      string          `json:"source"`

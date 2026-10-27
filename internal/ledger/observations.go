@@ -237,11 +237,13 @@ func (s *Store) SaveObservation(ctx context.Context, view ObservationView, obser
 		return err
 	}
 	defer tx.Rollback()
-	var latest int64
-	if err := tx.QueryRowContext(ctx, "SELECT latest_observation FROM workspaces WHERE id=?", observation.WorkspaceID).Scan(&latest); err != nil {
+	var latest, revision int64
+	var current gitstate.Context
+	if err := tx.QueryRowContext(ctx, "SELECT latest_observation,record_revision,branch,head FROM workspaces WHERE id=?", observation.WorkspaceID).Scan(&latest, &revision, &current.Branch, &current.HEAD); err != nil {
 		return err
 	}
-	if latest != view.LatestID {
+	// 只增加观察编号而没有改变文件或 Git 上下文时，原基线仍有效。
+	if latest != view.LatestID && (view.LatestID == 0 || revision != view.Revision || current != view.Context) {
 		return ErrObservationConflict
 	}
 	if edit != nil {

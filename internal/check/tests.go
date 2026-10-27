@@ -47,15 +47,42 @@ func (s *staticAnalysis) tests() {
 	}
 	declarations := s.after.Declarations()
 	byName := map[string][]string{}
+	productionLocations := map[string]bool{}
 	for id, d := range declarations {
 		byName[d.Name] = append(byName[d.Name], id)
+		if !d.Test && !excluded(s.after.Files[d.File]) {
+			productionLocations[d.Location()] = true
+		}
 	}
 	complete := true
+	needsTestInventory := false
+	for _, change := range s.changes {
+		d := change.After
+		if d == nil {
+			d = change.Before
+		}
+		if !d.Test && change.Detail != "format" && change.Detail != "comment" {
+			needsTestInventory = true
+			break
+		}
+	}
+	for _, requirement := range s.view.Requirements {
+		if requirement.Status == "revoked" {
+			continue
+		}
+		for _, location := range requirement.ImplementedBy {
+			if location.Pending == "" && productionLocations[location.At] {
+				needsTestInventory = true
+			}
+		}
+	}
 	for _, snapshot := range []codescan.Snapshot{s.before, s.after} {
 		for _, file := range snapshot.Files {
 			if (file.Kind.Test || len(file.Tests) > 0) && !file.Kind.Generated && !file.Kind.Dependency && !file.Operations["tests"].Complete {
 				complete = false
-				s.gap(file.Path, "tests", file.Operations["tests"].Reason)
+				if needsTestInventory || s.fileChanged(file.Path) {
+					s.gap(file.Path, "tests", file.Operations["tests"].Reason)
+				}
 			}
 		}
 	}

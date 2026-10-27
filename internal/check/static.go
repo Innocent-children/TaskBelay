@@ -15,7 +15,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 )
 
-const RulesVersion = "D1-D8-E1-S1-S2-T3-T6-v3"
+const RulesVersion = "D1-D8-E1-S1-S2-T3-T6-v4"
 const CapabilitiesVersion = "gotreesitter-0.56.0-facts-tests-v3"
 
 type staticAnalysis struct {
@@ -74,7 +74,7 @@ func staticCheck(ctx context.Context, input ledger.CheckInput, view ledger.TaskV
 	s.conventions = baselineConventions(before)
 	for _, snapshot := range []codescan.Snapshot{before, after} {
 		for path, file := range snapshot.Files {
-			if excluded(file) {
+			if excluded(file) || !s.fileChanged(path) {
 				continue
 			}
 			for _, missing := range file.Missing {
@@ -178,6 +178,14 @@ func report(view ledger.TaskView, changes []codescan.Change) ledger.DeliveryRepo
 
 func (s *staticAnalysis) scope(rule, at string) {
 	s.evaluated[ledger.CheckScope(rule, at)] = true
+}
+
+func (s *staticAnalysis) fileChanged(path string) bool {
+	before, after := s.before.Files[path], s.after.Files[path]
+	if before == nil || after == nil {
+		return before != after
+	}
+	return before.Blob != after.Blob || before.Mode != after.Mode
 }
 
 func (s *staticAnalysis) gap(at, operation, reason string) {
@@ -316,6 +324,7 @@ func (s *staticAnalysis) unused(d codescan.Declaration) {
 	for _, file := range s.after.Files {
 		if !excluded(file) && file.Kind.Source && (!file.CodeComplete || !file.Operations["references"].Complete || !file.Operations["usage"].Complete || !file.Operations["entries"].Complete) {
 			complete = false
+			s.gap(file.Path, "D1", "引用、用法或隐式入口未完整核对，不能确认新增声明没有使用："+at)
 		}
 	}
 	issue := s.add("D1", at, "unused", "在已核对范围内未找到这个新增声明的非测试使用。", "核对当前需求、公开 API 或间接调用；仅在来源和用法均明确时精简自己的声明。", evidence...)
@@ -402,6 +411,7 @@ func (s *staticAnalysis) entries() {
 			for _, prior := range s.before.Files {
 				if !excluded(prior) && prior.Kind.Language == file.Kind.Language && prior.Kind.Source && !prior.Operations["entries"].Complete {
 					complete = false
+					s.gap(prior.Path, "D3", "起点入口未完整核对，不能确认入口是新增还是移动："+at)
 				}
 			}
 			if agent && !mixed && complete {

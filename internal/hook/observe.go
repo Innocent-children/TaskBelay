@@ -33,6 +33,14 @@ func (o Observer) observation(e event.Event, task, trigger string, view ledger.O
  * 导致完整观察与目标文件核对之间产生虚假的工作区更新。
  */
 func (o Observer) Observe(ctx context.Context, e event.Event, task string) (ledger.Observation, error) {
+	observation, err := o.observe(ctx, e, task)
+	if errors.Is(err, ledger.ErrObservationConflict) && ctx.Err() == nil {
+		return o.observe(ctx, e, task)
+	}
+	return observation, err
+}
+
+func (o Observer) observe(ctx context.Context, e event.Event, task string) (ledger.Observation, error) {
 	view, err := o.Store.ObservationState(ctx, o.Workspace.ID, nil)
 	if err != nil {
 		return ledger.Observation{}, err
@@ -135,6 +143,14 @@ func (o Observer) retain(ctx context.Context, observation *ledger.Observation, v
  * 不改变核对结果，也不把过期请求记为能够归责的 Agent 编辑。
  */
 func (o Observer) BeforeEdit(ctx context.Context, e event.Event, task, enforcement string) (event.Decision, error) {
+	decision, err := o.beforeEdit(ctx, e, task, enforcement)
+	if errors.Is(err, ledger.ErrObservationConflict) && ctx.Err() == nil {
+		return o.beforeEdit(ctx, e, task, enforcement)
+	}
+	return decision, err
+}
+
+func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforcement string) (event.Decision, error) {
 	if e.Agent == "" || e.SessionID == "" || e.ToolCallID == "" || len(e.Edits) == 0 {
 		return event.Decision{}, fmt.Errorf("编辑事件缺少来源、工具调用编号或目标")
 	}
@@ -266,6 +282,14 @@ func (o Observer) BeforeEdit(ctx context.Context, e event.Event, task, enforceme
 }
 
 func (o Observer) AfterEdit(ctx context.Context, e event.Event, task string) (ledger.Observation, error) {
+	observation, err := o.afterEdit(ctx, e, task)
+	if errors.Is(err, ledger.ErrObservationConflict) && ctx.Err() == nil {
+		return o.afterEdit(ctx, e, task)
+	}
+	return observation, err
+}
+
+func (o Observer) afterEdit(ctx context.Context, e event.Event, task string) (ledger.Observation, error) {
 	record, err := o.Store.Edit(ctx, o.Workspace.ID, e.Agent, e.SessionID, e.ToolCallID)
 	if err != nil {
 		return ledger.Observation{}, err
