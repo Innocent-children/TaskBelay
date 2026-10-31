@@ -59,7 +59,7 @@ func (s *staticAnalysis) testRisk(requirement ledger.Requirement) ledger.TestRis
 			oldLines, newLines, known = codescan.BehaviorLines(s.ctx, *change.Before, *change.After)
 			if !known {
 				result.Complete = false
-				s.gap(change.Location(), "test_risk", "行为变化行比较超过预算或被取消")
+				s.gap(change.Location(), "test_risk", "incomplete", "行为变化行比较超过预算或被取消")
 				continue
 			}
 		}
@@ -78,7 +78,7 @@ func (s *staticAnalysis) testRisk(requirement ledger.Requirement) ledger.TestRis
 			}
 			if !file.CodeComplete || !file.Operations["risks"].Complete {
 				result.Complete = false
-				s.gap(d.Location(), "test_risk", "声明语法或风险调用尚未完整核对")
+				s.gap(d.Location(), "test_risk", file.GapKind("declarations", "risks"), "声明语法或风险调用尚未完整核对")
 			}
 			if d.Shape != nil && d.Shape.SimpleKind == "" {
 				result.Logic = true

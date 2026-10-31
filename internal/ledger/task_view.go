@@ -21,6 +21,7 @@ type TaskView struct {
 	EffectiveDecisions []Note               `json:"effective_decisions"`
 	WorkspaceUpdates   []FileChange         `json:"workspace_updates"`
 	PendingLocations   []Location           `json:"pending_locations"`
+	PendingActions     []string             `json:"pending_actions,omitempty"`
 	LatestCheck        string               `json:"latest_check"`
 	Checks             []CheckRecord        `json:"checks"`
 	Issues             []Issue              `json:"issues"`
@@ -29,7 +30,7 @@ type TaskView struct {
 }
 
 func taskList(ctx context.Context, q queryer, workspace string) ([]TaskRecord, error) {
-	rows, err := q.QueryContext(ctx, "SELECT data FROM tasks WHERE workspace_id=? ORDER BY seq", workspace)
+	rows, err := q.QueryContext(ctx, "SELECT data FROM tasks_v11 WHERE workspace_id=? ORDER BY seq", workspace)
 	if err != nil {
 		return nil, err
 	}
@@ -60,6 +61,12 @@ func (s *Store) TaskView(ctx context.Context, workspace, id string, actor Actor)
 		if id == "" {
 			id = view.CurrentTaskID
 		}
+		if id == "" {
+			view.PendingActions, err = unboundActions(ctx, q, workspace)
+			if err != nil {
+				return err
+			}
+		}
 		view.Candidates, err = taskList(ctx, q, workspace)
 		if err != nil {
 			return err
@@ -85,7 +92,7 @@ func (s *Store) TaskView(ctx context.Context, workspace, id string, actor Actor)
 				return err
 			}
 			startMessage = task.StartMessageID
-			rows, err := q.QueryContext(ctx, "SELECT data FROM requirement_versions WHERE task_id=? ORDER BY rowid", id)
+			rows, err := q.QueryContext(ctx, "SELECT data FROM requirement_versions_v11 WHERE task_id=? ORDER BY rowid", id)
 			if err != nil {
 				return err
 			}
@@ -124,10 +131,14 @@ func (s *Store) TaskView(ctx context.Context, workspace, id string, actor Actor)
 				return err
 			}
 			view.EffectiveDecisions = effectiveDecisions(view.Notes, task, view.Settings, actor)
+			view.PendingActions, err = pendingActions(ctx, q, task, view.Requirements)
+			if err != nil {
+				return err
+			}
 			if err := viewChecks(ctx, q, &view, actor); err != nil {
 				return err
 			}
-			rows, err = q.QueryContext(ctx, `SELECT c.data FROM file_changes c JOIN observations o ON o.id=c.observation_id WHERE o.workspace_id=? AND o.task_id=? ORDER BY c.id`, workspace, id)
+			rows, err = q.QueryContext(ctx, `SELECT c.data FROM file_changes_v11 c JOIN observations_v11 o ON o.id=c.observation_id WHERE o.workspace_id=? AND o.task_id=? ORDER BY c.id`, workspace, id)
 			if err != nil {
 				return err
 			}
@@ -151,7 +162,7 @@ func (s *Store) TaskView(ctx context.Context, workspace, id string, actor Actor)
 				return err
 			}
 			rows.Close()
-			rows, err = q.QueryContext(ctx, "SELECT data FROM task_updates WHERE task_id=? ORDER BY observation_id", id)
+			rows, err = q.QueryContext(ctx, "SELECT data FROM task_updates_v11 WHERE task_id=? ORDER BY observation_id", id)
 			if err != nil {
 				return err
 			}
@@ -174,7 +185,7 @@ func (s *Store) TaskView(ctx context.Context, workspace, id string, actor Actor)
 			}
 			rows.Close()
 		}
-		rows, err := q.QueryContext(ctx, `SELECT data FROM messages WHERE workspace_id=? AND seq>=COALESCE((SELECT seq FROM messages WHERE id=?),0) ORDER BY seq`, workspace, startMessage)
+		rows, err := q.QueryContext(ctx, `SELECT data FROM messages_v11 WHERE workspace_id=? AND seq>=COALESCE((SELECT seq FROM messages_v11 WHERE id=?),0) ORDER BY seq`, workspace, startMessage)
 		if err != nil {
 			return err
 		}
@@ -236,7 +247,7 @@ func (s *Store) TaskView(ctx context.Context, workspace, id string, actor Actor)
 			view.Sources = append(view.Sources, source)
 			if source.Kind == "user_message" && !knownMessages[id] {
 				var data string
-				if err := q.QueryRowContext(ctx, "SELECT data FROM messages WHERE workspace_id=? AND id=?", workspace, id).Scan(&data); err != nil {
+				if err := q.QueryRowContext(ctx, "SELECT data FROM messages_v11 WHERE workspace_id=? AND id=?", workspace, id).Scan(&data); err != nil {
 					return err
 				}
 				var message Message
@@ -304,7 +315,7 @@ func (s *Store) ReconcileBranch(ctx context.Context, workspace, current, previou
 		if err := pauseTask(ctx, tx, workspace, current, time.Now().UTC()); err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, "UPDATE workspaces SET current_task_id='' WHERE id=?", workspace)
+		_, err = tx.ExecContext(ctx, "UPDATE workspaces_v11 SET current_task_id='' WHERE id=?", workspace)
 		return err
 	})
 }

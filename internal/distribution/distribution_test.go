@@ -35,16 +35,24 @@ func managedFixture(t *testing.T) (platform.Env, string) {
 }
 
 func TestUpdateVerifiesDownloadBeforeReplacingProgram(t *testing.T) {
-	for _, scenario := range []string{"success", "download failure", "checksum mismatch", "missing checksum", "duplicate checksum", "busy"} {
+	program := installationProgram(t, "v0.5.1")
+	for _, scenario := range []string{"success", "download failure", "checksum mismatch", "missing checksum", "duplicate checksum", "busy", "missing asset", "invalid metadata", "version mismatch"} {
 		t.Run(scenario, func(t *testing.T) {
 			env, exe := managedFixture(t)
 			asset := "taskbelay-" + runtime.GOOS + "-" + runtime.GOARCH
 			if runtime.GOOS == "windows" {
 				asset += ".exe"
 			}
-			payload := []byte("new program")
+			payload := program
+			metadata := fmt.Sprintf(`{"version":"v0.5.1","revision":%q,"assets":[%q,"SHA256SUMS"]}`, strings.Repeat("a", 40), asset)
 			manifest := fmt.Sprintf("%x  %s\n", sha256.Sum256(payload), asset)
 			switch scenario {
+			case "missing asset":
+				metadata = strings.ReplaceAll(metadata, fmt.Sprintf("%q,", asset), "")
+			case "invalid metadata":
+				metadata = strings.ReplaceAll(metadata, "v0.5.1", "v00.5.1")
+			case "version mismatch":
+				metadata = strings.ReplaceAll(metadata, "v0.5.1", "v0.5.2")
 			case "checksum mismatch":
 				payload = []byte("corrupted download")
 			case "missing checksum":
@@ -57,16 +65,18 @@ func TestUpdateVerifiesDownloadBeforeReplacingProgram(t *testing.T) {
 				}
 			}
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path == "/SHA256SUMS" {
+				if r.URL.Path == "/latest/download/release-manifest.json" {
+					fmt.Fprint(w, metadata)
+				} else if r.URL.Path == "/download/v0.5.1/SHA256SUMS" || scenario == "version mismatch" && r.URL.Path == "/download/v0.5.2/SHA256SUMS" {
 					fmt.Fprint(w, manifest)
-				} else if r.URL.Path == "/"+asset && scenario != "download failure" {
+				} else if (r.URL.Path == "/download/v0.5.1/"+asset || scenario == "version mismatch" && r.URL.Path == "/download/v0.5.2/"+asset) && scenario != "download failure" {
 					w.Write(payload)
 				} else {
 					http.NotFound(w, r)
 				}
 			}))
 			defer server.Close()
-			_, err := update(t.Context(), env, exe, server.URL+"/", server.Client())
+			_, err := update(t.Context(), env, exe, "v0.5.0", server.URL+"/", server.Client())
 			if (err == nil) != (scenario == "success") {
 				t.Fatalf("unexpected update result: %v", err)
 			}

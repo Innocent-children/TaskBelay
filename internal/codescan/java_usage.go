@@ -45,6 +45,7 @@ func (a *javaAnalysis) analyzeUsage(snapshot *Snapshot) {
 				continue
 			}
 			item := &javaDeclaration{d: d, p: p, n: n}
+			d.Visibility = Visibility{Scope: java.VisibilityScope(p.hasModifier(n, "private"))}
 			a.declarations = append(a.declarations, item)
 			a.byName[d.Name] = append(a.byName[d.Name], item)
 			if len(p.declarations[n]) == 1 {

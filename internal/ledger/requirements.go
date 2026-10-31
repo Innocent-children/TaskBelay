@@ -13,7 +13,7 @@ import (
 func latestRequirement(ctx context.Context, q queryer, task, id string) (Requirement, error) {
 	var requirement Requirement
 	var data string
-	if err := q.QueryRowContext(ctx, "SELECT data FROM requirement_versions WHERE task_id=? AND id=? ORDER BY revision DESC LIMIT 1", task, id).Scan(&data); err != nil {
+	if err := q.QueryRowContext(ctx, "SELECT data FROM requirement_versions_v11 WHERE task_id=? AND id=? ORDER BY revision DESC LIMIT 1", task, id).Scan(&data); err != nil {
 		return requirement, err
 	}
 	err := json.Unmarshal([]byte(data), &requirement)
@@ -25,7 +25,7 @@ func latestRequirement(ctx context.Context, q queryer, task, id string) (Require
 
 func currentLocations(ctx context.Context, q queryer, requirement *Requirement) error {
 	var data string
-	err := q.QueryRowContext(ctx, "SELECT data FROM requirement_locations WHERE task_id=? AND id=? AND revision=?", requirement.TaskID, requirement.ID, requirement.Revision).Scan(&data)
+	err := q.QueryRowContext(ctx, "SELECT data FROM requirement_locations_v11 WHERE task_id=? AND id=? AND revision=?", requirement.TaskID, requirement.ID, requirement.Revision).Scan(&data)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -73,7 +73,7 @@ func saveLocations(ctx context.Context, tx *sql.Tx, workspace string, observatio
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO requirement_locations VALUES (?,?,?,?,?)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO requirement_locations_v11 VALUES (?,?,?,?,?)
 ON CONFLICT(task_id,id,revision) DO UPDATE SET observation_id=excluded.observation_id,data=excluded.data`, requirement.TaskID, requirement.ID, requirement.Revision, observationID, string(data)); err != nil {
 			return err
 		}
@@ -182,7 +182,7 @@ func (s *Store) SaveRequirement(ctx context.Context, call Call, current string, 
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO requirement_versions VALUES (?,?,?,?)", task.ID, result.ID, result.Revision, string(data)); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO requirement_versions_v11 VALUES (?,?,?,?)", task.ID, result.ID, result.Revision, string(data)); err != nil {
 			return err
 		}
 		// 进度变化不撤回范围授权；目标、验收或来源改变时，旧目标授权不能沿用。

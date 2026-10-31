@@ -42,7 +42,22 @@ func Format(record ledger.CheckRecord, hintLimit int) string {
 	}
 	fmt.Fprintf(&text, "TaskBelay %s 检查：%s；任务=%s；结论=%s；输入=%s\n", record.Depth, record.Status, record.Input.TaskID, record.Level, record.InputVersion)
 	fmt.Fprintf(&text, "检查时间：%s 至 %s\n", record.StartedAt.Format("2006-01-02T15:04:05Z07:00"), record.FinishedAt.Format("2006-01-02T15:04:05Z07:00"))
+	counts := record.GapCounts()
+	fmt.Fprintf(&text, "检查范围：%d 项无法判断；%d 项解析或执行错误；%d 项未完成。\n", counts["unsupported"], counts["error"], counts["incomplete"])
+	if record.Reused {
+		fmt.Fprintln(&text, "本次复用上述执行结果，未知判断一并保留。")
+	}
 	fmt.Fprintln(&text, FormatIssues(record.Issues, hintLimit))
+	if len(record.Unconfirmed) > 0 {
+		fmt.Fprintf(&text, "历史未解决问题：%d 处本次尚未确认，不作为当前拦截依据。\n", len(record.Unconfirmed))
+		limit := len(record.Unconfirmed)
+		if hintLimit > 0 {
+			limit = min(limit, hintLimit)
+		}
+		for _, issue := range record.Unconfirmed[:limit] {
+			fmt.Fprintf(&text, "  [%s 本次未确认] %s；编号=%s\n", issue.Rule, issue.At, issue.ID)
+		}
+	}
 	fmt.Fprint(&text, FormatPlans(record.Report.Plans))
 	if dynamic := record.Report.Dynamic; dynamic != nil {
 		fmt.Fprintf(&text, "动态执行：完整=%t；耗时=%s；环境可复用=%t\n", dynamic.Complete, dynamic.Duration, dynamic.Reusable)
@@ -139,10 +154,16 @@ func Format(record ledger.CheckRecord, hintLimit int) string {
 		missingLimit = min(missingLimit, hintLimit)
 	}
 	for _, missing := range record.Missing[:missingLimit] {
-		fmt.Fprintf(&text, "未完成检查：%s %s；%s\n", missing.Operation, missing.At, missing.Reason)
+		label := "未完成检查"
+		if missing.Kind == "unsupported" {
+			label = "无法判断"
+		} else if missing.Kind == "error" {
+			label = "解析或执行错误"
+		}
+		fmt.Fprintf(&text, "%s：%s %s；%s\n", label, missing.Operation, missing.At, missing.Reason)
 	}
 	if missingLimit < len(record.Missing) {
-		fmt.Fprintf(&text, "另有 %d 项未完成检查，可用 taskbelay status 查看。\n", len(record.Missing)-missingLimit)
+		fmt.Fprintf(&text, "另有 %d 项检查缺口，可用 taskbelay status 查看。\n", len(record.Missing)-missingLimit)
 	}
 	for _, notRun := range record.Report.NotRun {
 		fmt.Fprintln(&text, "未运行："+notRun)

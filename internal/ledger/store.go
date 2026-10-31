@@ -136,10 +136,10 @@ func (s *Store) initializeOnce(ctx context.Context) error {
 	if err := conn.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return fmt.Errorf("读取账本版本: %w", err)
 	}
-	if version > 10 {
+	if version > schemaVersion {
 		return fmt.Errorf("不支持账本版本 %d", version)
 	}
-	if version == 10 {
+	if version == schemaVersion {
 		return nil
 	}
 	tx, err := conn.BeginTx(ctx, nil)
@@ -151,10 +151,10 @@ func (s *Store) initializeOnce(ctx context.Context) error {
 	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
-	if version > 10 {
+	if version > schemaVersion {
 		return fmt.Errorf("不支持账本版本 %d", version)
 	}
-	if version == 10 {
+	if version == schemaVersion {
 		return tx.Commit()
 	}
 	if version == 0 {
@@ -220,7 +220,12 @@ PRAGMA user_version=1;
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, retentionSchema); err != nil {
+	if version < 10 {
+		if _, err := tx.ExecContext(ctx, retentionSchema); err != nil {
+			return err
+		}
+	}
+	if err := migrateV11(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -230,21 +235,10 @@ func (s *Store) RegisterWorkspace(ctx context.Context, id, projectID, path strin
 	if id == "" || projectID == "" || path == "" {
 		return fmt.Errorf("工作区身份、项目身份和路径不能为空")
 	}
-	conn, ctx, release, err := s.connection(ctx)
-	if err != nil {
-		return err
-	}
-	defer release()
-	var storedProject, storedPath string
-	err = conn.QueryRowContext(ctx, "SELECT project_id, path FROM workspaces WHERE id=?", id).Scan(&storedProject, &storedPath)
-	if err == nil && storedProject == projectID && storedPath == path {
-		return nil
-	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
-	}
-	_, err = conn.ExecContext(ctx, `INSERT INTO workspaces (id, project_id, path) VALUES (?, ?, ?)
+	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO workspaces_v11 (id, project_id, path) VALUES (?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id, path=excluded.path
-WHERE workspaces.project_id != excluded.project_id OR workspaces.path != excluded.path`, id, projectID, path)
-	return err
+WHERE workspaces_v11.project_id != excluded.project_id OR workspaces_v11.path != excluded.path`, id, projectID, path)
+		return err
+	})
 }

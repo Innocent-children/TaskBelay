@@ -68,6 +68,7 @@ func analyzeGoAPIs(ctx context.Context, snapshot *Snapshot, parsed map[string]*s
 			}
 		}
 		key := path.Dir(name) + ":" + g.packageName
+		file.Package = g.packageName
 		if packages[key] == nil {
 			packages[key] = map[string][]*goBinding{}
 		}
@@ -547,7 +548,7 @@ func (g *goFile) missing(operation string, n *ts.Node, reason string) {
 		return
 	}
 	g.unknown[key] = true
-	g.file.Missing = append(g.file.Missing, Missing{Path: g.file.Path, Operation: operation, Reason: fmt.Sprintf("第 %d 行：%s", n.StartPoint().Row+1, reason)})
+	g.file.Missing = append(g.file.Missing, Missing{Path: g.file.Path, Operation: operation, Reason: fmt.Sprintf("第 %d 行：%s", n.StartPoint().Row+1, reason), Kind: "unsupported"})
 }
 
 func (g *goFile) entry(n *ts.Node, kind, name string) {

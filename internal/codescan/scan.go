@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/Innocent-children/taskbelay/internal/lang"
 	"github.com/Innocent-children/taskbelay/internal/lang/golang"
@@ -41,6 +40,12 @@ func Analyze(ctx context.Context, tree string, sources []Source) Snapshot {
 			"usage":        {Reason: "调用、参数及字段值分析尚未接通"},
 			"tests":        {Reason: "用例枚举与 Runner 尚未接通"},
 		}}
+		for name, operation := range file.Operations {
+			if !operation.Complete {
+				operation.Kind = "unsupported"
+				file.Operations[name] = operation
+			}
+		}
 		result.Files[source.Path] = file
 		if source.Mode != "" && source.Mode != "100644" && source.Mode != "100755" {
 			continue
@@ -49,13 +54,13 @@ func Analyze(ctx context.Context, tree string, sources []Source) Snapshot {
 			continue
 		}
 		if err := ctx.Err(); err != nil {
-			file.Missing = append(file.Missing, Missing{source.Path, "analysis", err.Error()})
+			file.Missing = append(file.Missing, Missing{source.Path, "analysis", err.Error(), "incomplete"})
 		} else {
 			if lang.Manifest(source.Path) {
 				var err error
 				file.Dependencies, err = Dependencies(ctx, source.Path, source.Data)
 				if err != nil {
-					file.Missing = append(file.Missing, Missing{source.Path, "dependencies", err.Error()})
+					file.Missing = append(file.Missing, Missing{source.Path, "dependencies", err.Error(), failureKind(err)})
 					file.Operations["dependencies"] = Operation{Reason: err.Error()}
 				} else {
 					file.Operations["dependencies"] = Operation{Complete: true}
@@ -77,6 +82,18 @@ func Analyze(ctx context.Context, tree string, sources []Source) Snapshot {
 	analyzeGenericUsage(ctx, &result, parsed)
 	result.Missing = nil
 	for _, source := range sources {
+		finishOperations(result.Files[source.Path])
+		file := result.Files[source.Path]
+		for i := range file.Declarations {
+			d := &file.Declarations[i]
+			if d.Visibility.Scope == "" {
+				if d.Usage != nil {
+					d.Visibility.Scope = "language"
+				} else {
+					d.Visibility = Visibility{Scope: "unknown", Kind: "unsupported", Reason: "本语言尚未核对声明可见范围"}
+				}
+			}
+		}
 		result.Missing = append(result.Missing, result.Files[source.Path].Missing...)
 	}
 	return result
@@ -84,9 +101,6 @@ func Analyze(ctx context.Context, tree string, sources []Source) Snapshot {
 
 func tagsQuery(entry *grammars.LangEntry) string {
 	query := grammars.ResolveTagsQuery(*entry)
-	if strings.TrimSpace(query) == "" {
-		return ""
-	}
 	switch entry.Name {
 	case "go":
 		query += golang.Tags
@@ -114,7 +128,7 @@ type syntaxFile struct {
 
 func analyzeCode(ctx context.Context, file *File) *syntaxFile {
 	missing := func(operation string, err error) {
-		file.Missing = append(file.Missing, Missing{file.Path, operation, err.Error()})
+		file.Missing = append(file.Missing, Missing{file.Path, operation, err.Error(), failureKind(err)})
 		file.Operations[operation] = Operation{Reason: err.Error()}
 	}
 	entry := grammars.DetectLanguageByName(file.Kind.Language)

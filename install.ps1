@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($env:OS -ne 'Windows_NT') { throw 'Use install.sh on macOS, Linux or WSL.' }
 if ($Source -and $Version -ne 'latest') { throw '-Source and -Version cannot be combined.' }
-if ($Version -ne 'latest' -and $Version -notmatch '^v[0-9][A-Za-z0-9._-]*$') { throw 'Invalid release tag.' }
+if ($Version -ne 'latest' -and $Version -notmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'Invalid release tag.' }
 $architecture = $env:PROCESSOR_ARCHITECTURE
 if ($env:PROCESSOR_ARCHITEW6432) { $architecture = $env:PROCESSOR_ARCHITEW6432 }
 switch ($architecture) {
@@ -61,8 +61,23 @@ try {
         }
     } else {
         [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-        $base = 'https://github.com/Innocent-children/TaskBelay/releases'
-        if ($Version -eq 'latest') { $base += '/latest/download' } else { $base += '/download/' + $Version }
+        $releases = 'https://github.com/Innocent-children/TaskBelay/releases'
+        if ($Version -eq 'latest') { $base = "$releases/latest/download" } else { $base = "$releases/download/$Version" }
+        $metadataPath = Join-Path $stage 'release-manifest.json'
+        Invoke-WebRequest -UseBasicParsing -Uri "$base/release-manifest.json" -OutFile $metadataPath -TimeoutSec 300
+        $metadata = [IO.File]::ReadAllText($metadataPath) | ConvertFrom-Json
+        $keys = @($metadata.PSObject.Properties.Name)
+        if ($keys.Count -ne 3 -or @($keys | Where-Object { $_ -cnotin @('version', 'revision', 'assets') }).Count -ne 0 -or $metadata.version -isnot [string] -or $metadata.revision -isnot [string] -or $metadata.assets -isnot [Array]) { throw 'Invalid release metadata.' }
+        $assets = @{}
+        foreach ($name in $metadata.assets) {
+            if ($name -isnot [string] -or $assets.ContainsKey($name) -or $name -cnotmatch '^(taskbelay-(darwin|linux)-(amd64|arm64)|taskbelay-windows-(amd64|arm64)\.exe|install\.sh|install\.ps1|SHA256SUMS)$') { throw 'Invalid or duplicate release asset.' }
+            $assets[$name] = $true
+        }
+        $releaseVersion = $metadata.version
+        if ($releaseVersion -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' -or $metadata.revision -cnotmatch '^([0-9a-f]{40}|[0-9a-f]{64})$' -or -not $assets[$asset] -or -not $assets['SHA256SUMS']) { throw 'Invalid release identity or missing platform asset; previous version retained.' }
+        if ($Version -ne 'latest' -and $Version -cne $releaseVersion) { throw 'Release tag does not match metadata; previous version retained.' }
+        $Version = $releaseVersion
+        $base = "$releases/download/$releaseVersion"
         Write-Host "Downloading $asset ($Version)..."
         $manifestPath = Join-Path $stage 'SHA256SUMS'
         Invoke-WebRequest -UseBasicParsing -Uri "$base/SHA256SUMS" -OutFile $manifestPath -TimeoutSec 300
@@ -77,6 +92,7 @@ try {
     }
     $installedVersion = & $staged --version
     if ($LASTEXITCODE -ne 0 -or $installedVersion -notlike 'TaskBelay *') { throw 'Invalid TaskBelay executable; previous version retained.' }
+    if (-not $Source -and -not $installedVersion.StartsWith("TaskBelay $releaseVersion (")) { throw 'Executable version does not match release metadata; previous version retained.' }
     $retired = $null
     if (Test-Path -LiteralPath $target) {
         $retired = Join-Path $installDir ('.taskbelay-retired-' + [Guid]::NewGuid().ToString('N') + '.exe')
@@ -107,6 +123,8 @@ try {
         if (Test-Path -LiteralPath $staged) { Remove-Item -LiteralPath $staged -Force }
         $manifestPath = Join-Path $stage 'SHA256SUMS'
         if (Test-Path -LiteralPath $manifestPath) { Remove-Item -LiteralPath $manifestPath -Force }
+        $metadataPath = Join-Path $stage 'release-manifest.json'
+        if (Test-Path -LiteralPath $metadataPath) { Remove-Item -LiteralPath $metadataPath -Force }
         [IO.Directory]::Delete($stage)
     }
     [IO.Directory]::Delete($installLock)

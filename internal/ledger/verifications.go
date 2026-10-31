@@ -16,7 +16,7 @@ var ErrVerificationChanged = errors.New("验证输入或上一条验证已变化
 
 func verificationByCall(ctx context.Context, q queryer, workspace string, actor Actor) (*VerificationRecord, error) {
 	var data string
-	err := q.QueryRowContext(ctx, "SELECT data FROM verifications WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", workspace, actor.Agent, actor.SessionID, actor.CallID).Scan(&data)
+	err := q.QueryRowContext(ctx, "SELECT data FROM verifications_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", workspace, actor.Agent, actor.SessionID, actor.CallID).Scan(&data)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -40,7 +40,7 @@ func (s *Store) VerificationByCall(ctx context.Context, workspace string, actor 
 
 func previousVerification(ctx context.Context, q queryer, workspace string, actor Actor, key string) (*VerificationRecord, error) {
 	var data string
-	err := q.QueryRowContext(ctx, "SELECT data FROM verifications WHERE workspace_id=? AND agent=? AND session_id=? AND command_key=? AND denied=0 ORDER BY seq DESC LIMIT 1", workspace, actor.Agent, actor.SessionID, key).Scan(&data)
+	err := q.QueryRowContext(ctx, "SELECT data FROM verifications_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND command_key=? AND denied=0 ORDER BY seq DESC LIMIT 1", workspace, actor.Agent, actor.SessionID, key).Scan(&data)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -67,7 +67,7 @@ func saveVerification(ctx context.Context, tx *sql.Tx, record VerificationRecord
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO verifications(id,workspace_id,task_id,agent,session_id,round_id,call_id,command_key,denied,executed,state,data) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+	_, err = tx.ExecContext(ctx, `INSERT INTO verifications_v11(id,workspace_id,task_id,agent,session_id,round_id,call_id,command_key,denied,executed,state,data) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(id) DO UPDATE SET denied=excluded.denied,executed=excluded.executed,state=excluded.state,data=excluded.data`, record.ID, record.WorkspaceID, record.TaskID, record.Actor.Agent, record.Actor.SessionID, record.Actor.RoundID, record.Actor.CallID, record.CommandKey, record.Denied, record.Executed, record.State, string(data))
 	return err
 }
@@ -179,7 +179,7 @@ func (s *Store) BeginVerification(ctx context.Context, record VerificationRecord
  */
 func (s *Store) UnfinishedVerifications(ctx context.Context, workspace string, actor Actor) error {
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		rows, err := tx.QueryContext(ctx, "SELECT data FROM verifications WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=? AND state='running'", workspace, actor.Agent, actor.SessionID, actor.RoundID)
+		rows, err := tx.QueryContext(ctx, "SELECT data FROM verifications_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=? AND state='running'", workspace, actor.Agent, actor.SessionID, actor.RoundID)
 		if err != nil {
 			return err
 		}
@@ -225,7 +225,7 @@ func consumeVerificationRerun(ctx context.Context, tx *sql.Tx, task *TaskRecord,
 			continue
 		}
 		note.Active, note.Consumed = false, true
-		if _, err := tx.ExecContext(ctx, "UPDATE notes SET active=0,consumed=1 WHERE id=?", note.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE notes_v11 SET active=0,consumed=1 WHERE id=?", note.ID); err != nil {
 			return nil, err
 		}
 		task.AuthorizationRevision++
@@ -267,20 +267,20 @@ func (s *Store) EndVerification(ctx context.Context, workspace string, actor Act
 			return err
 		}
 		result.Record = *record
-		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM verifications WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=? AND executed=1 AND denied=0", workspace, actor.Agent, actor.SessionID, record.Actor.RoundID).Scan(&result.Count); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM verifications_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=? AND executed=1 AND denied=0", workspace, actor.Agent, actor.SessionID, record.Actor.RoundID).Scan(&result.Count); err != nil {
 			return err
 		}
 		if result.Count < 7 || beforeExecuted && beforeState == record.State {
 			return nil
 		}
 		var notified bool
-		err = tx.QueryRowContext(ctx, "SELECT notified FROM verification_rounds WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=?", workspace, actor.Agent, actor.SessionID, record.Actor.RoundID).Scan(&notified)
+		err = tx.QueryRowContext(ctx, "SELECT notified FROM verification_rounds_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=?", workspace, actor.Agent, actor.SessionID, record.Actor.RoundID).Scan(&notified)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		result.Notify = !notified || record.State == "failed" || record.UserRequested
 		if result.Notify {
-			_, err = tx.ExecContext(ctx, `INSERT INTO verification_rounds VALUES(?,?,?,?,1) ON CONFLICT(workspace_id,agent,session_id,round_id) DO UPDATE SET notified=1`, workspace, actor.Agent, actor.SessionID, record.Actor.RoundID)
+			_, err = tx.ExecContext(ctx, `INSERT INTO verification_rounds_v11 VALUES(?,?,?,?,1) ON CONFLICT(workspace_id,agent,session_id,round_id) DO UPDATE SET notified=1`, workspace, actor.Agent, actor.SessionID, record.Actor.RoundID)
 		}
 		return err
 	})
@@ -288,7 +288,7 @@ func (s *Store) EndVerification(ctx context.Context, workspace string, actor Act
 }
 
 func readVerifications(ctx context.Context, q queryer, workspace, task string) ([]VerificationRecord, error) {
-	rows, err := q.QueryContext(ctx, "SELECT data FROM verifications WHERE workspace_id=? AND (?='' OR task_id=?) ORDER BY seq", workspace, task, task)
+	rows, err := q.QueryContext(ctx, "SELECT data FROM verifications_v11 WHERE workspace_id=? AND (?='' OR task_id=?) ORDER BY seq", workspace, task, task)
 	if err != nil {
 		return nil, err
 	}

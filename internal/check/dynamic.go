@@ -42,7 +42,7 @@ func runDynamic(ctx context.Context, store *ledger.Store, workspace gitstate.Wor
 	result.Report.NotRun = slices.DeleteFunc(slices.Clone(result.Report.NotRun), func(value string) bool { return value == "动态测试未运行" })
 	missing := func(reason string) {
 		result.Status = ledger.CheckPartial
-		result.Missing = append(result.Missing, ledger.CheckGap{Operation: "tests", Reason: reason})
+		result.Missing = append(result.Missing, ledger.CheckGap{Operation: "tests", Kind: "incomplete", Reason: reason})
 	}
 	if static.Status == ledger.CheckExpired {
 		missing("静态输入已过期，本次不启动测试")
@@ -74,6 +74,7 @@ func runDynamic(ctx context.Context, store *ledger.Store, workspace gitstate.Wor
 					current, err := workspace.Capture(ctx)
 					currentInput, inputErr := store.CheckInput(ctx, workspace.ID, static.Input.TaskID, actor, static.Input.Rules, static.Input.Capabilities)
 					if err == nil && inputErr == nil && currentInput.Version() == static.InputVersion && current.Complete() && current.Tree == static.Input.Tree {
+						cached.Reused = true
 						cached.Report.Verifications = view.Verifications
 						cached.Report.ValidationNotes = validationNotes(view)
 						ledger.DebugRecord(ctx, "check.cache", map[string]any{"depth": "tests", "reused": true, "record_id": cached.ID, "input_version": static.InputVersion})

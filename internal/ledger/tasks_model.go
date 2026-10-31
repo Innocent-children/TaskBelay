@@ -292,6 +292,9 @@ func (s *Store) write(ctx context.Context, f func(context.Context, *sql.Tx) erro
 		return err
 	}
 	defer tx.Rollback()
+	if err := ensureSchema(ctx, tx); err != nil {
+		return err
+	}
 	if err := f(ctx, tx); err != nil {
 		return err
 	}
@@ -308,6 +311,9 @@ func (s *Store) read(ctx context.Context, f func(context.Context, queryer) error
 		return err
 	}
 	defer conn.ExecContext(context.Background(), "ROLLBACK")
+	if err := ensureSchema(ctx, conn); err != nil {
+		return err
+	}
 	if err := f(ctx, conn); err != nil {
 		return err
 	}
@@ -317,7 +323,7 @@ func (s *Store) read(ctx context.Context, f func(context.Context, queryer) error
 
 func replay(ctx context.Context, q queryer, call Call, result any) (bool, error) {
 	var operation, hash, data string
-	err := q.QueryRowContext(ctx, "SELECT operation,input_hash,result FROM task_calls WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID, call.Actor.CallID).Scan(&operation, &hash, &data)
+	err := q.QueryRowContext(ctx, "SELECT operation,input_hash,result FROM task_calls_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID, call.Actor.CallID).Scan(&operation, &hash, &data)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -345,6 +351,6 @@ func saveCall(ctx context.Context, tx *sql.Tx, call Call, result any) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO task_calls VALUES (?,?,?,?,?,?,?,?)", call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID, call.Actor.CallID, call.Operation, call.InputHash, string(data), time.Now().UTC().Format(time.RFC3339Nano))
+	_, err = tx.ExecContext(ctx, "INSERT INTO task_calls_v11 VALUES (?,?,?,?,?,?,?,?)", call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID, call.Actor.CallID, call.Operation, call.InputHash, string(data), time.Now().UTC().Format(time.RFC3339Nano))
 	return err
 }

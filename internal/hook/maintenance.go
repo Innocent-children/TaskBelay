@@ -5,15 +5,38 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/Innocent-children/taskbelay/internal/gitstate"
 )
 
 /**
- * 清理使用调用入口的剩余时间，不在快速工具前路径或后台循环运行。
+ * 清理共用入口提供的独立维护预算，不在快速工具前路径或后台循环运行。
  * 记录先提交，耗时的 git 引用操作随后执行；失败项留待下次入口并可查看。
  */
 func (t Tasks) Maintain(ctx context.Context, now time.Time) error {
 	if err := t.Store.Prune(ctx, t.Workspace.ID, now); err != nil {
 		return err
+	}
+	refs, err := t.Workspace.OldSnapshots(ctx, now.Add(-30*24*time.Hour))
+	if err != nil {
+		return err
+	}
+	queued := 0
+	for _, ref := range refs {
+		if queued >= 32 {
+			break
+		}
+		used, err := t.Store.RefInUse(ctx, ref.Ref)
+		if err != nil {
+			return err
+		}
+		if used {
+			continue
+		}
+		if err := t.Store.StageRefCleanup(ctx, ref, now); err != nil {
+			return err
+		}
+		queued++
 	}
 	items, err := t.Store.CleanupItems(ctx, t.Workspace.ID, now)
 	if err != nil {
@@ -31,7 +54,7 @@ func (t Tasks) Maintain(ctx context.Context, now time.Time) error {
 			var used bool
 			used, err = t.Store.RefInUse(ctx, item.Target)
 			if err == nil && !used {
-				err = t.Workspace.ReleaseSnapshot(ctx, item.Target)
+				err = t.Workspace.ReleaseSnapshot(ctx, gitstate.SnapshotRef{Ref: item.Target, Object: item.Expected, WorkspaceID: item.WorkspaceID})
 			}
 			if err == nil {
 				err = t.Store.FinishCleanup(ctx, item.ID, nil)
@@ -46,28 +69,8 @@ func (t Tasks) Maintain(ctx context.Context, now time.Time) error {
 			}
 		}
 	}
-	// 引用先于观察事务写入。崩溃留下的未入账引用也按三十天清理，
-	// 年龄门槛排除正常的一秒观察窗口；仍有任何账本引用时继续保留。
-	refs, err := t.Workspace.OldSnapshots(ctx, now.Add(-30*24*time.Hour))
-	if err != nil {
-		return errors.Join(append(failures, err)...)
-	}
-	removed := 0
-	for _, ref := range refs {
-		if removed >= 32 {
-			break
-		}
-		used, err := t.Store.RefInUse(ctx, ref)
-		if err != nil {
-			return errors.Join(append(failures, err)...)
-		}
-		if used {
-			continue
-		}
-		if err := t.Workspace.ReleaseSnapshot(ctx, ref); err != nil {
-			failures = append(failures, err)
-		}
-		removed++
+	if err := t.Store.Compact(ctx, t.Workspace.ID); err != nil {
+		failures = append(failures, err)
 	}
 	return errors.Join(failures...)
 }

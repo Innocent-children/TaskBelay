@@ -96,9 +96,9 @@ func analyzeGenericUsage(ctx context.Context, snapshot *Snapshot, parsed map[str
 		a.genericShape(item)
 	}
 	for _, p := range a.files {
-		p.file.Operations["entries"] = Operation{Reason: "文档未定义本语言的专用入口规则"}
-		p.file.Operations["risks"] = Operation{Reason: "文档未定义本语言的专用风险规则"}
-		p.file.Operations["tests"] = Operation{Reason: "文档未定义本语言的 Runner"}
+		p.file.Operations["entries"] = Operation{Reason: "文档未定义本语言的专用入口规则", Kind: "unsupported"}
+		p.file.Operations["risks"] = Operation{Reason: "文档未定义本语言的专用风险规则", Kind: "unsupported"}
+		p.file.Operations["tests"] = Operation{Reason: "文档未定义本语言的 Runner", Kind: "unsupported"}
 		p.file.Operations["usage"] = Operation{Complete: true}
 		for _, missing := range p.file.Missing {
 			if missing.Operation == "usage" || missing.Operation == "syntax" {
@@ -167,7 +167,7 @@ func (p *genericFile) use(n *ts.Node, value string) Use {
 	return Use{File: p.file.Path, Declaration: owner, Value: value, Span: span(n), Test: test, Candidate: true}
 }
 func (p *genericFile) missing(n *ts.Node, reason string) {
-	entry := Missing{p.file.Path, "usage", fmt.Sprintf("第 %d 行：%s", n.StartPoint().Row+1, reason)}
+	entry := Missing{p.file.Path, "usage", fmt.Sprintf("第 %d 行：%s", n.StartPoint().Row+1, reason), "unsupported"}
 	if !slices.Contains(p.file.Missing, entry) {
 		p.file.Missing = append(p.file.Missing, entry)
 	}

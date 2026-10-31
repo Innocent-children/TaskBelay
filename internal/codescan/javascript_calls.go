@@ -72,6 +72,9 @@ func (a *jsAnalysis) calls(p *jsFile, n *ts.Node) {
 		targets := a.callable(p, callee)
 		if len(targets) == 1 {
 			target := targets[0]
+			use := p.use(n, target.d.ID)
+			use.Candidate = false
+			addUse(&target.d.Usage.References, use)
 			if target.class {
 				constructors := a.methods(target.d.ID, "constructor", map[string]bool{})
 				if len(constructors) == 1 {

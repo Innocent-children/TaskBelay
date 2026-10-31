@@ -43,7 +43,7 @@ func finishTests(ctx context.Context, file *File) {
 		}
 		if len(test.Unknown) > 0 {
 			complete = false
-			file.Missing = append(file.Missing, Missing{file.Path, "tests", test.Name + ": " + strings.Join(test.Unknown, "；")})
+			file.Missing = append(file.Missing, Missing{file.Path, "tests", test.Name + ": " + strings.Join(test.Unknown, "；"), "unsupported"})
 		}
 	}
 	file.Operations["tests"] = Operation{Complete: complete}

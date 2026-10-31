@@ -122,7 +122,7 @@ func Guidance(settings ledger.EffectiveSettings) string {
 	if settings.Values["analysis.tests"].Value == "on" {
 		tests = "开启"
 	}
-	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新状态；用 note_add 记录决定和未完成的下一步。工作区更新不新增授权，不恢复旧代码覆盖当前修改。"+enforcement+"动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
+	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新状态；用 note_add 记录决定和未完成的下一步。工作区更新不新增授权，不恢复旧代码覆盖当前修改。"+enforcement+"需要可核对编辑记录时使用编辑工具；shell 写入按实际取得的信息记录。动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
 }
 
 func GuidanceVersion(settings ledger.EffectiveSettings) string {
@@ -160,6 +160,7 @@ func Version(input Input) string {
 		Depth, Input string
 		Status       ledger.CheckStatus
 		Issues       []issueVersion
+		Unconfirmed  []issueVersion
 		Missing      []ledger.CheckGap
 	}
 	var checks []checkVersion
@@ -167,6 +168,9 @@ func Version(input Input) string {
 		check := checkVersion{Depth: record.Depth, Input: record.InputVersion, Status: record.Status, Missing: record.Missing}
 		for _, issue := range record.Issues {
 			check.Issues = append(check.Issues, issueVersion{issue.ID, issue.Rule, issue.At, issue.FactKey, issue.Status, issue.Facts})
+		}
+		for _, issue := range record.Unconfirmed {
+			check.Unconfirmed = append(check.Unconfirmed, issueVersion{issue.ID, issue.Rule, issue.At, issue.FactKey, issue.Status, issue.Facts})
 		}
 		checks = append(checks, check)
 	}
@@ -179,20 +183,21 @@ func Version(input Input) string {
 		verifications = append(verifications, verificationVersion{record.ID, record.State, record.Denied, record.Executed})
 	}
 	data, _ := json.Marshal(struct {
-		Task          taskVersion
-		Candidates    []taskVersion
-		Content       int64
-		Branch        string
-		HEAD          string
-		Settings      string
-		Guidance      string
-		Decisions     []string
-		Peers         []ledger.SessionActivity
-		Check         string
-		Checks        []checkVersion
-		Verifications []verificationVersion
-		Partial       bool
-	}{task, candidates, input.ContentRevision, input.Observation.Context.Branch, input.Observation.Context.HEAD, input.View.Settings.Revision, GuidanceVersion(input.View.Settings), decisions, input.Peers, input.View.LatestCheck, checks, verifications, input.Partial})
+		Task           taskVersion
+		Candidates     []taskVersion
+		Content        int64
+		Branch         string
+		HEAD           string
+		Settings       string
+		Guidance       string
+		Decisions      []string
+		Peers          []ledger.SessionActivity
+		Check          string
+		Checks         []checkVersion
+		Verifications  []verificationVersion
+		Partial        bool
+		PendingActions []string
+	}{task, candidates, input.ContentRevision, input.Observation.Context.Branch, input.Observation.Context.HEAD, input.View.Settings.Revision, GuidanceVersion(input.View.Settings), decisions, input.Peers, input.View.LatestCheck, checks, verifications, input.Partial, input.View.PendingActions})
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
@@ -311,6 +316,9 @@ func Build(input Input, guidance bool) string {
 		parts[0] = fixed + "\n" + Truncate(oneLine(task.Title), max(0, 120-Tokens(fixed)-1))
 		parts[1] = requirements(view)
 	}
+	if len(view.PendingActions) > 0 {
+		parts[0] += "\n待处理事项：" + strings.Join(view.PendingActions, "\n")
+	}
 	parts[2] = "方案状态：全自动模式，无需方案确认。"
 	if view.Settings.Values["workflow"].Value == "semi" {
 		parts[2] = "方案状态：尚无有效方案。"
@@ -364,6 +372,11 @@ func Build(input Input, guidance bool) string {
 		var issues []string
 		expired := false
 		for _, record := range view.Checks {
+			counts := record.GapCounts()
+			lines = append(lines, fmt.Sprintf("%s %s：无法判断 %d，错误 %d，未完成 %d。", record.Depth, record.Status, counts["unsupported"], counts["error"], counts["incomplete"]))
+			if len(record.Unconfirmed) > 0 {
+				lines = append(lines, fmt.Sprintf("另有 %d 处历史问题本次未确认，不按已解决处理。", len(record.Unconfirmed)))
+			}
 			if record.Status == ledger.CheckExpired {
 				expired = true
 				continue

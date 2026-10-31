@@ -494,7 +494,7 @@ func (p *rustFile) missing(operation string, n *ts.Node, reason string) {
 		return
 	}
 	p.missingKeys[key] = true
-	p.file.Missing = append(p.file.Missing, Missing{p.file.Path, operation, fmt.Sprintf("第 %d 行：%s", n.StartPoint().Row+1, reason)})
+	p.file.Missing = append(p.file.Missing, Missing{p.file.Path, operation, fmt.Sprintf("第 %d 行：%s", n.StartPoint().Row+1, reason), "unsupported"})
 }
 func (p *rustFile) entry(n *ts.Node, kind, name, method string) {
 	entry := Entry{Kind: kind, Name: name, Method: method, Declaration: p.owner(n), Evidence: p.text(n), Span: span(n)}

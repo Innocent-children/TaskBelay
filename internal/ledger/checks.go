@@ -12,6 +12,11 @@ import (
 
 var ErrCheckInputChanged = errors.New("检查输入已变化，请读取当前任务后继续")
 
+type checkDeliveryUpdates struct {
+	Verifications   []VerificationRecord `json:"verifications"`
+	ValidationNotes []Note               `json:"validation_notes"`
+}
+
 func effectiveDecisions(notes []Note, task TaskRecord, settings EffectiveSettings, actor Actor) []Note {
 	var result []Note
 	for _, note := range notes {
@@ -62,8 +67,37 @@ func (s *Store) CheckInput(ctx context.Context, workspace, id string, actor Acto
 	return input, err
 }
 
+func (s *Store) CheckReusable(ctx context.Context, workspace string, actor Actor, record CheckRecord) (bool, error) {
+	var reusable bool
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		current, err := currentID(ctx, q, workspace)
+		if err != nil {
+			return err
+		}
+		task, err := loadTask(ctx, q, workspace, record.Input.TaskID)
+		if err != nil {
+			return err
+		}
+		input, err := checkInput(ctx, q, workspace, task.ID, actor, record.Input.Rules, record.Input.Capabilities)
+		if err != nil {
+			return err
+		}
+		if current != task.ID || task.State != TaskActive && task.State != TaskPending || input.Version() != record.InputVersion {
+			return ErrCheckInputChanged
+		}
+		var id int64
+		var status CheckStatus
+		if err := q.QueryRowContext(ctx, `SELECT seq,status FROM checks_v11 WHERE task_id=? AND depth=? AND input_version=? ORDER BY seq DESC LIMIT 1`, task.ID, record.Depth, record.InputVersion).Scan(&id, &status); err != nil {
+			return err
+		}
+		reusable = id == record.ID && status == CheckComplete
+		return nil
+	})
+	return reusable, err
+}
+
 func latestCheck(ctx context.Context, q queryer, task, depth, version string, excludeExpired bool) (*CheckRecord, error) {
-	query := "SELECT seq,status,data FROM checks WHERE task_id=? AND depth=?"
+	query := "SELECT seq,status,data FROM checks_v11 WHERE task_id=? AND depth=?"
 	args := []any{task, depth}
 	if version != "" {
 		query += " AND input_version=?"
@@ -73,7 +107,10 @@ func latestCheck(ctx context.Context, q queryer, task, depth, version string, ex
 		query += " AND status!='expired'"
 	}
 	query += " ORDER BY seq DESC LIMIT 1"
-	var result CheckRecord
+	var saved struct {
+		CheckRecord
+		DeliveryUpdates *checkDeliveryUpdates `json:"delivery_updates"`
+	}
 	var data string
 	var id int64
 	var status CheckStatus
@@ -84,8 +121,17 @@ func latestCheck(ctx context.Context, q queryer, task, depth, version string, ex
 	if err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal([]byte(data), &result); err != nil {
+	data, err = restoreCheckBody(ctx, q, id, data)
+	if err != nil {
 		return nil, err
+	}
+	if err := json.Unmarshal([]byte(data), &saved); err != nil {
+		return nil, err
+	}
+	result := saved.CheckRecord
+	if saved.DeliveryUpdates != nil {
+		result.Report.Verifications = saved.DeliveryUpdates.Verifications
+		result.Report.ValidationNotes = saved.DeliveryUpdates.ValidationNotes
 	}
 	result.ID, result.Status = id, status
 	return &result, nil
@@ -95,7 +141,7 @@ func (s *Store) LatestCheck(ctx context.Context, task, depth, version string) (*
 	var result *CheckRecord
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		var err error
-		result, err = latestCheck(ctx, q, task, depth, version, version != "")
+		result, err = latestCheck(ctx, q, task, depth, version, false)
 		return err
 	})
 	return result, err
@@ -157,7 +203,15 @@ func (s *Store) SaveCheck(ctx context.Context, workspace string, actor Actor, cu
 	result.InputVersion = result.Input.Version()
 	result.ComputedStatus = result.Status
 	result.FinishedAt = time.Now().UTC()
-	err := s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
+	rawReport, err := json.Marshal(result.Report)
+	if err != nil {
+		return result, err
+	}
+	report, err := prepareBody(ctx, rawReport)
+	if err != nil {
+		return result, err
+	}
+	err = s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		input, err := checkInput(ctx, tx, workspace, result.Input.TaskID, actor, result.Input.Rules, result.Input.Capabilities)
 		if err != nil {
 			return err
@@ -197,11 +251,11 @@ func (s *Store) SaveCheck(ctx context.Context, workspace string, actor Actor, cu
 				}
 			}
 		}
-		data, err := json.Marshal(result)
+		data, err := checkMetadata(result)
 		if err != nil {
 			return err
 		}
-		insert, err := tx.ExecContext(ctx, "INSERT INTO checks(task_id,depth,input_version,status,data) VALUES(?,?,?,?,?)", task.ID, result.Depth, result.InputVersion, result.Status, string(data))
+		insert, err := tx.ExecContext(ctx, `INSERT INTO checks_v11(task_id,depth,input_version,status,data,report_encoding,report_raw_bytes,report_sha256,report_body) VALUES(?,?,?,?,?,?,?,?,?)`, task.ID, result.Depth, result.InputVersion, result.Status, string(data), report.Encoding, report.RawBytes, report.SHA256, report.Body)
 		if err != nil {
 			return err
 		}

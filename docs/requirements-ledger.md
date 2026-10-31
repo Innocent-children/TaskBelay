@@ -114,20 +114,34 @@ session 保存 Agent、session 编号、工作区、开始及最近活动时间�
 
 | 工具 | 参数 | 作用和返回 |
 | --- | --- | --- |
-| `task_get` | `task_id` 可选 | 当前或指定任务的记录、有效设置、版本、工作区更新和最新检查 |
+| `task_get` | `task_id` 可选；列表用 `category`、`after_seq`、`limit`；正文用 `record_id`、`revision`、`char_offset`、`char_limit` | 默认返回有限概要、当前状态和记录总数；记录列表与正文按需续读 |
 | `task_start` | 新任务用 `title`；恢复用 `task_id`；可选 `start_message_id`、`workflow` | 暂停原任务，开始、恢复或重新打开目标任务；返回任务和恢复摘要 |
-| `requirement_save` | `id` 可选、`content`、`quote`、`source_id`、`acceptance`、`status`、`implemented_by`、更新时的 `base_revision` | 保存需求新修订，返回有效来源、位置及需补充的说明 |
-| `note_add` | `kind`、`text`；可选 `target`、`quote`、`source_id` | 记录决定或下一步；核对重跑等决定的目标和来源 |
-| `check_run` | `depth` 为 `static` 或 `tests`，可选 `refresh` | 检查固定状态；返回结果、输入版本和完成情况 |
+| `requirement_save` | `id` 可选、`content`、`quote`、`source_id`、`acceptance`、`status`、`implemented_by`、更新时的 `base_revision` | 返回任务和需求编号、修订、状态、来源编号、待补位置数及有限示例 |
+| `note_add` | `kind`、`text`；可选 `target`、`quote`、`source_id` | 返回笔记编号、类型、保存结果、决定是否生效及原因 |
+| `check_run` | `depth` 为 `static` 或 `tests`，可选 `refresh` | 返回检查编号、输入版本、实际执行状态、复用标记、原执行时间、问题和缺口总数及有限明细 |
 | `task_finish` | `outcome` 默认为 `complete`，用户放弃时为 `cancel` | complete 保存待交付请求并返回已有结果；cancel 保存中止及原因 |
 | `plan_save` | `content`、`files`、`entries`、`deps`、`base_revision` | 保存完整方案及变更摘要，返回版本和路径 |
-| `plan_confirm` | `version`、`source_id`、`quote` | 核对版本、消息来源和授权时间，返回有效与待确认范围 |
+| `plan_confirm` | `version`、`source_id`、`quote` | 核对版本、消息来源和授权时间，返回确认状态、有效与待确认版本及正文入口 |
+
+写入响应不附带完整任务视图，也不重复用户原文、需求或方案正文。默认概要的 `details` 包含有限的需求、有效决定、工作区更新、方案及检查摘要；`counts` 给出可查询记录的总数，`plans_revision` 用于下一次 `plan_save.base_revision`。没有当前任务时，只返回最多五个候选任务概要与选择入口。
+
+记录类别为 `messages`、`sources`、`requirements`、`notes`、`plans`、`checks`、`verifications`、`workspace_updates` 和 `task_updates`。最后两类分别对应观察发现的工作区更新和任务恢复时的更新。列表按不可变记录序号升序读取，需求采用修订记录序号，方案采用提交版本序号；`limit` 默认 20、最多 100。响应中的 `last_seq` 是实际返回的最后序号，`has_more` 表示仍可续读；下一页传 `after_seq=last_seq`。并发追加的记录出现在后续页面。
+
+单条读取的 `record_id` 和需求、方案的 `revision` 从记录列表或写入返回的 `read` 入口取得。方案的正文修订号与提交版本、任务方案修订分别返回，确认不会改写原提交正文。`body` 是完整记录正文的 JSON 文本片段；按 `next_offset` 续读，拼接全部片段后解析 JSON。字符范围按 Unicode 字符计数，默认每次 2,000 个，最多请求 12,000 个；协议预算可进一步缩短，`char_offset`、`char_end`、`char_total` 与 `next_offset` 始终反映实际范围。
+
+历史正文与查询时的 `state` 分开。笔记是否生效、方案是否确认及撤回数量、验证的执行状态与退出码、检查的档位和有效性随查询返回。检查正文保留完整报告、需求位置、测试事实和问题事实；交付显示状态与新验证信息单独保存，内部读取恢复完整交付信息，不重写原执行报告。检查列表的 `validity` 为 `not_checked`；读取单条检查时核对当前输入，无法核对时保持 `unknown`，不能据此声称历史结果仍有效。原文及确认依据可按来源编号读取。
+
+最终 MCP 响应（包括文本和结构化内容）的估算预算：普通写入 1,000 token，`task_start` 2,000，`task_get` 与 `check_run` 8,000。估算沿用中文每字一个、英文每四个字符一个；debug 另记业务 JSON 与最终协议的 UTF-8 字节数，不将估算值当作模型实测 token。超过预算时保留身份、状态、修订、总数和续读入口，裁剪 `details` 或减少本页记录，并标记 `truncated`。拦截问题优先展示。内部账本和动态用例选择仍读取完整报告。
+
+检查缺口保存 `kind`、位置、操作和原因；D1 另带候选位置。`gap_counts` 分别统计 `unsupported`、`error`、`incomplete`，分组记录的 `count` 保留实际数量。只含明确能力边界时为 `complete`；解析或执行错误、超时、取消和未分类缺口保持 `partial`。`unconfirmed_count` 表示历史问题中本次尚未确认的数量，不增加问题生命周期状态。`reused` 只说明本次采用已有结果，不代表检查通过；未知变更的测试也单独计数。
+
+静态检查只复用同输入的最新 `complete` 记录，不绕过较新的异常或过期记录寻找旧结果。复用保持检查编号、执行时间、未知原因、完成范围和问题身份，更新当前验证信息；主动刷新重新执行。源码、快照内配置、需求、编辑、授权、设置以及规则和能力版本变化均使相应输入失效。解析以 tree 中的 blob 字节为准，不另建原始文件摘要。
 
 `implemented_by` 每项包含 `at`、可选的 `quote`、`source_id`、`purpose` 和变更类型。传入时替换这一版的位置列表，历史修订保留；不传时沿用原列表。位置未能对应时保留待更新项和原因。
 
 `files` 每项包含 `path`、`change` 和 `note`，以 `/` 结尾表示目录范围。`entries` 每项包含 `at` 和 `note`；`deps` 每项包含 `module` 和 `reason`。空项传空列表。
 
-更新需求或方案时采用 `base_revision` 核对，发生冲突返回最新版本，由 Agent 合并。各工具的幂等重试以 session、工具调用编号和目标版本识别，重复到达不重复开始任务或追加同版方案。
+更新需求或方案时采用 `base_revision` 核对，发生冲突返回最新修订号和读取入口，Agent 取得正文后再合并。各工具的幂等重试以 session、工具调用编号和目标版本识别，重复到达不重复开始任务或追加同版方案。
 
 `task_finish` 不运行耗时测试，不立即清掉当前任务。Stop 使用本轮保存的交付任务处理检查和完成；首次反馈后仍保留本轮请求；输入未变时再次 Stop 可直接完成报告。本轮没有请求时，同一 session 的当前轮次可以接续当前待交付任务的未完成请求，保留原请求来源和反馈状态，并重新核对输入版本。中途有新编辑、需求或授权变化时，请求过期，任务回到进行中。Agent 申请完成前更新需求状态；未完成或已撤销的需求分别列入报告。
 
@@ -135,9 +149,15 @@ session 保存 Agent、session 编号、工作区、开始及最近活动时间�
 
 ## 保留期限
 
+账本 schema 11 使用 `_v11` 业务表；全部表名与版本在同一迁移事务切换，使已启动的旧程序也无法按旧表示读写。每次 MCP 调用以及每个账本事务核对支持版本，升级后的旧 MCP 需重启 Agent session。迁移失败整体回滚，不重建或丢弃账本。
+
+`Full=true`、`Complete=true` 的观察以 `files_set_id` 引用按完整文件映射去重的内容表，JSON 编码保留原始 blob、删除标记和合法空映射；部分观察仍内联保存。检查元数据保留在 `checks_v11.data`，完整报告单独压缩。统一读取恢复完整对象并校验长度与摘要，损坏或缺失正文返回带记录编号的错误。尚未整理的旧正文保持可读；整理只在短事务复核原文后发布，压缩不省空间或超过准备时间时保存原文，总预算耗尽则不改记录。
+
 - 进行中、待交付和暂停任务的记录、起点及恢复快照保留至任务结束。
 - 完成或中止后，任务记录、方案和需要回读的快照继续保留三十天，便于重新打开和查看问题证据。
 - session、hook、MCP 调用身份和验证记录保留三十天；仍被活跃任务引用的记录随任务保留。
 - 超期时一并清理记录、方案文件和 TaskBelay 自己的快照引用。
 
-存储和清理实现见 [系统架构](product-architecture.md)。
+维护使用独立 200 ms 总预算，先筛选所有类别的到期候选，每轮最多八个任务，各自原子删除独占记录并登记资源释放；独立记录每类最多 256 条。保留任务的全部修订、来源引用、起点与恢复点、当前文件、编辑前后观察和验证关联继续保护记录。恢复先提交则退出删除候选，删除先提交则恢复返回不存在；超时不会留下半个任务。
+
+共享文件表由实际观察引用保护，最后一个引用消失后才在写事务中回收，不维护引用计数。新 Git tree 引用在创建前登记工作区、完整名称、对象与三十天期限，观察提交时核对并撤销登记；未发布引用仍可到期回收。资源只在账本事务提交后核对身份并释放。清理不执行 `VACUUM`，物理文件大小可能保持不变，可复用页由 SQLite 后续使用。实现见 [系统架构](product-architecture.md)。

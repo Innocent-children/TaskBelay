@@ -103,12 +103,21 @@ func (o Observer) retain(ctx context.Context, observation *ledger.Observation, v
 		owner = fmt.Sprintf("session-%x", sha256.Sum256([]byte(o.Workspace.ID+"\x00"+observation.Agent+"\x00"+observation.SessionID)))
 	}
 	id := "o" + rand.Text()
+	observation.ReferenceWorkspace = o.Workspace.ID
+	retain := func(id, tree string) (gitstate.Retained, error) {
+		ref := gitstate.SnapshotRef{Ref: "refs/taskbelay/" + owner + "/" + id, Object: tree, Type: "tree", WorkspaceID: o.Workspace.ID}
+		if err := o.Store.StageRefCleanup(ctx, ref, time.Now().Add(30*24*time.Hour)); err != nil {
+			return gitstate.Retained{}, err
+		}
+		return o.Workspace.Retain(ctx, owner, id, tree)
+	}
 	if observation.Full && observation.Complete {
-		retained, err := o.Workspace.Retain(ctx, owner, id, observation.Tree)
+		retained, err := retain(id, observation.Tree)
 		if err != nil {
 			return fmt.Errorf("保留完整快照引用: %w", err)
 		}
 		observation.SnapshotRef = retained.Ref
+		observation.SnapshotObject, observation.SnapshotType = retained.Object, retained.Type
 	}
 	var files []gitstate.File
 	for path, file := range observation.Files {
@@ -130,11 +139,12 @@ func (o Observer) retain(ctx context.Context, observation *ledger.Observation, v
 	for i, blob := range blobs {
 		prepared[positions[i]].Expected.Blob = blob
 	}
-	retained, err := o.Workspace.Retain(ctx, owner, id+"-evidence", tree)
+	retained, err := retain(id+"-evidence", tree)
 	if err != nil {
 		return fmt.Errorf("保留证据引用: %w", err)
 	}
 	observation.EvidenceRef = retained.Ref
+	observation.EvidenceObject, observation.EvidenceType = retained.Object, retained.Type
 	return nil
 }
 
@@ -158,8 +168,15 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		return event.Decision{}, fmt.Errorf("未知的拦截强度")
 	}
 	var paths []string
-	seen := make(map[string]bool)
-	for _, edit := range e.Edits {
+	indices := make(map[string][]int)
+	canonical := make(map[string]string)
+	var skipped []ledger.UnverifiedEdit
+	var messages []string
+	skip := func(index int, reason string) {
+		skipped = append(skipped, ledger.UnverifiedEdit{Request: index, Path: e.Edits[index].Path, Reason: reason})
+		messages = append(messages, e.Edits[index].Path+": "+reason)
+	}
+	for i, edit := range e.Edits {
 		requestPath := edit.Path
 		if !filepath.IsAbs(requestPath) && e.WorkingDir != "" {
 			dir := e.WorkingDir
@@ -170,17 +187,21 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		}
 		path, err := o.Workspace.TargetPath(requestPath)
 		if err != nil {
-			return event.Decision{}, fmt.Errorf("核对编辑路径: %w", err)
+			skip(i, "本工作区不核对此目标："+err.Error())
+			continue
 		}
 		key, err := o.Workspace.TargetKey(path)
 		if err != nil {
-			return event.Decision{}, fmt.Errorf("核对编辑路径身份: %w", err)
+			skip(i, "无法核对路径身份："+err.Error())
+			continue
 		}
-		if seen[key] {
-			return event.Decision{}, fmt.Errorf("同一文件的多段编辑应合并为带上下文的补丁: %s", path)
+		if first, ok := canonical[key]; ok {
+			path = first
+		} else {
+			canonical[key] = path
+			paths = append(paths, path)
 		}
-		seen[key] = true
-		paths = append(paths, path)
+		indices[path] = append(indices[path], i)
 	}
 	view, err := o.Store.ObservationState(ctx, o.Workspace.ID, paths)
 	if err != nil {
@@ -191,23 +212,38 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 	contents := make(map[string]string)
 	planContents := make(map[string]string)
 	expectedContents := make(map[string][]byte)
-	var messages []string
-	for i, path := range paths {
+	for _, path := range paths {
 		before, known := view.Files[path]
 		current, content, err := o.Workspace.ReadObservedFile(ctx, path, before.File)
 		if err != nil {
-			return event.Decision{}, fmt.Errorf("读取编辑目标: %w", err)
+			for _, i := range indices[path] {
+				skip(i, "读取编辑目标失败："+err.Error())
+			}
+			observation.Complete = false
+			observation.Incomplete = append(observation.Incomplete, gitstate.Incomplete{Path: path, Reason: err.Error()})
+			continue
 		}
 		contents[path] = string(content)
 		observation.Files[path] = current
 		updated := before.WorkspaceUpdate || known && before.File != current || !known && view.LatestID != 0 && current.Blob != ""
-		expected, verifiable, conflict, reason := expectedContent(e.Edits[i], string(content), current.Blob != "", updated)
+		requests := indices[path]
+		edit := e.Edits[requests[0]]
+		expected, verifiable, conflict, reason := expectedContent(edit, string(content), current.Blob != "", updated)
+		if len(requests) > 1 {
+			// 同一补丁内的 hunks 有明确顺序；重复文件操作没有跨 Agent 共用的执行语义。
+			verifiable, conflict = false, false
+			reason = "同一文件有多项操作，无法确认最终执行结果；请合并为一项含多个 hunk 的编辑。本文件的变化保留为工作区更新。"
+			for _, index := range requests {
+				request := e.Edits[index]
+				conflict = conflict || updated && current.Blob != "" && request.Before == nil && request.After != nil && request.Unverifiable == ""
+			}
+		}
 		planContents[path] = string(content)
-		if verifiable && !e.Edits[i].Delete {
+		if verifiable && !edit.Delete {
 			planContents[path] = expected
 		}
-		prepared := ledger.PreparedFile{Path: path, Before: current, Verifiable: verifiable}
-		if verifiable && !e.Edits[i].Delete {
+		prepared := ledger.PreparedFile{Path: path, Requests: requests, Before: current, Verifiable: verifiable, Reason: reason}
+		if verifiable && !edit.Delete {
 			expectedContents[path] = []byte(expected)
 			prepared.Expected = gitstate.File{Mode: current.Mode}
 			if prepared.Expected.Mode == "" {
@@ -259,6 +295,7 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 			}
 		}
 	}
+	record.Unverified = skipped
 	record.Decision.AdditionalContext = strings.Join(messages, "\n\n")
 	planContext, err := o.Store.PlanEditContext(ctx, o.Workspace.ID, ledger.Actor{Agent: e.Agent, SessionID: e.SessionID, RoundID: e.RoundID})
 	if err != nil {
@@ -272,8 +309,10 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		return event.Decision{}, fmt.Errorf("核对编辑授权: %w", err)
 	}
 	record.PlanCheck = &planCheck
-	if err := o.retain(ctx, &observation, view, record.Files, expectedContents); err != nil {
-		return event.Decision{}, fmt.Errorf("保存编辑证据: %w", err)
+	if len(observation.Files) > 0 {
+		if err := o.retain(ctx, &observation, view, record.Files, expectedContents); err != nil {
+			return event.Decision{}, fmt.Errorf("保存编辑证据: %w", err)
+		}
 	}
 	if err := o.Store.SaveObservation(ctx, view, &observation, changes, &record); err != nil {
 		return event.Decision{}, fmt.Errorf("登记编辑观察: %w", err)
@@ -312,7 +351,10 @@ func (o Observer) afterEdit(ctx context.Context, e event.Event, task string) (le
 		record.Files[i].Verification = "unverified"
 		actual, _, err := o.Workspace.ReadFile(ctx, prepared.Path)
 		if err != nil {
-			return observation, err
+			record.Files[i].Reason = "读取编辑后内容失败：" + err.Error()
+			observation.Complete = false
+			observation.Incomplete = append(observation.Incomplete, gitstate.Incomplete{Path: prepared.Path, Reason: err.Error()})
+			continue
 		}
 		observation.Files[prepared.Path] = actual
 		baseline := view.Files[prepared.Path]
@@ -366,8 +408,10 @@ func (o Observer) afterEdit(ctx context.Context, e event.Event, task string) (le
 			changes = append(changes, change)
 		}
 	}
-	if err := o.retain(ctx, &observation, view, record.Files, nil); err != nil {
-		return observation, err
+	if len(observation.Files) > 0 {
+		if err := o.retain(ctx, &observation, view, record.Files, nil); err != nil {
+			return observation, err
+		}
 	}
 	err = o.Store.SaveObservation(ctx, view, &observation, changes, &record)
 	return observation, err

@@ -11,7 +11,7 @@ import (
 )
 
 func readNotes(ctx context.Context, q queryer, task string) ([]Note, error) {
-	rows, err := q.QueryContext(ctx, "SELECT data,active,consumed,invalidated_by FROM notes WHERE task_id=? ORDER BY seq", task)
+	rows, err := q.QueryContext(ctx, "SELECT data,active,consumed,invalidated_by FROM notes_v11 WHERE task_id=? ORDER BY seq", task)
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func invalidateNotes(ctx context.Context, tx *sql.Tx, task, reason string, match
 		if !note.Active || note.Consumed || !match(note) {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE notes SET active=0,invalidated_by=? WHERE id=?", reason, note.ID); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE notes_v11 SET active=0,invalidated_by=? WHERE id=?", reason, note.ID); err != nil {
 			return false, err
 		}
 		changed = true
@@ -109,7 +109,7 @@ func (s *Store) AddNote(ctx context.Context, call Call, current string, observat
 				}
 			case "verification":
 				var count int
-				if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM verifications WHERE id=? AND workspace_id=? AND task_id=? AND denied=0", target.ID, call.WorkspaceID, current).Scan(&count); err != nil {
+				if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM verifications_v11 WHERE id=? AND workspace_id=? AND task_id=? AND denied=0", target.ID, call.WorkspaceID, current).Scan(&count); err != nil {
 					return err
 				}
 				if count != 1 {
@@ -218,7 +218,7 @@ func (s *Store) AddNote(ctx context.Context, call Call, current string, observat
 				}
 			}
 		}
-		insert, err := tx.ExecContext(ctx, "INSERT INTO notes(task_id,active,data) VALUES (?,?,?)", current, result.Active, "")
+		insert, err := tx.ExecContext(ctx, "INSERT INTO notes_v11(task_id,active,data) VALUES (?,?,?)", current, result.Active, "")
 		if err != nil {
 			return err
 		}
@@ -231,7 +231,7 @@ func (s *Store) AddNote(ctx context.Context, call Call, current string, observat
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE notes SET id=?,data=? WHERE seq=?", result.ID, string(data), seq); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE notes_v11 SET id=?,data=? WHERE seq=?", result.ID, string(data), seq); err != nil {
 			return err
 		}
 		changedDecision := result.Active
@@ -321,7 +321,7 @@ func (s *Store) ConsumeRerun(ctx context.Context, call Call, taskID, verificatio
 				continue
 			}
 			note.Active, note.Consumed = false, true
-			if _, err := tx.ExecContext(ctx, "UPDATE notes SET active=0,consumed=1 WHERE id=?", note.ID); err != nil {
+			if _, err := tx.ExecContext(ctx, "UPDATE notes_v11 SET active=0,consumed=1 WHERE id=?", note.ID); err != nil {
 				return err
 			}
 			task.AuthorizationRevision++

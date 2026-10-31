@@ -19,7 +19,7 @@ main() (
         echo '--source and --version cannot be combined' >&2
         return 1
     fi
-    if [ "$version" != latest ] && ! [[ "$version" =~ ^v[0-9][A-Za-z0-9._-]*$ ]]; then
+    if [ "$version" != latest ] && ! [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
         echo 'Invalid release tag' >&2
         return 1
     fi
@@ -40,7 +40,7 @@ main() (
     local install_lock="$install_dir/.taskbelay-install.lock"
     mkdir "$install_lock" || { echo "Installation already running, or stale lock: $install_lock" >&2; return 1; }
     local stage=''
-    trap 'test -z "$stage" || { rm -f "$stage/taskbelay" "$stage/SHA256SUMS" "$stage/marker"; rmdir "$stage"; }; rmdir "$install_lock"' EXIT
+    trap 'test -z "$stage" || { rm -f "$stage/taskbelay" "$stage/SHA256SUMS" "$stage/release-manifest.json" "$stage/marker"; rmdir "$stage"; }; rmdir "$install_lock"' EXIT
     if [ -L "$marker" ]; then
         echo 'Refusing to replace an installation marker symlink.' >&2
         return 1
@@ -70,9 +70,52 @@ main() (
         (cd "$source_dir" && GOWORK=off CGO_ENABLED=0 GOOS="$system" GOARCH="$arch" go build -trimpath -o "$stage/taskbelay" ./cmd/taskbelay)
     else
         command -v curl >/dev/null || { echo 'curl is required.' >&2; return 1; }
-        local base='https://github.com/Innocent-children/TaskBelay/releases'
-        if [ "$version" = latest ]; then base="$base/latest/download"; else base="$base/download/$version"; fi
-        local asset="taskbelay-$system-$arch" expected actual
+        local releases='https://github.com/Innocent-children/TaskBelay/releases' base
+        if [ "$version" = latest ]; then base="$releases/latest/download"; else base="$releases/download/$version"; fi
+        local asset="taskbelay-$system-$arch" expected actual release_version revision identity
+        curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$base/release-manifest.json" -o "$stage/release-manifest.json"
+        # 发布格式只包含三个字段和未转义的 ASCII 标识，不依赖额外的 JSON 工具。
+        identity="$(awk -v asset="$asset" '
+            function space() { sub(/^[ \t\r\n]+/, "", json) }
+            function take(c) { space(); if (substr(json, 1, 1) != c) exit 1; json=substr(json, 2) }
+            function string_value( value) {
+                space(); if (match(json, /^"[A-Za-z0-9_.-]+"/) != 1) exit 1
+                value=substr(json, 2, RLENGTH-2); json=substr(json, RLENGTH+1); return value
+            }
+            function asset_array( name) {
+                take("["); space()
+                if (substr(json, 1, 1) == "]") { take("]"); return }
+                while (1) {
+                    name=string_value()
+                    if (assets[name]++ || name !~ /^(taskbelay-(darwin|linux)-(amd64|arm64)|taskbelay-windows-(amd64|arm64)\.exe|install\.sh|install\.ps1|SHA256SUMS)$/) exit 1
+                    space(); if (substr(json, 1, 1) == "]") break
+                    take(",")
+                }
+                take("]")
+            }
+            { json=json $0 "\n" }
+            END {
+                take("{")
+                while (1) {
+                    key=string_value(); if (seen[key]++) exit 1
+                    take(":")
+                    if (key == "version" || key == "revision") values[key]=string_value()
+                    else if (key == "assets") asset_array()
+                    else exit 1
+                    space(); if (substr(json, 1, 1) == "}") break
+                    take(",")
+                }
+                take("}"); space()
+                if (json != "" || seen["version"] != 1 || seen["revision"] != 1 || assets[asset] != 1 || assets["SHA256SUMS"] != 1) exit 1
+                print values["version"]; print values["revision"]
+            }
+        ' "$stage/release-manifest.json")" || { echo 'Invalid release metadata or missing platform asset; previous version retained.' >&2; return 1; }
+        release_version="${identity%%$'\n'*}"
+        revision="${identity#*$'\n'}"
+        [[ "$release_version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] && [[ "$revision" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]] || { echo 'Invalid release identity; previous version retained.' >&2; return 1; }
+        [ "$version" = latest ] || [ "$version" = "$release_version" ] || { echo 'Release tag does not match metadata; previous version retained.' >&2; return 1; }
+        version="$release_version"
+        base="$releases/download/$release_version"
         echo "Downloading $asset ($version)..."
         curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 300 "$base/SHA256SUMS" -o "$stage/SHA256SUMS"
         expected="$(awk -v asset="$asset" '$2 == asset || $2 == "*" asset { print $1 }' "$stage/SHA256SUMS")"
@@ -93,6 +136,9 @@ main() (
     local installed_version
     installed_version="$("$stage/taskbelay" --version)"
     case "$installed_version" in TaskBelay\ *) ;; *) echo 'Not a TaskBelay executable; previous version retained.' >&2; return 1 ;; esac
+    if [ "$source_install" -eq 0 ]; then
+        case "$installed_version" in "TaskBelay $release_version ("*) ;; *) echo 'Executable version does not match release metadata; previous version retained.' >&2; return 1 ;; esac
+    fi
     printf '%s\n' "$marker_text" > "$stage/marker"
     mv -f "$stage/taskbelay" "$target"
     mv -f "$stage/marker" "$marker"

@@ -15,8 +15,8 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 )
 
-const RulesVersion = "D1-D8-E1-S1-S2-T3-T6-v4"
-const CapabilitiesVersion = "gotreesitter-0.56.0-facts-tests-v3"
+const RulesVersion = "D1-D8-E1-S1-S2-T3-T6-v5"
+const CapabilitiesVersion = "gotreesitter-0.56.0-facts-tests-v5"
 
 type staticAnalysis struct {
 	ctx         context.Context
@@ -32,7 +32,7 @@ type staticAnalysis struct {
 	conventions map[string]convention
 	evaluated   map[string]bool
 	missing     map[ledger.CheckGap]struct{}
-	gapGroups   map[[2]string]*gapGroup
+	gapGroups   map[[4]string]*gapGroup
 }
 
 type gapGroup struct {
@@ -82,7 +82,7 @@ func staticCheck(ctx context.Context, input ledger.CheckInput, view ledger.TaskV
 					return s.result, err
 				}
 				if missing.Operation != "tests" && missing.Operation != "risks" {
-					s.gap(path, missing.Operation, missing.Reason)
+					s.gap(path, missing.Operation, missing.Kind, missing.Reason)
 				}
 			}
 		}
@@ -188,17 +188,23 @@ func (s *staticAnalysis) fileChanged(path string) bool {
 	return before.Blob != after.Blob || before.Mode != after.Mode
 }
 
-func (s *staticAnalysis) gap(at, operation, reason string) {
-	gap := ledger.CheckGap{At: at, Operation: operation, Reason: reason}
+func (s *staticAnalysis) gap(at, operation, kind, reason string, candidate ...string) {
+	gap := ledger.CheckGap{At: at, Operation: operation, Kind: kind, Reason: reason}
+	if len(candidate) > 0 {
+		gap.Candidate = candidate[0]
+	}
+	if kind != "unsupported" {
+		s.result.Status = ledger.CheckPartial
+	}
 	if s.missing == nil {
 		s.missing = make(map[ledger.CheckGap]struct{})
-		s.gapGroups = make(map[[2]string]*gapGroup)
+		s.gapGroups = make(map[[4]string]*gapGroup)
 	}
 	if _, exists := s.missing[gap]; exists {
 		return
 	}
 	s.missing[gap] = struct{}{}
-	key := [2]string{at, operation}
+	key := [4]string{at, operation, kind, gap.Candidate}
 	group := s.gapGroups[key]
 	if group == nil {
 		group = &gapGroup{}
@@ -213,9 +219,9 @@ func (s *staticAnalysis) gap(at, operation, reason string) {
 			group.summaryIndex = len(s.result.Missing)
 			s.result.Missing = append(s.result.Missing, gap)
 		}
-		s.result.Missing[group.summaryIndex].Reason = fmt.Sprintf("另有 %d 项未完成；已保留前 5 项原因，当前范围仍未完整核对", group.count-5)
+		s.result.Missing[group.summaryIndex].Count = group.count - 5
+		s.result.Missing[group.summaryIndex].Reason = fmt.Sprintf("另有 %d 项同类缺口；已保留前 5 项原因", group.count-5)
 	}
-	s.result.Status = ledger.CheckPartial
 }
 
 func (s *staticAnalysis) add(rule, at, key, fact, advice string, evidence ...string) *ledger.Issue {
@@ -285,9 +291,22 @@ func (s *staticAnalysis) requirementChange(change codescan.Change) {
 
 func (s *staticAnalysis) unused(d codescan.Declaration) {
 	at := d.Location()
-	s.scope("D1", at)
 	if found, _ := s.explicit(at, d.File, false); found {
+		s.scope("D1", at)
 		return
+	}
+	if d.Usage != nil && s.after.Files[d.File].CodeComplete {
+		if d.Usage.Public || len(d.Usage.Implicit) > 0 {
+			s.scope("D1", at)
+			return
+		}
+		for _, use := range d.Usage.References {
+			file := s.after.Files[use.File]
+			if file != nil && file.CodeComplete && !use.Test && !use.Candidate && use.Declaration != d.ID {
+				s.scope("D1", at)
+				return
+			}
+		}
 	}
 	decls := s.after.Declarations()
 	locationCount := 0
@@ -296,45 +315,56 @@ func (s *staticAnalysis) unused(d codescan.Declaration) {
 			locationCount++
 		}
 	}
-	for _, id := range s.references.Backward[d.ID] {
-		if other := decls[id]; !other.Test && !excluded(s.after.Files[other.File]) {
-			return
-		}
-	}
-	for _, file := range s.after.Files {
-		if !excluded(file) && slices.Contains(file.References, d.Name) {
-			return
-		}
-	}
-	if len(s.nameUses[d.Name]) > 0 {
-		return
-	}
-	if d.Usage != nil && len(d.Usage.Implicit) > 0 {
-		return
-	}
 	for _, file := range s.after.Files {
 		for _, entry := range file.Entries {
-			if entry.Declaration == d.ID {
+			if file.CodeComplete && entry.Declaration == d.ID {
+				s.scope("D1", at)
 				return
 			}
 		}
 	}
 	agent, mixed, evidence := s.sources.at(d.File, d.Ranges())
 	complete := d.Usage != nil && len(d.Usage.Unknown) == 0 && locationCount == 1
-	for _, file := range s.after.Files {
-		if !excluded(file) && file.Kind.Source && (!file.CodeComplete || !file.Operations["references"].Complete || !file.Operations["usage"].Complete || !file.Operations["entries"].Complete) {
+	if !complete {
+		s.gap(d.File, "D1", "unsupported", "声明身份或间接用法尚未唯一核对", at)
+	}
+	for _, location := range s.nameUses[d.Name] {
+		complete = false
+		s.gap(location, "D1", "unsupported", "字符串或配置包含同名候选，调用关系尚未确认", at)
+	}
+	if d.Visibility.Reason != "" {
+		complete = false
+		s.gap(d.File, "D1", d.Visibility.Kind, d.Visibility.Reason, at)
+	}
+	for _, id := range s.references.Backward[d.ID] {
+		other := decls[id]
+		file := s.after.Files[other.File]
+		if !other.Test && !excluded(file) && s.after.Visible(d, file) {
 			complete = false
-			s.gap(file.Path, "D1", "引用、用法或隐式入口未完整核对，不能确认新增声明没有使用："+at)
+			s.gap(other.File, "D1", "unsupported", "存在尚未唯一确认关系的同名引用："+other.Location(), at)
 		}
 	}
+	for _, file := range s.after.Files {
+		if excluded(file) || !file.Kind.Source || !s.after.Visible(d, file) {
+			continue
+		}
+		if slices.Contains(file.References, d.Name) {
+			complete = false
+			s.gap(file.Path, "D1", "unsupported", "文件中存在尚未唯一确认关系的同名引用", at)
+		}
+		if !file.CodeComplete || !file.Operations["references"].Complete || !file.Operations["usage"].Complete || !file.Operations["entries"].Complete {
+			complete = false
+			s.gap(file.Path, "D1", file.GapKind("declarations", "references", "usage", "entries"), "引用、用法或隐式入口未完整核对，不能确认新增声明没有使用："+at, at)
+		}
+	}
+	if !complete {
+		return
+	}
 	issue := s.add("D1", at, "unused", "在已核对范围内未找到这个新增声明的非测试使用。", "核对当前需求、公开 API 或间接调用；仅在来源和用法均明确时精简自己的声明。", evidence...)
-	if agent && !mixed && complete && !d.Usage.Public {
+	if agent && !mixed {
 		issue.BlockOnDelivery = true
 	} else {
 		issue.Facts = append(issue.Facts, "公开范围、间接用法、来源或混合更新尚不满足确定性拦截条件。")
-		if locationCount != 1 {
-			issue.Facts = append(issue.Facts, "这个位置包含多个同名声明，无法唯一核对。")
-		}
 	}
 }
 
@@ -411,7 +441,7 @@ func (s *staticAnalysis) entries() {
 			for _, prior := range s.before.Files {
 				if !excluded(prior) && prior.Kind.Language == file.Kind.Language && prior.Kind.Source && !prior.Operations["entries"].Complete {
 					complete = false
-					s.gap(prior.Path, "D3", "起点入口未完整核对，不能确认入口是新增还是移动："+at)
+					s.gap(prior.Path, "D3", prior.GapKind("entries"), "起点入口未完整核对，不能确认入口是新增还是移动："+at)
 				}
 			}
 			if agent && !mixed && complete {
@@ -437,9 +467,8 @@ func (s *staticAnalysis) dependencies() {
 	existing = slices.Compact(existing)
 	for _, dep := range codescan.AddedDependencies(old, current) {
 		at := "dep:" + dep.Name
-		s.scope("D8", at)
 		if oldFile := s.before.Files[dep.Manifest]; oldFile != nil && !oldFile.Operations["dependencies"].Complete {
-			s.gap(dep.Manifest, "D8", "起点清单解析不完整，不能确认新增依赖")
+			s.gap(dep.Manifest, "D8", oldFile.GapKind("dependencies"), "起点清单解析不完整，不能确认新增依赖")
 			continue
 		}
 		_, evidence := s.explicit(at, dep.Manifest, false)

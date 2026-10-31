@@ -34,7 +34,7 @@ type SessionActivity struct {
 func (s *Store) SummaryState(ctx context.Context, workspace string, actor Actor) (SummaryState, error) {
 	var state SummaryState
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		err := q.QueryRowContext(ctx, `SELECT input_version,settings_revision,guidance_version,observation_id FROM session_summaries
+		err := q.QueryRowContext(ctx, `SELECT input_version,settings_revision,guidance_version,observation_id FROM session_summaries_v11
 WHERE workspace_id=? AND agent=? AND session_id=?`, workspace, actor.Agent, actor.SessionID).Scan(&state.InputVersion, &state.SettingsRevision, &state.GuidanceVersion, &state.ObservationID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
@@ -47,7 +47,7 @@ WHERE workspace_id=? AND agent=? AND session_id=?`, workspace, actor.Agent, acto
 func (s *Store) ActiveSessions(ctx context.Context, workspace string, now time.Time) ([]SessionActivity, error) {
 	var sessions []SessionActivity
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		rows, err := q.QueryContext(ctx, "SELECT agent,session_id,activity_at FROM task_sessions WHERE workspace_id=? ORDER BY agent,session_id", workspace)
+		rows, err := q.QueryContext(ctx, "SELECT agent,session_id,activity_at FROM task_sessions_v11 WHERE workspace_id=? ORDER BY agent,session_id", workspace)
 		if err != nil {
 			return err
 		}
@@ -77,7 +77,7 @@ func (s *Store) TouchSession(ctx context.Context, workspace string, actor Actor)
 	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		at := time.Now().UTC().Format(time.RFC3339Nano)
-		_, err := tx.ExecContext(ctx, `INSERT INTO task_sessions VALUES(?,?,?,?,?,?,?)
+		_, err := tx.ExecContext(ctx, `INSERT INTO task_sessions_v11 VALUES(?,?,?,?,?,?,?)
 ON CONFLICT(workspace_id,agent,session_id) DO UPDATE SET activity_at=excluded.activity_at`, workspace, actor.Agent, actor.SessionID, "", "", at, at)
 		return err
 	})
@@ -93,7 +93,7 @@ func (s *Store) SaveSummaryState(ctx context.Context, workspace string, actor Ac
 			return err
 		}
 		var latest int64
-		if err := tx.QueryRowContext(ctx, "SELECT latest_observation FROM workspaces WHERE id=?", workspace).Scan(&latest); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT latest_observation FROM workspaces_v11 WHERE id=?", workspace).Scan(&latest); err != nil {
 			return err
 		}
 		if latest != state.ObservationID {
@@ -115,7 +115,7 @@ func (s *Store) SaveSummaryState(ctx context.Context, workspace string, actor Ac
 		if settings.Revision != state.SettingsRevision {
 			return fmt.Errorf("摘要生成期间有效设置已变化")
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO session_summaries VALUES(?,?,?,?,?,?,?,?)
+		_, err = tx.ExecContext(ctx, `INSERT INTO session_summaries_v11 VALUES(?,?,?,?,?,?,?,?)
 ON CONFLICT(workspace_id,agent,session_id) DO UPDATE SET input_version=excluded.input_version,
 settings_revision=excluded.settings_revision,guidance_version=excluded.guidance_version,observation_id=excluded.observation_id,delivered_at=excluded.delivered_at`, workspace, actor.Agent, actor.SessionID, state.InputVersion, state.SettingsRevision, state.GuidanceVersion, state.ObservationID, time.Now().UTC().Format(time.RFC3339Nano))
 		return err
@@ -125,7 +125,7 @@ settings_revision=excluded.settings_revision,guidance_version=excluded.guidance_
 func (s *Store) ChangedSince(ctx context.Context, workspace string, observation int64) (bool, error) {
 	var changed bool
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		return q.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM file_changes WHERE workspace_id=? AND observation_id>?)", workspace, observation).Scan(&changed)
+		return q.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM file_changes_v11 WHERE workspace_id=? AND observation_id>?)", workspace, observation).Scan(&changed)
 	})
 	return changed, err
 }
@@ -133,7 +133,7 @@ func (s *Store) ChangedSince(ctx context.Context, workspace string, observation 
 func (s *Store) LatestHookError(ctx context.Context, workspace string) (string, error) {
 	var message string
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		err := q.QueryRowContext(ctx, "SELECT at || ' ' || error FROM hook_events WHERE workspace_id=? AND error!='' ORDER BY id DESC LIMIT 1", workspace).Scan(&message)
+		err := q.QueryRowContext(ctx, "SELECT at || ' ' || error FROM hook_events_v11 WHERE workspace_id=? AND error!='' ORDER BY id DESC LIMIT 1", workspace).Scan(&message)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}

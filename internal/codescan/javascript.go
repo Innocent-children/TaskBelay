@@ -37,6 +37,7 @@ type jsFile struct {
 	mutations     map[string]bool
 	usage         map[jsScope]*jsDeclaration
 	exportedNames map[string]jsExport
+	visibility    Visibility
 }
 type jsAnalysis struct {
 	ctx             context.Context
@@ -78,9 +79,14 @@ func analyzeJavaScriptAPIs(ctx context.Context, snapshot *Snapshot, parsed map[s
 	}
 	for _, p := range a.ordered {
 		p.bindExports()
+		p.visibility = p.moduleVisibility(snapshot)
 	}
 	for _, item := range a.declarations {
 		a.declare(item)
+		item.d.Visibility = item.p.visibility
+		if item.p.visibility.Scope != "unknown" && (item.exported || item.d.Owner != "") {
+			item.d.Visibility = Visibility{Scope: "language"}
+		}
 	}
 	for _, item := range a.declarations {
 		if item.exported && a.public && item.p.kind(item.n) == "variable_declarator" {
@@ -703,7 +709,7 @@ func (p *jsFile) missing(op string, n *ts.Node, reason string) {
 		return
 	}
 	p.missingKeys[key] = true
-	p.file.Missing = append(p.file.Missing, Missing{p.file.Path, op, fmt.Sprintf("第 %d 行：%s", n.StartPoint().Row+1, reason)})
+	p.file.Missing = append(p.file.Missing, Missing{p.file.Path, op, fmt.Sprintf("第 %d 行：%s", n.StartPoint().Row+1, reason), "unsupported"})
 }
 func (p *jsFile) entry(n *ts.Node, kind, name, method string) {
 	for _, old := range p.file.Entries {

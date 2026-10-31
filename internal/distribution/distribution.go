@@ -9,16 +9,18 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/platform"
+	"golang.org/x/mod/semver"
 )
 
 const marker = "TaskBelay user installation v1\n"
-const releaseURL = "https://github.com/Innocent-children/TaskBelay/releases/latest/download/"
+const releaseURL = "https://github.com/Innocent-children/TaskBelay/releases/"
 
 func ManagedPath(env platform.Env, executable string) (string, error) {
 	target := filepath.Join(platform.UserBinDir(env), platform.ExecutableName())
@@ -56,11 +58,14 @@ func lock(target string) (func(), error) {
 	return func() { _ = os.Remove(path) }, nil
 }
 
-func Update(ctx context.Context, env platform.Env, executable string) (string, error) {
-	return update(ctx, env, executable, releaseURL, &http.Client{Timeout: 5 * time.Minute})
+func Update(ctx context.Context, env platform.Env, executable, current string) (string, error) {
+	return update(ctx, env, executable, current, releaseURL, &http.Client{Timeout: 5 * time.Minute})
 }
 
-func update(ctx context.Context, env platform.Env, executable, baseURL string, client *http.Client) (string, error) {
+func update(ctx context.Context, env platform.Env, executable, current, baseURL string, client *http.Client) (string, error) {
+	if !semver.IsValid(current) {
+		return fmt.Sprintf("当前版本 %q 无法进行语义版本比较，自动更新已结束。可通过安装脚本明确选择发布包或源码。\n", current), nil
+	}
 	target, err := ManagedPath(env, executable)
 	if err != nil {
 		return "", err
@@ -74,6 +79,18 @@ func update(ctx context.Context, env platform.Env, executable, baseURL string, c
 	if runtime.GOOS == "windows" {
 		asset += ".exe"
 	}
+	var metadata strings.Builder
+	if err := download(ctx, client, baseURL+"latest/download/release-manifest.json", &metadata, 1<<20); err != nil {
+		return "", err
+	}
+	release, err := parseRelease(metadata.String(), asset)
+	if err != nil {
+		return "", err
+	}
+	if semver.Compare(current, release.Version) >= 0 {
+		return fmt.Sprintf("当前版本 %s 已满足发布版本 %s，无需更新。\n", current, release.Version), nil
+	}
+	baseURL += "download/" + release.Version + "/"
 	var sums strings.Builder
 	if err := download(ctx, client, baseURL+"SHA256SUMS", &sums, 1<<20); err != nil {
 		return "", err
@@ -98,6 +115,12 @@ func update(ctx context.Context, env platform.Env, executable, baseURL string, c
 	}
 	if err := os.Chmod(f.Name(), 0o755); err != nil {
 		return "", err
+	}
+	verifyCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	output, versionErr := exec.CommandContext(verifyCtx, f.Name(), "--version").Output()
+	cancel()
+	if versionErr != nil || !strings.HasPrefix(string(output), "TaskBelay "+release.Version+" (") {
+		return "", fmt.Errorf("下载程序的版本与发布元数据 %s 不符，已保留旧版: %v", release.Version, versionErr)
 	}
 	leftover, err := platform.ReplaceExecutable(f.Name(), target)
 	if err != nil {

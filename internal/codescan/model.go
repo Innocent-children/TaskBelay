@@ -15,6 +15,7 @@ type Missing struct {
 	Path      string
 	Operation string
 	Reason    string
+	Kind      string
 }
 
 type Span struct {
@@ -30,6 +31,7 @@ type Token struct {
 
 type Declaration struct {
 	Usage                                 *Usage
+	Visibility                            Visibility
 	Shape                                 *FunctionShape
 	ID, File, Name, Owner, Kind, NodeType string
 	Span, NameSpan                        Span
@@ -44,6 +46,7 @@ type Declaration struct {
 }
 
 type Usage struct {
+	References                                                       []Use
 	TypeParameters                                                   []string
 	Public, Abstract, Generic, Inferred, Error, Sentinel, Deprecated bool
 	Alias                                                            string
@@ -105,6 +108,7 @@ type FunctionShape struct {
 
 type File struct {
 	Source
+	Package      string
 	Kind         lang.FileKind
 	CodeComplete bool
 	Declarations []Declaration
@@ -116,6 +120,10 @@ type File struct {
 	Risks        []Risk
 	Tests        []TestCase
 	Operations   map[string]Operation
+}
+
+type Visibility struct {
+	Scope, Package, Reason, Kind string
 }
 
 type Assertion struct {
@@ -139,6 +147,7 @@ func (test TestCase) Location() string { return "test:" + test.File + ":" + test
 type Operation struct {
 	Complete bool
 	Reason   string
+	Kind     string
 }
 
 type Entry struct {

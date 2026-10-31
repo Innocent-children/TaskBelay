@@ -129,7 +129,7 @@ func runHook(ctx context.Context, args []string, env platform.Env, input io.Read
 			return err
 		})
 		if err == nil && e.Kind == event.SessionStart {
-			maintain(ctx, service, env, event.FastBudget)
+			maintain(ctx, service, env)
 		}
 		return event.Decision{}, err
 	}()

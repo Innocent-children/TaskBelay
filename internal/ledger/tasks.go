@@ -13,7 +13,7 @@ import (
 func loadTask(ctx context.Context, q queryer, workspace, id string) (TaskRecord, error) {
 	var task TaskRecord
 	var data string
-	if err := q.QueryRowContext(ctx, "SELECT data FROM tasks WHERE workspace_id=? AND id=?", workspace, id).Scan(&data); err != nil {
+	if err := q.QueryRowContext(ctx, "SELECT data FROM tasks_v11 WHERE workspace_id=? AND id=?", workspace, id).Scan(&data); err != nil {
 		return task, err
 	}
 	err := json.Unmarshal([]byte(data), &task)
@@ -30,13 +30,13 @@ func saveTask(ctx context.Context, tx *sql.Tx, task TaskRecord) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, "UPDATE tasks SET state=?,branch=?,data=? WHERE id=? AND workspace_id=?", task.State, task.Context.Branch, string(data), task.ID, task.WorkspaceID)
+	_, err = tx.ExecContext(ctx, "UPDATE tasks_v11 SET state=?,branch=?,data=? WHERE id=? AND workspace_id=?", task.State, task.Context.Branch, string(data), task.ID, task.WorkspaceID)
 	return err
 }
 
 func currentID(ctx context.Context, q queryer, workspace string) (string, error) {
 	var id string
-	err := q.QueryRowContext(ctx, "SELECT current_task_id FROM workspaces WHERE id=?", workspace).Scan(&id)
+	err := q.QueryRowContext(ctx, "SELECT current_task_id FROM workspaces_v11 WHERE id=?", workspace).Scan(&id)
 	return id, err
 }
 
@@ -63,7 +63,7 @@ func checkCurrent(ctx context.Context, q queryer, workspace, expected string) er
 
 func checkObservation(ctx context.Context, q queryer, workspace string, id int64) (Observation, error) {
 	var latest int64
-	if err := q.QueryRowContext(ctx, "SELECT latest_observation FROM workspaces WHERE id=?", workspace).Scan(&latest); err != nil {
+	if err := q.QueryRowContext(ctx, "SELECT latest_observation FROM workspaces_v11 WHERE id=?", workspace).Scan(&latest); err != nil {
 		return Observation{}, err
 	}
 	if latest != id {
@@ -87,7 +87,7 @@ func checkActor(ctx context.Context, q queryer, call Call) error {
 		return fmt.Errorf("缺少工具调用身份")
 	}
 	var round string
-	if err := q.QueryRowContext(ctx, "SELECT round_id FROM task_sessions WHERE workspace_id=? AND agent=? AND session_id=?", call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID).Scan(&round); err != nil {
+	if err := q.QueryRowContext(ctx, "SELECT round_id FROM task_sessions_v11 WHERE workspace_id=? AND agent=? AND session_id=?", call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID).Scan(&round); err != nil {
 		return fmt.Errorf("当前 session 尚无可核对的消息来源: %w", err)
 	}
 	if round != call.Actor.RoundID {
@@ -100,12 +100,12 @@ func originMessage(ctx context.Context, q queryer, call Call, current, explicit 
 	var data string
 	var err error
 	if explicit != "" {
-		err = q.QueryRowContext(ctx, "SELECT data FROM messages WHERE workspace_id=? AND id=?", call.WorkspaceID, explicit).Scan(&data)
+		err = q.QueryRowContext(ctx, "SELECT data FROM messages_v11 WHERE workspace_id=? AND id=?", call.WorkspaceID, explicit).Scan(&data)
 	} else if current != "" {
-		err = q.QueryRowContext(ctx, "SELECT data FROM messages WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=? ORDER BY seq LIMIT 1", call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID, call.Actor.RoundID).Scan(&data)
+		err = q.QueryRowContext(ctx, "SELECT data FROM messages_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=? ORDER BY seq LIMIT 1", call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID, call.Actor.RoundID).Scan(&data)
 	} else {
-		err = q.QueryRowContext(ctx, `SELECT data FROM messages WHERE workspace_id=? AND agent=? AND session_id=?
-AND seq>(SELECT COALESCE(MAX(json_extract(data,'$.end_message_seq')),0) FROM tasks WHERE workspace_id=?) ORDER BY seq LIMIT 1`, call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID, call.WorkspaceID).Scan(&data)
+		err = q.QueryRowContext(ctx, `SELECT data FROM messages_v11 WHERE workspace_id=? AND agent=? AND session_id=?
+AND seq>(SELECT COALESCE(MAX(json_extract(data,'$.end_message_seq')),0) FROM tasks_v11 WHERE workspace_id=?) ORDER BY seq LIMIT 1`, call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID, call.WorkspaceID).Scan(&data)
 	}
 	var message Message
 	if err != nil {
@@ -166,7 +166,7 @@ func switchTask(ctx context.Context, tx *sql.Tx, call Call, current string, obse
 		if !origin.Full || !origin.Complete || origin.Tree == "" || origin.SnapshotRef == "" {
 			return task, fmt.Errorf("起点消息的快照不完整，不能用当前代码替代")
 		}
-		insert, err := tx.ExecContext(ctx, "INSERT INTO tasks(workspace_id,state,branch,data) VALUES (?,?,?,?)", call.WorkspaceID, TaskActive, observation.Context.Branch, "")
+		insert, err := tx.ExecContext(ctx, "INSERT INTO tasks_v11(workspace_id,state,branch,data) VALUES (?,?,?,?)", call.WorkspaceID, TaskActive, observation.Context.Branch, "")
 		if err != nil {
 			return task, err
 		}
@@ -179,7 +179,7 @@ func switchTask(ctx context.Context, tx *sql.Tx, call Call, current string, obse
 		if err != nil {
 			return task, err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE tasks SET id=? WHERE seq=?", task.ID, seq); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE tasks_v11 SET id=? WHERE seq=?", task.ID, seq); err != nil {
 			return task, err
 		}
 	}
@@ -193,7 +193,7 @@ func switchTask(ctx context.Context, tx *sql.Tx, call Call, current string, obse
 			if err != nil {
 				return task, err
 			}
-			if _, err := tx.ExecContext(ctx, "INSERT INTO task_updates VALUES (?,?,?)", task.ID, observation.ID, string(data)); err != nil {
+			if _, err := tx.ExecContext(ctx, "INSERT INTO task_updates_v11 VALUES (?,?,?)", task.ID, observation.ID, string(data)); err != nil {
 				return task, err
 			}
 		}
@@ -201,12 +201,12 @@ func switchTask(ctx context.Context, tx *sql.Tx, call Call, current string, obse
 	task.Context, task.UpdatedAt = observation.Context, now
 	task.ResumeObservationID, task.LastObservationID = observation.ID, observation.ID
 	task.Revision++
-	if err := tx.QueryRowContext(ctx, "SELECT record_revision FROM workspaces WHERE id=?", call.WorkspaceID).Scan(&task.RecordRevision); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT record_revision FROM workspaces_v11 WHERE id=?", call.WorkspaceID).Scan(&task.RecordRevision); err != nil {
 		return task, err
 	}
 	if input.Workflow != "" {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO settings VALUES ('task',?,'workflow',?,1)
-ON CONFLICT(scope,scope_id,name) DO UPDATE SET value=excluded.value,revision=settings.revision+1 WHERE settings.value!=excluded.value`, task.ID, input.Workflow); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO settings_v11 VALUES ('task',?,'workflow',?,1)
+ON CONFLICT(scope,scope_id,name) DO UPDATE SET value=excluded.value,revision=settings_v11.revision+1 WHERE settings_v11.value!=excluded.value`, task.ID, input.Workflow); err != nil {
 			return task, err
 		}
 	}
@@ -224,7 +224,7 @@ ON CONFLICT(scope,scope_id,name) DO UPDATE SET value=excluded.value,revision=set
 	if err := saveTask(ctx, tx, task); err != nil {
 		return task, err
 	}
-	_, err = tx.ExecContext(ctx, "UPDATE workspaces SET current_task_id=? WHERE id=?", task.ID, call.WorkspaceID)
+	_, err = tx.ExecContext(ctx, "UPDATE workspaces_v11 SET current_task_id=? WHERE id=?", task.ID, call.WorkspaceID)
 	return task, err
 }
 
@@ -233,7 +233,7 @@ ON CONFLICT(scope,scope_id,name) DO UPDATE SET value=excluded.value,revision=set
  * 保留原记录及其作者证据；新任务只把开始时已有的内容视为工作区更新。
  */
 func changesBeforeStart(ctx context.Context, q queryer, workspace string, origin, current int64) ([]FileChange, error) {
-	rows, err := q.QueryContext(ctx, "SELECT data FROM file_changes WHERE workspace_id=? AND observation_id>? AND observation_id<=? ORDER BY id", workspace, origin, current)
+	rows, err := q.QueryContext(ctx, "SELECT data FROM file_changes_v11 WHERE workspace_id=? AND observation_id>? AND observation_id<=? ORDER BY id", workspace, origin, current)
 	if err != nil {
 		return nil, err
 	}
@@ -350,10 +350,10 @@ func (s *Store) transition(ctx context.Context, call Call, id string, state Task
 		task.Revision++
 		if state == TaskCompleted || state == TaskCanceled {
 			task.EndedAt = &now
-			if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(seq),0) FROM messages WHERE workspace_id=?", call.WorkspaceID).Scan(&task.EndMessageSeq); err != nil {
+			if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(seq),0) FROM messages_v11 WHERE workspace_id=?", call.WorkspaceID).Scan(&task.EndMessageSeq); err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, "UPDATE workspaces SET current_task_id='' WHERE id=?", call.WorkspaceID); err != nil {
+			if _, err := tx.ExecContext(ctx, "UPDATE workspaces_v11 SET current_task_id='' WHERE id=?", call.WorkspaceID); err != nil {
 				return err
 			}
 		}

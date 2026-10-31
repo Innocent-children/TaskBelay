@@ -10,6 +10,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/hook"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
+	"github.com/Innocent-children/taskbelay/internal/summary"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -36,7 +37,14 @@ func MetadataContext(_ context.Context, request *mcp.CallToolRequest) (ledger.Ac
 }
 
 type getInput struct {
-	TaskID string `json:"task_id,omitempty" jsonschema:"省略时读取当前工作区任务"`
+	TaskID     string `json:"task_id,omitempty" jsonschema:"省略时读取当前工作区任务"`
+	Category   string `json:"category,omitempty" jsonschema:"省略返回概要；messages、sources、requirements、notes、plans、checks、verifications、workspace_updates 或 task_updates"`
+	AfterSeq   int64  `json:"after_seq,omitempty" jsonschema:"列表游标，返回序号更大的记录"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"列表条数，默认 20，最多 100"`
+	RecordID   string `json:"record_id,omitempty" jsonschema:"单条正文编号，从列表或写入结果取得"`
+	Revision   int64  `json:"revision,omitempty" jsonschema:"需求和方案正文必须指定列表给出的修订号"`
+	CharOffset int    `json:"char_offset,omitempty" jsonschema:"正文的 Unicode 字符偏移，默认 0"`
+	CharLimit  int    `json:"char_limit,omitempty" jsonschema:"正文字符数，默认 2000，最多 12000；最终响应预算可能进一步缩短"`
 }
 type finishInput struct {
 	Outcome string `json:"outcome,omitempty" jsonschema:"complete 请求交付；仅用户明确放弃时用 cancel，中止原因保留本轮用户消息"`
@@ -64,15 +72,11 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		resolver = MetadataContext
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "taskbelay", Version: "0.1.0"}, nil)
-	register(server, "task_get", "读取当前或指定任务、原文来源、历史版本、有效设置和工作区更新。", false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input getInput) (any, error) {
-		return service.Get(ctx, actor, input.TaskID)
+	register(server, "task_get", "默认返回有限概要与记录总数；category 按 after_seq 分页。record_id 定位完整 JSON 正文，需求和方案同时指定 revision；按 next_offset 继续读取并拼接后解析。state 是查询时状态，正文不随显示状态改写。", false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input getInput) (any, error) {
+		return getTask(ctx, service, actor, input)
 	})
 	register(server, "task_start", "开始、恢复或重新打开任务；保留原始起点并保存当前恢复观察。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.StartTaskInput) (any, error) {
 		result, err := service.Start(ctx, actor, input)
-		if err != nil {
-			return nil, err
-		}
-		response, err := withView(ctx, service, actor, result.ID, result)
 		if err != nil {
 			return nil, err
 		}
@@ -80,7 +84,8 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		if err != nil {
 			return nil, err
 		}
-		response["summary"] = text
+		response := taskIdentity(result)
+		response["details"] = map[string]any{"summary": text}
 		return response, nil
 	})
 	register(server, "requirement_save", "保存需求修订；引用须对应完整来源，冲突返回最新版本供合并。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input requirementInput) (any, error) {
@@ -96,43 +101,44 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		if err != nil {
 			return nil, err
 		}
-		return withView(ctx, service, actor, result.TaskID, result)
+		return requirementResponse(result), nil
 	})
 	register(server, "note_add", "保存 decision 或 next_step。决定 target 指定 kind、id、精确 at、effect 和 scope；retain 用 task 期限，pause_checks 用 round/task，rerun_once 用 verification 目标及 once 期限；allow_edit 仅按用户消息授予当前 task 的具体草稿文件或目录，scope 为 task。revoke 撤回同一目标；撤回 plan 时 at 可省略以撤回整版，或精确列出范围、入口、dep:模块名。普通说明不豁免检查。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.NoteInput) (any, error) {
 		result, err := service.AddNote(ctx, actor, input)
 		if err != nil {
 			return nil, err
 		}
-		return withView(ctx, service, actor, result.TaskID, result)
+		return noteResponse(result), nil
 	})
 	register(server, "check_run", "检查固定任务输入；depth 为 static 或 tests，tests 仅对本次请求开启动态检查，refresh 重新核对。返回输入版本、实际覆盖、有限变异证据及未完成部分。", false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input check.RunInput) (any, error) {
-		return service.Check(ctx, actor, input)
+		result, err := service.Check(ctx, actor, input)
+		if err != nil {
+			return nil, err
+		}
+		return checkResponse(result, true), nil
 	})
 	register(server, "task_finish", "申请 complete 待交付，立即返回已有检查；Stop 完成交付。用户明确放弃时用 cancel，保存本轮消息作为中止原因。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input finishInput) (any, error) {
-		return service.Finish(ctx, actor, ledger.FinishInput{Outcome: input.Outcome})
+		result, err := service.Finish(ctx, actor, ledger.FinishInput{Outcome: input.Outcome})
+		if err != nil {
+			return nil, err
+		}
+		return finishResponse(result), nil
 	})
-	register(server, "plan_save", "半自动提交完整方案及 files、entries、deps；base_revision 使用 task_get 的 plans.revision。已确认范围累积保留，正文应说明原因、成功标准、做法与步骤；返回版本、变更摘要和数据目录路径。全自动仅返回当前模式和需求。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.PlanInput) (any, error) {
-		return service.SavePlan(ctx, actor, input)
+	register(server, "plan_save", "半自动提交完整方案及 files、entries、deps；base_revision 使用 task_get 的 plans_revision。已确认范围累积保留，正文应说明原因、成功标准、做法与步骤；返回版本、变更摘要和数据目录路径。全自动仅返回当前模式和需求。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.PlanInput) (any, error) {
+		result, err := service.SavePlan(ctx, actor, input)
+		if err != nil {
+			return nil, err
+		}
+		return planResponse(result), nil
 	})
 	register(server, "plan_confirm", "仅在用户明确确认后调用，核对完整消息的否定和附带修改；version、source_id、quote 绑定具体版本及原话。通常消息晚于提交；同一请求明确要求按方案直接开发时允许随请求授权。讨论或要求继续分析应保持待确认。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.PlanConfirmInput) (any, error) {
-		return service.ConfirmPlan(ctx, actor, input)
+		result, err := service.ConfirmPlan(ctx, actor, input)
+		if err != nil {
+			return nil, err
+		}
+		return planResponse(result), nil
 	})
 	return server
-}
-
-func withView(ctx context.Context, service hook.Tasks, actor ledger.Actor, id string, result any) (map[string]any, error) {
-	view, err := service.Store.TaskView(ctx, service.Workspace.ID, id, actor)
-	if err != nil {
-		return nil, err
-	}
-	for _, requirement := range view.Requirements {
-		for _, location := range requirement.ImplementedBy {
-			if location.Pending != "" {
-				view.PendingLocations = append(view.PendingLocations, location)
-			}
-		}
-	}
-	return map[string]any{"result": result, "view": view}, nil
 }
 
 func register[Input any](server *mcp.Server, name, description string, write bool, service hook.Tasks, unavailable error, resolver ContextResolver, handle func(context.Context, ledger.Actor, Input) (any, error)) {
@@ -157,6 +163,9 @@ func register[Input any](server *mcp.Server, name, description string, write boo
 		if unavailable != nil {
 			return toolFailure(unavailable)
 		}
+		if err := service.Store.CheckSchema(ctx); err != nil {
+			return toolFailure(err)
+		}
 		actor, err := resolver(ctx, request)
 		var target *string
 		switch options := any(input).(type) {
@@ -168,7 +177,7 @@ func register[Input any](server *mcp.Server, name, description string, write boo
 			target = &options.TaskID
 		}
 		ctx, trace := service.Store.StartDebug(ctx, service.Workspace.ID, target, actor, "mcp."+name, service.ReportError)
-		defer func() { trace.Finish(ctx, result, failure) }()
+		defer func() { trace.Finish(ctx, toolResult, failure) }()
 		ledger.DebugRecord(ctx, "mcp.input", map[string]any{"arguments": input, "identity_resolved": err == nil, "write": write})
 		if write && err != nil {
 			return toolFailure(err)
@@ -192,8 +201,16 @@ func register[Input any](server *mcp.Server, name, description string, write boo
 			return toolFailure(err)
 		}
 		ledger.DebugRecord(ctx, "mcp.handle.end", nil)
+		value, ok := result.(map[string]any)
+		if !ok {
+			return toolFailure(fmt.Errorf("工具响应不是可分页的对象"))
+		}
+		toolResult = boundedResponse(name, value, false)
+		business, _ := json.Marshal(value)
+		wire, _ := json.Marshal(toolResult)
+		ledger.DebugRecord(ctx, "mcp.output_size", map[string]any{"business_bytes": len(business), "protocol_bytes": len(wire), "estimated_tokens": summary.Tokens(string(wire)), "budget": outputBudget(name)})
 		failure = nil
-		return nil, result, nil
+		return toolResult, nil, nil
 	})
 }
 
@@ -201,16 +218,21 @@ func toolError(err error) (*mcp.CallToolResult, any, error) {
 	result := map[string]any{"error": err.Error()}
 	var conflict *ledger.RequirementConflict
 	if errors.As(err, &conflict) {
-		result["latest"] = conflict.Latest
+		result["task_id"], result["id"], result["latest_revision"] = conflict.Latest.TaskID, conflict.Latest.ID, conflict.Latest.Revision
+		result["read"] = readLink(conflict.Latest.TaskID, "requirements", conflict.Latest.ID, conflict.Latest.Revision)
 	}
 	var planConflict *ledger.PlanConflict
 	if errors.As(err, &planConflict) {
-		result["latest"] = planConflict.Latest
+		result["latest_revision"] = planConflict.Latest.Revision
+		id := ""
+		if len(planConflict.Latest.Versions) > 0 {
+			id = planConflict.Latest.Versions[0].TaskID
+		}
+		result["read"] = readLink(id, "plans", "", 0)
 	}
 	var taskConflict *ledger.TaskConflict
 	if errors.As(err, &taskConflict) {
 		result["current_task_id"] = taskConflict.CurrentTaskID
 	}
-	data, _ := json.Marshal(result)
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: string(data)}}}, result, nil
+	return boundedResponse("error", result, true), nil, nil
 }

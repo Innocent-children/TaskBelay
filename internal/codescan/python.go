@@ -560,7 +560,7 @@ func (p *pyFile) missing(operation string, n *ts.Node, reason string) {
 		return
 	}
 	p.missingKeys[key] = true
-	p.file.Missing = append(p.file.Missing, Missing{p.file.Path, operation, fmt.Sprintf("第 %d 行：%s", n.StartPoint().Row+1, reason)})
+	p.file.Missing = append(p.file.Missing, Missing{p.file.Path, operation, fmt.Sprintf("第 %d 行：%s", n.StartPoint().Row+1, reason), "unsupported"})
 }
 
 func (a *pyAnalysis) unknown(item *pyDeclaration, slot *Slot, p *pyFile, n *ts.Node, reason string) {

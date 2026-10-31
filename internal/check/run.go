@@ -46,10 +46,24 @@ func runStatic(ctx context.Context, store *ledger.Store, workspace gitstate.Work
 			return ledger.CheckRecord{}, err
 		}
 		if cached != nil && cached.Status == ledger.CheckComplete {
-			cached.Report.Verifications = view.Verifications
-			cached.Report.ValidationNotes = validationNotes(view)
-			ledger.DebugRecord(ctx, "check.cache", map[string]any{"depth": "static", "reused": true, "record_id": cached.ID, "input_version": input.Version()})
-			return ledger.WithDelivery(*cached, view.Task.State == ledger.TaskPending && view.Settings.Values["enforcement"].Value != "hint"), nil
+			current, err := workspace.Capture(ctx)
+			if err != nil {
+				return ledger.CheckRecord{}, err
+			}
+			if !current.Complete() || current.Tree != input.Tree {
+				return ledger.CheckRecord{}, ledger.ErrCheckInputChanged
+			}
+			reusable, err := store.CheckReusable(ctx, workspace.ID, actor, *cached)
+			if err != nil {
+				return ledger.CheckRecord{}, err
+			}
+			if reusable {
+				cached.Reused = true
+				cached.Report.Verifications = view.Verifications
+				cached.Report.ValidationNotes = validationNotes(view)
+				ledger.DebugRecord(ctx, "check.cache", map[string]any{"depth": "static", "reused": true, "record_id": cached.ID, "input_version": input.Version()})
+				return ledger.WithDelivery(*cached, view.Task.State == ledger.TaskPending && view.Settings.Values["enforcement"].Value != "hint"), nil
+			}
 		}
 	}
 	ledger.DebugRecord(ctx, "check.cache", map[string]any{"depth": "static", "reused": false, "refresh": options.Refresh})
@@ -61,11 +75,16 @@ func runStatic(ctx context.Context, store *ledger.Store, workspace gitstate.Work
 	ledger.DebugRecord(ctx, "check.analysis.end", map[string]any{"record": result, "returned": analyzeErr == nil})
 	result.Input, result.InputVersion, result.Depth, result.StartedAt = input, input.Version(), "static", started
 	if analyzeErr != nil {
-		result.Status = ledger.CheckFailed
-		if errors.Is(analyzeErr, context.DeadlineExceeded) || errors.Is(analyzeErr, context.Canceled) {
+		kind := "error"
+		if result.Status == "" {
+			result.Status = ledger.CheckFailed
+		} else {
 			result.Status = ledger.CheckPartial
 		}
-		result.Missing = append(result.Missing, ledger.CheckGap{Operation: "static", Reason: analyzeErr.Error()})
+		if errors.Is(analyzeErr, context.DeadlineExceeded) || errors.Is(analyzeErr, context.Canceled) {
+			kind = "incomplete"
+		}
+		result.Missing = append(result.Missing, ledger.CheckGap{Operation: "static", Kind: kind, Reason: analyzeErr.Error()})
 		// 未完成操作不提供确定性拦截证据，也不把旧问题标为解决。
 		result.Evaluated = nil
 		for i := range result.Issues {
@@ -84,7 +103,7 @@ func runStatic(ctx context.Context, store *ledger.Store, workspace gitstate.Work
 	currentTree := current.Tree
 	if captureErr != nil || !current.Complete() {
 		currentTree = ""
-		result.Missing = append(result.Missing, ledger.CheckGap{Operation: "publish", Reason: "当前工作区复核未完成"})
+		result.Missing = append(result.Missing, ledger.CheckGap{Operation: "publish", Kind: "incomplete", Reason: "当前工作区复核未完成"})
 	}
 	return store.SaveCheck(publish, workspace.ID, actor, currentTree, result)
 }
@@ -198,7 +217,10 @@ func analyze(ctx context.Context, store *ledger.Store, workspace gitstate.Worksp
 		}
 		for _, change := range migration {
 			if change.After == nil {
-				for _, issue := range previous.Issues {
+				if file := after.Files[change.Before.File]; file != nil && !file.Operations["declarations"].Complete {
+					continue
+				}
+				for _, issue := range view.Issues {
 					at := change.Before.Location()
 					if issue.At == at || strings.HasPrefix(issue.At, at+".") {
 						result.Evaluated = append(result.Evaluated, ledger.CheckScope(issue.Rule, issue.At))
@@ -206,7 +228,7 @@ func analyze(ctx context.Context, store *ledger.Store, workspace gitstate.Worksp
 				}
 			}
 		}
-		for _, issue := range previous.Issues {
+		for _, issue := range view.Issues {
 			at := issue.At
 			if moved := result.Relocations[at]; moved != "" {
 				at = moved

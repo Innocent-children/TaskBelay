@@ -74,7 +74,7 @@ func auditDefinitions(ctx context.Context, file *File, tree *ts.Tree, language *
 				continue
 			}
 			if !covered[[2]uint32{name.StartByte(), name.EndByte()}] {
-				file.Missing = append(file.Missing, Missing{file.Path, "declarations", fmt.Sprintf("第 %d 行：tags 未覆盖具名绑定 %s", name.StartPoint().Row+1, name.Text(file.Data))})
+				file.Missing = append(file.Missing, Missing{file.Path, "declarations", fmt.Sprintf("第 %d 行：tags 未覆盖具名绑定 %s", name.StartPoint().Row+1, name.Text(file.Data)), "unsupported"})
 			}
 		}
 	})

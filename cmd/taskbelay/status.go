@@ -51,7 +51,7 @@ func runStatus(ctx context.Context, env platform.Env, dir string, output io.Writ
 		return err
 	}
 	service := hook.Tasks{Observer: hook.Observer{Store: store, Workspace: workspace}}
-	maintain(ctx, service, env, ledger.NormalWait)
+	maintain(ctx, service, env)
 	status, err := service.Status(ctx)
 	if err != nil {
 		return err

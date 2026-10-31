@@ -101,6 +101,9 @@ func (a *javaAnalysis) javaCalls(p *javaFile, n *ts.Node) {
 			name = owner[strings.LastIndex(owner, ".")+1:]
 		}
 		targets := a.javaMethods(owner, name, map[string]bool{})
+		if len(targets) == 0 && p.kind(n) == "method_invocation" && p.field(n, "object") == nil {
+			targets = a.javaLexicalPrivate(p, n, name)
+		}
 		if p.kind(n) == "method_invocation" && p.kind(p.field(n, "object")) != "super" {
 			for _, method := range a.overrides[owner+"."+name] {
 				if !slices.Contains(targets, method) {
@@ -114,10 +117,17 @@ func (a *javaAnalysis) javaCalls(p *javaFile, n *ts.Node) {
 			})
 		}
 		if len(targets) == 1 {
+			confirmed := true
 			for _, base := range a.parentTypes(targets[0].p.types[targets[0].p.enclosingType(targets[0].n)], 0) {
 				if inherited := a.apiMethod(base, name, 0); javaKnownMethod(inherited) {
+					confirmed = false
 					a.javaCallUnknown(targets[0], p, n, "同名方法与外部 API 存在继承或重载，实际调用参数不能唯一核对")
 				}
+			}
+			if confirmed {
+				use := p.use(n, targets[0].d.ID)
+				use.Candidate = false
+				addUse(&targets[0].d.Usage.References, use)
 			}
 			a.javaGeneric(targets[0], p, n, p.field(n, "type_arguments"))
 			a.javaCallArguments(targets[0], p, n, args)
@@ -170,6 +180,31 @@ func (a *javaAnalysis) javaCalls(p *javaFile, n *ts.Node) {
 			}
 		}
 	}
+}
+
+/**
+ * 嵌套类型可调用外层的 private 成员；存在继承候选或静态边界时不猜接收者。
+ */
+func (a *javaAnalysis) javaLexicalPrivate(p *javaFile, call *ts.Node, name string) []*javaDeclaration {
+	for typ := p.enclosingType(call); typ != nil; {
+		if p.field(typ, "superclass") != nil || p.field(typ, "interfaces") != nil || p.hasModifier(typ, "static") {
+			return nil
+		}
+		typ = p.enclosingType(p.parent(typ))
+		if typ == nil {
+			return nil
+		}
+		var targets []*javaDeclaration
+		for _, item := range a.byName[name] {
+			if item.p == p && p.enclosingType(item.n) == typ && p.hasModifier(item.n, "private") && javaCallable(p.kind(item.n)) {
+				targets = append(targets, item)
+			}
+		}
+		if len(targets) > 0 {
+			return targets
+		}
+	}
+	return nil
 }
 
 func (a *javaAnalysis) javaCallArguments(item *javaDeclaration, p *javaFile, n *ts.Node, args []*ts.Node) {

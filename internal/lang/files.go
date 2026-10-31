@@ -40,7 +40,7 @@ func Classify(name string, data []byte) FileKind {
 	result.Stub = strings.HasSuffix(name, ".pyi") || strings.HasSuffix(name, ".d.ts")
 	if entry := grammars.DetectLanguage(base); entry != nil {
 		result.Language = entry.Name
-		result.Source = !result.Stub && !result.Lock
+		result.Source = !result.Stub && !result.Lock && entry.Language != nil && strings.TrimSpace(grammars.ResolveTagsQuery(*entry)+GenericTags(entry.Name)) != ""
 		switch entry.Name {
 		case "json", "json5", "jsonc", "toml", "yaml", "xml", "markdown", "markdown_inline", "rst", "html", "css", "ini", "gomod", "gosum":
 			result.Source = false

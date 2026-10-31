@@ -81,7 +81,7 @@ func (s *staticAnalysis) tests() {
 			if (file.Kind.Test || len(file.Tests) > 0) && !file.Kind.Generated && !file.Kind.Dependency && !file.Operations["tests"].Complete {
 				complete = false
 				if needsTestInventory || s.fileChanged(file.Path) {
-					s.gap(file.Path, "tests", file.Operations["tests"].Reason)
+					s.gap(file.Path, "tests", file.GapKind("tests"), file.Operations["tests"].Reason)
 				}
 			}
 		}

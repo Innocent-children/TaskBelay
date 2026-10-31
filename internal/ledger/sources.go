@@ -58,7 +58,7 @@ func MatchQuote(source Source, quote string) (Citation, error) {
 func loadSource(ctx context.Context, q queryer, workspace, id string) (Source, error) {
 	var source Source
 	var data string
-	err := q.QueryRowContext(ctx, "SELECT data FROM sources WHERE workspace_id=? AND id=?", workspace, id).Scan(&data)
+	err := q.QueryRowContext(ctx, "SELECT data FROM sources_v11 WHERE workspace_id=? AND id=?", workspace, id).Scan(&data)
 	if err != nil {
 		return source, err
 	}
@@ -93,7 +93,7 @@ func putSource(ctx context.Context, tx *sql.Tx, source Source) error {
 		return err
 	}
 	var existing string
-	err = tx.QueryRowContext(ctx, "SELECT data FROM sources WHERE id=?", source.ID).Scan(&existing)
+	err = tx.QueryRowContext(ctx, "SELECT data FROM sources_v11 WHERE id=?", source.ID).Scan(&existing)
 	if err == nil {
 		var old Source
 		if err := json.Unmarshal([]byte(existing), &old); err != nil {
@@ -107,7 +107,7 @@ func putSource(ctx context.Context, tx *sql.Tx, source Source) error {
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO sources VALUES (?,?,?,?)", source.ID, source.WorkspaceID, source.TaskID, string(data))
+	_, err = tx.ExecContext(ctx, "INSERT INTO sources_v11 VALUES (?,?,?,?)", source.ID, source.WorkspaceID, source.TaskID, string(data))
 	return err
 }
 
@@ -162,14 +162,10 @@ func (s *Store) RecordSource(ctx context.Context, source Source) error {
 }
 
 func loadObservation(ctx context.Context, q queryer, workspace string, id int64) (Observation, error) {
-	var result Observation
-	var data string
-	err := q.QueryRowContext(ctx, "SELECT data FROM observations WHERE workspace_id=? AND id=?", workspace, id).Scan(&data)
-	if err != nil {
-		return result, err
+	result, err := readObservation(ctx, q, id)
+	if err == nil && result.WorkspaceID != workspace {
+		return Observation{}, fmt.Errorf("观察 %d 不属于当前工作区", id)
 	}
-	err = json.Unmarshal([]byte(data), &result)
-	result.ID = id
 	return result, err
 }
 
@@ -177,7 +173,7 @@ func (s *Store) MessageByEvent(ctx context.Context, workspace string, actor Acto
 	var message Message
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		var data string
-		if err := q.QueryRowContext(ctx, "SELECT data FROM messages WHERE workspace_id=? AND agent=? AND session_id=? AND event_id=?", workspace, actor.Agent, actor.SessionID, eventID).Scan(&data); err != nil {
+		if err := q.QueryRowContext(ctx, "SELECT data FROM messages_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND event_id=?", workspace, actor.Agent, actor.SessionID, eventID).Scan(&data); err != nil {
 			return err
 		}
 		return json.Unmarshal([]byte(data), &message)
@@ -195,7 +191,7 @@ func (s *Store) RecordMessage(ctx context.Context, message Message) (Message, er
 	var result Message
 	err := s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var data string
-		err := tx.QueryRowContext(ctx, "SELECT data FROM messages WHERE workspace_id=? AND agent=? AND session_id=? AND event_id=?", message.WorkspaceID, message.Actor.Agent, message.Actor.SessionID, message.EventID).Scan(&data)
+		err := tx.QueryRowContext(ctx, "SELECT data FROM messages_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND event_id=?", message.WorkspaceID, message.Actor.Agent, message.Actor.SessionID, message.EventID).Scan(&data)
 		if err == nil {
 			if err := json.Unmarshal([]byte(data), &result); err != nil {
 				return err
@@ -219,7 +215,7 @@ func (s *Store) RecordMessage(ctx context.Context, message Message) (Message, er
 		if message.At.IsZero() {
 			message.At = observation.At
 		}
-		insert, err := tx.ExecContext(ctx, "INSERT INTO messages(workspace_id,agent,session_id,round_id,event_id,observation_id,data) VALUES (?,?,?,?,?,?,?)", message.WorkspaceID, message.Actor.Agent, message.Actor.SessionID, message.Actor.RoundID, message.EventID, message.ObservationID, "")
+		insert, err := tx.ExecContext(ctx, "INSERT INTO messages_v11(workspace_id,agent,session_id,round_id,event_id,observation_id,data) VALUES (?,?,?,?,?,?,?)", message.WorkspaceID, message.Actor.Agent, message.Actor.SessionID, message.Actor.RoundID, message.EventID, message.ObservationID, "")
 		if err != nil {
 			return err
 		}
@@ -232,13 +228,13 @@ func (s *Store) RecordMessage(ctx context.Context, message Message) (Message, er
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE messages SET id=?,data=? WHERE seq=?", message.ID, string(encoded), message.Seq); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE messages_v11 SET id=?,data=? WHERE seq=?", message.ID, string(encoded), message.Seq); err != nil {
 			return err
 		}
 		if err := putSource(ctx, tx, Source{ID: message.ID, WorkspaceID: message.WorkspaceID, Kind: "user_message", Text: message.Text, ObservationID: message.ObservationID, At: message.At}); err != nil {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO task_sessions VALUES (?,?,?,?,?,?,?)
+		_, err = tx.ExecContext(ctx, `INSERT INTO task_sessions_v11 VALUES (?,?,?,?,?,?,?)
 ON CONFLICT(workspace_id,agent,session_id) DO UPDATE SET round_id=excluded.round_id,last_message_id=excluded.last_message_id,activity_at=excluded.activity_at`, message.WorkspaceID, message.Actor.Agent, message.Actor.SessionID, message.Actor.RoundID, message.ID, message.At.Format(time.RFC3339Nano), message.At.Format(time.RFC3339Nano))
 		if err != nil {
 			return err
@@ -255,7 +251,7 @@ func (s *Store) ValidateSession(ctx context.Context, workspace string, actor Act
 	}
 	return s.read(ctx, func(ctx context.Context, q queryer) error {
 		var round string
-		if err := q.QueryRowContext(ctx, "SELECT round_id FROM task_sessions WHERE workspace_id=? AND agent=? AND session_id=?", workspace, actor.Agent, actor.SessionID).Scan(&round); err != nil {
+		if err := q.QueryRowContext(ctx, "SELECT round_id FROM task_sessions_v11 WHERE workspace_id=? AND agent=? AND session_id=?", workspace, actor.Agent, actor.SessionID).Scan(&round); err != nil {
 			return fmt.Errorf("当前 session 尚无可核对的消息来源: %w", err)
 		}
 		if round != actor.RoundID {

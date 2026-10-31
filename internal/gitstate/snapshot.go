@@ -180,67 +180,38 @@ func copyIndex(ctx context.Context, source *os.File, path string) error {
 	return os.Chtimes(path, info.ModTime(), info.ModTime())
 }
 
-type Retained struct{ Tree, Commit, Ref string }
+type Retained struct {
+	Tree string
+	SnapshotRef
+}
 
 /**
- * 已有快照引用只能重用，不能移动到新内容。尚未绑定任务的候选使用 session 引用；
- * 起点选择和过期清理由任务生命周期阶段处理。
+ * 只创建预登记的直接 tree 引用。重试只能复用相同对象，不能移动已有引用。
  */
 func (w Workspace) Retain(ctx context.Context, owner, id, tree string) (Retained, error) {
-	result := Retained{Tree: tree, Ref: "refs/taskbelay/" + owner + "/" + id}
-	if !safeComponent(owner) || !safeComponent(id) || !validObjectID(tree) {
-		return result, fmt.Errorf("无效的快照引用")
-	}
-	input, writer, err := os.Pipe()
-	if err != nil {
-		return result, fmt.Errorf("创建快照引用管道: %w", err)
-	}
-	updated := make(chan error, 1)
-	go func() {
-		_, err := w.command(ctx, input, nil, "update-ref", "--stdin")
-		if err != nil {
-			err = fmt.Errorf("创建快照引用: %w", err)
-		}
-		updated <- errors.Join(err, input.Close())
-	}()
-	// 引用进程可先启动等待；只有提交成功后才发送创建指令，所有路径均关闭管道并等待退出。
-	env := []string{"GIT_AUTHOR_NAME=TaskBelay", "GIT_AUTHOR_EMAIL=taskbelay@localhost", "GIT_COMMITTER_NAME=TaskBelay", "GIT_COMMITTER_EMAIL=taskbelay@localhost"}
-	out, commitErr := w.command(ctx, strings.NewReader("TaskBelay snapshot\n"), env, "-c", "commit.gpgsign=false", "commit-tree", tree)
-	if commitErr == nil {
-		result.Commit = strings.TrimSpace(string(out))
-		if !validObjectID(result.Commit) {
-			commitErr = fmt.Errorf("无效的快照提交标识")
-		} else {
-			_, err = fmt.Fprintf(writer, "create %s %s\n", result.Ref, result.Commit)
-		}
-	}
-	if commitErr != nil {
-		commitErr = fmt.Errorf("创建快照提交: %w", commitErr)
-	}
-	if err != nil {
-		err = fmt.Errorf("发送快照引用: %w", err)
-	}
-	closeErr := writer.Close()
-	if closeErr != nil {
-		closeErr = fmt.Errorf("关闭快照引用管道: %w", closeErr)
-	}
-	err = errors.Join(commitErr, err, closeErr, <-updated)
-	if commitErr != nil {
+	result := Retained{Tree: tree, SnapshotRef: SnapshotRef{Ref: "refs/taskbelay/" + owner + "/" + id, Object: tree, Type: "tree", WorkspaceID: w.ID}}
+	if err := result.Validate(); err != nil {
 		return result, err
 	}
-	if err != nil && ctx.Err() == nil {
-		// create 只允许建立新引用；重试或并发建立后才读取已有内容。
-		if out, readErr := w.command(ctx, nil, nil, "rev-parse", "--verify", "--quiet", result.Ref); readErr == nil {
-			existingCommit := strings.TrimSpace(string(out))
-			existing, readErr := w.command(ctx, nil, nil, "rev-parse", existingCommit+"^{tree}")
-			if readErr == nil && strings.TrimSpace(string(existing)) == tree {
-				result.Commit = existingCommit
-				return result, nil
-			}
-			return result, fmt.Errorf("快照编号已用于其他内容")
-		}
+	kind, err := w.command(ctx, nil, nil, "cat-file", "-t", tree)
+	if err != nil {
+		return result, err
 	}
-	return result, err
+	if strings.TrimSpace(string(kind)) != "tree" {
+		return result, fmt.Errorf("快照对象不是 tree")
+	}
+	_, err = w.command(ctx, strings.NewReader("create "+result.Ref+" "+tree+"\n"), nil, "update-ref", "--no-deref", "--stdin")
+	if err == nil {
+		return result, nil
+	}
+	if ctx.Err() != nil {
+		return result, ctx.Err()
+	}
+	fields, readErr := w.snapshotFields(ctx, result.Ref)
+	if readErr == nil && len(fields) == 8 && fields[0] == result.Ref && fields[1] == tree && fields[2] == "tree" && fields[7] == "" {
+		return result, nil
+	}
+	return result, fmt.Errorf("创建快照引用失败或已有其他对象: %s: %w", result.Ref, err)
 }
 
 func safeComponent(value string) bool {

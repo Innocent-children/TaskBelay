@@ -112,7 +112,7 @@ func (s *staticAnalysis) abstractions(d codescan.Declaration) {
 		}
 		if len(use.unknown) > 0 {
 			for _, unknown := range use.unknown {
-				s.gap(use.at, "D4", unknown.Reason)
+				s.gap(use.at, "D4", "unsupported", unknown.Reason)
 			}
 			continue
 		}
@@ -165,7 +165,7 @@ func (s *staticAnalysis) slots(change codescan.Change) {
 	}
 	if len(d.Usage.Unknown) > 0 {
 		for _, unknown := range d.Usage.Unknown {
-			s.gap(d.Location(), "D5", unknown.Reason)
+			s.gap(d.Location(), "D5", "unsupported", unknown.Reason)
 		}
 		return
 	}
@@ -189,7 +189,7 @@ func (s *staticAnalysis) slots(change codescan.Change) {
 			}
 			if len(slot.Unknown) > 0 {
 				for _, use := range slot.Unknown {
-					s.gap(at, "D5", use.Reason)
+					s.gap(at, "D5", "unsupported", use.Reason)
 				}
 				continue
 			}

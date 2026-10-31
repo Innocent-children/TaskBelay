@@ -46,7 +46,7 @@ func TestShellInstallerRepeatAndFailedDownloadPreserveUserFiles(t *testing.T) {
 	if err := os.MkdirAll(fixture, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	payload := []byte("#!/bin/sh\nprintf 'TaskBelay fixture (local)\\n'\n")
+	payload := []byte("#!/bin/sh\nprintf 'TaskBelay v0.5.1 (local)\\n'\n")
 	asset := "taskbelay-" + runtime.GOOS + "-" + runtime.GOARCH
 	write := func(path string, data []byte) {
 		t.Helper()
@@ -56,6 +56,8 @@ func TestShellInstallerRepeatAndFailedDownloadPreserveUserFiles(t *testing.T) {
 	}
 	write(filepath.Join(fixture, asset), payload)
 	write(filepath.Join(fixture, "SHA256SUMS"), fmt.Appendf(nil, "%x  %s\n", sha256.Sum256(payload), asset))
+	metadata := fmt.Sprintf(`{"version":"v0.5.1","revision":%q,"assets":[%q,"SHA256SUMS"]}`, strings.Repeat("a", 40), asset)
+	write(filepath.Join(fixture, "release-manifest.json"), []byte(metadata))
 	write(filepath.Join(fakeBin, "curl"), []byte(`#!/bin/sh
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -64,6 +66,10 @@ while [ "$#" -gt 0 ]; do
     *) shift ;;
   esac
 done
+case "$url" in
+  */release-manifest.json|*/download/v0.5.1/*) ;;
+  *) echo 'Download was not pinned to metadata version' >&2; exit 1 ;;
+esac
 cp "$TASKBELAY_TEST_DOWNLOADS/${url##*/}" "$destination"
 `))
 	write(filepath.Join(fakeBin, "go"), []byte(`#!/bin/sh
@@ -103,6 +109,22 @@ cp "$TASKBELAY_TEST_BINARY" "$destination"
 		}
 	}
 	target := filepath.Join(root, ".local", "bin", "taskbelay")
+	for _, invalid := range []string{
+		strings.Replace(metadata, "v0.5.1", "v00.5.1", 1),
+		strings.Replace(metadata, fmt.Sprintf("%q,", asset), "", 1),
+		strings.Replace(metadata, `"version":`, `"unknown":`, 1),
+		strings.TrimSuffix(metadata, "}"),
+		metadata + `{}`,
+	} {
+		write(filepath.Join(fixture, "release-manifest.json"), []byte(invalid))
+		if err := runInstaller(); err == nil {
+			t.Fatalf("accepted invalid metadata: %s", invalid)
+		}
+		if installed, err := os.ReadFile(target); err != nil || !bytes.Equal(installed, payload) {
+			t.Fatalf("metadata failure changed installation: %q, %v", installed, err)
+		}
+	}
+	write(filepath.Join(fixture, "release-manifest.json"), []byte(metadata))
 	profile, err := os.ReadFile(filepath.Join(root, ".zshrc"))
 	if err != nil || !strings.Contains(string(profile), "# existing user profile") || strings.Count(string(profile), "export PATH=") != 1 {
 		t.Fatalf("profile not preserved or PATH duplicated: %q, %v", profile, err)

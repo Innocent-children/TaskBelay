@@ -63,7 +63,7 @@ taskbelay
 
 `taskbelay` 打开终端管理菜单。上下方向键选择，右方向键或回车进入，左方向键返回，空格勾选 Agent，Ctrl+C 退出。菜单提供 Agent 接入、设置、状态查看、检查、更新和卸载入口。
 
-安装脚本省略 `--source` 或 `-Source` 时会下载发布包。使用这种方式前，所选 Release 需要提供对应系统和架构的 Go 程序及 `SHA256SUMS` 校验清单；源码安装不依赖这些发布资产。发布安装方式见[安装和卸载](docs/product-agent-integration.md#安装和卸载)。
+安装脚本省略 `--source` 或 `-Source` 时会下载发布包。所选 Release 需要提供对应系统和架构的程序、`release-manifest.json` 元数据及 `SHA256SUMS`；安装器确定版本后从固定标签下载。源码安装不依赖这些资产，`go install github.com/Innocent-children/taskbelay/cmd/taskbelay@new` 指向开发分支，`@latest` 不表示 `new`。发布安装方式见[安装和卸载](docs/product-agent-integration.md#安装和卸载)。
 
 ### 3. 接入 Agent
 
@@ -169,6 +169,8 @@ debug 文件不会随任务结束或七天错误日志清理而自动删除，�
 ## 更新与卸载
 
 从源码安装后，更新源码并重新执行对应系统的源码安装命令。使用发布版时，可通过菜单或 `taskbelay update` 下载并校验最新发布程序。程序更新后重新打开 Agent 会话，使 MCP 加载新程序；如果程序路径发生变化，重新执行对应的 `taskbelay install` 命令以更新接入路径。
+
+更新器比较正式版本和 Go 伪版本，只替换为更高版本。无法解析的开发版本显示构建信息并结束自动更新，可重新运行源码安装脚本。当前账本使用 schema 11，首次打开时原子升级；旧 MCP 在迁移后会返回账本访问错误，需重启 Agent 会话。升级后仅回退程序不能恢复旧版对新账本的访问。
 
 只移除某个 Agent 的接入：
 

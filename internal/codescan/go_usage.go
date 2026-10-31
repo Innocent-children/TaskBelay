@@ -47,6 +47,7 @@ func analyzeGoUsage(ctx context.Context, files []*goFile) {
 				continue
 			}
 			item := &goDeclaration{d: d, g: g, n: n}
+			d.Visibility = Visibility{Scope: golang.VisibilityScope(g.kind(n), d.Owner, d.Name), Package: g.packageName}
 			u.declarations = append(u.declarations, item)
 			u.byName[d.Name] = append(u.byName[d.Name], item)
 			u.byScope[g][span(n)] = item
@@ -337,7 +338,13 @@ func (u *goUsage) inspect(g *goFile, n *ts.Node) {
 	switch g.kind(n) {
 	case "call_expression", "type_conversion_expression":
 		callee, _, typeArguments := goCallParts(g, n)
-		for _, target := range u.callableTargets(g, callee) {
+		targets := u.callableTargets(g, callee)
+		for _, target := range targets {
+			if len(targets) == 1 && target.g.packageKey() == g.packageKey() {
+				use := g.use(n, target.d.ID)
+				use.Candidate = false
+				addUse(&target.d.Usage.References, use)
+			}
 			if target.d.Usage.Generic {
 				if args := typeArguments; args != nil {
 					count := 0

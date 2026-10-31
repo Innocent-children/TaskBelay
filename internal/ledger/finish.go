@@ -11,13 +11,13 @@ import (
 
 func finishRequest(ctx context.Context, q queryer, workspace string, actor Actor) (*FinishRequest, error) {
 	var data, state string
-	err := q.QueryRowContext(ctx, "SELECT state,data FROM finish_requests WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=?", workspace, actor.Agent, actor.SessionID, actor.RoundID).Scan(&state, &data)
+	err := q.QueryRowContext(ctx, "SELECT state,data FROM finish_requests_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=?", workspace, actor.Agent, actor.SessionID, actor.RoundID).Scan(&state, &data)
 	if errors.Is(err, sql.ErrNoRows) {
 		// 失败的 Stop 可以由同一 session 的当前轮次接续；不接管其他任务或迟到轮次。
-		err = q.QueryRowContext(ctx, `SELECT f.state,f.data FROM finish_requests f
-JOIN workspaces w ON w.id=f.workspace_id AND w.current_task_id=f.task_id
-JOIN tasks t ON t.id=f.task_id AND t.state=?
-JOIN task_sessions s ON s.workspace_id=f.workspace_id AND s.agent=f.agent AND s.session_id=f.session_id
+		err = q.QueryRowContext(ctx, `SELECT f.state,f.data FROM finish_requests_v11 f
+JOIN workspaces_v11 w ON w.id=f.workspace_id AND w.current_task_id=f.task_id
+JOIN tasks_v11 t ON t.id=f.task_id AND t.state=?
+JOIN task_sessions_v11 s ON s.workspace_id=f.workspace_id AND s.agent=f.agent AND s.session_id=f.session_id
 WHERE f.workspace_id=? AND f.agent=? AND f.session_id=? AND f.state='pending' AND s.round_id=?
 ORDER BY f.rowid DESC LIMIT 1`, TaskPending, workspace, actor.Agent, actor.SessionID, actor.RoundID).Scan(&state, &data)
 	}
@@ -50,13 +50,13 @@ func saveFinishRequest(ctx context.Context, tx *sql.Tx, workspace string, reques
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO finish_requests VALUES(?,?,?,?,?,?,?)
+	_, err = tx.ExecContext(ctx, `INSERT INTO finish_requests_v11 VALUES(?,?,?,?,?,?,?)
 ON CONFLICT(workspace_id,agent,session_id,round_id) DO UPDATE SET task_id=excluded.task_id,state=excluded.state,data=excluded.data`, workspace, request.Actor.Agent, request.Actor.SessionID, request.Actor.RoundID, request.TaskID, request.State, string(data))
 	return err
 }
 
 func expireFinishRequests(ctx context.Context, tx *sql.Tx, workspace, task string) error {
-	_, err := tx.ExecContext(ctx, "UPDATE finish_requests SET state='expired' WHERE workspace_id=? AND task_id=? AND state='pending'", workspace, task)
+	_, err := tx.ExecContext(ctx, "UPDATE finish_requests_v11 SET state='expired' WHERE workspace_id=? AND task_id=? AND state='pending'", workspace, task)
 	return err
 }
 
@@ -168,11 +168,16 @@ func (s *Store) Deliver(ctx context.Context, workspace string, actor Actor, curr
 		}
 		record = WithDelivery(record, settings.Values["enforcement"].Value == "block")
 		result.Check = record
-		data, err := json.Marshal(record)
+		data, err := json.Marshal(record.Issues)
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE checks SET data=? WHERE seq=? AND task_id=? AND input_version=?", string(data), record.ID, task.ID, record.InputVersion); err != nil {
+		updates, err := json.Marshal(checkDeliveryUpdates{Verifications: record.Report.Verifications, ValidationNotes: record.Report.ValidationNotes})
+		if err != nil {
+			return err
+		}
+		// 交付新增的验证信息单独保存，使内部读取完整，原执行报告仍可按固定字符偏移续读。
+		if _, err := tx.ExecContext(ctx, "UPDATE checks_v11 SET data=json_set(data,'$.issues',json(?),'$.level',?,'$.delivery_updates',json(?)) WHERE seq=? AND task_id=? AND input_version=?", string(data), record.Level, string(updates), record.ID, task.ID, record.InputVersion); err != nil {
 			return err
 		}
 		if !request.Feedback && settings.Values["enforcement"].Value == "block" {
@@ -187,13 +192,13 @@ func (s *Store) Deliver(ctx context.Context, workspace string, actor Actor, curr
 			request.State, result.State = "completed", "completed"
 			task.State, task.EndedAt, task.UpdatedAt = TaskCompleted, &now, now
 			task.Revision++
-			if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(seq),0) FROM messages WHERE workspace_id=?", workspace).Scan(&task.EndMessageSeq); err != nil {
+			if err := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(seq),0) FROM messages_v11 WHERE workspace_id=?", workspace).Scan(&task.EndMessageSeq); err != nil {
 				return err
 			}
 			if err := saveTask(ctx, tx, task); err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, "UPDATE workspaces SET current_task_id='' WHERE id=? AND current_task_id=?", workspace, task.ID); err != nil {
+			if _, err := tx.ExecContext(ctx, "UPDATE workspaces_v11 SET current_task_id='' WHERE id=? AND current_task_id=?", workspace, task.ID); err != nil {
 				return err
 			}
 		}

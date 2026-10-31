@@ -47,7 +47,7 @@ func (s *Store) BeginHook(ctx context.Context, workspace string, e event.Event, 
 	var id int64
 	err = s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		at := time.Now().UTC().Format(time.RFC3339Nano)
-		result, err := tx.ExecContext(ctx, `INSERT INTO hook_events(workspace_id,agent,session_id,round_id,kind,tool_call_id,at,event,raw_input) VALUES(?,?,?,?,?,?,?,?,?)`, workspace, e.Agent, e.SessionID, e.RoundID, e.Kind, e.ToolCallID, at, string(encoded), string(raw))
+		result, err := tx.ExecContext(ctx, `INSERT INTO hook_events_v11(workspace_id,agent,session_id,round_id,kind,tool_call_id,at,event,raw_input) VALUES(?,?,?,?,?,?,?,?,?)`, workspace, e.Agent, e.SessionID, e.RoundID, e.Kind, e.ToolCallID, at, string(encoded), string(raw))
 		if err != nil {
 			return err
 		}
@@ -56,7 +56,7 @@ func (s *Store) BeginHook(ctx context.Context, workspace string, e event.Event, 
 			return err
 		}
 		// 只有消息能更新可写轮次；迟到的工具事件不能把 session 倒退到旧轮次。
-		_, err = tx.ExecContext(ctx, `INSERT INTO task_sessions VALUES(?,?,?,?,?,?,?)
+		_, err = tx.ExecContext(ctx, `INSERT INTO task_sessions_v11 VALUES(?,?,?,?,?,?,?)
 ON CONFLICT(workspace_id,agent,session_id) DO UPDATE SET activity_at=excluded.activity_at`, workspace, e.Agent, e.SessionID, "", "", at, at)
 		return err
 	})
@@ -73,7 +73,7 @@ func (s *Store) FinishHook(ctx context.Context, id int64, d event.Decision, fail
 		state, message = "failed", failure.Error()
 	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, "UPDATE hook_events SET state=?,decision=?,error=? WHERE id=?", state, string(encoded), message, id)
+		_, err := tx.ExecContext(ctx, "UPDATE hook_events_v11 SET state=?,decision=?,error=? WHERE id=?", state, string(encoded), message, id)
 		return err
 	})
 }

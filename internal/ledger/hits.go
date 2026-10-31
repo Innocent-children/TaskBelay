@@ -37,7 +37,7 @@ func (s *Store) Hits(ctx context.Context, workspace string, since time.Time) ([]
 	var result []Hit
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		byID := map[string]*Hit{}
-		rows, err := q.QueryContext(ctx, `SELECT task_id,data,status FROM issues WHERE task_id IN (SELECT id FROM tasks WHERE workspace_id=?)`, workspace)
+		rows, err := q.QueryContext(ctx, `SELECT task_id,data,status FROM issues_v11 WHERE task_id IN (SELECT id FROM tasks_v11 WHERE workspace_id=?)`, workspace)
 		if err != nil {
 			return err
 		}
@@ -60,8 +60,8 @@ func (s *Store) Hits(ctx context.Context, workspace string, since time.Time) ([]
 		if err != nil {
 			return err
 		}
-		rows, err = q.QueryContext(ctx, `SELECT task_id,CAST(seq AS TEXT),status,input_version,json_extract(data,'$.finished_at'),json_extract(data,'$.issues') FROM checks
-WHERE task_id IN (SELECT id FROM tasks WHERE workspace_id=?) AND julianday(json_extract(data,'$.finished_at'))>=julianday(?) ORDER BY seq`, workspace, since.UTC().Format(time.RFC3339Nano))
+		rows, err = q.QueryContext(ctx, `SELECT task_id,CAST(seq AS TEXT),status,input_version,json_extract(data,'$.finished_at'),json_extract(data,'$.issues') FROM checks_v11
+WHERE task_id IN (SELECT id FROM tasks_v11 WHERE workspace_id=?) AND julianday(json_extract(data,'$.finished_at'))>=julianday(?) ORDER BY seq`, workspace, since.UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return err
 		}
@@ -99,7 +99,7 @@ WHERE task_id IN (SELECT id FROM tasks WHERE workspace_id=?) AND julianday(json_
 		if err != nil {
 			return err
 		}
-		rows, err = q.QueryContext(ctx, `SELECT data FROM verifications WHERE workspace_id=? AND (julianday(json_extract(data,'$.started_at'))>=julianday(?) OR julianday(json_extract(data,'$.ended_at'))>=julianday(?)) ORDER BY seq`, workspace, since.UTC().Format(time.RFC3339Nano), since.UTC().Format(time.RFC3339Nano))
+		rows, err = q.QueryContext(ctx, `SELECT data FROM verifications_v11 WHERE workspace_id=? AND (julianday(json_extract(data,'$.started_at'))>=julianday(?) OR julianday(json_extract(data,'$.ended_at'))>=julianday(?)) ORDER BY seq`, workspace, since.UTC().Format(time.RFC3339Nano), since.UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return err
 		}
@@ -137,7 +137,7 @@ WHERE task_id IN (SELECT id FROM tasks WHERE workspace_id=?) AND julianday(json_
 		if err != nil {
 			return err
 		}
-		rows, err = q.QueryContext(ctx, `SELECT b.issue_id,b.agent,b.session_id,b.round_id,f.at FROM issue_blocks b JOIN check_feedback f ON f.id=b.feedback_id
+		rows, err = q.QueryContext(ctx, `SELECT b.issue_id,b.agent,b.session_id,b.round_id,f.at FROM issue_blocks_v11 b JOIN check_feedback_v11 f ON f.id=b.feedback_id
 WHERE f.workspace_id=? AND julianday(f.at)>=julianday(?) ORDER BY f.id`, workspace, since.UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return err

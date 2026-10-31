@@ -3,7 +3,6 @@ package hook
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/Innocent-children/taskbelay/internal/check"
 	"github.com/Innocent-children/taskbelay/internal/event"
@@ -37,11 +36,18 @@ func (t Tasks) reportCheck(record ledger.CheckRecord) {
 	if record.Static != nil {
 		t.reportCheck(*record.Static)
 	}
-	for _, gap := range record.Missing[:min(5, len(record.Missing))] {
-		t.ReportError(fmt.Errorf("%s 检查未完成（任务 %s，%s %s）：%s", record.Depth, record.Input.TaskID, gap.Operation, gap.At, gap.Reason))
+	count := 0
+	for _, gap := range record.Missing {
+		if gap.Kind == "unsupported" {
+			continue
+		}
+		count++
+		if count <= 5 {
+			t.ReportError(fmt.Errorf("%s 检查未完成（任务 %s，%s %s，%s）：%s", record.Depth, record.Input.TaskID, gap.Operation, gap.At, gap.Kind, gap.Reason))
+		}
 	}
-	if len(record.Missing) > 5 {
-		t.ReportError(fmt.Errorf("%s 检查另有 %d 条未完成记录（任务 %s）；原因和数量见 taskbelay status", record.Depth, len(record.Missing)-5, record.Input.TaskID))
+	if count > 5 {
+		t.ReportError(fmt.Errorf("%s 检查另有 %d 组未完成记录（任务 %s）；原因和数量见 taskbelay status", record.Depth, count-5, record.Input.TaskID))
 	}
 }
 
@@ -108,7 +114,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 		return t.ordinaryStop(ctx, actor, view, request)
 	}
 	if view.Task == nil || view.Task.ID != request.TaskID || view.Task.State != ledger.TaskPending {
-		return event.Decision{AdditionalContext: "TaskBelay：交付请求已过期，请按当前任务和代码继续。"}, nil
+		return event.Decision{UserMessage: "TaskBelay：交付请求已过期，任务仍在进行中；请按当前内容完成修改后重新申请交付。"}, nil
 	}
 	input, err := t.Store.CheckInput(ctx, t.Workspace.ID, request.TaskID, actor, check.RulesVersion, check.CapabilitiesVersion)
 	if err != nil {
@@ -174,7 +180,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 		return event.Decision{}, err
 	}
 	if delivery.State == "expired" {
-		return event.Decision{AdditionalContext: "TaskBelay：检查期间输入已变化，旧结果仅保留为历史。请读取当前内容，完成后重新申请交付。"}, nil
+		return event.Decision{UserMessage: "TaskBelay：检查期间输入已变化，旧结果仅保留为历史，任务仍在进行中。请读取当前内容，完成后重新申请交付。"}, nil
 	}
 	text := check.Format(delivery.Check, 5)
 	if dynamic != nil {
@@ -191,50 +197,8 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 }
 
 func (t Tasks) ordinaryStop(ctx context.Context, actor ledger.Actor, view ledger.TaskView, request *ledger.FinishRequest) (event.Decision, error) {
-	var text []string
 	if request != nil && request.State == "expired" {
-		text = append(text, "TaskBelay：本轮交付请求已过期，完成当前修改后重新申请交付。")
+		return event.Decision{UserMessage: "TaskBelay：本轮交付请求已过期，任务仍在进行中；完成当前修改后重新申请交付。"}, nil
 	}
-	if view.Task != nil {
-		input, err := t.Store.CheckInput(ctx, t.Workspace.ID, view.Task.ID, actor, check.RulesVersion, check.CapabilitiesVersion)
-		if err != nil {
-			return event.Decision{}, err
-		}
-		cached, err := t.Store.LatestCheck(ctx, view.Task.ID, "static", input.Version())
-		if err != nil {
-			return event.Decision{}, err
-		}
-		if cached != nil {
-			progress := ledger.WithDelivery(*cached, false)
-			text = append(text, check.FormatIssues(progress.Issues, 5))
-		}
-	}
-	active := false
-	for _, req := range view.Requirements {
-		active = active || req.Status != "revoked"
-	}
-	if !active {
-		var since int64
-		if view.Task != nil {
-			since = view.Task.OriginObservationID
-		} else {
-			for _, message := range view.Messages {
-				if message.Actor.Agent == actor.Agent && message.Actor.SessionID == actor.SessionID && message.Actor.RoundID == actor.RoundID {
-					since = message.ObservationID
-					break
-				}
-			}
-		}
-		changes, err := t.Store.Changes(ctx, t.Workspace.ID, since)
-		if err != nil {
-			return event.Decision{}, err
-		}
-		for _, change := range changes {
-			if change.Kind == "agent_edit" {
-				text = append(text, "TaskBelay：已有可核对的 Agent 编辑，尚未记录有效需求；请补记需求及实现位置。普通 Stop 未启动交付检查。")
-				break
-			}
-		}
-	}
-	return event.Decision{AdditionalContext: strings.Join(text, "\n")}, nil
+	return event.Decision{}, nil
 }

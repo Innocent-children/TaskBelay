@@ -11,7 +11,7 @@ import (
 
 func readPlans(ctx context.Context, q queryer, task TaskRecord) (PlanView, error) {
 	result := PlanView{Revision: task.PlanRevision}
-	rows, err := q.QueryContext(ctx, "SELECT data FROM plans WHERE task_id=? ORDER BY version", task.ID)
+	rows, err := q.QueryContext(ctx, "SELECT data FROM plans_v11 WHERE task_id=? ORDER BY version", task.ID)
 	if err != nil {
 		return result, err
 	}
@@ -149,7 +149,7 @@ func savePlanRow(ctx context.Context, tx *sql.Tx, plan PlanRecord) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO plans VALUES(?,?,?) ON CONFLICT(task_id,version) DO UPDATE SET data=excluded.data`, plan.TaskID, plan.Version, string(data))
+	_, err = tx.ExecContext(ctx, `INSERT INTO plans_v11 VALUES(?,?,?) ON CONFLICT(task_id,version) DO UPDATE SET data=excluded.data`, plan.TaskID, plan.Version, string(data))
 	return err
 }
 
@@ -202,7 +202,7 @@ func (s *Store) SavePlan(ctx context.Context, call Call, taskID string, observat
 		}
 		plan.Author, plan.SubmittedAt, plan.ObservationID = call.Actor, time.Now().UTC(), observationID
 		var messageID string
-		err = tx.QueryRowContext(ctx, "SELECT id FROM messages WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=? ORDER BY seq DESC LIMIT 1", call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID, call.Actor.RoundID).Scan(&messageID)
+		err = tx.QueryRowContext(ctx, "SELECT id FROM messages_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=? ORDER BY seq DESC LIMIT 1", call.WorkspaceID, call.Actor.Agent, call.Actor.SessionID, call.Actor.RoundID).Scan(&messageID)
 		if err != nil {
 			return err
 		}
@@ -227,7 +227,7 @@ func (s *Store) SavePlan(ctx context.Context, call Call, taskID string, observat
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "DELETE FROM cleanup_items WHERE kind='plan' AND target=? AND expected=?", plan.Path, contentHash(plan.Content)); err != nil {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM cleanup_items_v11 WHERE kind='plan' AND target=? AND expected=?", plan.Path, contentHash(plan.Content)); err != nil {
 			return err
 		}
 		return saveCall(ctx, tx, call, result)
@@ -298,7 +298,7 @@ func (s *Store) ConfirmPlan(ctx context.Context, call Call, taskID string, input
 			return fmt.Errorf("方案确认必须来自用户消息")
 		}
 		var data string
-		if err := tx.QueryRowContext(ctx, "SELECT data FROM messages WHERE workspace_id=? AND id=?", call.WorkspaceID, input.SourceID).Scan(&data); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT data FROM messages_v11 WHERE workspace_id=? AND id=?", call.WorkspaceID, input.SourceID).Scan(&data); err != nil {
 			return err
 		}
 		var message Message

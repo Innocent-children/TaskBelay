@@ -27,7 +27,7 @@ func (s *Store) CleanupPlan(ctx context.Context, item CleanupItem) error {
 	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var committed bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM plans WHERE json_extract(data,'$.path')=?)`, item.Target).Scan(&committed); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM plans_v11 WHERE json_extract(data,'$.path')=?)`, item.Target).Scan(&committed); err != nil {
 			return err
 		}
 		if !committed {
@@ -40,7 +40,7 @@ func (s *Store) CleanupPlan(ctx context.Context, item CleanupItem) error {
 			for i := range parts {
 				info, err := root.Lstat(filepath.FromSlash(strings.Join(parts[:i+1], "/")))
 				if errors.Is(err, os.ErrNotExist) {
-					_, err = tx.ExecContext(ctx, `DELETE FROM cleanup_items WHERE id=?`, item.ID)
+					_, err = tx.ExecContext(ctx, `DELETE FROM cleanup_items_v11 WHERE id=?`, item.ID)
 					return err
 				}
 				if err != nil {
@@ -64,7 +64,7 @@ func (s *Store) CleanupPlan(ctx context.Context, item CleanupItem) error {
 				return err
 			}
 		}
-		_, err := tx.ExecContext(ctx, `DELETE FROM cleanup_items WHERE id=?`, item.ID)
+		_, err := tx.ExecContext(ctx, `DELETE FROM cleanup_items_v11 WHERE id=?`, item.ID)
 		return err
 	})
 }

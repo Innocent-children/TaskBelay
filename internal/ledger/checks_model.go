@@ -105,6 +105,23 @@ type CheckGap struct {
 	At        string `json:"at,omitempty"`
 	Operation string `json:"operation"`
 	Reason    string `json:"reason"`
+	Kind      string `json:"kind,omitempty"`
+	Count     int    `json:"count,omitempty"`
+	Candidate string `json:"candidate,omitempty"`
+}
+
+func (g CheckGap) Size() int { return max(1, g.Count) }
+
+func (r CheckRecord) GapCounts() map[string]int {
+	counts := map[string]int{"unsupported": 0, "error": 0, "incomplete": 0}
+	for _, gap := range r.Missing {
+		kind := gap.Kind
+		if kind != "unsupported" && kind != "error" {
+			kind = "incomplete"
+		}
+		counts[kind] += gap.Size()
+	}
+	return counts
 }
 
 type Issue struct {
@@ -146,6 +163,7 @@ func WithDelivery(record CheckRecord, delivery bool) CheckRecord {
 }
 
 type CheckRecord struct {
+	Reused         bool              `json:"-"`
 	Static         *CheckRecord      `json:"static,omitempty"`
 	Locations      []Requirement     `json:"-"`
 	ID             int64             `json:"id"`
@@ -156,6 +174,7 @@ type CheckRecord struct {
 	ComputedStatus CheckStatus       `json:"computed_status"`
 	Level          string            `json:"level"`
 	Issues         []Issue           `json:"issues"`
+	Unconfirmed    []Issue           `json:"unconfirmed,omitempty"`
 	Missing        []CheckGap        `json:"missing"`
 	Evaluated      []string          `json:"evaluated"`
 	Relocations    map[string]string `json:"relocations,omitempty"`

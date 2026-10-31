@@ -27,7 +27,7 @@ func (s *Store) BindMCPContext(ctx context.Context, workspace string, actor Acto
 	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var round, name string
-		err := tx.QueryRowContext(ctx, "SELECT round_id,tool_name FROM mcp_contexts WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", workspace, actor.Agent, actor.SessionID, actor.CallID).Scan(&round, &name)
+		err := tx.QueryRowContext(ctx, "SELECT round_id,tool_name FROM mcp_contexts_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", workspace, actor.Agent, actor.SessionID, actor.CallID).Scan(&round, &name)
 		if err == nil {
 			if round != actor.RoundID || name != tool {
 				return fmt.Errorf("MCP 调用编号与已记录的轮次或工具冲突")
@@ -37,7 +37,7 @@ func (s *Store) BindMCPContext(ctx context.Context, workspace string, actor Acto
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		_, err = tx.ExecContext(ctx, "INSERT INTO mcp_contexts VALUES(?,?,?,?,?,?,?)", workspace, actor.Agent, actor.SessionID, actor.CallID, actor.RoundID, tool, time.Now().UTC().Format(time.RFC3339Nano))
+		_, err = tx.ExecContext(ctx, "INSERT INTO mcp_contexts_v11 VALUES(?,?,?,?,?,?,?)", workspace, actor.Agent, actor.SessionID, actor.CallID, actor.RoundID, tool, time.Now().UTC().Format(time.RFC3339Nano))
 		return err
 	})
 }
@@ -45,7 +45,7 @@ func (s *Store) BindMCPContext(ctx context.Context, workspace string, actor Acto
 func (s *Store) MCPContext(ctx context.Context, workspace string, actor Actor, tool string) (Actor, error) {
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		var recordedTool string
-		err := q.QueryRowContext(ctx, "SELECT round_id,tool_name FROM mcp_contexts WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", workspace, actor.Agent, actor.SessionID, actor.CallID).Scan(&actor.RoundID, &recordedTool)
+		err := q.QueryRowContext(ctx, "SELECT round_id,tool_name FROM mcp_contexts_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", workspace, actor.Agent, actor.SessionID, actor.CallID).Scan(&actor.RoundID, &recordedTool)
 		if errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("尚无本次 MCP 调用的前置身份记录，无法确定轮次；请确认 TaskBelay 的 MCP PreToolUse hook 已加载")
 		}

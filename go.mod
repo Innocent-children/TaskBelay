@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/odvcencio/gotreesitter v0.56.0
+	golang.org/x/mod v0.42.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/term v0.45.0
 	modernc.org/sqlite v1.61.0

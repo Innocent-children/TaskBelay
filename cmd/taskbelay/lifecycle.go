@@ -19,14 +19,29 @@ import (
 
 var version = "dev"
 
-func versionText() string {
+func currentVersion() string {
 	v := version
 	if v == "dev" {
 		if build, ok := debug.ReadBuildInfo(); ok && build.Main.Version != "" && build.Main.Version != "(devel)" {
 			v = build.Main.Version
 		}
 	}
-	return "TaskBelay " + v + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"
+	return v
+}
+
+func versionText() string {
+	text := "TaskBelay " + currentVersion() + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"
+	if build, ok := debug.ReadBuildInfo(); ok {
+		for _, setting := range build.Settings {
+			if setting.Key == "vcs.revision" {
+				text += " revision=" + setting.Value
+			}
+			if setting.Key == "vcs.modified" && setting.Value == "true" {
+				text += " modified=true"
+			}
+		}
+	}
+	return text
 }
 
 func runDoctor(ctx context.Context, env platform.Env, output io.Writer) error {
@@ -79,8 +94,8 @@ func runUpdate(ctx context.Context, env platform.Env, output io.Writer) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(output, "正在下载并校验最新发布包……")
-	message, err := distribution.Update(ctx, env, exe)
+	fmt.Fprintln(output, versionText())
+	message, err := distribution.Update(ctx, env, exe, currentVersion())
 	fmt.Fprint(output, message)
 	return err
 }

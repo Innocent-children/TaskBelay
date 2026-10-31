@@ -102,10 +102,13 @@ func (s *Store) SetSetting(ctx context.Context, workspaceID string, scope Scope,
 		return err
 	}
 	defer tx.Rollback()
+	if err := ensureSchema(ctx, tx); err != nil {
+		return err
+	}
 	var scopeID string
 	if scope != User {
 		var projectID, taskID string
-		if err := tx.QueryRowContext(ctx, "SELECT project_id, current_task_id FROM workspaces WHERE id=?", workspaceID).Scan(&projectID, &taskID); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT project_id, current_task_id FROM workspaces_v11 WHERE id=?", workspaceID).Scan(&projectID, &taskID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("当前目录不在已识别的 git 工作区里")
 			}
@@ -119,9 +122,9 @@ func (s *Store) SetSetting(ctx context.Context, workspaceID string, scope Scope,
 			scopeID = taskID
 		}
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO settings (scope, scope_id, name, value, revision) VALUES (?, ?, ?, ?, 1)
-ON CONFLICT(scope, scope_id, name) DO UPDATE SET value=excluded.value, revision=settings.revision+1
-WHERE settings.value != excluded.value`, scope, scopeID, name, value)
+	_, err = tx.ExecContext(ctx, `INSERT INTO settings_v11 (scope, scope_id, name, value, revision) VALUES (?, ?, ?, ?, 1)
+ON CONFLICT(scope, scope_id, name) DO UPDATE SET value=excluded.value, revision=settings_v11.revision+1
+WHERE settings_v11.value != excluded.value`, scope, scopeID, name, value)
 	if err != nil {
 		return err
 	}
@@ -129,12 +132,13 @@ WHERE settings.value != excluded.value`, scope, scopeID, name, value)
 }
 
 func (s *Store) Settings(ctx context.Context, workspaceID string) (EffectiveSettings, error) {
-	conn, ctx, release, err := s.connection(ctx)
-	if err != nil {
-		return EffectiveSettings{}, err
-	}
-	defer release()
-	return effectiveSettings(ctx, conn, workspaceID, "", true)
+	var result EffectiveSettings
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		var err error
+		result, err = effectiveSettings(ctx, q, workspaceID, "", true)
+		return err
+	})
+	return result, err
 }
 
 func effectiveSettings(ctx context.Context, q queryer, workspaceID, taskID string, current bool) (EffectiveSettings, error) {
@@ -150,10 +154,10 @@ func effectiveSettings(ctx context.Context, q queryer, workspaceID, taskID strin
 		values[name] = Setting{Value: value, Source: Default}
 	}
 	// 用一个读语句同时读取当前任务和设置，避免任务切换时混合两套上下文。
-	rows, err := q.QueryContext(ctx, `SELECT scope, scope_id, name, value, revision FROM settings
+	rows, err := q.QueryContext(ctx, `SELECT scope, scope_id, name, value, revision FROM settings_v11
 WHERE scope='user'
-   OR (scope='project' AND scope_id=(SELECT project_id FROM workspaces WHERE id=?))
-   OR (scope='task' AND scope_id=CASE WHEN ? THEN (SELECT current_task_id FROM workspaces WHERE id=?) ELSE ? END)
+   OR (scope='project' AND scope_id=(SELECT project_id FROM workspaces_v11 WHERE id=?))
+   OR (scope='task' AND scope_id=CASE WHEN ? THEN (SELECT current_task_id FROM workspaces_v11 WHERE id=?) ELSE ? END)
 ORDER BY CASE scope WHEN 'user' THEN 0 WHEN 'project' THEN 1 ELSE 2 END, name`, workspaceID, current, workspaceID, taskID)
 	if err != nil {
 		return EffectiveSettings{}, err
