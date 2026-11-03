@@ -54,9 +54,10 @@ type VerificationRecord struct {
 }
 
 type VerificationEnd struct {
-	Record VerificationRecord
-	Notify bool
-	Count  int
+	Record  VerificationRecord
+	Notify  bool
+	Count   int
+	Changed bool `json:"-"`
 }
 
 func VerificationState(result *event.ToolResult) string {

@@ -226,3 +226,9 @@ TaskBelay 自己出了问题，比如数据库打不开、git 命令失败、代
 - [Claude Code 工具说明（含 PowerShell 工具）](https://code.claude.com/docs/en/tools-reference)
 - [Codex hooks 文档](https://developers.openai.com/codex/hooks)
 - [Codex MCP 文档](https://developers.openai.com/codex/mcp)
+
+## 会话动作记录
+
+hook 的提示和拒绝在协议输出成功后记录；仅形成决定、渲染或 stdout 失败不能写成已提示或已拦截。MCP 的需求、笔记、任务与方案业务在实际保存成功后记录，MCP 返回摘要的准备成功不等于 stdio 最终送达。检查区分新执行、复用与未知，验证结果只采用正常后置事件已经取得的状态和退出结果，不增加轮询或重跑。
+
+无需 Agent 查询或自动对话播报，用户自行打开 `~/.taskbelay/session-records/`（Windows 为 `%USERPROFILE%\.taskbelay\session-records\`）阅读。记录与 debug 独立；会话身份无法核对时不猜测文件归属。写入失败进入现有错误日志，原业务结果和拦截决定保持不变。

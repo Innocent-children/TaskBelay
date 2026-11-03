@@ -88,11 +88,21 @@ type ToolResult struct {
 	Edits    []FileEdit
 }
 
+type SessionRecord struct {
+	At      time.Time
+	TaskID  string
+	Action  string
+	Object  string
+	Detail  string
+	Sources []string
+}
+
 /**
  * Decision 的零值表示不干预；上下文、工具拒绝、结束阻止和用户提示可以组合。
  * 没有强制允许字段，避免覆盖 Agent 自己的权限判断。
  */
 type Decision struct {
+	Records           []SessionRecord `json:"-"`
 	AdditionalContext string
 	DenyTool          string
 	BlockStop         string

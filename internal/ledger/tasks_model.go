@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
@@ -83,6 +84,14 @@ type Call struct {
 	Actor       Actor
 	Operation   string
 	InputHash   string
+	replayed    *atomic.Bool
+}
+
+/**
+ * Replayed 区分实际写入和事务内才发现的并发重投，不改变已保存的调用结果。
+ */
+func (c Call) Replayed() bool {
+	return c.replayed != nil && c.replayed.Load()
 }
 
 func NewCall(workspace string, actor Actor, operation string, input any) (Call, error) {
@@ -99,7 +108,7 @@ func NewCall(workspace string, actor Actor, operation string, input any) (Call, 
 	if err != nil {
 		return Call{}, err
 	}
-	return Call{workspace, actor, operation, fmt.Sprintf("%x", sha256.Sum256(data))}, nil
+	return Call{WorkspaceID: workspace, Actor: actor, Operation: operation, InputHash: fmt.Sprintf("%x", sha256.Sum256(data)), replayed: new(atomic.Bool)}, nil
 }
 
 type TaskState string
@@ -333,7 +342,13 @@ func replay(ctx context.Context, q queryer, call Call, result any) (bool, error)
 	if operation != call.Operation || hash != call.InputHash {
 		return false, ErrCallConflict
 	}
-	return true, json.Unmarshal([]byte(data), result)
+	if err := json.Unmarshal([]byte(data), result); err != nil {
+		return true, err
+	}
+	if call.replayed != nil {
+		call.replayed.Store(true)
+	}
+	return true, nil
 }
 
 func (s *Store) Replay(ctx context.Context, call Call, result any) (bool, error) {

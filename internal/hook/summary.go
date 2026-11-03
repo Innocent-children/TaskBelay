@@ -69,8 +69,9 @@ func (t Tasks) summaryInput(ctx context.Context, actor ledger.Actor, view ledger
 }
 
 type summaryDelivery struct {
-	view  ledger.TaskView
-	state ledger.SummaryState
+	view   ledger.TaskView
+	state  ledger.SummaryState
+	record event.SessionRecord
 }
 
 func (t Tasks) prepareSummary(ctx context.Context, e event.Event) (string, *summaryDelivery, error) {
@@ -93,7 +94,8 @@ func (t Tasks) prepareSummary(ctx context.Context, e event.Event) (string, *summ
 		return "", nil, nil
 	}
 	guidance := fresh || previous.GuidanceVersion != state.GuidanceVersion
-	return summary.Build(input, guidance), &summaryDelivery{view, state}, nil
+	text, record := summary.BuildWithRecord(input, guidance)
+	return text, &summaryDelivery{view: view, state: state, record: record}, nil
 }
 
 /**

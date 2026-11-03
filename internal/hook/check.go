@@ -25,6 +25,7 @@ func (t Tasks) Check(ctx context.Context, actor ledger.Actor, options check.RunI
 	}
 	record, err = check.Run(ctx, t.Store, t.Workspace, actor, view, observation, options)
 	t.reportCheck(record)
+	t.recordCheck(actor, record)
 	returned = true
 	return record, err
 }
@@ -86,13 +87,21 @@ func (t Tasks) Finish(ctx context.Context, actor ledger.Actor, input ledger.Fini
 				}
 			}
 		}
-		return t.Store.CancelFinish(ctx, call, view.Task.ID, input.SourceID, input.Quote)
+		result, err = t.Store.CancelFinish(ctx, call, view.Task.ID, input.SourceID, input.Quote)
+		if err == nil && !call.Replayed() {
+			t.recordSession(actor, feedbackRecord(result.Task.ID, "任务已中止", result.Task.Title, "按用户决定中止任务。", "source:"+input.SourceID))
+		}
+		return result, err
 	}
 	version, err := t.Store.CheckInput(ctx, t.Workspace.ID, view.Task.ID, actor, check.RulesVersion, check.CapabilitiesVersion)
 	if err != nil {
 		return result, err
 	}
-	return t.Store.RequestFinish(ctx, call, version)
+	result, err = t.Store.RequestFinish(ctx, call, version)
+	if err == nil && !call.Replayed() {
+		t.recordSession(actor, feedbackRecord(result.Task.ID, "已申请交付", result.Task.Title, "已提交交付请求，等待 Stop 处理。", "task:"+result.Task.ID))
+	}
+	return result, err
 }
 
 func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) {
@@ -135,6 +144,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 		if cached != nil {
 			ledger.DebugRecord(ctx, "delivery.cache", map[string]any{"depth": "static", "record": cached, "reason": "本次交付已反馈且输入未变化"})
 			record = *cached
+			record.Reused = true
 		} else {
 			record, err = check.Run(ctx, t.Store, t.Workspace, actor, view, observation, check.RunInput{Depth: "static"})
 			if err != nil {
@@ -143,6 +153,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 			t.reportCheck(record)
 		}
 	}
+	t.recordCheck(actor, record)
 	var dynamic *ledger.CheckRecord
 	if view.Settings.Values["analysis.tests"].Value == "on" && record.Status != ledger.CheckExpired {
 		if request.Feedback {
@@ -154,6 +165,9 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 				dynamic = nil
 			}
 		}
+		if dynamic != nil {
+			dynamic.Reused = true
+		}
 		if dynamic == nil {
 			ledger.DebugRecord(ctx, "delivery.dynamic.start", nil)
 			checked, err := check.Run(ctx, t.Store, t.Workspace, actor, view, observation, check.RunInput{Depth: "tests"})
@@ -163,6 +177,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 			dynamic = &checked
 			t.reportCheck(checked)
 		}
+		t.recordCheck(actor, *dynamic)
 		dynamic.Static = nil
 		if dynamic.Status == ledger.CheckExpired {
 			record.Status = ledger.CheckExpired
@@ -190,6 +205,10 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 		text = "TaskBelay 这次没有完成全部检查；已完成的事实和具体原因如下。\n" + text
 	}
 	decision := event.Decision{AdditionalContext: text, UserMessage: text}
+	decision.Records = append(decision.Records, checkFeedback(delivery.Check, delivery.Blocked)...)
+	if dynamic != nil {
+		decision.Records = append(decision.Records, checkFeedback(*dynamic, nil)...)
+	}
 	if len(delivery.Blocked) > 0 {
 		decision.BlockStop = check.FormatIssues(delivery.Blocked, 0)
 	}

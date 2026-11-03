@@ -253,6 +253,11 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		record.Files = append(record.Files, prepared)
 		if conflict {
 			messages = append(messages, fmt.Sprintf("%s: %s\n当前内容：\n%s", path, reason, content))
+			action := "过期编辑提示已输出"
+			if enforcement == "block" {
+				action = "过期编辑拒绝已输出"
+			}
+			record.Decision.Records = append(record.Decision.Records, feedbackRecord(task, action, path, reason))
 			if enforcement == "block" {
 				record.Decision.DenyTool = "编辑前置内容已过期，请依据返回的当前内容重新组织编辑。"
 			}
@@ -271,12 +276,19 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 				if enforcement == "block" {
 					decision.DenyTool = "原工具调用的前置内容已过期，请重新核对。"
 				}
+				action := "过期编辑提示已输出"
+				if decision.DenyTool != "" {
+					action = "过期编辑拒绝已输出"
+				}
+				decision.Records = append(decision.Records, feedbackRecord(task, action, file.Path, "此前核对后文件内容已发生变化。"))
 				return decision, nil
 			}
 		}
 		if existing.PlanCheck == nil || !existing.PlanCheck.Blocked {
 			existing.Decision.DenyTool = record.Decision.DenyTool
 		}
+		existing.Decision.Records = record.Decision.Records
+		existing.Decision.Records = editRecords(task, existing)
 		return existing.Decision, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -317,6 +329,7 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 	if err := o.Store.SaveObservation(ctx, view, &observation, changes, &record); err != nil {
 		return event.Decision{}, fmt.Errorf("登记编辑观察: %w", err)
 	}
+	record.Decision.Records = editRecords(task, record)
 	return record.Decision, nil
 }
 

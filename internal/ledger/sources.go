@@ -215,7 +215,7 @@ func (s *Store) RecordMessage(ctx context.Context, message Message) (Message, er
 		if message.At.IsZero() {
 			message.At = observation.At
 		}
-		insert, err := tx.ExecContext(ctx, "INSERT INTO messages_v11(workspace_id,agent,session_id,round_id,event_id,observation_id,data) VALUES (?,?,?,?,?,?,?)", message.WorkspaceID, message.Actor.Agent, message.Actor.SessionID, message.Actor.RoundID, message.EventID, message.ObservationID, "")
+		insert, err := tx.ExecContext(ctx, "INSERT INTO messages_v11(workspace_id,agent,session_id,round_id,event_id,observation_id,data) VALUES (?,?,?,?,?,?,?)", message.WorkspaceID, message.Actor.Agent, message.Actor.SessionID, message.Actor.RoundID, message.EventID, message.ObservationID, "{}")
 		if err != nil {
 			return err
 		}

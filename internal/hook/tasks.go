@@ -182,6 +182,13 @@ func (t Tasks) Start(ctx context.Context, actor ledger.Actor, input ledger.Start
 	result, err = t.Store.StartTask(ctx, call, view.CurrentTaskID, observation.ID, input, changes)
 	if err == nil {
 		ledger.DebugBindTask(ctx, result.ID)
+		if !call.Replayed() {
+			action := "任务已开始"
+			if input.TaskID != "" {
+				action = "任务已恢复"
+			}
+			t.recordSession(actor, feedbackRecord(result.ID, action, result.Title, "已保存任务状态："+string(result.State)+"。", "task:"+result.ID))
+		}
 	}
 	return result, err
 }
@@ -220,6 +227,9 @@ func (t Tasks) SaveRequirement(ctx context.Context, actor ledger.Actor, input le
 	result, err = t.Store.SaveRequirement(ctx, call, view.CurrentTaskID, observation.ID, input)
 	if err == nil {
 		ledger.DebugBindTask(ctx, result.TaskID)
+		if !call.Replayed() {
+			t.recordSession(actor, feedbackRecord(result.TaskID, "需求已保存", result.ID, fmt.Sprintf("保存第 %d 版需求：%s", result.Revision, result.Content), fmt.Sprintf("requirement:%s@%d", result.ID, result.Revision)))
+		}
 	}
 	return result, err
 }
@@ -240,7 +250,11 @@ func (t Tasks) AddNote(ctx context.Context, actor ledger.Actor, input ledger.Not
 	if err != nil {
 		return result, err
 	}
-	return t.Store.AddNote(ctx, call, view.CurrentTaskID, observation.ID, input)
+	result, err = t.Store.AddNote(ctx, call, view.CurrentTaskID, observation.ID, input)
+	if err == nil && !call.Replayed() {
+		t.recordSession(actor, feedbackRecord(result.TaskID, "笔记已保存", result.Kind+" / "+result.ID, result.Text, "note:"+result.ID))
+	}
+	return result, err
 }
 
 /**

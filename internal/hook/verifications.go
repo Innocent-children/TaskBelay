@@ -92,6 +92,22 @@ func (t Tasks) BeforeCommand(ctx context.Context, e event.Event) (event.Decision
 func verificationDecision(record ledger.VerificationRecord) event.Decision {
 	text := check.FormatVerification(record)
 	decision := event.Decision{AdditionalContext: text}
+	if record.Issue != nil {
+		action := "验证提示已输出"
+		detail := record.Issue.Rule + "：" + record.Issue.Advice
+		if record.Denied {
+			action = "验证拒绝已输出"
+			detail = record.Issue.Rule + "：同一 session 的上次验证已通过，输入及运行条件相同，已拒绝重复验证。"
+		}
+		sources := append([]string{"verification:" + record.ID}, issueSource(*record.Issue)...)
+		if record.PreviousID != "" {
+			sources = append(sources, "verification:"+record.PreviousID)
+		}
+		decision.Records = append(decision.Records, feedbackRecord(record.TaskID, action, verificationCommand(record.Command), detail, sources...))
+	}
+	if record.Scope.Suggestion != "" {
+		decision.Records = append(decision.Records, feedbackRecord(record.TaskID, "验证提示已输出", verificationCommand(record.Command), "V2：已提供缩小验证范围的建议，是否采用仍需核对项目验收约定和动态依赖。", "verification:"+record.ID))
+	}
 	if record.Denied {
 		decision.DenyTool = text
 	}
@@ -145,8 +161,13 @@ func (t Tasks) AfterCommand(ctx context.Context, e event.Event) (event.Decision,
 	if err != nil {
 		return event.Decision{}, err
 	}
+	if result.Changed {
+		t.recordSession(actor, verificationRecord(result.Record))
+	}
 	if !result.Notify {
 		return event.Decision{}, nil
 	}
-	return event.Decision{AdditionalContext: fmt.Sprintf("[V3 提示] 本轮实际运行 %d 次验证；最近一条 %s：%s（%s）。可把相关改动合在一起验证；新的失败或用户要求仍按实际需要处理。", result.Count, result.Record.ID, result.Record.Command.Display, result.Record.State)}, nil
+	decision := event.Decision{AdditionalContext: fmt.Sprintf("[V3 提示] 本轮实际运行 %d 次验证；最近一条 %s：%s（%s）。可把相关改动合在一起验证；新的失败或用户要求仍按实际需要处理。", result.Count, result.Record.ID, result.Record.Command.Display, result.Record.State)}
+	decision.Records = append(decision.Records, feedbackRecord(result.Record.TaskID, "验证提示已输出", verificationCommand(result.Record.Command), fmt.Sprintf("V3：本轮实际运行 %d 次验证。", result.Count), "verification:"+result.Record.ID))
+	return decision, nil
 }

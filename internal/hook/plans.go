@@ -3,6 +3,7 @@ package hook
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/plan"
@@ -45,7 +46,11 @@ func (t Tasks) SavePlan(ctx context.Context, actor ledger.Actor, input ledger.Pl
 		return result, err
 	}
 	defer cleanup()
-	return t.Store.SavePlan(ctx, call, view.Task.ID, observation.ID, input.BaseRevision, record, publish)
+	result, err = t.Store.SavePlan(ctx, call, view.Task.ID, observation.ID, input.BaseRevision, record, publish)
+	if err == nil && !call.Replayed() && result.Plan != nil {
+		t.recordSession(actor, feedbackRecord(result.Plan.TaskID, "方案已保存", result.Plan.ID, fmt.Sprintf("已保存方案第 %d 版：%s", result.Plan.Version, strings.Join(result.Plan.Changes, "；")), fmt.Sprintf("plan:%s@%d", result.Plan.ID, result.Plan.Revision)))
+	}
+	return result, err
 }
 
 func (t Tasks) ConfirmPlan(ctx context.Context, actor ledger.Actor, input ledger.PlanConfirmInput) (ledger.PlanResult, error) {
@@ -70,7 +75,11 @@ func (t Tasks) ConfirmPlan(ctx context.Context, actor ledger.Actor, input ledger
 	if view.Task == nil {
 		return result, fmt.Errorf("当前没有可确认方案的任务")
 	}
-	return t.Store.ConfirmPlan(ctx, call, view.Task.ID, input)
+	result, err = t.Store.ConfirmPlan(ctx, call, view.Task.ID, input)
+	if err == nil && !call.Replayed() {
+		t.recordSession(actor, feedbackRecord(view.Task.ID, "方案已确认", fmt.Sprintf("第 %d 版", input.Version), "已保存方案确认。", "source:"+input.SourceID))
+	}
+	return result, err
 }
 
 func autoPlan(view ledger.TaskView) ledger.PlanResult {

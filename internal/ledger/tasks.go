@@ -166,7 +166,7 @@ func switchTask(ctx context.Context, tx *sql.Tx, call Call, current string, obse
 		if !origin.Full || !origin.Complete || origin.Tree == "" || origin.SnapshotRef == "" {
 			return task, fmt.Errorf("起点消息的快照不完整，不能用当前代码替代")
 		}
-		insert, err := tx.ExecContext(ctx, "INSERT INTO tasks_v11(workspace_id,state,branch,data) VALUES (?,?,?,?)", call.WorkspaceID, TaskActive, observation.Context.Branch, "")
+		insert, err := tx.ExecContext(ctx, "INSERT INTO tasks_v11(workspace_id,state,branch,data) VALUES (?,?,?,?)", call.WorkspaceID, TaskActive, observation.Context.Branch, "{}")
 		if err != nil {
 			return task, err
 		}

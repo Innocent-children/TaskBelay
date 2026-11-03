@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 )
 
@@ -292,6 +293,11 @@ func updates(view ledger.TaskView) string {
 }
 
 func Build(input Input, guidance bool) string {
+	text, _ := BuildWithRecord(input, guidance)
+	return text
+}
+
+func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 	view := input.View
 	parts := make([]string, 7)
 	if view.Task == nil {
@@ -455,5 +461,14 @@ func Build(input Input, guidance bool) string {
 		parts[i] = Truncate(parts[i], max(0, Tokens(parts[i])-(Tokens(text)-Budget)-1))
 		text = compose()
 	}
-	return text
+	record := event.SessionRecord{TaskID: view.CurrentTaskID, Action: "接续信息已提供", Object: "任务接续摘要", Detail: "已输出接续信息。"}
+	for _, i := range []int{1, 4, 5} {
+		if parts[i] != "" {
+			record.Detail += " " + Truncate(oneLine(parts[i]), 60)
+		}
+	}
+	if view.Task != nil {
+		record.Sources = append(record.Sources, "task:"+view.Task.ID)
+	}
+	return text, record
 }

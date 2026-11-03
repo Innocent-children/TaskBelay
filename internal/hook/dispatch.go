@@ -86,6 +86,15 @@ func (t Tasks) HandleOutput(ctx context.Context, e event.Event, raw []byte, outp
 			err = fmt.Errorf("输出 hook 决定: %w", err)
 		}
 	}
+	if err == nil {
+		actor := ledger.Actor{Agent: e.Agent, SessionID: e.SessionID, RoundID: e.RoundID, CallID: e.ToolCallID}
+		for _, record := range d.Records {
+			t.recordSession(actor, record)
+		}
+		if delivery != nil {
+			t.recordSession(actor, delivery.record)
+		}
+	}
 	if err == nil && delivery != nil {
 		err = t.Store.SaveSummaryState(ctx, t.Workspace.ID, ledger.Actor{Agent: e.Agent, SessionID: e.SessionID}, delivery.view, delivery.state)
 		if err != nil {

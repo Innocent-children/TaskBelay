@@ -218,7 +218,7 @@ func (s *Store) AddNote(ctx context.Context, call Call, current string, observat
 				}
 			}
 		}
-		insert, err := tx.ExecContext(ctx, "INSERT INTO notes_v11(task_id,active,data) VALUES (?,?,?)", current, result.Active, "")
+		insert, err := tx.ExecContext(ctx, "INSERT INTO notes_v11(task_id,active,data) VALUES (?,?,?)", current, result.Active, "{}")
 		if err != nil {
 			return err
 		}

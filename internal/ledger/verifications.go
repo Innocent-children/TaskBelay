@@ -255,11 +255,14 @@ func (s *Store) EndVerification(ctx context.Context, workspace string, actor Act
 		if record.Executed && (record.State == "passed" || record.State == "failed" || record.State == "interrupted") {
 			return nil
 		}
-		beforeExecuted, beforeState := record.Executed, record.State
+		beforeExecuted, beforeState, beforeExit := record.Executed, record.State, record.ExitCode
 		record.Executed, record.State = true, VerificationState(tool)
 		if tool != nil {
 			record.ExitCode = tool.ExitCode
 		}
+		result.Changed = !beforeExecuted || beforeState != record.State ||
+			(beforeExit == nil) != (record.ExitCode == nil) ||
+			beforeExit != nil && record.ExitCode != nil && *beforeExit != *record.ExitCode
 		if record.State != "running" {
 			record.EndedAt = time.Now().UTC()
 		}
