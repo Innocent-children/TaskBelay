@@ -12,6 +12,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/agent"
 	"github.com/Innocent-children/taskbelay/internal/agent/claude"
 	"github.com/Innocent-children/taskbelay/internal/agent/codex"
+	"github.com/Innocent-children/taskbelay/internal/check"
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/hook"
@@ -95,11 +96,10 @@ func runHook(ctx context.Context, args []string, env platform.Env, input io.Read
 		}
 		if e.Kind == event.EditUse {
 			budget = event.EditBudget
-		} else if e.Kind == event.CommandUse && hook.CommandScript(e).HasVerification() {
-			budget, wait = event.MessageBudget, ledger.NormalWait
 		} else if e.Kind == event.SessionStart || e.Kind == event.UserPrompt || e.Kind == event.ToolEnd && len(e.Edits) == 0 && (e.Command == nil || !hook.CommandScript(e).ReadOnly()) {
 			budget = event.ObservationBudget
 		}
+		parent := ctx
 		ctx, cancel := context.WithDeadline(ctx, started.Add(budget))
 		defer cancel()
 		workspace, err := gitstate.Discover(ctx, e.WorkingDir)
@@ -112,6 +112,18 @@ func runHook(ctx context.Context, args []string, env platform.Env, input io.Read
 		store, err = ledger.Open(ctx, env.DataDir, wait)
 		if err != nil {
 			return event.Decision{}, fmt.Errorf("打开账本: %w", err)
+		}
+		if e.Kind == event.CommandUse {
+			known, lookupErr := check.KnownValidation(ctx, store, workspace.ID, ledger.VerificationRecord{Command: hook.CommandScript(e)})
+			if lookupErr != nil {
+				return event.Decision{}, lookupErr
+			}
+			if known {
+				cancel()
+				budget = event.MessageBudget
+				ctx, cancel = context.WithDeadline(parent, started.Add(budget))
+				defer cancel()
+			}
 		}
 		if err := store.RegisterGitWorkspace(ctx, workspace); err != nil {
 			return event.Decision{}, fmt.Errorf("登记工作区: %w", err)

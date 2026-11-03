@@ -27,18 +27,8 @@ func (t Tasks) recordCheck(actor ledger.Actor, record ledger.CheckRecord) {
 	if record.ID == 0 {
 		action = "检查结果未知"
 	}
-	fileOnly, unknownRisk := 0, 0
-	for _, file := range record.Report.Coverage {
-		if file.Level == "file" {
-			fileOnly++
-		}
-	}
-	for _, risk := range record.Report.TestRisk {
-		if !risk.Complete {
-			unknownRisk++
-		}
-	}
-	t.recordSession(actor, event.SessionRecord{TaskID: record.Input.TaskID, Action: action, Object: record.Depth + " 检查", Detail: fmt.Sprintf("%s；执行状态：%s；已核对范围结论：%s；仅文件级 %d 项，风险未完整核对 %d 项。", action, record.Status, record.Level, fileOnly, unknownRisk), Sources: checkSource(record)})
+	counts := record.GapCounts()
+	t.recordSession(actor, event.SessionRecord{TaskID: record.Input.TaskID, Action: action, Object: record.Depth + " 检查", Detail: fmt.Sprintf("%s；处理状态 %s；结论 %s；未知 %d，出错 %d，未完成 %d。", action, record.Status, record.Level, counts["unknown"], counts["error"], counts["incomplete"]), Sources: checkSource(record)})
 }
 
 func feedbackRecord(task, action, object, detail string, sources ...string) event.SessionRecord {
@@ -65,7 +55,7 @@ func verificationCommand(script shell.Script) string {
 	var names []string
 	seen := map[string]bool{}
 	for _, segment := range script.Segments {
-		if segment.Kind != shell.Verification || len(segment.Args) == 0 {
+		if len(segment.Args) == 0 {
 			continue
 		}
 		name := shell.Base(segment.Args[0])

@@ -21,7 +21,7 @@ func pendingActions(ctx context.Context, q queryer, task TaskRecord, requirement
 	if !active {
 		var edited bool
 		err := q.QueryRowContext(ctx, `SELECT EXISTS(
-SELECT 1 FROM file_changes_v11 c JOIN observations_v11 o ON o.id=c.observation_id
+SELECT 1 FROM file_changes_v12 c JOIN observations_v12 o ON o.id=c.observation_id
 WHERE c.workspace_id=? AND o.id>? AND (o.task_id=? OR o.task_id='')
 AND json_extract(c.data,'$.Kind')='agent_edit')`, task.WorkspaceID, task.OriginObservationID, task.ID).Scan(&edited)
 		if err != nil {
@@ -32,7 +32,7 @@ AND json_extract(c.data,'$.Kind')='agent_edit')`, task.WorkspaceID, task.OriginO
 		}
 	}
 	var state string
-	err := q.QueryRowContext(ctx, `SELECT state FROM finish_requests_v11 WHERE workspace_id=? AND task_id=?
+	err := q.QueryRowContext(ctx, `SELECT state FROM finish_requests_v12 WHERE workspace_id=? AND task_id=?
 ORDER BY json_extract(data,'$.at') DESC,rowid DESC LIMIT 1`, task.WorkspaceID, task.ID).Scan(&state)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
@@ -46,9 +46,9 @@ ORDER BY json_extract(data,'$.at') DESC,rowid DESC LIMIT 1`, task.WorkspaceID, t
 func unboundActions(ctx context.Context, q queryer, workspace string) ([]string, error) {
 	var edited bool
 	err := q.QueryRowContext(ctx, `SELECT EXISTS(
-SELECT 1 FROM file_changes_v11 c JOIN observations_v11 o ON o.id=c.observation_id
+SELECT 1 FROM file_changes_v12 c JOIN observations_v12 o ON o.id=c.observation_id
 WHERE c.workspace_id=? AND o.task_id='' AND json_extract(c.data,'$.Kind')='agent_edit'
-AND o.id>COALESCE((SELECT MAX(json_extract(data,'$.last_observation_id')) FROM tasks_v11 WHERE workspace_id=?),0))`, workspace, workspace).Scan(&edited)
+AND o.id>COALESCE((SELECT MAX(json_extract(data,'$.last_observation_id')) FROM tasks_v12 WHERE workspace_id=?),0))`, workspace, workspace).Scan(&edited)
 	if err != nil {
 		return nil, err
 	}

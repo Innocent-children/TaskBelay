@@ -121,14 +121,14 @@ func saveFileSet(ctx context.Context, tx *sql.Tx, body *storedBody) (any, error)
 		return nil, nil
 	}
 	id := "files1:" + body.SHA256
-	_, err := tx.ExecContext(ctx, `INSERT INTO file_sets_v11(id,format,encoding,raw_bytes,sha256,body) VALUES(?,1,?,?,?,?) ON CONFLICT(id) DO NOTHING`, id, body.Encoding, body.RawBytes, body.SHA256, body.Body)
+	_, err := tx.ExecContext(ctx, `INSERT INTO file_sets_v12(id,format,encoding,raw_bytes,sha256,body) VALUES(?,1,?,?,?,?) ON CONFLICT(id) DO NOTHING`, id, body.Encoding, body.RawBytes, body.SHA256, body.Body)
 	if err != nil {
 		return nil, err
 	}
 	var format int
 	var rawBytes int64
 	var hash string
-	if err := tx.QueryRowContext(ctx, `SELECT format,raw_bytes,sha256 FROM file_sets_v11 WHERE id=?`, id).Scan(&format, &rawBytes, &hash); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT format,raw_bytes,sha256 FROM file_sets_v12 WHERE id=?`, id).Scan(&format, &rawBytes, &hash); err != nil {
 		return nil, err
 	}
 	if format != 1 || rawBytes != body.RawBytes || hash != body.SHA256 {
@@ -141,7 +141,7 @@ func readObservation(ctx context.Context, q queryer, id int64) (Observation, err
 	var result Observation
 	var data string
 	var filesID sql.NullString
-	if err := q.QueryRowContext(ctx, `SELECT data,files_set_id FROM observations_v11 WHERE id=?`, id).Scan(&data, &filesID); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT data,files_set_id FROM observations_v12 WHERE id=?`, id).Scan(&data, &filesID); err != nil {
 		return result, fmt.Errorf("观察 %d: %w", id, err)
 	}
 	if err := json.Unmarshal([]byte(data), &result); err != nil {
@@ -151,7 +151,7 @@ func readObservation(ctx context.Context, q queryer, id int64) (Observation, err
 	if filesID.Valid {
 		var body storedBody
 		var format int
-		err := q.QueryRowContext(ctx, `SELECT format,encoding,raw_bytes,sha256,body FROM file_sets_v11 WHERE id=?`, filesID.String).Scan(&format, &body.Encoding, &body.RawBytes, &body.SHA256, &body.Body)
+		err := q.QueryRowContext(ctx, `SELECT format,encoding,raw_bytes,sha256,body FROM file_sets_v12 WHERE id=?`, filesID.String).Scan(&format, &body.Encoding, &body.RawBytes, &body.SHA256, &body.Body)
 		if err != nil {
 			return result, fmt.Errorf("观察 %d 文件表 %s: %w", id, filesID.String, err)
 		}
@@ -181,7 +181,7 @@ func checkMetadata(record CheckRecord) ([]byte, error) {
 
 func restoreCheckBody(ctx context.Context, q queryer, id int64, data string) (string, error) {
 	var body storedBody
-	if err := q.QueryRowContext(ctx, `SELECT report_encoding,report_raw_bytes,report_sha256,report_body FROM checks_v11 WHERE seq=?`, id).Scan(&body.Encoding, &body.RawBytes, &body.SHA256, &body.Body); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT report_encoding,report_raw_bytes,report_sha256,report_body FROM checks_v12 WHERE seq=?`, id).Scan(&body.Encoding, &body.RawBytes, &body.SHA256, &body.Body); err != nil {
 		return "", fmt.Errorf("检查 %d: %w", id, err)
 	}
 	if body.Encoding == "" {

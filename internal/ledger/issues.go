@@ -6,12 +6,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
 
 func readIssues(ctx context.Context, q queryer, task string) ([]Issue, error) {
-	rows, err := q.QueryContext(ctx, "SELECT data,status FROM issues_v11 WHERE task_id=? ORDER BY seq", task)
+	rows, err := q.QueryContext(ctx, "SELECT data,status FROM issues_v12 WHERE task_id=? ORDER BY seq", task)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +38,7 @@ func saveIssue(ctx context.Context, tx *sql.Tx, task string, issue Issue) error 
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO issues_v11(task_id,identity,occurrence,status,data) VALUES(?,?,?,?,?)
+	_, err = tx.ExecContext(ctx, `INSERT INTO issues_v12(task_id,identity,occurrence,status,data) VALUES(?,?,?,?,?)
 ON CONFLICT(task_id,identity,occurrence) DO UPDATE SET status=excluded.status,data=excluded.data`, task, issue.Identity, issue.Occurrence, issue.Status, string(data))
 	return err
 }
@@ -67,7 +68,9 @@ func reconcileIssues(ctx context.Context, tx *sql.Tx, result *CheckRecord) error
 	}
 	latest := map[string]Issue{}
 	for _, issue := range old {
-		latest[issue.Identity] = issue
+		if issue.Algorithm != "" && issue.Algorithm == result.Input.Algorithm {
+			latest[issue.Identity] = issue
+		}
 	}
 	seen, evaluated := map[string]bool{}, map[string]bool{}
 	for _, scope := range result.Evaluated {
@@ -78,10 +81,13 @@ func reconcileIssues(ctx context.Context, tx *sql.Tx, result *CheckRecord) error
 		if issue.Status == "" {
 			issue.Status = "open"
 		}
-		issue.LogicalAt = issue.At
+		if issue.LogicalAt == "" {
+			issue.LogicalAt = issue.At
+		}
 		var previous *Issue
-		for _, prior := range latest {
-			if prior.Rule == issue.Rule && prior.FactKey == issue.FactKey && relocated(prior.At, result.Relocations) == issue.At {
+		for _, key := range sortedIssueKeys(latest) {
+			prior := latest[key]
+			if prior.Rule == issue.Rule && prior.FactKey == issue.FactKey && (relocated(prior.LogicalAt, result.Relocations) == issue.LogicalAt || relocated(prior.At, result.Relocations) == issue.At && prior.LogicalAt == prior.At) {
 				if previous != nil {
 					previous = nil
 					break
@@ -119,7 +125,8 @@ func reconcileIssues(ctx context.Context, tx *sql.Tx, result *CheckRecord) error
 			return err
 		}
 	}
-	for _, issue := range latest {
+	for _, key := range sortedIssueKeys(latest) {
+		issue := latest[key]
 		if seen[issue.Identity] || issue.Status == "resolved" {
 			continue
 		}
@@ -143,6 +150,15 @@ func reconcileIssues(ctx context.Context, tx *sql.Tx, result *CheckRecord) error
 	return nil
 }
 
+func sortedIssueKeys(m map[string]Issue) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (s *Store) Issues(ctx context.Context, task string) ([]Issue, error) {
 	var result []Issue
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
@@ -155,7 +171,7 @@ func (s *Store) Issues(ctx context.Context, task string) ([]Issue, error) {
 
 func blockIssues(ctx context.Context, tx *sql.Tx, workspace string, actor Actor, issues []Issue) ([]Issue, error) {
 	var count int
-	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM check_feedback_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=?", workspace, actor.Agent, actor.SessionID, actor.RoundID).Scan(&count); err != nil || count >= 3 {
+	if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM check_feedback_v12 WHERE workspace_id=? AND agent=? AND session_id=? AND round_id=?", workspace, actor.Agent, actor.SessionID, actor.RoundID).Scan(&count); err != nil || count >= 3 {
 		return nil, err
 	}
 	var candidates []Issue
@@ -163,7 +179,7 @@ func blockIssues(ctx context.Context, tx *sql.Tx, workspace string, actor Actor,
 		if issue.Level != "block" || issue.Status != "open" {
 			continue
 		}
-		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM issue_blocks_v11 WHERE issue_id=? AND agent=? AND session_id=?", issue.ID, actor.Agent, actor.SessionID).Scan(&count); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM issue_blocks_v12 WHERE issue_id=? AND agent=? AND session_id=?", issue.ID, actor.Agent, actor.SessionID).Scan(&count); err != nil {
 			return nil, err
 		}
 		if count == 0 {
@@ -173,7 +189,7 @@ func blockIssues(ctx context.Context, tx *sql.Tx, workspace string, actor Actor,
 	if len(candidates) == 0 {
 		return nil, nil
 	}
-	insert, err := tx.ExecContext(ctx, "INSERT INTO check_feedback_v11(workspace_id,agent,session_id,round_id,at) VALUES(?,?,?,?,?)", workspace, actor.Agent, actor.SessionID, actor.RoundID, time.Now().UTC().Format(time.RFC3339Nano))
+	insert, err := tx.ExecContext(ctx, "INSERT INTO check_feedback_v12(workspace_id,agent,session_id,round_id,at) VALUES(?,?,?,?,?)", workspace, actor.Agent, actor.SessionID, actor.RoundID, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +199,7 @@ func blockIssues(ctx context.Context, tx *sql.Tx, workspace string, actor Actor,
 	}
 	for i := range candidates {
 		issue := &candidates[i]
-		_, err := tx.ExecContext(ctx, "INSERT INTO issue_blocks_v11 VALUES(?,?,?,?,?)", issue.ID, actor.Agent, actor.SessionID, actor.RoundID, id)
+		_, err := tx.ExecContext(ctx, "INSERT INTO issue_blocks_v12 VALUES(?,?,?,?,?)", issue.ID, actor.Agent, actor.SessionID, actor.RoundID, id)
 		if err != nil {
 			return nil, err
 		}
@@ -193,7 +209,7 @@ func blockIssues(ctx context.Context, tx *sql.Tx, workspace string, actor Actor,
 		if err != nil {
 			return nil, err
 		}
-		if _, err := tx.ExecContext(ctx, "UPDATE issues_v11 SET data=? WHERE identity=? AND occurrence=?", string(data), issue.Identity, issue.Occurrence); err != nil {
+		if _, err := tx.ExecContext(ctx, "UPDATE issues_v12 SET data=? WHERE identity=? AND occurrence=?", string(data), issue.Identity, issue.Occurrence); err != nil {
 			return nil, err
 		}
 	}

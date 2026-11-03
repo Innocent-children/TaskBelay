@@ -1,65 +1,131 @@
 package check
 
 import (
-	"crypto/sha256"
+	"context"
 	"fmt"
-	"strings"
-
+	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
-	"github.com/Innocent-children/taskbelay/internal/shell"
+	"github.com/Innocent-children/taskbelay/internal/repostats"
+	"github.com/Innocent-children/taskbelay/internal/validation"
+	"strings"
 )
 
-func Verification(current ledger.VerificationRecord, previous *ledger.VerificationRecord) *ledger.Issue {
-	if previous == nil {
-		return nil
-	}
-	issue := &ledger.Issue{Rule: "V1", Level: "hint", At: current.CommandKey, Status: "open", Advice: "按当前输入和运行条件判断是否需要重跑；可用 note_add 指向上一条验证并记录一次重跑原因。", Evidence: []string{previous.ID}}
-	issue.FactKey = fmt.Sprintf("%x", sha256.Sum256([]byte(current.Tree+current.Scope.InputID+current.Scope.ToolID+current.EnvironmentID+current.Scope.EnvironmentID)))
-	issue.Facts = []string{"命令：" + current.Command.Display, "上一条相同验证 " + previous.ID + " 的结果为 " + previous.State + "。"}
-	if previous.Denied || !previous.Executed || previous.State != "passed" {
-		return issue
-	}
-	if current.Command.Mixed() || previous.Command.Mixed() {
-		issue.Facts = append(issue.Facts, "调用含有其他命令或无法核对的执行结构，不复用整次调用。")
-		return issue
-	}
-	for _, segment := range current.Command.Segments {
-		if segment.Kind == shell.Verification && !shell.ReusableCommand(segment) {
-			issue.Facts = append(issue.Facts, "命令有副作用、后台执行或未解析参数，这次照常运行。")
-			return issue
+func command(record ledger.VerificationRecord) validation.Command {
+	c := validation.Command{Environment: record.EnvironmentID, Tool: record.Scope.Tool, Unknown: record.Command.Complex, Mixed: len(record.Command.Segments) != 1}
+	for i, s := range record.Command.Segments {
+		if len(s.Args) == 0 {
+			continue
 		}
+		args := append(append([]string(nil), s.Prefix...), s.Args...)
+		if i == 0 {
+			c.Program = args[0]
+			c.Args = args[1:]
+			c.Directory, c.Shell = s.Dir, string(s.Shell)
+		}
+		c.Unknown = c.Unknown || !s.Known || s.Background
+		c.Writes = c.Writes || s.SideEffect
 	}
-	if current.Scope.Unstable || previous.Scope.Unstable {
-		issue.Facts = append(issue.Facts, "正在核对不稳定结果，这次照常运行。")
-		return issue
+	if c.Program == "" {
+		c.Unknown = true
 	}
-	if current.Scope.SideEffects || previous.Scope.SideEffects {
-		issue.Facts = append(issue.Facts, "Runner 确认命令还有其他动作，这次照常运行。")
-		return issue
-	}
-	if current.Tree == "" || current.Tree != previous.Tree || current.Scope.InputID != previous.Scope.InputID || current.EnvironmentID != previous.EnvironmentID || current.Scope.ToolID != previous.Scope.ToolID || current.Scope.EnvironmentID != previous.Scope.EnvironmentID {
-		issue.Facts = append(issue.Facts, "工作区、输入、工具或环境已有变化，这次照常运行。")
-		return issue
-	}
-	if !current.Scope.Complete || !previous.Scope.Complete || !current.Scope.EnvironmentKnown || !previous.Scope.EnvironmentKnown || current.Scope.InputID == "" || current.Scope.ToolID == "" || current.EnvironmentID == "" || current.Scope.EnvironmentID == "" {
-		issue.Facts = append(issue.Facts, "尚不能完整核对输入范围和运行环境，只提示上次结果。")
-		return issue
-	}
-	issue.Level = "block"
-	issue.Facts = append(issue.Facts, "同一 session 的上次验证已通过；目录、参数、工作区、Runner 输入、工具和环境均相同，可复用通过结果。")
-	return issue
+	return c
+}
+func CommandKey(record ledger.VerificationRecord) string {
+	return validation.CommandKey(command(record))
+}
+func KnownValidation(ctx context.Context, s *ledger.Store, workspace string, record ledger.VerificationRecord) (bool, error) {
+	previous, err := s.PreviousVerification(ctx, workspace, record.Actor, CommandKey(record))
+	return previous != nil && previous.Algorithm == Algorithm && (previous.Scope.Validation || len(previous.Scope.Cases) > 0), err
 }
 
-func FormatVerification(record ledger.VerificationRecord) string {
-	var lines []string
-	if record.Issue != nil {
-		lines = append(lines, FormatIssues([]ledger.Issue{*record.Issue}, 0))
-	}
-	if record.Scope.Suggestion != "" {
-		lines = append(lines, "[V2 提示] "+record.Scope.Suggestion+"；项目全量验收约定、共享配置和未覆盖的动态依赖仍需按实际要求处理。")
-	}
-	if record.RerunNoteID != "" {
-		lines = append(lines, "本次采用一次重跑决定 "+record.RerunNoteID+"，原命令照常运行。")
-	}
-	return strings.Join(lines, "\n")
+func validationRun(r ledger.VerificationRecord) validation.Run {
+	return validation.Run{ID: r.ID, Command: command(r), Input: validation.Identity{Hash: r.Scope.Hash, Content: r.Scope.Content, Semantic: r.Scope.Semantic, Tool: r.Scope.Tool, Environment: r.EnvironmentID, Complete: r.Scope.Complete, Included: r.Scope.Included, Excluded: r.Scope.Excluded}, Before: r.Tree, After: r.AfterTree, State: r.State, Output: r.Output, Cases: r.Scope.Cases, Started: !r.StartedAt.IsZero(), Executed: r.Executed, EnvironmentChanged: r.Scope.EnvironmentChanged, Rerun: r.RerunNoteID != "", At: r.StartedAt}
 }
+
+func Verification(ctx context.Context, s *ledger.Store, w gitstate.Workspace, task ledger.TaskRecord, record *ledger.VerificationRecord) error {
+	history, err := s.Verifications(ctx, w.ID, "")
+	if err != nil {
+		return err
+	}
+	var runs []validation.Run
+	for _, r := range history {
+		if r.Algorithm == Algorithm {
+			runs = append(runs, validationRun(r))
+		}
+	}
+	r, err := repository(ctx, s, w, task.OriginTree, record.Tree, runSamples(history))
+	if err != nil {
+		return err
+	}
+	identity, err := validation.Input(ctx, validation.InputData{Files: r.Files, Roles: r.Roles, Command: command(*record)})
+	if err != nil {
+		return err
+	}
+	record.Scope.Hash, record.Scope.Content, record.Scope.Semantic = identity.Hash, identity.Content, identity.Semantic
+	record.Scope.Included, record.Scope.Excluded = identity.Included, identity.Excluded
+	record.Scope.Complete = identity.Complete
+	d, err := validation.Evaluate(ctx, validationRun(*record), runs)
+	if err != nil {
+		return err
+	}
+	record.Scope.Validation, record.Scope.Unstable = d.Validation, d.Unstable
+	record.Scope.Reason = d.Reason
+	if d.Kind != "" {
+		level := "hint"
+		if d.Block {
+			level = "block"
+		}
+		record.Issue = &ledger.Issue{Algorithm: Algorithm, Selected: true, Rule: "validation_" + d.Kind, LogicalAt: record.CommandKey, At: record.CommandKey, FactKey: record.Scope.Hash, Status: "open", Level: level, Facts: []string{d.Reason, "上次记录：" + d.PreviousID, "上次输出：" + d.Output}, Advice: "有新的环境或外部状态变化时，用 note_add 指向上次验证记录并写明重跑理由"}
+		if d.Kind != "repeat" {
+			record.Scope.Suggestion = d.Reason
+		}
+	}
+	return nil
+}
+
+func CompleteVerification(ctx context.Context, s *ledger.Store, w gitstate.Workspace, task ledger.TaskRecord, record ledger.VerificationRecord, after, output string) error {
+	scope := record.Scope
+	if task.ID != "" && after != "" {
+		repo, err := repository(ctx, s, w, task.OriginTree, after, nil)
+		if err != nil {
+			return err
+		}
+		names := repostats.CaseNames(repo)
+		matcherNames := map[string]bool{}
+		for _, name := range names {
+			if strings.Contains(output, name) {
+				matcherNames[name] = true
+			}
+		}
+		scope.Cases = keys(matcherNames)
+	}
+	if record.Tree != after {
+		scope.Complete = false
+		scope.Reason = "命令前后内容变化，结果不可用于重复拦截"
+	}
+	scope.Validation = scope.Validation || len(scope.Cases) > 0 && record.Tree == after && after != ""
+	if !scope.Validation {
+		history, err := s.Verifications(ctx, w.ID, "")
+		if err != nil {
+			return err
+		}
+		var runs []validation.Run
+		for _, r := range history {
+			if r.Algorithm == Algorithm && r.ID != record.ID {
+				runs = append(runs, validationRun(r))
+			}
+		}
+		current := record
+		current.Scope = scope
+		current.AfterTree = after
+		current.Output = output
+		runs = append(runs, validationRun(current))
+		scope.Validation, err = validation.IsValidation(ctx, validationRun(current), runs)
+		if err != nil {
+			return err
+		}
+	}
+	return s.UpdateVerificationInput(ctx, record.ID, scope, after, output)
+}
+
+func CommandResultReason(err error) string { return fmt.Sprintf("验证输入未完成：%v", err) }

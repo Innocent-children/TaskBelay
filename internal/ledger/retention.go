@@ -37,7 +37,7 @@ func queueCleanup(ctx context.Context, tx *sql.Tx, workspace, kind, target, expe
 	if target == "" {
 		return nil
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO cleanup_items_v11(workspace_id,kind,target,expected,ready_at) VALUES(?,?,?,?,?)
+	_, err := tx.ExecContext(ctx, `INSERT INTO cleanup_items_v12(workspace_id,kind,target,expected,ready_at) VALUES(?,?,?,?,?)
 ON CONFLICT(workspace_id,kind,target,expected) DO UPDATE SET ready_at=MIN(ready_at,excluded.ready_at)`, workspace, kind, target, expected, ready.UTC().Format(time.RFC3339Nano))
 	return err
 }
@@ -55,7 +55,7 @@ func (s *Store) StagePlanCleanup(ctx context.Context, workspace string, plan Pla
 func (s *Store) CleanupItems(ctx context.Context, workspace string, now time.Time) ([]CleanupItem, error) {
 	var items []CleanupItem
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		rows, err := q.QueryContext(ctx, `SELECT id,kind,target,expected,error FROM cleanup_items_v11 WHERE workspace_id=? AND julianday(ready_at)<=julianday(?) ORDER BY id LIMIT 32`, workspace, now.UTC().Format(time.RFC3339Nano))
+		rows, err := q.QueryContext(ctx, `SELECT id,kind,target,expected,error FROM cleanup_items_v12 WHERE workspace_id=? AND julianday(ready_at)<=julianday(?) ORDER BY id LIMIT 32`, workspace, now.UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return err
 		}
@@ -76,10 +76,10 @@ func (s *Store) CleanupItems(ctx context.Context, workspace string, now time.Tim
 func (s *Store) FinishCleanup(ctx context.Context, id int64, failure error) error {
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		if failure != nil {
-			_, err := tx.ExecContext(ctx, `UPDATE cleanup_items_v11 SET error=?,ready_at=? WHERE id=?`, failure.Error(), time.Now().Add(time.Minute).UTC().Format(time.RFC3339Nano), id)
+			_, err := tx.ExecContext(ctx, `UPDATE cleanup_items_v12 SET error=?,ready_at=? WHERE id=?`, failure.Error(), time.Now().Add(time.Minute).UTC().Format(time.RFC3339Nano), id)
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `DELETE FROM cleanup_items_v11 WHERE id=?`, id)
+		_, err := tx.ExecContext(ctx, `DELETE FROM cleanup_items_v12 WHERE id=?`, id)
 		return err
 	})
 }
@@ -88,14 +88,14 @@ func (s *Store) CleanupStatus(ctx context.Context, workspace string) (string, er
 	var output strings.Builder
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		var count int
-		if err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM cleanup_items_v11 WHERE workspace_id=?", workspace).Scan(&count); err != nil {
+		if err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM cleanup_items_v12 WHERE workspace_id=?", workspace).Scan(&count); err != nil {
 			return err
 		}
 		if count == 0 {
 			return nil
 		}
 		fmt.Fprintf(&output, "保留期清理：%d 项待处理。\n", count)
-		rows, err := q.QueryContext(ctx, "SELECT kind,target,error FROM cleanup_items_v11 WHERE workspace_id=? AND error!='' ORDER BY id LIMIT 8", workspace)
+		rows, err := q.QueryContext(ctx, "SELECT kind,target,error FROM cleanup_items_v12 WHERE workspace_id=? AND error!='' ORDER BY id LIMIT 8", workspace)
 		if err != nil {
 			return err
 		}
@@ -115,7 +115,7 @@ func (s *Store) CleanupStatus(ctx context.Context, workspace string) (string, er
 func (s *Store) RefInUse(ctx context.Context, ref string) (bool, error) {
 	var used bool
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		return q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM observations_v11 WHERE json_extract(data,'$.SnapshotRef')=? OR json_extract(data,'$.EvidenceRef')=?) OR EXISTS(SELECT 1 FROM tasks_v11 WHERE json_extract(data,'$.origin_ref')=?)`, ref, ref, ref).Scan(&used)
+		return q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM observations_v12 WHERE json_extract(data,'$.SnapshotRef')=? OR json_extract(data,'$.EvidenceRef')=?) OR EXISTS(SELECT 1 FROM tasks_v12 WHERE json_extract(data,'$.origin_ref')=?)`, ref, ref, ref).Scan(&used)
 	})
 	return used, err
 }

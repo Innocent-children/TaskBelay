@@ -73,7 +73,11 @@ func publishPlanEdit(ctx context.Context, tx *sql.Tx, observation Observation, e
 		if task.PlanRevision != proof.PlanRevision || task.AuthorizationRevision != proof.AuthorizationRevision {
 			return fmt.Errorf("编辑核对期间方案授权已变化")
 		}
-		result := CheckRecord{Input: CheckInput{TaskID: task.ID}, Issues: proof.Issues}
+		algorithm := ""
+		if len(proof.Issues) > 0 {
+			algorithm = proof.Issues[0].Algorithm
+		}
+		result := CheckRecord{Input: CheckInput{TaskID: task.ID, Algorithm: algorithm}, Issues: proof.Issues}
 		if err := reconcileIssues(ctx, tx, &result); err != nil {
 			return err
 		}
@@ -107,7 +111,7 @@ func publishPlanEdit(ctx context.Context, tx *sql.Tx, observation Observation, e
 func (s *Store) TaskEdits(ctx context.Context, workspace, task string, through int64) ([]EditRecord, error) {
 	var result []EditRecord
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		rows, err := q.QueryContext(ctx, `SELECT e.data FROM edits_v11 e JOIN observations_v11 o ON o.id=e.before_observation
+		rows, err := q.QueryContext(ctx, `SELECT e.data FROM edits_v12 e JOIN observations_v12 o ON o.id=e.before_observation
 WHERE e.workspace_id=? AND o.task_id=? AND e.after_observation>0 AND e.after_observation<=? ORDER BY e.after_observation`, workspace, task, through)
 		if err != nil {
 			return err

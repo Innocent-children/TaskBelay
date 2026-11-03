@@ -118,10 +118,12 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 				if err := json.Unmarshal([]byte(data), &check); err != nil {
 					return err
 				}
-				current, err := checkInput(ctx, q, workspace, task.ID, actor, check.Input.Rules, check.Input.Capabilities)
+				current, err := checkInput(ctx, q, workspace, task.ID, actor, check.Input.Algorithm)
 				record.State["validity"] = "unknown"
 				if record.State["status"] == string(CheckExpired) {
 					record.State["validity"] = "expired"
+				} else if check.Input.Algorithm == "" {
+					record.State["validity"] = "historical"
 				} else if err == nil {
 					record.State["validity"] = "current"
 					if current.Version() != check.InputVersion {
@@ -144,41 +146,41 @@ func recordQuery(task TaskRecord, category string) (string, []any, error) {
 	args := []any{task.ID}
 	switch category {
 	case "messages":
-		return `SELECT seq,id,0 revision,data,'{}' state FROM messages_v11 WHERE workspace_id=?
-AND (seq>=COALESCE((SELECT seq FROM messages_v11 WHERE id=?),0) AND (?=0 OR seq<=?)
-OR id IN (SELECT json_extract(data,'$.citation.source_id') FROM requirement_versions_v11 WHERE task_id=?))`,
+		return `SELECT seq,id,0 revision,data,'{}' state FROM messages_v12 WHERE workspace_id=?
+AND (seq>=COALESCE((SELECT seq FROM messages_v12 WHERE id=?),0) AND (?=0 OR seq<=?)
+OR id IN (SELECT json_extract(data,'$.citation.source_id') FROM requirement_versions_v12 WHERE task_id=?))`,
 			[]any{task.WorkspaceID, task.StartMessageID, task.EndMessageSeq, task.EndMessageSeq, task.ID}, nil
 	case "sources":
 		return `WITH RECURSIVE ids(id) AS (
-SELECT id FROM messages_v11 WHERE workspace_id=? AND seq>=COALESCE((SELECT seq FROM messages_v11 WHERE id=?),0) AND (?=0 OR seq<=?)
-UNION SELECT id FROM sources_v11 WHERE workspace_id=? AND task_id=?
-UNION SELECT json_extract(data,'$.citation.source_id') FROM requirement_versions_v11 WHERE task_id=?
-UNION SELECT json_extract(l.value,'$.citation.source_id') FROM requirement_versions_v11 r,json_each(r.data,'$.implemented_by') l WHERE r.task_id=?
-UNION SELECT json_extract(data,'$.citation.source_id') FROM notes_v11 WHERE task_id=?
-UNION SELECT json_extract(s.data,'$.confirmation.source_id') FROM sources_v11 s JOIN ids ON ids.id=s.id WHERE s.workspace_id=?
+SELECT id FROM messages_v12 WHERE workspace_id=? AND seq>=COALESCE((SELECT seq FROM messages_v12 WHERE id=?),0) AND (?=0 OR seq<=?)
+UNION SELECT id FROM sources_v12 WHERE workspace_id=? AND task_id=?
+UNION SELECT json_extract(data,'$.citation.source_id') FROM requirement_versions_v12 WHERE task_id=?
+UNION SELECT json_extract(l.value,'$.citation.source_id') FROM requirement_versions_v12 r,json_each(r.data,'$.implemented_by') l WHERE r.task_id=?
+UNION SELECT json_extract(data,'$.citation.source_id') FROM notes_v12 WHERE task_id=?
+UNION SELECT json_extract(s.data,'$.confirmation.source_id') FROM sources_v12 s JOIN ids ON ids.id=s.id WHERE s.workspace_id=?
 )
-SELECT s.rowid seq,s.id,0 revision,s.data,'{}' state FROM sources_v11 s JOIN ids ON ids.id=s.id WHERE s.workspace_id=?`,
+SELECT s.rowid seq,s.id,0 revision,s.data,'{}' state FROM sources_v12 s JOIN ids ON ids.id=s.id WHERE s.workspace_id=?`,
 			[]any{task.WorkspaceID, task.StartMessageID, task.EndMessageSeq, task.EndMessageSeq, task.WorkspaceID, task.ID, task.ID, task.ID, task.ID, task.WorkspaceID, task.WorkspaceID}, nil
 	case "requirements":
-		return `SELECT rowid seq,id,revision,data,json_object('status',json_extract(data,'$.status')) state FROM requirement_versions_v11 WHERE task_id=?`, args, nil
+		return `SELECT rowid seq,id,revision,data,json_object('status',json_extract(data,'$.status')) state FROM requirement_versions_v12 WHERE task_id=?`, args, nil
 	case "notes":
-		return `SELECT seq,id,0 revision,data,json_object('active',active,'consumed',consumed,'invalidated_by',invalidated_by) state FROM notes_v11 WHERE task_id=?`, args, nil
+		return `SELECT seq,id,0 revision,data,json_object('active',active,'consumed',consumed,'invalidated_by',invalidated_by) state FROM notes_v12 WHERE task_id=?`, args, nil
 	case "plans":
 		return `SELECT version seq,json_extract(data,'$.id') id,json_extract(data,'$.revision') revision,data,
 json_object('confirmed',json_extract(data,'$.confirmation') IS NOT NULL,'revocations',COALESCE(json_array_length(data,'$.revocations'),0),
-'confirmation_source_id',json_extract(data,'$.confirmation.citation.source_id')) state FROM plans_v11 WHERE task_id=?`, args, nil
+'confirmation_source_id',json_extract(data,'$.confirmation.citation.source_id')) state FROM plans_v12 WHERE task_id=?`, args, nil
 	case "checks":
 		return `SELECT seq,CAST(seq AS TEXT) id,0 revision,data,json_object('status',status,'level',json_extract(data,'$.level'),
-'validity','not_checked','delivery_updated',json_extract(data,'$.delivery_updates') IS NOT NULL) state FROM checks_v11 WHERE task_id=?`, args, nil
+'validity','not_checked','delivery_updated',json_extract(data,'$.delivery_updates') IS NOT NULL) state FROM checks_v12 WHERE task_id=?`, args, nil
 	case "verifications":
 		return `SELECT seq,id,0 revision,data,json_object('state',state,'executed',executed,'denied',denied,
-'exit_code',json_extract(data,'$.exit_code'),'ended_at',json_extract(data,'$.ended_at')) state FROM verifications_v11 WHERE task_id=?`, args, nil
+'exit_code',json_extract(data,'$.exit_code'),'ended_at',json_extract(data,'$.ended_at')) state FROM verifications_v12 WHERE task_id=?`, args, nil
 	case "workspace_updates":
 		return `SELECT c.id seq,CAST(c.id AS TEXT) id,0 revision,c.data,
-json_object('trigger',json_extract(o.data,'$.Trigger')) state FROM file_changes_v11 c JOIN observations_v11 o ON o.id=c.observation_id
+json_object('trigger',json_extract(o.data,'$.Trigger')) state FROM file_changes_v12 c JOIN observations_v12 o ON o.id=c.observation_id
 WHERE o.task_id=? AND json_extract(c.data,'$.Kind')='workspace_update'`, args, nil
 	case "task_updates":
-		return `SELECT observation_id seq,CAST(observation_id AS TEXT) id,0 revision,data,'{}' state FROM task_updates_v11 WHERE task_id=?`, args, nil
+		return `SELECT observation_id seq,CAST(observation_id AS TEXT) id,0 revision,data,'{}' state FROM task_updates_v12 WHERE task_id=?`, args, nil
 	}
 	return "", nil, fmt.Errorf("未知记录类别 %q", category)
 }

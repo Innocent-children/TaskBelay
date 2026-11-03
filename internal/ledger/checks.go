@@ -34,7 +34,7 @@ func effectiveDecisions(notes []Note, task TaskRecord, settings EffectiveSetting
 	return result
 }
 
-func checkInput(ctx context.Context, q queryer, workspace, id string, actor Actor, rules, capabilities string) (CheckInput, error) {
+func checkInput(ctx context.Context, q queryer, workspace, id string, actor Actor, algorithm string) (CheckInput, error) {
 	task, err := loadTask(ctx, q, workspace, id)
 	if err != nil {
 		return CheckInput{}, err
@@ -54,14 +54,14 @@ func checkInput(ctx context.Context, q queryer, workspace, id string, actor Acto
 	if err != nil {
 		return CheckInput{}, err
 	}
-	return NewCheckInput(task, observation.Tree, settings, effectiveDecisions(notes, task, settings, actor), rules, capabilities), nil
+	return NewCheckInput(task, observation.Tree, settings, effectiveDecisions(notes, task, settings, actor), algorithm), nil
 }
 
-func (s *Store) CheckInput(ctx context.Context, workspace, id string, actor Actor, rules, capabilities string) (CheckInput, error) {
+func (s *Store) CheckInput(ctx context.Context, workspace, id string, actor Actor, algorithm string) (CheckInput, error) {
 	var input CheckInput
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		var err error
-		input, err = checkInput(ctx, q, workspace, id, actor, rules, capabilities)
+		input, err = checkInput(ctx, q, workspace, id, actor, algorithm)
 		return err
 	})
 	return input, err
@@ -78,7 +78,7 @@ func (s *Store) CheckReusable(ctx context.Context, workspace string, actor Actor
 		if err != nil {
 			return err
 		}
-		input, err := checkInput(ctx, q, workspace, task.ID, actor, record.Input.Rules, record.Input.Capabilities)
+		input, err := checkInput(ctx, q, workspace, task.ID, actor, record.Input.Algorithm)
 		if err != nil {
 			return err
 		}
@@ -87,7 +87,7 @@ func (s *Store) CheckReusable(ctx context.Context, workspace string, actor Actor
 		}
 		var id int64
 		var status CheckStatus
-		if err := q.QueryRowContext(ctx, `SELECT seq,status FROM checks_v11 WHERE task_id=? AND depth=? AND input_version=? ORDER BY seq DESC LIMIT 1`, task.ID, record.Depth, record.InputVersion).Scan(&id, &status); err != nil {
+		if err := q.QueryRowContext(ctx, `SELECT seq,status FROM checks_v12 WHERE task_id=? AND depth=? AND input_version=? ORDER BY seq DESC LIMIT 1`, task.ID, record.Depth, record.InputVersion).Scan(&id, &status); err != nil {
 			return err
 		}
 		reusable = id == record.ID && status == record.Status && record.ReusableStatic()
@@ -97,7 +97,7 @@ func (s *Store) CheckReusable(ctx context.Context, workspace string, actor Actor
 }
 
 func latestCheck(ctx context.Context, q queryer, task, depth, version string, excludeExpired bool) (*CheckRecord, error) {
-	query := "SELECT seq,status,data FROM checks_v11 WHERE task_id=? AND depth=?"
+	query := "SELECT seq,status,data FROM checks_v12 WHERE task_id=? AND depth=?"
 	args := []any{task, depth}
 	if version != "" {
 		query += " AND input_version=?"
@@ -129,6 +129,19 @@ func latestCheck(ctx context.Context, q queryer, task, depth, version string, ex
 		return nil, err
 	}
 	result := saved.CheckRecord
+	if result.Input.Algorithm == "" {
+		var old struct {
+			Input struct {
+				Version string `json:"rules"`
+			}
+		}
+		_ = json.Unmarshal([]byte(data), &old)
+		result.HistoricalVersion = old.Input.Version
+		result.Level = "historical"
+		for i := range result.Issues {
+			result.Issues[i].Level = "historical"
+		}
+	}
 	if saved.DeliveryUpdates != nil {
 		result.Report.Verifications = saved.DeliveryUpdates.Verifications
 		result.Report.ValidationNotes = saved.DeliveryUpdates.ValidationNotes
@@ -167,11 +180,11 @@ func viewChecks(ctx context.Context, q queryer, view *TaskView, actor Actor) err
 		if record == nil {
 			continue
 		}
-		input, err := checkInput(ctx, q, view.Task.WorkspaceID, view.Task.ID, actor, record.Input.Rules, record.Input.Capabilities)
+		input, err := checkInput(ctx, q, view.Task.WorkspaceID, view.Task.ID, actor, record.Input.Algorithm)
 		if err != nil {
 			return err
 		}
-		if input.Version() != record.InputVersion {
+		if record.Input.Algorithm != "" && input.Version() != record.InputVersion {
 			record.Status = CheckExpired
 			record.Level = "hint"
 			for i := range record.Issues {
@@ -212,7 +225,7 @@ func (s *Store) SaveCheck(ctx context.Context, workspace string, actor Actor, cu
 		return result, err
 	}
 	err = s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		input, err := checkInput(ctx, tx, workspace, result.Input.TaskID, actor, result.Input.Rules, result.Input.Capabilities)
+		input, err := checkInput(ctx, tx, workspace, result.Input.TaskID, actor, result.Input.Algorithm)
 		if err != nil {
 			return err
 		}
@@ -235,6 +248,13 @@ func (s *Store) SaveCheck(ctx context.Context, workspace string, actor Actor, cu
 			}
 		}
 		result.Level = HighestLevel(result.Issues)
+		if result.Level == "pass" {
+			if result.Status != CheckComplete {
+				result.Level = "unknown"
+			} else {
+				result.Level = "no_findings"
+			}
+		}
 		if result.Status == CheckExpired {
 			result.Level = "hint"
 			for i := range result.Issues {
@@ -255,7 +275,7 @@ func (s *Store) SaveCheck(ctx context.Context, workspace string, actor Actor, cu
 		if err != nil {
 			return err
 		}
-		insert, err := tx.ExecContext(ctx, `INSERT INTO checks_v11(task_id,depth,input_version,status,data,report_encoding,report_raw_bytes,report_sha256,report_body) VALUES(?,?,?,?,?,?,?,?,?)`, task.ID, result.Depth, result.InputVersion, result.Status, string(data), report.Encoding, report.RawBytes, report.SHA256, report.Body)
+		insert, err := tx.ExecContext(ctx, `INSERT INTO checks_v12(task_id,depth,input_version,status,data,report_encoding,report_raw_bytes,report_sha256,report_body) VALUES(?,?,?,?,?,?,?,?,?)`, task.ID, result.Depth, result.InputVersion, result.Status, string(data), report.Encoding, report.RawBytes, report.SHA256, report.Body)
 		if err != nil {
 			return err
 		}

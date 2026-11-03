@@ -181,47 +181,18 @@ func checkResponse(record ledger.CheckRecord, execution bool) map[string]any {
 	sort.SliceStable(issues, func(i, j int) bool {
 		return (issues[i].Level == "block" || issues[i].BlockOnDelivery) && !(issues[j].Level == "block" || issues[j].BlockOnDelivery)
 	})
-	var items, gaps, tests []any
+	var items, gaps []any
 	for _, issue := range issues[:min(20, len(issues))] {
 		items = append(items, map[string]any{"id": issue.ID, "rule": issue.Rule, "level": issue.Level, "status": issue.Status, "at": summary.Truncate(issue.At, 80), "advice": summary.Truncate(issue.Advice, 100), "facts": summary.Truncate(strings.Join(issue.Facts, "；"), 150)})
 	}
 	for _, gap := range record.Missing[:min(20, len(record.Missing))] {
 		gaps = append(gaps, map[string]any{"at": summary.Truncate(gap.At, 80), "operation": gap.Operation, "kind": gap.Kind, "count": gap.Size(), "candidate": summary.Truncate(gap.Candidate, 80), "reason": summary.Truncate(gap.Reason, 150)})
 	}
-	added, modified, existing, unknown := 0, 0, 0, 0
-	for _, test := range record.Report.Tests {
-		switch test.Change {
-		case "add":
-			added++
-		case "modify":
-			modified++
-		case "existing":
-			existing++
-			continue
-		default:
-			unknown++
-			continue
-		}
-		if len(tests) < 10 {
-			tests = append(tests, map[string]any{"at": summary.Truncate(test.At, 80), "change": test.Change, "framework": test.Framework})
-		}
-	}
-	value := map[string]any{"task_id": record.Input.TaskID, "id": record.ID, "input_version": record.InputVersion, "status": record.Status, "computed_status": record.ComputedStatus, "level": record.Level, "depth": record.Depth, "started_at": record.StartedAt, "finished_at": record.FinishedAt, "issues_count": len(record.Issues), "missing_count": len(record.Missing), "evaluated_count": len(record.Evaluated), "tests_count": map[string]int{"added": added, "modified": modified, "existing_related": existing, "unknown": unknown}, "read": readLink(record.Input.TaskID, "checks", strconv.FormatInt(record.ID, 10), 0)}
+	value := map[string]any{"task_id": record.Input.TaskID, "id": record.ID, "input_version": record.InputVersion, "status": record.Status, "computed_status": record.ComputedStatus, "level": record.Level, "depth": record.Depth, "started_at": record.StartedAt, "finished_at": record.FinishedAt, "issues_count": len(record.Issues), "missing_count": len(record.Missing), "evaluated_count": len(record.Evaluated), "algorithm": record.Input.Algorithm, "historical_version": record.HistoricalVersion, "read": readLink(record.Input.TaskID, "checks", strconv.FormatInt(record.ID, 10), 0)}
 	value["gap_counts"] = record.GapCounts()
-	coverage := map[string]int{"code": 0, "file": 0, "excluded": 0}
-	for _, file := range record.Report.Coverage {
-		coverage[file.Level]++
-	}
-	unknownRisk := 0
-	for _, risk := range record.Report.TestRisk {
-		if !risk.Complete {
-			unknownRisk++
-		}
-	}
-	value["coverage_counts"], value["unknown_risk_count"] = coverage, unknownRisk
-	value["coverage_note"] = "status 表示执行状态；文件级不表示行为或测试风险已检查，未完整风险不提供数量建议。"
+	value["analysis_note"] = "处理状态、未知范围、结论和产品动作分别记录；完整逻辑记录见 task_get。"
 	value["unconfirmed_count"] = len(record.Unconfirmed)
-	value["details"] = map[string]any{"issues": items, "missing": gaps, "tests": tests}
+	value["details"] = map[string]any{"issues": items, "missing": gaps}
 	if execution {
 		value["reused"] = record.Reused
 	}

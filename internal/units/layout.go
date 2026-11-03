@@ -131,6 +131,15 @@ func assignNames(f *File, syntax Syntax) {
 		if len(names) > 0 {
 			u.Name = names[0]
 		}
+		for j, t := range u.Tokens {
+			if t.End > u.HeaderEnd {
+				break
+			}
+			if t.Kind == "identifier" && j+1 < len(u.Tokens) && u.Tokens[j+1].Text == "(" {
+				u.Name = t.Text
+				break
+			}
+		}
 		u.ID = Hash(strings.Join(Sequence(u.Tokens, false), "\x00"))
 	}
 }

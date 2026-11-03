@@ -32,8 +32,6 @@ type EffectiveSettings struct {
 	Revision string
 }
 
-var testLanguages = [...]string{"go", "python", "javascript", "typescript", "java", "rust"}
-
 func DefaultValue(name string) (string, error) {
 	switch name {
 	case "workflow":
@@ -42,20 +40,8 @@ func DefaultValue(name string) (string, error) {
 		return "block", nil
 	case "analysis.tests", "debug":
 		return "off", nil
-	}
-	parts := strings.Split(name, ".")
-	if len(parts) == 3 && parts[0] == "test" {
-		for _, language := range testLanguages {
-			if parts[1] != language {
-				continue
-			}
-			switch parts[2] {
-			case "command", "prepare":
-				return "", nil
-			case "parallel":
-				return "1", nil
-			}
-		}
+	case "analysis.parallel":
+		return "1", nil
 	}
 	return "", fmt.Errorf("未知设置项 %q", name)
 }
@@ -77,9 +63,9 @@ func ValidateSetting(name, value string) error {
 		if value != "on" && value != "off" {
 			return fmt.Errorf("%s 只能是 on 或 off", name)
 		}
-	case strings.HasSuffix(name, ".parallel"):
+	case name == "analysis.parallel":
 		if value != "1" && value != "2" && value != "3" && value != "4" {
-			return fmt.Errorf("测试并行数只能是 1 至 4")
+			return fmt.Errorf("副本并行数只能是 1 至 4")
 		}
 	}
 	return nil
@@ -108,7 +94,7 @@ func (s *Store) SetSetting(ctx context.Context, workspaceID string, scope Scope,
 	var scopeID string
 	if scope != User {
 		var projectID, taskID string
-		if err := tx.QueryRowContext(ctx, "SELECT project_id, current_task_id FROM workspaces_v11 WHERE id=?", workspaceID).Scan(&projectID, &taskID); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT project_id, current_task_id FROM workspaces_v12 WHERE id=?", workspaceID).Scan(&projectID, &taskID); err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				return fmt.Errorf("当前目录不在已识别的 git 工作区里")
 			}
@@ -122,9 +108,9 @@ func (s *Store) SetSetting(ctx context.Context, workspaceID string, scope Scope,
 			scopeID = taskID
 		}
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO settings_v11 (scope, scope_id, name, value, revision) VALUES (?, ?, ?, ?, 1)
-ON CONFLICT(scope, scope_id, name) DO UPDATE SET value=excluded.value, revision=settings_v11.revision+1
-WHERE settings_v11.value != excluded.value`, scope, scopeID, name, value)
+	_, err = tx.ExecContext(ctx, `INSERT INTO settings_v12 (scope, scope_id, name, value, revision) VALUES (?, ?, ?, ?, 1)
+ON CONFLICT(scope, scope_id, name) DO UPDATE SET value=excluded.value, revision=settings_v12.revision+1
+WHERE settings_v12.value != excluded.value`, scope, scopeID, name, value)
 	if err != nil {
 		return err
 	}
@@ -143,21 +129,16 @@ func (s *Store) Settings(ctx context.Context, workspaceID string) (EffectiveSett
 
 func effectiveSettings(ctx context.Context, q queryer, workspaceID, taskID string, current bool) (EffectiveSettings, error) {
 	values := make(map[string]Setting)
-	names := []string{"workflow", "enforcement", "analysis.tests", "debug"}
-	for _, language := range testLanguages {
-		for _, field := range []string{"command", "prepare", "parallel"} {
-			names = append(names, "test."+language+"."+field)
-		}
-	}
+	names := []string{"workflow", "enforcement", "analysis.tests", "analysis.parallel", "debug"}
 	for _, name := range names {
 		value, _ := DefaultValue(name)
 		values[name] = Setting{Value: value, Source: Default}
 	}
 	// 用一个读语句同时读取当前任务和设置，避免任务切换时混合两套上下文。
-	rows, err := q.QueryContext(ctx, `SELECT scope, scope_id, name, value, revision FROM settings_v11
+	rows, err := q.QueryContext(ctx, `SELECT scope, scope_id, name, value, revision FROM settings_v12
 WHERE scope='user'
-   OR (scope='project' AND scope_id=(SELECT project_id FROM workspaces_v11 WHERE id=?))
-   OR (scope='task' AND scope_id=CASE WHEN ? THEN (SELECT current_task_id FROM workspaces_v11 WHERE id=?) ELSE ? END)
+   OR (scope='project' AND scope_id=(SELECT project_id FROM workspaces_v12 WHERE id=?))
+   OR (scope='task' AND scope_id=CASE WHEN ? THEN (SELECT current_task_id FROM workspaces_v12 WHERE id=?) ELSE ? END)
 ORDER BY CASE scope WHEN 'user' THEN 0 WHEN 'project' THEN 1 ELSE 2 END, name`, workspaceID, current, workspaceID, taskID)
 	if err != nil {
 		return EffectiveSettings{}, err
@@ -168,6 +149,9 @@ ORDER BY CASE scope WHEN 'user' THEN 0 WHEN 'project' THEN 1 ELSE 2 END, name`, 
 		var value Setting
 		if err := rows.Scan(&value.Source, &value.ScopeID, &name, &value.Value, &value.Revision); err != nil {
 			return EffectiveSettings{}, err
+		}
+		if strings.HasPrefix(name, "test.") {
+			continue
 		}
 		if err := ValidateSetting(name, value.Value); err != nil {
 			return EffectiveSettings{}, fmt.Errorf("账本中的设置无效: %w", err)

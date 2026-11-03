@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
-	"github.com/Innocent-children/taskbelay/internal/lang"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 )
 
@@ -29,7 +28,7 @@ func Within(workspace gitstate.Workspace, scope, file string) (bool, error) {
 	return one == two, err
 }
 
-func BeforeEdit(workspace gitstate.Workspace, context ledger.PlanEditContext, paths []string, contents map[string]string) (ledger.PlanEditCheck, error) {
+func BeforeEdit(workspace gitstate.Workspace, context ledger.PlanEditContext, paths []string, auxiliary map[string]bool) (ledger.PlanEditCheck, error) {
 	check := ledger.PlanEditCheck{TaskID: context.TaskID, Workflow: context.Workflow, SettingsRevision: context.SettingsRevision, PlanRevision: context.PlanRevision, AuthorizationRevision: context.AuthorizationRevision, Paths: paths}
 	if context.Workflow != "semi" {
 		return check, nil
@@ -37,8 +36,7 @@ func BeforeEdit(workspace gitstate.Workspace, context ledger.PlanEditContext, pa
 	for _, file := range paths {
 		allowed := false
 		if effective := context.Plans.Effective; effective != nil {
-			kind := lang.Classify(file, []byte(contents[file]))
-			allowed = len(effective.Files) > 0 && (kind.Test || kind.TestData || kind.Generated || kind.Lock)
+			allowed = len(effective.Files) > 0 && auxiliary[file]
 			for _, scope := range effective.Files {
 				match, err := Within(workspace, scope.Path, file)
 				if err != nil {

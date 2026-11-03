@@ -10,13 +10,11 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
-	"github.com/Innocent-children/taskbelay/internal/testrun"
 )
 
 type Tasks struct {
 	Observer
-	ScopeAnalyzer testrun.ScopeAnalyzer
-	ReportError   func(error)
+	ReportError func(error)
 }
 
 func (t Tasks) RecordUserMessage(ctx context.Context, e event.Event) (ledger.Message, error) {

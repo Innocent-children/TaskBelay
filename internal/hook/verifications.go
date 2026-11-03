@@ -6,15 +6,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
-
 	"github.com/Innocent-children/taskbelay/internal/check"
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
+	"github.com/Innocent-children/taskbelay/internal/platform"
 	"github.com/Innocent-children/taskbelay/internal/shell"
 	"github.com/Innocent-children/taskbelay/internal/shell/posix"
 	"github.com/Innocent-children/taskbelay/internal/shell/pwsh"
-	"github.com/Innocent-children/taskbelay/internal/testrun"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 )
 
 func CommandScript(e event.Event) shell.Script {
@@ -23,65 +25,133 @@ func CommandScript(e event.Event) shell.Script {
 	}
 	return shell.Parse(e.Command.Text, e.WorkingDir, e.Command.Shell, map[event.Shell]shell.Parser{event.POSIX: posix.Parser{}, event.PowerShell: pwsh.Parser{}})
 }
+func commandRecord(e event.Event) ledger.VerificationRecord {
+	r := ledger.VerificationRecord{Algorithm: check.Algorithm, Actor: ledger.Actor{Agent: e.Agent, SessionID: e.SessionID, RoundID: e.RoundID, CallID: e.ToolCallID}, RequestDirectory: e.WorkingDir, Command: CommandScript(e)}
+	if e.Command != nil {
+		r.RequestHash = fmt.Sprintf("%x", sha256.Sum256([]byte(string(e.Command.Shell)+"\x00"+e.WorkingDir+"\x00"+e.Command.Text)))
+		if e.Command.Background {
+			for i := range r.Command.Segments {
+				r.Command.Segments[i].Background = true
+			}
+		}
+	}
+	r.CommandKey = check.CommandKey(r)
+	r.EnvironmentID = r.Command.HashEnvironment(os.Environ())
+	r.Scope.EnvironmentChanged = environmentChange(r.Command)
+	return r
+}
+
+// shell 的赋值及环境操作在输入边界识别；不据此识别验证工具。
+func environmentChange(script shell.Script) bool {
+	for _, s := range script.Segments {
+		if len(s.Environment) > 0 || len(s.Unset) > 0 || s.ClearEnvironment {
+			return true
+		}
+		if len(s.Args) > 0 {
+			switch strings.ToLower(s.Args[0]) {
+			case "export", "unset", "source", ".", "set-item", "remove-item":
+				return true
+			}
+			if strings.HasPrefix(strings.ToLower(s.Args[0]), "$env:") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func toolIdentity(script shell.Script) string {
+	var parts []string
+	for _, s := range script.Segments {
+		if len(s.Args) == 0 {
+			return ""
+		}
+		program := s.Args[0]
+		if len(s.Prefix) > 0 {
+			program = s.Prefix[0]
+		}
+		resolved := program
+		var err error
+		if strings.ContainsAny(program, "/\\") {
+			if !filepath.IsAbs(program) {
+				resolved = filepath.Join(s.Dir, program)
+			}
+		} else {
+			resolved, err = exec.LookPath(program)
+		}
+		if err != nil {
+			return ""
+		}
+		resolved, err = filepath.EvalSymlinks(resolved)
+		if err != nil {
+			return ""
+		}
+		info, err := os.Stat(resolved)
+		if err != nil {
+			return ""
+		}
+		identity, err := platform.FileIdentity(resolved)
+		if err != nil {
+			return ""
+		}
+		parts = append(parts, fmt.Sprintf("%s:%s:%d:%d:%s", resolved, identity, info.Size(), info.ModTime().UnixNano(), info.Mode()))
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(parts, "\x00"))))
+}
 
 func (t Tasks) BeforeCommand(ctx context.Context, e event.Event) (event.Decision, error) {
-	script := CommandScript(e)
-	if !script.HasVerification() {
+	if e.Command == nil {
 		return event.Decision{}, nil
 	}
-	actor := ledger.Actor{Agent: e.Agent, SessionID: e.SessionID, RoundID: e.RoundID, CallID: e.ToolCallID}
-	requestHash := fmt.Sprintf("%x", sha256.Sum256([]byte(string(e.Command.Shell)+"\x00"+e.WorkingDir+"\x00"+e.Command.Text)))
-	existing, err := t.Store.VerificationByCall(ctx, t.Workspace.ID, actor)
+	record := commandRecord(e)
+	record.WorkspaceID = t.Workspace.ID
+	existing, err := t.Store.VerificationByCall(ctx, t.Workspace.ID, record.Actor)
 	if err != nil {
 		return event.Decision{}, err
 	}
 	if existing != nil {
-		if existing.RequestHash != requestHash {
-			return event.Decision{}, fmt.Errorf("验证调用身份与原请求不一致")
+		if existing.RequestHash != record.RequestHash {
+			return event.Decision{}, fmt.Errorf("命令身份与原请求不一致")
 		}
 		return verificationDecision(*existing), nil
 	}
-	view, observation, err := t.observeEvent(ctx, e)
+	task, observation, err := t.Store.CommandContext(ctx, t.Workspace.ID)
 	if err != nil {
 		return event.Decision{}, err
 	}
-	record := ledger.VerificationRecord{WorkspaceID: t.Workspace.ID, TaskID: view.CurrentTaskID, Actor: actor, RequestHash: requestHash, RequestDirectory: e.WorkingDir, Command: script, CommandKey: script.CommandKey(), Tree: observation.Tree}
-	record.EnvironmentID = record.Command.HashEnvironment(os.Environ())
-	if view.Task != nil {
-		record.InputRevision = view.Task.RecordRevision
-	}
-	record.Scope.Reason = "该命令的 Runner 输入范围与外部环境尚未核对"
-	analyzer := t.ScopeAnalyzer
-	if analyzer == nil && view.Task != nil {
-		analyzer = testrun.Scope{OriginTree: view.Task.OriginTree}
-	}
-	if analyzer != nil {
-		record.Scope, err = analyzer.VerificationScope(ctx, t.Workspace, script, record.Tree)
-		if err != nil {
-			record.Scope.Complete = false
-			record.Scope.Reason = "Runner 范围核对未完成"
-		}
-	}
-	if e.Command.Background {
-		for i := range record.Command.Segments {
-			record.Command.Segments[i].Background = true
-		}
-	}
-	previous, err := t.Store.PreviousVerification(ctx, t.Workspace.ID, actor, record.CommandKey)
+	record.TaskID, record.InputRevision, record.Tree = task.ID, task.RecordRevision, observation.Tree
+	previous, err := t.Store.PreviousVerification(ctx, t.Workspace.ID, record.Actor, record.CommandKey)
 	if err != nil {
 		return event.Decision{}, err
 	}
 	if previous != nil {
 		record.PreviousID = previous.ID
 	}
-	if record.Scope.Complete {
-		current, captureErr := t.Workspace.Capture(ctx)
-		if captureErr != nil || !current.Complete() || current.Tree != record.Tree {
+	known, err := check.KnownValidation(ctx, t.Store, t.Workspace.ID, record)
+	if err != nil {
+		return event.Decision{}, err
+	}
+	if known && task.ID != "" {
+		view, observed, err := t.observeEvent(ctx, e)
+		if err != nil {
+			return event.Decision{}, err
+		}
+		if view.Task == nil {
+			return event.Decision{}, fmt.Errorf("当前任务已变化")
+		}
+		task = *view.Task
+		record.InputRevision, record.Tree = task.RecordRevision, observed.Tree
+		record.Scope.Tool = toolIdentity(record.Command)
+		if err = check.Verification(ctx, t.Store, t.Workspace, task, &record); err != nil {
 			record.Scope.Complete = false
-			record.Scope.Reason = "验证前内容发生变化或无法再次核对"
+			record.Scope.Reason = check.CommandResultReason(err)
+		}
+		current, err := t.Workspace.Capture(ctx)
+		if err != nil || !current.Complete() || current.Tree != record.Tree {
+			record.Scope.Complete = false
+			record.Issue = nil
 		}
 	}
-	record.Issue = check.Verification(record, previous)
 	record, err = t.Store.BeginVerification(ctx, record)
 	if err != nil {
 		return event.Decision{}, err
@@ -91,83 +161,77 @@ func (t Tasks) BeforeCommand(ctx context.Context, e event.Event) (event.Decision
 
 func verificationDecision(record ledger.VerificationRecord) event.Decision {
 	text := check.FormatVerification(record)
-	decision := event.Decision{AdditionalContext: text}
+	d := event.Decision{AdditionalContext: text}
 	if record.Issue != nil {
 		action := "验证提示已输出"
-		detail := record.Issue.Rule + "：" + record.Issue.Advice
 		if record.Denied {
 			action = "验证拒绝已输出"
-			detail = record.Issue.Rule + "：同一 session 的上次验证已通过，输入及运行条件相同，已拒绝重复验证。"
 		}
-		sources := append([]string{"verification:" + record.ID}, issueSource(*record.Issue)...)
-		if record.PreviousID != "" {
-			sources = append(sources, "verification:"+record.PreviousID)
-		}
-		decision.Records = append(decision.Records, feedbackRecord(record.TaskID, action, verificationCommand(record.Command), detail, sources...))
-	}
-	if record.Scope.Suggestion != "" {
-		decision.Records = append(decision.Records, feedbackRecord(record.TaskID, "验证提示已输出", verificationCommand(record.Command), "V2：已提供缩小验证范围的建议，是否采用仍需核对项目验收约定和动态依赖。", "verification:"+record.ID))
+		d.Records = append(d.Records, feedbackRecord(record.TaskID, action, verificationCommand(record.Command), record.Issue.Advice, "verification:"+record.ID))
 	}
 	if record.Denied {
-		decision.DenyTool = text
+		d.DenyTool = text
 	}
-	return decision
+	return d
 }
 
 func (t Tasks) AfterCommand(ctx context.Context, e event.Event) (event.Decision, error) {
-	if e.Command == nil || !CommandScript(e).HasVerification() {
+	if e.Command == nil {
 		return event.Decision{}, nil
 	}
-	actor := ledger.Actor{Agent: e.Agent, SessionID: e.SessionID, RoundID: e.RoundID, CallID: e.ToolCallID}
-	previousCall, err := t.Store.VerificationByCall(ctx, t.Workspace.ID, actor)
+	request := commandRecord(e)
+	request.WorkspaceID = t.Workspace.ID
+	existing, err := t.Store.VerificationByCall(ctx, t.Workspace.ID, request.Actor)
 	if err != nil {
 		return event.Decision{}, err
 	}
-	requestDirectory := e.WorkingDir
-	if previousCall != nil && previousCall.RequestDirectory != "" {
-		// shell 可以在执行中改变 cwd；请求身份仍以最初收到的目录核对。
-		requestDirectory = previousCall.RequestDirectory
+	if existing != nil && existing.RequestDirectory != e.WorkingDir {
+		copy := e
+		copy.WorkingDir = existing.RequestDirectory
+		request = commandRecord(copy)
+		request.WorkspaceID = t.Workspace.ID
 	}
-	requestHash := fmt.Sprintf("%x", sha256.Sum256([]byte(string(e.Command.Shell)+"\x00"+requestDirectory+"\x00"+e.Command.Text)))
-	if previousCall != nil && previousCall.RequestHash != requestHash {
-		return event.Decision{}, fmt.Errorf("验证后置事件与原请求不一致")
+	if existing != nil && existing.RequestHash != request.RequestHash {
+		return event.Decision{}, fmt.Errorf("命令后置事件与原请求不一致")
 	}
-	result, err := t.Store.EndVerification(ctx, t.Workspace.ID, actor, e.Result)
+	result, err := t.Store.EndVerification(ctx, t.Workspace.ID, request.Actor, e.Result)
 	if errors.Is(err, sql.ErrNoRows) {
-		// 前置预算不足时仍保存实际后置事实；不能倒推已缺失的命令前输入。
-		script := CommandScript(e)
-		view, viewErr := t.Store.TaskView(ctx, t.Workspace.ID, "", actor)
-		if viewErr != nil {
-			return event.Decision{}, viewErr
+		task, _, readErr := t.Store.CommandContext(ctx, t.Workspace.ID)
+		if readErr != nil {
+			return event.Decision{}, readErr
 		}
-		record := ledger.VerificationRecord{WorkspaceID: t.Workspace.ID, TaskID: view.CurrentTaskID, Actor: actor, Command: script, CommandKey: script.CommandKey(), RequestHash: requestHash, RequestDirectory: requestDirectory, PostOnly: true}
-		record.EnvironmentID = record.Command.HashEnvironment(os.Environ())
-		record.Scope.Reason = "没有可核对的前置记录，命令前输入未知"
-		if view.Task != nil {
-			record.InputRevision = view.Task.RecordRevision
-		}
-		previous, lookupErr := t.Store.PreviousVerification(ctx, t.Workspace.ID, actor, record.CommandKey)
-		if lookupErr != nil {
-			return event.Decision{}, lookupErr
+		request.TaskID, request.InputRevision, request.PostOnly = task.ID, task.RecordRevision, true
+		previous, readErr := t.Store.PreviousVerification(ctx, t.Workspace.ID, request.Actor, request.CommandKey)
+		if readErr != nil {
+			return event.Decision{}, readErr
 		}
 		if previous != nil {
-			record.PreviousID = previous.ID
+			request.PreviousID = previous.ID
 		}
-		if _, err = t.Store.BeginVerification(ctx, record); err != nil {
+		if _, err = t.Store.BeginVerification(ctx, request); err != nil {
 			return event.Decision{}, err
 		}
-		result, err = t.Store.EndVerification(ctx, t.Workspace.ID, actor, e.Result)
+		result, err = t.Store.EndVerification(ctx, t.Workspace.ID, request.Actor, e.Result)
 	}
 	if err != nil {
 		return event.Decision{}, err
 	}
-	if result.Changed {
-		t.recordSession(actor, verificationRecord(result.Record))
-	}
-	if !result.Notify {
+	if result.Record.Denied || !result.Changed {
 		return event.Decision{}, nil
 	}
-	decision := event.Decision{AdditionalContext: fmt.Sprintf("[V3 提示] 本轮实际运行 %d 次验证；最近一条 %s：%s（%s）。可把相关改动合在一起验证；新的失败或用户要求仍按实际需要处理。", result.Count, result.Record.ID, result.Record.Command.Display, result.Record.State)}
-	decision.Records = append(decision.Records, feedbackRecord(result.Record.TaskID, "验证提示已输出", verificationCommand(result.Record.Command), fmt.Sprintf("V3：本轮实际运行 %d 次验证。", result.Count), "verification:"+result.Record.ID))
-	return decision, nil
+	view, observed, err := t.observeEvent(ctx, e)
+	if err != nil {
+		return event.Decision{}, err
+	}
+	output := ""
+	if e.Result != nil {
+		output = e.Result.Output
+	}
+	if view.Task != nil {
+		if err = check.CompleteVerification(ctx, t.Store, t.Workspace, *view.Task, result.Record, observed.Tree, output); err != nil {
+			return event.Decision{}, err
+		}
+	}
+	t.recordSession(request.Actor, verificationRecord(result.Record))
+	return event.Decision{}, nil
 }

@@ -2,257 +2,295 @@ package check
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
-	"sort"
-	"strings"
-	"time"
-
-	"github.com/Innocent-children/taskbelay/internal/codescan"
-	"github.com/Innocent-children/taskbelay/internal/event"
+	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
+	"github.com/Innocent-children/taskbelay/internal/repostats"
+	"github.com/Innocent-children/taskbelay/internal/signals"
+	"strings"
+	"time"
 )
 
 type RunInput struct {
-	Depth   string `json:"depth"`
+	Depth   string `json:"depth,omitempty"`
 	Refresh bool   `json:"refresh,omitempty"`
 }
+type analysis struct {
+	Before, After repostats.Repository
+	Changes       changes.Result
+	Regions       []changes.Region
+	Signals       signals.Result
+	Requirements  []changes.Requirement
+	Edits         []ledger.EditRecord
+}
 
-/**
- * 静态分析、历史 blob 回读和工作区复核均不占数据库写事务。
- * 到期时仍尝试保存未完成范围，发布和复核共用调用方剩余预算。
- */
-func runStatic(ctx context.Context, store *ledger.Store, workspace gitstate.Workspace, actor ledger.Actor, view ledger.TaskView, observation ledger.Observation, options RunInput) (ledger.CheckRecord, error) {
-	ctx, end := context.WithTimeout(ctx, event.StaticBudget)
-	defer end()
+func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor ledger.Actor, view ledger.TaskView, observation ledger.Observation, options RunInput) (result ledger.CheckRecord, failure error) {
 	if options.Depth == "" {
 		options.Depth = "static"
+	}
+	if options.Depth != "static" && options.Depth != "tests" {
+		return ledger.CheckRecord{}, fmt.Errorf("depth 只能是 static 或 tests")
 	}
 	if view.Task == nil {
 		return ledger.CheckRecord{}, fmt.Errorf("当前没有任务")
 	}
-	input, err := store.CheckInput(ctx, workspace.ID, view.Task.ID, actor, RulesVersion, CapabilitiesVersion)
+	input, err := store.CheckInput(ctx, w.ID, view.Task.ID, actor, Algorithm)
 	if err != nil {
 		return ledger.CheckRecord{}, err
 	}
-	ledger.DebugRecord(ctx, "check.input", input)
-	if !observation.Full || !observation.Complete || observation.Tree != input.Tree || ledger.NewCheckInput(*view.Task, observation.Tree, view.Settings, view.EffectiveDecisions, RulesVersion, CapabilitiesVersion).Version() != input.Version() {
-		return ledger.CheckRecord{}, ledger.ErrCheckInputChanged
-	}
 	if !options.Refresh {
-		cached, err := store.LatestCheck(ctx, input.TaskID, "static", input.Version())
+		previous, err := store.LatestCheck(ctx, view.Task.ID, options.Depth, input.Version())
 		if err != nil {
 			return ledger.CheckRecord{}, err
 		}
-		if cached != nil && cached.ReusableStatic() {
-			current, err := workspace.Capture(ctx)
-			if err != nil {
-				return ledger.CheckRecord{}, err
-			}
-			if !current.Complete() || current.Tree != input.Tree {
-				return ledger.CheckRecord{}, ledger.ErrCheckInputChanged
-			}
-			reusable, err := store.CheckReusable(ctx, workspace.ID, actor, *cached)
-			if err != nil {
-				return ledger.CheckRecord{}, err
-			}
-			if reusable {
-				cached.Reused = true
-				cached.Report.Verifications = view.Verifications
-				cached.Report.ValidationNotes = validationNotes(view)
-				ledger.DebugRecord(ctx, "check.cache", map[string]any{"depth": "static", "reused": true, "record_id": cached.ID, "input_version": input.Version()})
-				return ledger.WithDelivery(*cached, view.Task.State == ledger.TaskPending && view.Settings.Values["enforcement"].Value != "hint"), nil
-			}
+		if previous != nil && previous.ReusableStatic() {
+			previous.Reused = true
+			return *previous, nil
 		}
 	}
-	ledger.DebugRecord(ctx, "check.cache", map[string]any{"depth": "static", "reused": false, "refresh": options.Refresh})
-	started := time.Now().UTC()
-	deadline, _ := ctx.Deadline()
-	analysisCtx, cancel := context.WithDeadline(ctx, deadline.Add(-event.MCPBudget))
-	defer cancel()
-	result, analyzeErr := analyze(analysisCtx, store, workspace, view, observation, input)
-	ledger.DebugRecord(ctx, "check.analysis.end", map[string]any{"record": result, "returned": analyzeErr == nil})
-	result.Input, result.InputVersion, result.Depth, result.StartedAt = input, input.Version(), "static", started
-	if analyzeErr != nil {
-		kind := "error"
-		if result.Status == "" {
-			result.Status = ledger.CheckFailed
-		} else {
-			result.Status = ledger.CheckPartial
+	r := ledger.CheckRecord{Depth: options.Depth, Input: input, InputVersion: input.Version(), Status: ledger.CheckComplete, StartedAt: time.Now().UTC(), Report: ledger.DeliveryReport{Analysis: map[string]json.RawMessage{}, Requirements: view.Requirements, Plans: view.Plans, Decisions: view.EffectiveDecisions, Verifications: view.Verifications, WorkspaceUpdates: view.WorkspaceUpdates, ChangesByRequirement: map[string][]string{}}}
+	defer func() {
+		if failure == nil || result.ID != 0 {
+			return
 		}
-		if errors.Is(analyzeErr, context.DeadlineExceeded) || errors.Is(analyzeErr, context.Canceled) {
+		publish, cancel := context.WithTimeout(context.WithoutCancel(ctx), PublishReserve)
+		defer cancel()
+		kind := "error"
+		if ctx.Err() != nil {
 			kind = "incomplete"
 		}
-		result.Missing = append(result.Missing, ledger.CheckGap{Operation: "static", Kind: kind, Reason: analyzeErr.Error()})
-		// 未完成操作不提供确定性拦截证据，也不把旧问题标为解决。
-		result.Evaluated = nil
-		for i := range result.Issues {
-			result.Issues[i].Level = "hint"
-			result.Issues[i].BlockOnDelivery = false
+		r.Status = ledger.CheckPartial
+		r.Missing = append(r.Missing, ledger.CheckGap{Operation: options.Depth, Kind: kind, Reason: failure.Error()})
+		r.Report.Counts = r.GapCounts()
+		tree := ""
+		if current, err := w.Capture(publish); err == nil && current.Complete() {
+			tree = current.Tree
+		}
+		if saved, err := store.SaveCheck(publish, w.ID, actor, tree, r); err == nil {
+			result = saved
+		}
+	}()
+	work := ctx
+	cancel := func() {}
+	if end, ok := ctx.Deadline(); ok {
+		work, cancel = context.WithDeadline(ctx, end.Add(-PublishReserve))
+	}
+	defer cancel()
+	data, err := analyze(work, store, w, view, observation)
+	if err != nil {
+		kind := "error"
+		if work.Err() != nil {
+			kind = "incomplete"
+		}
+		r.Missing = append(r.Missing, ledger.CheckGap{Operation: "static", Kind: kind, Reason: err.Error()})
+		r.Status = ledger.CheckPartial
+	} else {
+		r.Relocations = data.Changes.Relocations
+		r.Locations = resolveLocations(view.Requirements, data)
+		for _, gap := range data.Signals.Gaps {
+			r.Missing = append(r.Missing, ledger.CheckGap{Operation: "signals", Kind: "unknown", Reason: gap})
+		}
+		for _, region := range data.Regions {
+			r.Report.ChangesByRequirement[region.Requirement] = region.Clusters
+		}
+		if err = Calibrate(work, store, w, view, false); err != nil {
+			return r, err
+		}
+		if err = rejectionDependencies(work, store, w, view, data); err != nil {
+			return r, err
+		}
+		labels, err := store.Calibration(work, w.ProjectID)
+		if err != nil {
+			return r, err
+		}
+		if len(labels) == 0 {
+			labels, err = store.Calibration(work, "")
+			if err != nil {
+				return r, err
+			}
+		}
+		weights, err := fit(work, labels)
+		if err != nil {
+			return r, err
+		}
+		if err = store.SaveWeights(work, w.ProjectID, weights); err != nil {
+			return r, err
+		}
+		chosen, err := selectFeedback(work, data.Signals.Candidates, weights)
+		if err != nil {
+			return r, err
+		}
+		selected := map[string]bool{}
+		for _, c := range chosen {
+			selected[c.ID] = true
+		}
+		for _, c := range data.Signals.Candidates {
+			issue := ledger.Issue{Algorithm: Algorithm, Rule: c.Kind, At: c.At, LogicalAt: c.Object, FactKey: c.Kind, Level: "hint", Status: "open", Facts: c.Facts, Advice: c.Advice, Confidence: probability(weights, c.Features), Signals: c.Features, Selected: selected[c.ID]}
+			issue.ContentSignature, err = objectSignature(work, data, c)
+			if err != nil {
+				return r, err
+			}
+			if c.BlockFact == "external" {
+				issue.BlockOnDelivery = true
+				issue.Facts = append(issue.Facts, "可靠识别；全部来自 Agent 编辑；未找到用户原话、已确认方案或实现位置的对应项")
+			}
+			r.Issues = append(r.Issues, issue)
+		}
+		r.Issues = append(r.Issues, planIssues(w, view, data)...)
+		for _, kind := range []string{"external", "unrelated", "noise", "indirection", "duplicate", "unused", "equivalent_case", "mock_only", "S1", "S2"} {
+			r.Evaluated = append(r.Evaluated, ledger.CheckScope(kind, "*"))
+		}
+		for _, h := range data.Changes.Hunks {
+			r.Report.Changes = append(r.Report.Changes, h.Path)
+		}
+		sections := map[string]any{"conventions": map[string]any{"tree": data.Before.Tree, "syntax": data.Before.Syntax, "entries": data.Before.Entries, "test_words": data.Before.TestWords}, "changes": data.Changes, "regions": data.Regions, "signals": data.Signals, "weights": weights, "selected": chosen}
+		for _, kind := range keys(sections) {
+			raw, err := json.Marshal(sections[kind])
+			if err != nil {
+				return r, err
+			}
+			r.Report.Analysis[kind] = raw
+			if err = store.SaveAnalysisRecord(work, view.Task.ID, input.Version(), kind, "complete", sections[kind]); err != nil {
+				return r, err
+			}
 		}
 	}
-	publishDeadline := minTime(deadline, time.Now().Add(event.MCPBudget))
-	publish, endPublish := context.WithDeadline(context.WithoutCancel(ctx), publishDeadline)
-	defer endPublish()
-	// 工作区复核不能用完发布预算，否则连未完成报告也无法写入。
-	capture, endCapture := context.WithDeadline(publish, publishDeadline.Add(-event.MCPBudget/2))
-	current, captureErr := workspace.Capture(capture)
-	endCapture()
-	ledger.DebugRecord(ctx, "check.workspace_recheck", map[string]any{"snapshot": current, "returned": captureErr == nil})
-	currentTree := current.Tree
-	if captureErr != nil || !current.Complete() {
-		currentTree = ""
-		result.Missing = append(result.Missing, ledger.CheckGap{Operation: "publish", Kind: "incomplete", Reason: "当前工作区复核未完成"})
-	}
-	return store.SaveCheck(publish, workspace.ID, actor, currentTree, result)
-}
-
-func analyze(ctx context.Context, store *ledger.Store, workspace gitstate.Workspace, view ledger.TaskView, observation ledger.Observation, input ledger.CheckInput) (ledger.CheckRecord, error) {
-	result := ledger.CheckRecord{Report: report(view, nil)}
-	for _, note := range view.EffectiveDecisions {
-		if note.Target != nil && note.Target.Effect == "pause_checks" {
-			result.Status = ledger.CheckPartial
-			result.Report.NotRun = append(result.Report.NotRun, "用户决定暂停检查："+note.ID)
-			return result, nil
-		}
-	}
-	ledger.DebugRecord(ctx, "check.origin_tree.start", map[string]any{"tree": input.OriginTree})
-	before, err := AnalyzeTree(ctx, workspace, input.OriginTree)
-	if err != nil {
-		return result, err
-	}
-	ledger.DebugRecord(ctx, "check.current_tree.start", map[string]any{"tree": input.Tree})
-	after, err := AnalyzeTree(ctx, workspace, input.Tree)
-	if err != nil {
-		return result, err
-	}
-	edits, err := store.Changes(ctx, workspace.ID, view.Task.OriginObservationID)
-	if err != nil {
-		return result, err
-	}
-	bounded := edits[:0]
-	for _, edit := range edits {
-		if edit.AfterObservation <= observation.ID {
-			bounded = append(bounded, edit)
-		}
-	}
-	edits = bounded
-	load := snapshotLoader(ctx, workspace)
-	relocations, err := verifiedRelocations(ctx, load, edits, observation, after)
-	if err != nil {
-		return result, err
-	}
-	changes, err := codescan.Compare(ctx, before, after, relocations)
-	if err != nil {
-		return result, err
-	}
-	view, association, err := resolveLocations(ctx, store, workspace, view, observation, before, after)
-	if err != nil {
-		return result, err
-	}
-	// 撤销需求继续显示在报告中，但不能为当前改动提供归属。
-	var positions []codescan.Position
 	for _, requirement := range view.Requirements {
 		if requirement.Status == "revoked" {
+			r.Report.Revoked = append(r.Report.Revoked, requirement)
+		} else if requirement.Status != "completed" {
+			r.Report.Unfinished = append(r.Report.Unfinished, requirement)
+		}
+	}
+	if options.Depth == "tests" {
+		r.Missing = append(r.Missing, ledger.CheckGap{Operation: "dynamic", Kind: "unknown", Reason: "没有已完成的副本运行"})
+		r.Report.NotRun = append(r.Report.NotRun, "副本运行")
+	}
+	if len(r.Missing) > 0 {
+		r.Status = ledger.CheckPartial
+	}
+	r.Report.Counts = r.GapCounts()
+	for _, note := range view.EffectiveDecisions {
+		if note.Target != nil && note.Target.Effect == "pause_checks" {
+			for i := range r.Issues {
+				r.Issues[i].BlockOnDelivery = false
+				r.Issues[i].Level = "hint"
+			}
+		}
+	}
+	if view.Settings.Values["enforcement"].Value == "hint" {
+		for i := range r.Issues {
+			r.Issues[i].BlockOnDelivery = false
+			r.Issues[i].Level = "hint"
+		}
+	}
+	current, captureErr := w.Capture(ctx)
+	tree := ""
+	if captureErr == nil && current.Complete() {
+		tree = current.Tree
+	}
+	return store.SaveCheck(ctx, w.ID, actor, tree, r)
+}
+
+func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view ledger.TaskView, observation ledger.Observation) (analysis, error) {
+	var a analysis
+	var err error
+	a.Before, err = repository(ctx, s, w, view.Task.OriginTree, view.Task.OriginTree, runSamples(view.Verifications))
+	if err != nil {
+		return a, err
+	}
+	a.After, err = repository(ctx, s, w, view.Task.OriginTree, observation.Tree, nil)
+	if err != nil {
+		return a, err
+	}
+	a.Edits, err = s.TaskEdits(ctx, w.ID, view.Task.ID, observation.ID)
+	if err != nil {
+		return a, err
+	}
+	edits, err := provenance(ctx, s, w, view, observation, a.Before, a.After)
+	if err != nil {
+		return a, err
+	}
+	a.Changes, err = changes.Compare(ctx, changes.Input{Before: a.Before, After: a.After, Edits: edits})
+	if err != nil {
+		return a, err
+	}
+	a.Requirements = requirements(view)
+	a.Regions, err = changes.Relate(ctx, changes.GraphInput{Before: a.Before, After: a.After, Changes: a.Changes, Requirements: a.Requirements})
+	if err != nil {
+		return a, err
+	}
+	var retained []string
+	for _, note := range view.EffectiveDecisions {
+		if note.Target != nil && note.Target.Effect == "retain" {
+			retained = append(retained, note.Target.At)
+		}
+	}
+	a.Signals, err = signals.Analyze(ctx, signals.Input{Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Retained: retained})
+	return a, err
+}
+
+func requirements(view ledger.TaskView) []changes.Requirement {
+	var result []changes.Requirement
+	planText := ""
+	if p := view.Plans.Effective; p != nil {
+		planText = p.Content
+		for _, f := range p.Files {
+			planText += " " + f.Path
+		}
+		for _, e := range p.Entries {
+			planText += " " + e.At
+		}
+		for _, d := range p.Dependencies {
+			planText += " " + d.Module
+		}
+	}
+	for _, r := range view.Requirements {
+		if r.Status == "revoked" {
 			continue
 		}
-		for _, location := range requirement.ImplementedBy {
-			if location.Pending == "" {
-				positions = append(positions, codescan.Position{Requirement: requirement.ID, At: location.At, Purpose: location.Purpose, Change: location.Change})
+		q := changes.Requirement{ID: r.ID, Content: r.Content, Acceptance: r.Acceptance, Plan: planText}
+		if r.Citation != nil {
+			q.Quote = r.Citation.Quote
+		}
+		for _, l := range r.ImplementedBy {
+			q.Locations = append(q.Locations, l.At)
+		}
+		result = append(result, q)
+	}
+	if len(result) == 0 {
+		for _, message := range view.Messages {
+			result = append(result, changes.Requirement{ID: message.ID, Quote: message.Text, Plan: planText})
+		}
+	}
+	return result
+}
+
+func resolveLocations(requirements []ledger.Requirement, a analysis) []ledger.Requirement {
+	out := append([]ledger.Requirement(nil), requirements...)
+	for i := range out {
+		out[i].ImplementedBy = append([]ledger.Location(nil), out[i].ImplementedBy...)
+		for j := range out[i].ImplementedBy {
+			l := &out[i].ImplementedBy[j]
+			l.AnalysisTree = a.After.Tree
+			at := l.At
+			if to := a.Changes.Relocations[at]; to != "" {
+				l.BeforeAt, l.At = at, to
+				at = to
 			}
-		}
-	}
-	association, err = codescan.Associate(ctx, before, after, changes, positions)
-	if err != nil {
-		return result, err
-	}
-	ledger.DebugRecord(ctx, "check.association", map[string]any{"changes": changes, "association": association, "edits": edits})
-	var blobs []string
-	for _, edit := range edits {
-		if edit.Before.Blob != "" && edit.Before.Mode != "160000" {
-			blobs = append(blobs, edit.Before.Blob)
-		}
-		if edit.After.Blob != "" && edit.After.Mode != "160000" {
-			blobs = append(blobs, edit.After.Blob)
-		}
-	}
-	contents, err := workspace.ReadBlobs(ctx, blobs)
-	if err != nil {
-		return result, err
-	}
-	sources, err := buildProvenance(ctx, before, after, edits, contents)
-	if err != nil {
-		return result, err
-	}
-	result, err = staticCheck(ctx, input, view, before, after, changes, association, sources)
-	result.Locations = view.Requirements
-	if err != nil {
-		return result, err
-	}
-	records, err := store.TaskEdits(ctx, workspace.ID, input.TaskID, observation.ID)
-	if err != nil {
-		return result, err
-	}
-	if err := checkPlan(ctx, workspace, view, before, after, edits, records, sources, contents, &result); err != nil {
-		return result, err
-	}
-	result = ledger.WithDelivery(result, view.Task.State == ledger.TaskPending && view.Settings.Values["enforcement"].Value != "hint")
-	previous, err := store.PreviousCheck(ctx, input.TaskID, "static")
-	if err != nil {
-		return result, err
-	}
-	if previous != nil && previous.Input.Tree != "" && previous.Input.Tree != input.Tree {
-		prior, err := AnalyzeTree(ctx, workspace, previous.Input.Tree)
-		if err != nil {
-			return result, err
-		}
-		migration, err := codescan.Compare(ctx, prior, after, relocations)
-		if err != nil {
-			return result, err
-		}
-		result.Relocations = codescan.Migrations(migration)
-		for from, to := range codescan.TestMigrations(prior, after, migration) {
-			result.Relocations[from] = to
-		}
-		for _, change := range migration {
-			if change.After == nil {
-				if file := after.Files[change.Before.File]; file != nil && !file.Operations["declarations"].Complete {
-					continue
-				}
-				for _, issue := range view.Issues {
-					at := change.Before.Location()
-					if issue.At == at || strings.HasPrefix(issue.At, at+".") {
-						result.Evaluated = append(result.Evaluated, ledger.CheckScope(issue.Rule, issue.At))
-					}
+			file := strings.SplitN(at, ":", 2)[0]
+			if f, ok := a.After.Files[file]; ok {
+				l.File, l.Blob, l.Pending = file, f.Blob, ""
+			}
+			for _, external := range a.Signals.External {
+				if at == external.Kind+":"+external.Name {
+					l.File = external.At
+					l.Pending = ""
 				}
 			}
 		}
-		for _, issue := range view.Issues {
-			at := issue.At
-			if moved := result.Relocations[at]; moved != "" {
-				at = moved
-			}
-			_, file, _ := splitPosition(at)
-			if file == "" {
-				continue
-			}
-			oldFile, currentFile := before.Files[file], after.Files[file]
-			if currentFile == nil || !currentFile.CodeComplete || oldFile != nil && !oldFile.CodeComplete {
-				continue
-			}
-			stillChanged := false
-			for _, change := range changes {
-				if change.Location() == at || strings.HasPrefix(at, change.Location()+".") {
-					stillChanged = true
-					break
-				}
-			}
-			if !stillChanged {
-				result.Evaluated = append(result.Evaluated, ledger.CheckScope(issue.Rule, at))
-			}
-		}
 	}
-	sort.Strings(result.Report.Changes)
-	return result, nil
+	return out
 }

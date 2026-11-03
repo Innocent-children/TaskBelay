@@ -128,7 +128,13 @@ func measure(repo repostats.Repository) ([]indirection, []string) {
 						params = append(params, w)
 					}
 				}
-				if slices.Equal(body[1:], params) {
+				var bodyTokens []units.Token
+				for _, token := range u.Tokens {
+					if token.Start >= u.HeaderEnd {
+						bodyTokens = append(bodyTokens, token)
+					}
+				}
+				if len(units.Calls(bodyTokens)) == 1 && slices.Equal(body[1:], params) {
 					out = append(out, indirection{p, u, "forwarding", 1, body[0]})
 				}
 			}

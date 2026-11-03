@@ -225,7 +225,12 @@ PRAGMA user_version=1;
 			return err
 		}
 	}
-	if err := migrateV11(ctx, tx); err != nil {
+	if version < 11 {
+		if err := migrateV11(ctx, tx); err != nil {
+			return err
+		}
+	}
+	if err := migrateV12(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -236,9 +241,9 @@ func (s *Store) RegisterWorkspace(ctx context.Context, id, projectID, path strin
 		return fmt.Errorf("工作区身份、项目身份和路径不能为空")
 	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO workspaces_v11 (id, project_id, path) VALUES (?, ?, ?)
+		_, err := tx.ExecContext(ctx, `INSERT INTO workspaces_v12 (id, project_id, path) VALUES (?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id, path=excluded.path
-WHERE workspaces_v11.project_id != excluded.project_id OR workspaces_v11.path != excluded.path`, id, projectID, path)
+WHERE workspaces_v12.project_id != excluded.project_id OR workspaces_v12.path != excluded.path`, id, projectID, path)
 		return err
 	})
 }

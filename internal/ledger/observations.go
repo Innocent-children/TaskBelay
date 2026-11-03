@@ -152,7 +152,7 @@ func (s *Store) RegisterGitWorkspace(ctx context.Context, w gitstate.Workspace) 
 		return err
 	}
 	var project, path string
-	err = conn.QueryRowContext(ctx, "SELECT project_id, path FROM workspaces_v11 WHERE id=?", w.ID).Scan(&project, &path)
+	err = conn.QueryRowContext(ctx, "SELECT project_id, path FROM workspaces_v12 WHERE id=?", w.ID).Scan(&project, &path)
 	if err == nil && project == w.ProjectID && path == w.Root {
 		return nil
 	}
@@ -170,16 +170,16 @@ func (s *Store) RegisterGitWorkspace(ctx context.Context, w gitstate.Workspace) 
 	if err := ensureSchema(ctx, tx); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO workspaces_v11(id,project_id,path,current_task_id)
-SELECT ?,?,?,current_task_id FROM workspaces_v11 WHERE id=? ON CONFLICT(id) DO NOTHING`, w.ID, w.ProjectID, w.Root, w.GitDir); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO workspaces_v12(id,project_id,path,current_task_id)
+SELECT ?,?,?,current_task_id FROM workspaces_v12 WHERE id=? ON CONFLICT(id) DO NOTHING`, w.ID, w.ProjectID, w.Root, w.GitDir); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO workspaces_v11(id,project_id,path) VALUES (?,?,?)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO workspaces_v12(id,project_id,path) VALUES (?,?,?)
 ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id,path=excluded.path`, w.ID, w.ProjectID, w.Root); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO settings_v11(scope,scope_id,name,value,revision)
-SELECT scope,?,name,value,revision FROM settings_v11 WHERE scope='project' AND scope_id=?
+	if _, err := tx.ExecContext(ctx, `INSERT INTO settings_v12(scope,scope_id,name,value,revision)
+SELECT scope,?,name,value,revision FROM settings_v12 WHERE scope='project' AND scope_id=?
 ON CONFLICT(scope,scope_id,name) DO NOTHING`, w.ProjectID, w.CommonDir); err != nil {
 		return err
 	}
@@ -206,7 +206,7 @@ func (s *Store) ObservationState(ctx context.Context, workspace string, paths []
 	if err := ensureSchema(ctx, conn); err != nil {
 		return view, err
 	}
-	err = conn.QueryRowContext(ctx, "SELECT latest_observation,record_revision,branch,head FROM workspaces_v11 WHERE id=?", workspace).Scan(&view.LatestID, &view.Revision, &view.Context.Branch, &view.Context.HEAD)
+	err = conn.QueryRowContext(ctx, "SELECT latest_observation,record_revision,branch,head FROM workspaces_v12 WHERE id=?", workspace).Scan(&view.LatestID, &view.Revision, &view.Context.Branch, &view.Context.HEAD)
 	if err != nil {
 		return view, err
 	}
@@ -222,7 +222,7 @@ func (s *Store) ObservationState(ctx context.Context, workspace string, paths []
 		}
 		return rows.Err()
 	}
-	query := "SELECT path,blob,mode,observation_id,workspace_update FROM observed_files_v11 WHERE workspace_id=?"
+	query := "SELECT path,blob,mode,observation_id,workspace_update FROM observed_files_v12 WHERE workspace_id=?"
 	if paths == nil {
 		rows, err := conn.QueryContext(ctx, query, workspace)
 		if err != nil {
@@ -273,7 +273,7 @@ func (s *Store) SaveObservation(ctx context.Context, view ObservationView, obser
 	}
 	var latest, revision int64
 	var current gitstate.Context
-	if err := tx.QueryRowContext(ctx, "SELECT latest_observation,record_revision,branch,head FROM workspaces_v11 WHERE id=?", observation.WorkspaceID).Scan(&latest, &revision, &current.Branch, &current.HEAD); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT latest_observation,record_revision,branch,head FROM workspaces_v12 WHERE id=?", observation.WorkspaceID).Scan(&latest, &revision, &current.Branch, &current.HEAD); err != nil {
 		return err
 	}
 	// 只增加观察编号而没有改变文件或 Git 上下文时，原基线仍有效。
@@ -282,7 +282,7 @@ func (s *Store) SaveObservation(ctx context.Context, view ObservationView, obser
 	}
 	if edit != nil {
 		var before, after int64
-		err := tx.QueryRowContext(ctx, "SELECT before_observation,after_observation FROM edits_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", edit.WorkspaceID, edit.Agent, edit.SessionID, edit.ToolCallID).Scan(&before, &after)
+		err := tx.QueryRowContext(ctx, "SELECT before_observation,after_observation FROM edits_v12 WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", edit.WorkspaceID, edit.Agent, edit.SessionID, edit.ToolCallID).Scan(&before, &after)
 		if edit.BeforeObservation == 0 && err == nil {
 			return ErrEditExists
 		}
@@ -300,7 +300,7 @@ func (s *Store) SaveObservation(ctx context.Context, view ObservationView, obser
 	if err := publishObservationRefs(ctx, tx, *observation); err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, "INSERT INTO observations_v11(workspace_id,task_id,data,files_set_id) VALUES (?,?,?,?)", observation.WorkspaceID, observation.TaskID, string(data), filesID)
+	result, err := tx.ExecContext(ctx, "INSERT INTO observations_v12(workspace_id,task_id,data,files_set_id) VALUES (?,?,?,?)", observation.WorkspaceID, observation.TaskID, string(data), filesID)
 	if err != nil {
 		return err
 	}
@@ -323,7 +323,7 @@ func (s *Store) SaveObservation(ctx context.Context, view ObservationView, obser
 		if err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, "INSERT INTO file_changes_v11(workspace_id,observation_id,data) VALUES (?,?,?)", observation.WorkspaceID, id, string(data)); err != nil {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO file_changes_v12(workspace_id,observation_id,data) VALUES (?,?,?)", observation.WorkspaceID, id, string(data)); err != nil {
 			return err
 		}
 	}
@@ -333,8 +333,8 @@ func (s *Store) SaveObservation(ctx context.Context, view ObservationView, obser
 		if old.File != file {
 			changed = true
 		}
-		_, err := tx.ExecContext(ctx, `INSERT INTO observed_files_v11(workspace_id,path,blob,mode,observation_id,workspace_update) VALUES (?,?,?,?,?,?)
-ON CONFLICT(workspace_id,path) DO UPDATE SET blob=excluded.blob,mode=excluded.mode,observation_id=excluded.observation_id,workspace_update=MAX(observed_files_v11.workspace_update,excluded.workspace_update)`, observation.WorkspaceID, path, file.Blob, file.Mode, id, updated[path])
+		_, err := tx.ExecContext(ctx, `INSERT INTO observed_files_v12(workspace_id,path,blob,mode,observation_id,workspace_update) VALUES (?,?,?,?,?,?)
+ON CONFLICT(workspace_id,path) DO UPDATE SET blob=excluded.blob,mode=excluded.mode,observation_id=excluded.observation_id,workspace_update=MAX(observed_files_v12.workspace_update,excluded.workspace_update)`, observation.WorkspaceID, path, file.Blob, file.Mode, id, updated[path])
 		if err != nil {
 			return err
 		}
@@ -363,9 +363,9 @@ ON CONFLICT(workspace_id,path) DO UPDATE SET blob=excluded.blob,mode=excluded.mo
 		}
 		publishedEdit = &copy
 		if edit.BeforeObservation == 0 {
-			_, err = tx.ExecContext(ctx, "INSERT INTO edits_v11 VALUES (?,?,?,?,?,?,?)", copy.WorkspaceID, copy.Agent, copy.SessionID, copy.ToolCallID, id, 0, string(data))
+			_, err = tx.ExecContext(ctx, "INSERT INTO edits_v12 VALUES (?,?,?,?,?,?,?)", copy.WorkspaceID, copy.Agent, copy.SessionID, copy.ToolCallID, id, 0, string(data))
 		} else {
-			_, err = tx.ExecContext(ctx, "UPDATE edits_v11 SET after_observation=?,data=? WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", id, string(data), copy.WorkspaceID, copy.Agent, copy.SessionID, copy.ToolCallID)
+			_, err = tx.ExecContext(ctx, "UPDATE edits_v12 SET after_observation=?,data=? WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", id, string(data), copy.WorkspaceID, copy.Agent, copy.SessionID, copy.ToolCallID)
 		}
 		if err != nil {
 			return err
@@ -375,7 +375,7 @@ ON CONFLICT(workspace_id,path) DO UPDATE SET blob=excluded.blob,mode=excluded.mo
 	if changed || len(changes) > 0 {
 		delta = 1
 	}
-	_, err = tx.ExecContext(ctx, "UPDATE workspaces_v11 SET latest_observation=?,record_revision=record_revision+?,branch=?,head=? WHERE id=?", id, delta, observation.Context.Branch, observation.Context.HEAD, observation.WorkspaceID)
+	_, err = tx.ExecContext(ctx, "UPDATE workspaces_v12 SET latest_observation=?,record_revision=record_revision+?,branch=?,head=? WHERE id=?", id, delta, observation.Context.Branch, observation.Context.HEAD, observation.WorkspaceID)
 	if err != nil {
 		return err
 	}
@@ -398,7 +398,7 @@ func (s *Store) Edit(ctx context.Context, workspace, agent, session, call string
 	var record EditRecord
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		var data string
-		if err := q.QueryRowContext(ctx, "SELECT data FROM edits_v11 WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", workspace, agent, session, call).Scan(&data); err != nil {
+		if err := q.QueryRowContext(ctx, "SELECT data FROM edits_v12 WHERE workspace_id=? AND agent=? AND session_id=? AND call_id=?", workspace, agent, session, call).Scan(&data); err != nil {
 			return err
 		}
 		return json.Unmarshal([]byte(data), &record)
@@ -419,7 +419,7 @@ func (s *Store) Observation(ctx context.Context, id int64) (Observation, error) 
 func (s *Store) Changes(ctx context.Context, workspace string, afterObservation int64) ([]FileChange, error) {
 	var changes []FileChange
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		rows, err := q.QueryContext(ctx, "SELECT data FROM file_changes_v11 WHERE workspace_id=? AND observation_id>? ORDER BY id", workspace, afterObservation)
+		rows, err := q.QueryContext(ctx, "SELECT data FROM file_changes_v12 WHERE workspace_id=? AND observation_id>? ORDER BY id", workspace, afterObservation)
 		if err != nil {
 			return err
 		}
@@ -445,7 +445,7 @@ func (s *Store) LinkWorkspace(ctx context.Context, parent, task, child, path str
 		return fmt.Errorf("工作区任务联系不完整")
 	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO workspace_links_v11 VALUES (?,?,?,?) ON CONFLICT(parent_id,task_id,child_id) DO UPDATE SET path=excluded.path`, parent, task, child, path)
+		_, err := tx.ExecContext(ctx, `INSERT INTO workspace_links_v12 VALUES (?,?,?,?) ON CONFLICT(parent_id,task_id,child_id) DO UPDATE SET path=excluded.path`, parent, task, child, path)
 		return err
 	})
 }

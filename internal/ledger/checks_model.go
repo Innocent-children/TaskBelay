@@ -5,10 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
-
-	"github.com/Innocent-children/taskbelay/internal/testrun"
 )
 
 const checkSchema = `
@@ -49,8 +46,7 @@ type CheckInput struct {
 	AuthorizationRevision int64             `json:"authorization_revision"`
 	Decisions             []string          `json:"decisions"`
 	AnalysisSettings      map[string]string `json:"analysis_settings"`
-	Rules                 string            `json:"rules"`
-	Capabilities          string            `json:"capabilities"`
+	Algorithm             string            `json:"algorithm"`
 }
 
 func (input CheckInput) Version() string {
@@ -62,13 +58,13 @@ func (input CheckInput) Version() string {
  * 输入比较只采用判定所需的值；设置来源、观察时间和普通笔记修订不参与。
  * 决定按生效目标及引用去重，避免重复记同一决定改变分析身份。
  */
-func NewCheckInput(task TaskRecord, tree string, settings EffectiveSettings, decisions []Note, rules, capabilities string) CheckInput {
+func NewCheckInput(task TaskRecord, tree string, settings EffectiveSettings, decisions []Note, algorithm string) CheckInput {
 	input := CheckInput{TaskID: task.ID, OriginTree: task.OriginTree, Tree: tree,
 		RequirementRevision: task.RequirementRevision, PlanRevision: task.PlanRevision,
 		EditRevision: task.RecordRevision, AuthorizationRevision: task.AuthorizationRevision,
-		AnalysisSettings: map[string]string{}, Decisions: []string{}, Rules: rules, Capabilities: capabilities}
+		AnalysisSettings: map[string]string{}, Decisions: []string{}, Algorithm: algorithm}
 	for name, setting := range settings.Values {
-		if name == "workflow" || name == "analysis.tests" || strings.HasPrefix(name, "test.") {
+		if name == "workflow" || name == "analysis.tests" || name == "analysis.parallel" {
 			input.AnalysisSettings[name] = setting.Value
 		}
 	}
@@ -117,14 +113,14 @@ func (g CheckGap) Size() int { return max(1, g.Count) }
  * 执行错误、取消、超时及未知失败必须允许重新执行。
  */
 func (r CheckRecord) ReusableStatic() bool {
-	if r.Depth != "static" || r.Status != CheckComplete && r.Status != CheckPartial {
+	if r.Input.Algorithm == "" || r.Depth != "static" || r.Status != CheckComplete && r.Status != CheckPartial {
 		return false
 	}
 	if r.Status == CheckPartial && len(r.Missing) == 0 {
 		return false
 	}
 	for _, gap := range r.Missing {
-		if gap.Kind != "unsupported" && !(gap.Kind == "error" && gap.Operation == "syntax" && gap.At != "") {
+		if gap.Kind != "unknown" {
 			return false
 		}
 	}
@@ -132,10 +128,10 @@ func (r CheckRecord) ReusableStatic() bool {
 }
 
 func (r CheckRecord) GapCounts() map[string]int {
-	counts := map[string]int{"unsupported": 0, "error": 0, "incomplete": 0}
+	counts := map[string]int{"unknown": 0, "error": 0, "incomplete": 0}
 	for _, gap := range r.Missing {
 		kind := gap.Kind
-		if kind != "unsupported" && kind != "error" {
+		if kind != "unknown" && kind != "error" {
 			kind = "incomplete"
 		}
 		counts[kind] += gap.Size()
@@ -144,32 +140,31 @@ func (r CheckRecord) GapCounts() map[string]int {
 }
 
 type Issue struct {
-	BlockOnDelivery bool     `json:"block_on_delivery,omitempty"`
-	ID              string   `json:"id"`
-	Identity        string   `json:"identity"`
-	Occurrence      int      `json:"occurrence"`
-	Rule            string   `json:"rule"`
-	Level           string   `json:"level"`
-	At              string   `json:"at"`
-	LogicalAt       string   `json:"logical_at"`
-	FactKey         string   `json:"fact_key"`
-	Facts           []string `json:"facts"`
-	Advice          string   `json:"advice"`
-	Evidence        []string `json:"evidence"`
-	Status          string   `json:"status"`
-	HandledBy       []string `json:"handled_by,omitempty"`
-	Blocked         []Actor  `json:"blocked_sessions,omitempty"`
+	ContentSignature []uint64           `json:"content_signature,omitempty"`
+	Selected         bool               `json:"selected"`
+	Algorithm        string             `json:"algorithm,omitempty"`
+	Confidence       float64            `json:"confidence"`
+	Signals          map[string]float64 `json:"signals,omitempty"`
+	BlockOnDelivery  bool               `json:"block_on_delivery,omitempty"`
+	ID               string             `json:"id"`
+	Identity         string             `json:"identity"`
+	Occurrence       int                `json:"occurrence"`
+	Rule             string             `json:"rule"`
+	Level            string             `json:"level"`
+	At               string             `json:"at"`
+	LogicalAt        string             `json:"logical_at"`
+	FactKey          string             `json:"fact_key"`
+	Facts            []string           `json:"facts"`
+	Advice           string             `json:"advice"`
+	Evidence         []string           `json:"evidence"`
+	Status           string             `json:"status"`
+	HandledBy        []string           `json:"handled_by,omitempty"`
+	Blocked          []Actor            `json:"blocked_sessions,omitempty"`
 }
 
 func WithDelivery(record CheckRecord, delivery bool) CheckRecord {
 	record.Issues = append([]Issue(nil), record.Issues...)
 	for i := range record.Issues {
-		switch record.Issues[i].Rule {
-		case "T1", "T2", "T3", "T4", "T5", "T6":
-			record.Issues[i].Level = "hint"
-			record.Issues[i].BlockOnDelivery = false
-			continue
-		}
 		if record.Issues[i].BlockOnDelivery {
 			record.Issues[i].Level = "hint"
 			if delivery && record.Status != CheckExpired && record.Status != CheckFailed {
@@ -178,52 +173,54 @@ func WithDelivery(record CheckRecord, delivery bool) CheckRecord {
 		}
 	}
 	record.Level = HighestLevel(record.Issues)
+	if record.Level == "pass" {
+		if record.Status != CheckComplete {
+			record.Level = "unknown"
+		} else {
+			record.Level = "no_findings"
+		}
+	}
 	return record
 }
 
 type CheckRecord struct {
-	Reused         bool              `json:"-"`
-	Static         *CheckRecord      `json:"static,omitempty"`
-	Locations      []Requirement     `json:"-"`
-	ID             int64             `json:"id"`
-	Depth          string            `json:"depth"`
-	Input          CheckInput        `json:"input"`
-	InputVersion   string            `json:"input_version"`
-	Status         CheckStatus       `json:"status"`
-	ComputedStatus CheckStatus       `json:"computed_status"`
-	Level          string            `json:"level"`
-	Issues         []Issue           `json:"issues"`
-	Unconfirmed    []Issue           `json:"unconfirmed,omitempty"`
-	Missing        []CheckGap        `json:"missing"`
-	Evaluated      []string          `json:"evaluated"`
-	Relocations    map[string]string `json:"relocations,omitempty"`
-	Report         DeliveryReport    `json:"report"`
-	StartedAt      time.Time         `json:"started_at"`
-	FinishedAt     time.Time         `json:"finished_at"`
+	HistoricalVersion string            `json:"historical_version,omitempty"`
+	Reused            bool              `json:"-"`
+	Static            *CheckRecord      `json:"static,omitempty"`
+	Locations         []Requirement     `json:"-"`
+	ID                int64             `json:"id"`
+	Depth             string            `json:"depth"`
+	Input             CheckInput        `json:"input"`
+	InputVersion      string            `json:"input_version"`
+	Status            CheckStatus       `json:"status"`
+	ComputedStatus    CheckStatus       `json:"computed_status"`
+	Level             string            `json:"level"`
+	Issues            []Issue           `json:"issues"`
+	Unconfirmed       []Issue           `json:"unconfirmed,omitempty"`
+	Missing           []CheckGap        `json:"missing"`
+	Evaluated         []string          `json:"evaluated"`
+	Relocations       map[string]string `json:"relocations,omitempty"`
+	Report            DeliveryReport    `json:"report"`
+	StartedAt         time.Time         `json:"started_at"`
+	FinishedAt        time.Time         `json:"finished_at"`
 }
 
 type DeliveryReport struct {
-	Coverage             []FileCoverage       `json:"coverage,omitempty"`
-	Dynamic              *testrun.Report      `json:"dynamic,omitempty"`
-	Tests                []TestFact           `json:"tests"`
-	TestRisk             []TestRisk           `json:"test_risk"`
-	ValidationNotes      []Note               `json:"validation_notes"`
-	Plans                PlanView             `json:"plans"`
-	Verifications        []VerificationRecord `json:"verifications"`
-	ChangesByRequirement map[string][]string  `json:"changes_by_requirement"`
-	Requirements         []Requirement        `json:"requirements"`
-	Unfinished           []Requirement        `json:"unfinished_requirements"`
-	Revoked              []Requirement        `json:"revoked_requirements"`
-	Changes              []string             `json:"changes"`
-	Decisions            []Note               `json:"decisions"`
-	WorkspaceUpdates     []FileChange         `json:"workspace_updates"`
-	NotRun               []string             `json:"not_run"`
-}
-
-type FileCoverage struct {
-	Path       string   `json:"path"`
-	Level      string   `json:"level"`
-	Operations []string `json:"operations"`
+	Analysis             map[string]json.RawMessage `json:"analysis,omitempty"`
+	Counts               map[string]int             `json:"counts"`
+	Dynamic              *DynamicReport             `json:"dynamic,omitempty"`
+	Historical           json.RawMessage            `json:"historical,omitempty"`
+	ValidationNotes      []Note                     `json:"validation_notes"`
+	Plans                PlanView                   `json:"plans"`
+	Verifications        []VerificationRecord       `json:"verifications"`
+	ChangesByRequirement map[string][]string        `json:"changes_by_requirement"`
+	Requirements         []Requirement              `json:"requirements"`
+	Unfinished           []Requirement              `json:"unfinished_requirements"`
+	Revoked              []Requirement              `json:"revoked_requirements"`
+	Changes              []string                   `json:"changes"`
+	Decisions            []Note                     `json:"decisions"`
+	WorkspaceUpdates     []FileChange               `json:"workspace_updates"`
+	NotRun               []string                   `json:"not_run"`
 }
 
 type FinishInput struct {

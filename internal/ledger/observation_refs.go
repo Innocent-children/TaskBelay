@@ -15,7 +15,7 @@ func (s *Store) StageRefCleanup(ctx context.Context, ref gitstate.SnapshotRef, r
 	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		var conflicts bool
-		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM cleanup_items_v11 WHERE kind='ref' AND target=? AND (workspace_id!=? OR (expected!=? AND NOT (?='commit' AND expected='')))) OR EXISTS(SELECT 1 FROM observations_v11 WHERE json_extract(data,'$.SnapshotRef')=? OR json_extract(data,'$.EvidenceRef')=?)`, ref.Ref, ref.WorkspaceID, ref.Object, ref.Type, ref.Ref, ref.Ref).Scan(&conflicts); err != nil {
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM cleanup_items_v12 WHERE kind='ref' AND target=? AND (workspace_id!=? OR (expected!=? AND NOT (?='commit' AND expected='')))) OR EXISTS(SELECT 1 FROM observations_v12 WHERE json_extract(data,'$.SnapshotRef')=? OR json_extract(data,'$.EvidenceRef')=?)`, ref.Ref, ref.WorkspaceID, ref.Object, ref.Type, ref.Ref, ref.Ref).Scan(&conflicts); err != nil {
 			return err
 		}
 		if conflicts {
@@ -25,7 +25,7 @@ func (s *Store) StageRefCleanup(ctx context.Context, ref gitstate.SnapshotRef, r
 			return err
 		}
 		if ref.Type == "commit" {
-			_, err := tx.ExecContext(ctx, `DELETE FROM cleanup_items_v11 WHERE workspace_id=? AND kind='ref' AND target=? AND expected=''`, ref.WorkspaceID, ref.Ref)
+			_, err := tx.ExecContext(ctx, `DELETE FROM cleanup_items_v12 WHERE workspace_id=? AND kind='ref' AND target=? AND expected=''`, ref.WorkspaceID, ref.Ref)
 			return err
 		}
 		return nil
@@ -50,7 +50,7 @@ func publishObservationRefs(ctx context.Context, tx *sql.Tx, observation Observa
 		if ref.Type != "tree" || ref.WorkspaceID != observation.WorkspaceID {
 			return fmt.Errorf("观察引用归属或类型不符: %s", ref.Ref)
 		}
-		result, err := tx.ExecContext(ctx, `DELETE FROM cleanup_items_v11 WHERE workspace_id=? AND kind='ref' AND target=? AND expected=? AND julianday(ready_at)>julianday(?)`, ref.WorkspaceID, ref.Ref, ref.Object, time.Now().UTC().Format(time.RFC3339Nano))
+		result, err := tx.ExecContext(ctx, `DELETE FROM cleanup_items_v12 WHERE workspace_id=? AND kind='ref' AND target=? AND expected=? AND julianday(ready_at)>julianday(?)`, ref.WorkspaceID, ref.Ref, ref.Object, time.Now().UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return err
 		}

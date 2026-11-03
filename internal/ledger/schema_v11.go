@@ -6,7 +6,7 @@ import (
 	"fmt"
 )
 
-const schemaVersion = 11
+const schemaVersion = 12
 
 var businessTables = []string{
 	"workspaces", "settings", "observations", "observed_files", "file_changes", "edits", "workspace_links",

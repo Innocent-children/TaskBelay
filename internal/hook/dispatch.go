@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Innocent-children/taskbelay/internal/check"
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 )
@@ -124,6 +125,14 @@ func (t Tasks) dispatch(ctx context.Context, e event.Event) (event.Decision, err
 	switch e.Kind {
 	case event.UserPrompt:
 		_, err = t.RecordUserMessage(ctx, e)
+		if err == nil {
+			advice, analysisErr := check.ReuseAdvice(ctx, t.Store, t.Workspace, ledger.Actor{Agent: e.Agent, SessionID: e.SessionID, RoundID: e.RoundID}, e.Message)
+			if analysisErr == nil {
+				d.AdditionalContext = advice
+			} else if t.ReportError != nil {
+				t.ReportError(analysisErr)
+			}
+		}
 	case event.SessionStart:
 		_, _, err = t.observeEvent(ctx, e)
 	case event.Stop:
@@ -148,10 +157,8 @@ func (t Tasks) dispatch(ctx context.Context, e event.Event) (event.Decision, err
 			if errors.Is(err, sql.ErrNoRows) {
 				_, err = t.Observe(ctx, e, task)
 			}
-		} else {
-			if e.Command == nil || !CommandScript(e).ReadOnly() {
-				_, err = t.Observe(ctx, e, task)
-			}
+		} else if e.Command == nil {
+			_, err = t.Observe(ctx, e, task)
 		}
 	default:
 		err = fmt.Errorf("不支持统一事件 %q", e.Kind)

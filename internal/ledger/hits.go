@@ -8,6 +8,7 @@ import (
 )
 
 type HitObservation struct {
+	Algorithm    string    `json:"algorithm,omitempty"`
 	At           time.Time `json:"at"`
 	Kind         string    `json:"kind"`
 	RecordID     string    `json:"record_id"`
@@ -37,7 +38,7 @@ func (s *Store) Hits(ctx context.Context, workspace string, since time.Time) ([]
 	var result []Hit
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		byID := map[string]*Hit{}
-		rows, err := q.QueryContext(ctx, `SELECT task_id,data,status FROM issues_v11 WHERE task_id IN (SELECT id FROM tasks_v11 WHERE workspace_id=?)`, workspace)
+		rows, err := q.QueryContext(ctx, `SELECT task_id,data,status FROM issues_v12 WHERE task_id IN (SELECT id FROM tasks_v12 WHERE workspace_id=?)`, workspace)
 		if err != nil {
 			return err
 		}
@@ -60,15 +61,15 @@ func (s *Store) Hits(ctx context.Context, workspace string, since time.Time) ([]
 		if err != nil {
 			return err
 		}
-		rows, err = q.QueryContext(ctx, `SELECT task_id,CAST(seq AS TEXT),status,input_version,json_extract(data,'$.finished_at'),json_extract(data,'$.issues') FROM checks_v11
-WHERE task_id IN (SELECT id FROM tasks_v11 WHERE workspace_id=?) AND julianday(json_extract(data,'$.finished_at'))>=julianday(?) ORDER BY seq`, workspace, since.UTC().Format(time.RFC3339Nano))
+		rows, err = q.QueryContext(ctx, `SELECT task_id,CAST(seq AS TEXT),status,input_version,json_extract(data,'$.finished_at'),json_extract(data,'$.issues'),COALESCE(json_extract(data,'$.input.algorithm'),json_extract(data,'$.input.rules'),'unknown') FROM checks_v12
+WHERE task_id IN (SELECT id FROM tasks_v12 WHERE workspace_id=?) AND julianday(json_extract(data,'$.finished_at'))>=julianday(?) ORDER BY seq`, workspace, since.UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return err
 		}
 		for rows.Next() {
-			var task, id, status, version, at string
+			var task, id, status, version, at, algorithm string
 			var raw *string
-			if err := rows.Scan(&task, &id, &status, &version, &at, &raw); err != nil {
+			if err := rows.Scan(&task, &id, &status, &version, &at, &raw, &algorithm); err != nil {
 				rows.Close()
 				return err
 			}
@@ -91,7 +92,7 @@ WHERE task_id IN (SELECT id FROM tasks_v11 WHERE workspace_id=?) AND julianday(j
 					hit = &Hit{TaskID: task, Issue: issue}
 					byID[issue.ID] = hit
 				}
-				hit.Observations = append(hit.Observations, HitObservation{At: observed, Kind: "check", RecordID: id, Status: status, InputVersion: version, Issue: issue})
+				hit.Observations = append(hit.Observations, HitObservation{Algorithm: algorithm, At: observed, Kind: "check", RecordID: id, Status: status, InputVersion: version, Issue: issue})
 			}
 		}
 		err = rows.Err()
@@ -99,7 +100,7 @@ WHERE task_id IN (SELECT id FROM tasks_v11 WHERE workspace_id=?) AND julianday(j
 		if err != nil {
 			return err
 		}
-		rows, err = q.QueryContext(ctx, `SELECT data FROM verifications_v11 WHERE workspace_id=? AND (julianday(json_extract(data,'$.started_at'))>=julianday(?) OR julianday(json_extract(data,'$.ended_at'))>=julianday(?)) ORDER BY seq`, workspace, since.UTC().Format(time.RFC3339Nano), since.UTC().Format(time.RFC3339Nano))
+		rows, err = q.QueryContext(ctx, `SELECT data FROM verifications_v12 WHERE workspace_id=? AND (julianday(json_extract(data,'$.started_at'))>=julianday(?) OR julianday(json_extract(data,'$.ended_at'))>=julianday(?)) ORDER BY seq`, workspace, since.UTC().Format(time.RFC3339Nano), since.UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return err
 		}
@@ -137,7 +138,7 @@ WHERE task_id IN (SELECT id FROM tasks_v11 WHERE workspace_id=?) AND julianday(j
 		if err != nil {
 			return err
 		}
-		rows, err = q.QueryContext(ctx, `SELECT b.issue_id,b.agent,b.session_id,b.round_id,f.at FROM issue_blocks_v11 b JOIN check_feedback_v11 f ON f.id=b.feedback_id
+		rows, err = q.QueryContext(ctx, `SELECT b.issue_id,b.agent,b.session_id,b.round_id,f.at FROM issue_blocks_v12 b JOIN check_feedback_v12 f ON f.id=b.feedback_id
 WHERE f.workspace_id=? AND julianday(f.at)>=julianday(?) ORDER BY f.id`, workspace, since.UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return err

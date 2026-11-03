@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Innocent-children/taskbelay/internal/check"
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
@@ -332,11 +333,21 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 	if planContext.TaskID != task {
 		return event.Decision{}, &ledger.TaskConflict{CurrentTaskID: planContext.TaskID}
 	}
-	planCheck, err := plan.BeforeEdit(o.Workspace, planContext, paths, planContents)
+	auxiliary, err := check.ClassifyTargets(ctx, o.Store, o.Workspace, planContents)
+	if err != nil {
+		return event.Decision{}, err
+	}
+	planCheck, err := plan.BeforeEdit(o.Workspace, planContext, paths, auxiliary)
+	for i := range planCheck.Issues {
+		planCheck.Issues[i].Algorithm = check.Algorithm
+	}
 	if err != nil {
 		return event.Decision{}, fmt.Errorf("核对编辑授权: %w", err)
 	}
 	record.PlanCheck = &planCheck
+	if advice, analysisErr := check.EditAdvice(ctx, o.Store, o.Workspace, expectedContents); analysisErr == nil {
+		record.Decision.AdditionalContext = strings.TrimSpace(record.Decision.AdditionalContext + "\n" + advice)
+	}
 	if len(observation.Files) > 0 {
 		if err := o.retain(ctx, &observation, view, record.Files, expectedContents); err != nil {
 			return event.Decision{}, fmt.Errorf("保存编辑证据: %w", err)

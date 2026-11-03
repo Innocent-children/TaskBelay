@@ -28,9 +28,9 @@ func (s *Store) Compact(ctx context.Context, workspace string) error {
 			var original string
 			err := s.read(ctx, func(ctx context.Context, q queryer) error {
 				if category == "observations" {
-					return q.QueryRowContext(ctx, `SELECT id,data FROM observations_v11 WHERE workspace_id=? AND files_set_id IS NULL AND json_extract(data,'$.Full')=1 AND json_extract(data,'$.Complete')=1 AND json_type(data,'$.Files')='object' ORDER BY id LIMIT 1`, workspace).Scan(&id, &original)
+					return q.QueryRowContext(ctx, `SELECT id,data FROM observations_v12 WHERE workspace_id=? AND files_set_id IS NULL AND json_extract(data,'$.Full')=1 AND json_extract(data,'$.Complete')=1 AND json_type(data,'$.Files')='object' ORDER BY id LIMIT 1`, workspace).Scan(&id, &original)
 				}
-				return q.QueryRowContext(ctx, `SELECT c.seq,c.data FROM checks_v11 c JOIN tasks_v11 t ON t.id=c.task_id WHERE t.workspace_id=? AND c.report_encoding='' ORDER BY c.seq LIMIT 1`, workspace).Scan(&id, &original)
+				return q.QueryRowContext(ctx, `SELECT c.seq,c.data FROM checks_v12 c JOIN tasks_v12 t ON t.id=c.task_id WHERE t.workspace_id=? AND c.report_encoding='' ORDER BY c.seq LIMIT 1`, workspace).Scan(&id, &original)
 			})
 			if errors.Is(err, sql.ErrNoRows) {
 				break
@@ -83,9 +83,9 @@ func (s *Store) Compact(ctx context.Context, workspace string) error {
 			}
 			err = s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
 				var current string
-				query := `SELECT data FROM observations_v11 WHERE id=? AND files_set_id IS NULL`
+				query := `SELECT data FROM observations_v12 WHERE id=? AND files_set_id IS NULL`
 				if category == "checks" {
-					query = `SELECT data FROM checks_v11 WHERE seq=? AND report_encoding=''`
+					query = `SELECT data FROM checks_v12 WHERE seq=? AND report_encoding=''`
 				}
 				err := tx.QueryRowContext(ctx, query, id).Scan(&current)
 				if errors.Is(err, sql.ErrNoRows) || err == nil && current != original {
@@ -99,10 +99,10 @@ func (s *Store) Compact(ctx context.Context, workspace string) error {
 					if err != nil {
 						return err
 					}
-					_, err = tx.ExecContext(ctx, `UPDATE observations_v11 SET data=?,files_set_id=? WHERE id=?`, string(metadata), filesID, id)
+					_, err = tx.ExecContext(ctx, `UPDATE observations_v12 SET data=?,files_set_id=? WHERE id=?`, string(metadata), filesID, id)
 					return err
 				}
-				_, err = tx.ExecContext(ctx, `UPDATE checks_v11 SET data=?,report_encoding=?,report_raw_bytes=?,report_sha256=?,report_body=? WHERE seq=?`, string(metadata), body.Encoding, body.RawBytes, body.SHA256, body.Body, id)
+				_, err = tx.ExecContext(ctx, `UPDATE checks_v12 SET data=?,report_encoding=?,report_raw_bytes=?,report_sha256=?,report_body=? WHERE seq=?`, string(metadata), body.Encoding, body.RawBytes, body.SHA256, body.Body, id)
 				return err
 			})
 			if err != nil {

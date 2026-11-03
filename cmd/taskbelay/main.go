@@ -7,8 +7,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
@@ -41,11 +39,8 @@ const usage = `TaskBelay：记录需求和开发事实，帮助 Agent 完成当�
   enforcement              block（默认）或 hint
   analysis.tests           off（默认）或 on
   debug                    off（默认）或 on，详细过程写入数据目录 debug/日期/任务编号.jsonl
-  test.<语言>.command      测试命令或前缀，默认使用 Runner 的方式
-  test.<语言>.prepare      临时副本的准备命令，默认无
-  test.<语言>.parallel     1 至 4，默认 1
+  analysis.parallel        1 至 4，默认 1；表示项目命令可以独立并行运行
 
-语言：go、python、javascript、typescript、java、rust。
 默认保存用户设置；--project 保存项目设置；--task 保存当前任务设置。
 get 显示当前工作区实际生效的值、来源和设置修订。
 `
@@ -236,13 +231,7 @@ func scopeName(scope ledger.Scope) string {
 
 func displayValue(name, value string) string {
 	if value == "" {
-		if strings.HasSuffix(name, ".command") {
-			return "\"\"（Runner 默认命令）"
-		}
 		return "\"\"（无）"
-	}
-	if strings.HasSuffix(name, ".command") || strings.HasSuffix(name, ".prepare") {
-		return strconv.Quote(value)
 	}
 	return value
 }

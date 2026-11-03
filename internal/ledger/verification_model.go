@@ -5,7 +5,6 @@ import (
 
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/shell"
-	"github.com/Innocent-children/taskbelay/internal/testrun"
 )
 
 const verificationSchema = `
@@ -28,29 +27,33 @@ PRAGMA user_version=8;
 `
 
 type VerificationRecord struct {
-	ID               string                    `json:"id"`
-	WorkspaceID      string                    `json:"workspace_id"`
-	TaskID           string                    `json:"task_id"`
-	Actor            Actor                     `json:"actor"`
-	RequestHash      string                    `json:"request_hash"`
-	RequestDirectory string                    `json:"request_directory,omitempty"`
-	Command          shell.Script              `json:"command"`
-	CommandKey       string                    `json:"command_key"`
-	Tree             string                    `json:"tree"`
-	InputRevision    int64                     `json:"input_revision"`
-	EnvironmentID    string                    `json:"environment_id"`
-	Scope            testrun.VerificationScope `json:"scope"`
-	State            string                    `json:"state"`
-	ExitCode         *int                      `json:"exit_code,omitempty"`
-	StartedAt        time.Time                 `json:"started_at"`
-	EndedAt          time.Time                 `json:"ended_at"`
-	Denied           bool                      `json:"denied"`
-	Executed         bool                      `json:"executed"`
-	PostOnly         bool                      `json:"post_only,omitempty"`
-	PreviousID       string                    `json:"previous_id,omitempty"`
-	Issue            *Issue                    `json:"issue,omitempty"`
-	RerunNoteID      string                    `json:"rerun_note_id,omitempty"`
-	UserRequested    bool                      `json:"user_requested,omitempty"`
+	Algorithm        string            `json:"algorithm,omitempty"`
+	AfterTree        string            `json:"after_tree,omitempty"`
+	Output           string            `json:"output,omitempty"`
+	RawCommand       string            `json:"-"`
+	ID               string            `json:"id"`
+	WorkspaceID      string            `json:"workspace_id"`
+	TaskID           string            `json:"task_id"`
+	Actor            Actor             `json:"actor"`
+	RequestHash      string            `json:"request_hash"`
+	RequestDirectory string            `json:"request_directory,omitempty"`
+	Command          shell.Script      `json:"command"`
+	CommandKey       string            `json:"command_key"`
+	Tree             string            `json:"tree"`
+	InputRevision    int64             `json:"input_revision"`
+	EnvironmentID    string            `json:"environment_id"`
+	Scope            VerificationInput `json:"scope"`
+	State            string            `json:"state"`
+	ExitCode         *int              `json:"exit_code,omitempty"`
+	StartedAt        time.Time         `json:"started_at"`
+	EndedAt          time.Time         `json:"ended_at"`
+	Denied           bool              `json:"denied"`
+	Executed         bool              `json:"executed"`
+	PostOnly         bool              `json:"post_only,omitempty"`
+	PreviousID       string            `json:"previous_id,omitempty"`
+	Issue            *Issue            `json:"issue,omitempty"`
+	RerunNoteID      string            `json:"rerun_note_id,omitempty"`
+	UserRequested    bool              `json:"user_requested,omitempty"`
 }
 
 type VerificationEnd struct {

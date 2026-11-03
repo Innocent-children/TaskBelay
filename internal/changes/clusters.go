@@ -13,6 +13,8 @@ import (
 type Edit struct {
 	Path, BeforePath, Before, After, Call string
 	AgentOnly                             bool
+	Exact                                 bool
+	Span                                  Span
 }
 type Input struct {
 	Before, After repostats.Repository
@@ -146,8 +148,9 @@ func Compare(ctx context.Context, in Input) (Result, error) {
 				if edit.Path != p && edit.BeforePath != old {
 					continue
 				}
-				matches := edit.Before == strings.Join(a.Lines, "") && edit.After == strings.Join(b.Lines, "")
-				if !matches && h.Before != "" && h.After != "" {
+				matches := edit.Exact && edit.Span == span && edit.Before == h.Before && edit.After == h.After
+				matches = matches || !edit.Exact && edit.Before == strings.Join(a.Lines, "") && edit.After == strings.Join(b.Lines, "")
+				if !matches && !edit.Exact && h.Before != "" && h.After != "" {
 					matches = strings.Contains(edit.Before, h.Before) && strings.Contains(edit.After, h.After)
 				}
 				if matches && edit.AgentOnly {

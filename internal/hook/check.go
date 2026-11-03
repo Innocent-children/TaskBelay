@@ -7,7 +7,6 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/check"
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
-	"github.com/Innocent-children/taskbelay/internal/testrun"
 )
 
 func (t Tasks) Check(ctx context.Context, actor ledger.Actor, options check.RunInput) (record ledger.CheckRecord, failure error) {
@@ -93,7 +92,7 @@ func (t Tasks) Finish(ctx context.Context, actor ledger.Actor, input ledger.Fini
 		}
 		return result, err
 	}
-	version, err := t.Store.CheckInput(ctx, t.Workspace.ID, view.Task.ID, actor, check.RulesVersion, check.CapabilitiesVersion)
+	version, err := t.Store.CheckInput(ctx, t.Workspace.ID, view.Task.ID, actor, check.Algorithm)
 	if err != nil {
 		return result, err
 	}
@@ -125,7 +124,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 	if view.Task == nil || view.Task.ID != request.TaskID || view.Task.State != ledger.TaskPending {
 		return event.Decision{UserMessage: "TaskBelay：交付请求已过期，任务仍在进行中；请按当前内容完成修改后重新申请交付。"}, nil
 	}
-	input, err := t.Store.CheckInput(ctx, t.Workspace.ID, request.TaskID, actor, check.RulesVersion, check.CapabilitiesVersion)
+	input, err := t.Store.CheckInput(ctx, t.Workspace.ID, request.TaskID, actor, check.Algorithm)
 	if err != nil {
 		return event.Decision{}, err
 	}
@@ -161,7 +160,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 			if err != nil {
 				return event.Decision{}, err
 			}
-			if dynamic != nil && (dynamic.Report.Dynamic == nil || dynamic.Report.Dynamic.Rules != testrun.DynamicVersion) {
+			if dynamic != nil && (dynamic.Report.Dynamic == nil || dynamic.Input.Algorithm != check.Algorithm) {
 				dynamic = nil
 			}
 		}
@@ -196,6 +195,11 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 	}
 	if delivery.State == "expired" {
 		return event.Decision{UserMessage: "TaskBelay：检查期间输入已变化，旧结果仅保留为历史，任务仍在进行中。请读取当前内容，完成后重新申请交付。"}, nil
+	}
+	if delivery.State == "completed" {
+		if calibrationErr := check.Calibrate(ctx, t.Store, t.Workspace, view, true); calibrationErr != nil && t.ReportError != nil {
+			t.ReportError(calibrationErr)
+		}
 	}
 	text := check.Format(delivery.Check, 5)
 	if dynamic != nil {

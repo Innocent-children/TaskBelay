@@ -89,6 +89,9 @@ func Analyze(ctx context.Context, source Source, syntax Syntax) (File, error) {
 		return f, nil
 	}
 	f.Lines = strings.SplitAfter(text, "\n")
+	if len(f.Lines) > 0 && f.Lines[len(f.Lines)-1] == "" {
+		f.Lines = f.Lines[:len(f.Lines)-1]
+	}
 	comments := append([]string(nil), syntax.Comments...)
 	sort.Slice(comments, func(i, j int) bool {
 		if len(comments[i]) == len(comments[j]) {

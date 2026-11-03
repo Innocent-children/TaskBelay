@@ -1,127 +1,142 @@
 package check
 
 import (
-	"bytes"
 	"context"
-	"fmt"
-	"sort"
-
-	"github.com/Innocent-children/taskbelay/internal/codescan"
+	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
+	"github.com/Innocent-children/taskbelay/internal/repostats"
+	"strings"
 )
 
-type lineSource struct {
-	kind, evidence string
+type lineOrigin struct {
+	original int
+	agent    bool
+	call     string
 }
 
-type fileSources struct {
-	file  gitstate.File
-	lines []lineSource
-}
-
-type provenance map[string]fileSources
-
-func lineCount(data []byte) int {
-	if len(data) == 0 {
-		return 0
+func provenance(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v ledger.TaskView, o ledger.Observation, before, after repostats.Repository) ([]changes.Edit, error) {
+	history, err := s.TaskChanges(ctx, w.ID, v.Task.ID, o.ID)
+	if err != nil {
+		return nil, err
 	}
-	count := bytes.Count(data, []byte{'\n'})
-	if data[len(data)-1] != '\n' {
-		count++
+	byPath := map[string][]ledger.FileChange{}
+	var ids []string
+	for _, h := range history {
+		byPath[h.Path] = append(byPath[h.Path], h)
+		if h.Before.Blob != "" {
+			ids = append(ids, h.Before.Blob)
+		}
+		if h.After.Blob != "" {
+			ids = append(ids, h.After.Blob)
+		}
 	}
-	return count
-}
-
-func sourceLines(data []byte, kind string) []lineSource {
-	lines := make([]lineSource, lineCount(data))
-	for i := range lines {
-		lines[i].kind = kind
+	blobs, err := w.ReadBlobs(ctx, ids)
+	if err != nil {
+		return nil, err
 	}
-	return lines
-}
-
-func buildProvenance(ctx context.Context, before, after codescan.Snapshot, edits []ledger.FileChange, contents map[string][]byte) (provenance, error) {
-	result := provenance{}
-	for path, file := range before.Files {
-		result[path] = fileSources{gitstate.File{Blob: file.Blob, Mode: file.Mode}, sourceLines(file.Data, "baseline")}
-	}
-	for _, edit := range edits {
-		if err := ctx.Err(); err != nil {
+	var result []changes.Edit
+	for _, p := range keys(byPath) {
+		base := before.Files[p]
+		current := append([]string(nil), base.Lines...)
+		tags := make([]lineOrigin, len(current))
+		for i := range tags {
+			tags[i].original = i
+		}
+		deleted := map[int]lineOrigin{}
+		rows := byPath[p]
+		for start := 0; start < len(rows); {
+			end := start + 1
+			for end < len(rows) && rows[end].AfterObservation == rows[start].AfterObservation {
+				end++
+			}
+			row := rows[start]
+			old := splitLines(string(blobs[row.Before.Blob]))
+			next := splitLines(string(blobs[row.After.Blob]))
+			if strings.Join(old, "") != strings.Join(current, "") {
+				tags = make([]lineOrigin, len(old))
+				for i := range tags {
+					tags[i].original = -1
+				}
+			}
+			spans, err := changes.Diff(ctx, old, next)
+			if err != nil {
+				return nil, err
+			}
+			offset := 0
+			for _, span := range spans {
+				cause := lineOrigin{original: -1}
+				for _, h := range rows[start:end] {
+					if h.Kind != "agent_edit" {
+						continue
+					}
+					for _, f := range h.Fragments {
+						bs := f.BeforeStart
+						if f.BeforeLines > 0 {
+							bs--
+						}
+						as := f.AfterStart
+						if f.AfterLines > 0 {
+							as--
+						}
+						if bs == span.BeforeStart && bs+f.BeforeLines == span.BeforeEnd && as == span.AfterStart && as+f.AfterLines == span.AfterEnd {
+							cause.agent, cause.call = true, h.ToolCallID
+						}
+					}
+				}
+				a, b := span.BeforeStart+offset, span.BeforeEnd+offset
+				for _, oldTag := range tags[a:b] {
+					if oldTag.original >= 0 {
+						deleted[oldTag.original] = cause
+					}
+				}
+				insert := make([]lineOrigin, span.AfterEnd-span.AfterStart)
+				for i := range insert {
+					insert[i] = cause
+				}
+				tags = append(append(append([]lineOrigin(nil), tags[:a]...), insert...), tags[b:]...)
+				offset += (span.AfterEnd - span.AfterStart) - (span.BeforeEnd - span.BeforeStart)
+			}
+			current = next
+			start = end
+		}
+		if strings.Join(current, "") != strings.Join(after.Files[p].Lines, "") {
+			continue
+		}
+		spans, err := changes.Diff(ctx, base.Lines, current)
+		if err != nil {
 			return nil, err
 		}
-		state := result[edit.Path]
-		if state.file != edit.Before {
-			state = fileSources{edit.Before, sourceLines(contents[edit.Before.Blob], "unknown")}
-		}
-		kind := "workspace"
-		if edit.Kind == "agent_edit" && edit.ToolCallID != "" {
-			kind = "agent"
-		}
-		fragments := append([]gitstate.Fragment(nil), edit.Fragments...)
-		sort.SliceStable(fragments, func(i, j int) bool { return fragments[i].BeforeStart > fragments[j].BeforeStart })
-		valid := len(fragments) > 0 || edit.Before == edit.After
-		for _, fragment := range fragments {
-			start := fragment.BeforeStart - 1
-			if fragment.BeforeLines == 0 {
-				start = fragment.BeforeStart
+		for _, span := range spans {
+			agent, has := true, false
+			calls := map[string]bool{}
+			for i := span.BeforeStart; i < span.BeforeEnd; i++ {
+				t := deleted[i]
+				agent = agent && t.agent
+				has = true
+				calls[t.call] = true
 			}
-			if start < 0 || start > len(state.lines) || fragment.BeforeLines < 0 || start+fragment.BeforeLines > len(state.lines) || fragment.AfterLines < 0 {
-				valid = false
-				break
+			for _, t := range tags[span.AfterStart:span.AfterEnd] {
+				agent = agent && t.agent
+				has = true
+				calls[t.call] = true
 			}
-			added := make([]lineSource, fragment.AfterLines)
-			for i := range added {
-				added[i] = lineSource{kind, fmt.Sprintf("%s:%d:%s", edit.Kind, edit.AfterObservation, edit.ToolCallID)}
+			if !agent || !has {
+				continue
 			}
-			next := append([]lineSource(nil), state.lines[:start]...)
-			next = append(next, added...)
-			next = append(next, state.lines[start+fragment.BeforeLines:]...)
-			// 删除本身也可能改变声明，不能仅因剩余行原属 Agent 就建议整段删除。
-			if kind != "agent" && fragment.AfterLines == 0 && len(next) > 0 {
-				index := min(start, len(next)-1)
-				next[index] = lineSource{kind, fmt.Sprintf("workspace_update:%d:delete", edit.AfterObservation)}
-			}
-			state.lines = next
+			call := strings.Join(keys(calls), ",")
+			result = append(result, changes.Edit{Path: p, BeforePath: p, Before: strings.Join(base.Lines[span.BeforeStart:span.BeforeEnd], ""), After: strings.Join(current[span.AfterStart:span.AfterEnd], ""), Call: call, AgentOnly: true, Exact: true, Span: span})
 		}
-		if !valid || len(state.lines) != lineCount(contents[edit.After.Blob]) {
-			state.lines = sourceLines(contents[edit.After.Blob], "unknown")
-		}
-		state.file = edit.After
-		result[edit.Path] = state
-	}
-	for path, file := range after.Files {
-		state := result[path]
-		if state.file.Blob != file.Blob || state.file.Mode != file.Mode || len(state.lines) != lineCount(file.Data) {
-			state = fileSources{gitstate.File{Blob: file.Blob, Mode: file.Mode}, sourceLines(file.Data, "unknown")}
-		}
-		result[path] = state
 	}
 	return result, nil
 }
-
-func (p provenance) at(file string, spans []codescan.Span) (agent, mixed bool, evidence []string) {
-	agent = len(spans) > 0
-	lines := p[file].lines
-	seen := map[string]bool{}
-	for _, span := range spans {
-		if span.StartLine <= 0 || span.EndLine < span.StartLine || span.EndLine > len(lines) {
-			agent, mixed = false, true
-			continue
-		}
-		for _, line := range lines[span.StartLine-1 : span.EndLine] {
-			if line.kind != "agent" {
-				agent = false
-			}
-			if line.kind == "workspace" || line.kind == "unknown" {
-				mixed = true
-			}
-			if line.evidence != "" && !seen[line.evidence] {
-				evidence = append(evidence, line.evidence)
-				seen[line.evidence] = true
-			}
-		}
+func splitLines(s string) []string {
+	if s == "" {
+		return nil
 	}
-	sort.Strings(evidence)
-	return
+	lines := strings.SplitAfter(s, "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
 }

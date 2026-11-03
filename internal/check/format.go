@@ -2,202 +2,95 @@ package check
 
 import (
 	"fmt"
-	"strings"
-
 	"github.com/Innocent-children/taskbelay/internal/ledger"
+	"strings"
 )
 
-func FormatIssues(issues []ledger.Issue, hintLimit int) string {
-	var text strings.Builder
-	hints, omitted := 0, 0
-	seen := map[string]bool{}
-	for _, issue := range issues {
-		key := issue.Rule + "\x00" + issue.At + "\x00" + issue.FactKey
-		if seen[key] || issue.Status != "open" {
-			continue
-		}
-		seen[key] = true
-		if issue.Level != "block" {
-			if hintLimit > 0 && hints >= hintLimit {
-				omitted++
-				continue
-			}
-			hints++
-		}
-		fmt.Fprintf(&text, "[%s %s] %s；状态=%s；编号=%s\n  %s\n  %s\n", issue.Rule, issue.Level, issue.At, issue.Status, issue.ID, strings.Join(issue.Facts, " "), issue.Advice)
-		if len(issue.Evidence) > 0 {
-			fmt.Fprintln(&text, "  依据："+strings.Join(issue.Evidence, "; "))
-		}
+func LimitFeedback(text string) string {
+	r := []rune(text)
+	if len(r) > FeedbackBudget {
+		return string(r[:FeedbackBudget-len([]rune("\n其余内容见 task_get。"))]) + "\n其余内容见 task_get。"
 	}
-	if omitted > 0 {
-		fmt.Fprintf(&text, "另有 %d 条提示，可用 taskbelay status 查看。\n", omitted)
-	}
-	return strings.TrimSpace(text.String())
+	return text
 }
 
-func Format(record ledger.CheckRecord, hintLimit int) string {
-	if hintLimit > 0 {
-		return compactReport(record, hintLimit)
+func Format(record ledger.CheckRecord, limit int) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "TaskBelay %s：处理状态 %s；结论 %s；输入 %s\n", record.Depth, record.Status, record.Level, record.InputVersion)
+	if record.HistoricalVersion != "" {
+		fmt.Fprintf(&b, "历史规则版本：%s（不参与当前判定）\n", record.HistoricalVersion)
 	}
-	var text strings.Builder
-	if record.Static != nil {
-		fmt.Fprintln(&text, Format(*record.Static, hintLimit))
-	}
-	fmt.Fprintf(&text, "TaskBelay %s 检查：%s；任务=%s；结论=%s；输入=%s\n", record.Depth, record.Status, record.Input.TaskID, record.Level, record.InputVersion)
-	fmt.Fprintf(&text, "检查时间：%s 至 %s\n", record.StartedAt.Format("2006-01-02T15:04:05Z07:00"), record.FinishedAt.Format("2006-01-02T15:04:05Z07:00"))
 	counts := record.GapCounts()
-	fmt.Fprintf(&text, "检查范围：%d 项无法判断；%d 项解析或执行错误；%d 项未完成。\n", counts["unsupported"], counts["error"], counts["incomplete"])
-	for _, coverage := range record.Report.Coverage {
-		fmt.Fprintf(&text, "文件覆盖：%s；级别=%s；已完成操作=%s\n", coverage.Path, coverage.Level, strings.Join(coverage.Operations, ", "))
-	}
-	if record.Reused {
-		fmt.Fprintln(&text, "本次复用上述执行结果，未知判断一并保留。")
-	}
-	fmt.Fprintln(&text, FormatIssues(record.Issues, hintLimit))
-	if len(record.Unconfirmed) > 0 {
-		fmt.Fprintf(&text, "历史未解决问题：%d 处本次尚未确认，不作为当前拦截依据。\n", len(record.Unconfirmed))
-		limit := len(record.Unconfirmed)
-		if hintLimit > 0 {
-			limit = min(limit, hintLimit)
-		}
-		for _, issue := range record.Unconfirmed[:limit] {
-			fmt.Fprintf(&text, "  [%s 本次未确认] %s；编号=%s\n", issue.Rule, issue.At, issue.ID)
+	fmt.Fprintf(&b, "未知 %d；出错 %d；未完成 %d。\n", counts["unknown"], counts["error"], counts["incomplete"])
+	var selected []ledger.Issue
+	for _, i := range record.Issues {
+		if limit == 0 || i.Selected || i.BlockOnDelivery || i.Level == "block" {
+			selected = append(selected, i)
 		}
 	}
-	fmt.Fprint(&text, FormatPlans(record.Report.Plans))
-	if dynamic := record.Report.Dynamic; dynamic != nil {
-		fmt.Fprintf(&text, "动态执行：完整=%t；耗时=%s；环境可复用=%t\n", dynamic.Complete, dynamic.Duration, dynamic.Reusable)
-		counts := map[string]int{}
-		for _, stage := range dynamic.Stages {
-			counts[stage.Name]++
+	b.WriteString(FormatIssues(selected, limit))
+	for i, gap := range record.Missing {
+		if limit > 0 && i >= limit {
+			break
 		}
-		fmt.Fprintf(&text, "  命令次数：准备=%d，编译=%d，枚举=%d，基线=%d，变异=%d\n", counts["prepare"], counts["compile"], counts["enumerate"], counts["baseline"], counts["mutation"])
-		if hintLimit == 0 {
-			for _, stage := range dynamic.Stages {
-				fmt.Fprintf(&text, "  执行阶段：%s；成功=%t；耗时=%s；失败类别=%s；%s\n", stage.Name, stage.Result.Passed(), stage.Result.Duration, stage.Result.Failure, stage.Result.Reason)
-			}
-		}
-		for _, observation := range dynamic.Observations {
-			fmt.Fprintf(&text, "动态用例：%s；基线=%t；失败类别=%s；有效覆盖=%t；执行副本=%t；发现=%s\n", observation.Case.At, observation.Baseline.Passed(), observation.Baseline.Failure, observation.Baseline.Coverage.Valid, observation.Baseline.Coverage.CopyExecuted, strings.Join(observation.Killed, ", "))
-			for _, assertion := range observation.Case.Assertions {
-				fmt.Fprintln(&text, "  断言："+assertion)
-			}
-			for _, unknown := range observation.Case.Unknown {
-				fmt.Fprintln(&text, "  待核对："+unknown)
-			}
-		}
-		for _, group := range dynamic.Groups {
-			fmt.Fprintf(&text, "变异分组 %s：用例=%s；完整=%t；%s\n", group.Requirement, strings.Join(group.Cases, ", "), group.Complete, group.Reason)
-			var lines []string
-			for _, line := range group.Coverage {
-				lines = append(lines, fmt.Sprintf("%s:%d", line.File, line.Number))
-			}
-			fmt.Fprintln(&text, "  共同覆盖："+strings.Join(lines, ", "))
-			for _, mutation := range group.Mutations {
-				fmt.Fprintf(&text, "  变异 %s：%s:%d %s → %s\n", mutation.ID, mutation.File, mutation.Line, mutation.Before, mutation.After)
-			}
+		fmt.Fprintf(&b, "%s %s：%s\n", gap.Kind, gap.At, gap.Reason)
+	}
+	if len(record.Issues) == 0 {
+		b.WriteString("本次未形成建议；这不表示已证明没有多余改动或测试足够。\n")
+	}
+	if d := record.Report.Dynamic; d != nil {
+		fmt.Fprintf(&b, "副本：%s；运行 %d 次；整组确认 %t。\n", d.State, d.Runs, d.Confirmed)
+	}
+	for _, v := range record.Report.Verifications {
+		if v.Algorithm == Algorithm && v.Scope.Validation {
+			fmt.Fprintf(&b, "验证 %s：%s\n", v.ID, v.State)
 		}
 	}
-	for _, risk := range record.Report.TestRisk {
-		if !risk.Complete {
-			fmt.Fprintf(&text, "测试投入 %s：风险未完整核对，不提供数量建议；%s\n", risk.Requirement, strings.Join(risk.Evidence, "; "))
-			continue
-		}
-		fmt.Fprintf(&text, "测试投入 %s：新增 %d（用户保留 %d）、修改 %d、既有 %d；风险建议 %d，风险核对完整=%t。建议数不是上限。\n", risk.Requirement, risk.Added, risk.Retained, risk.Modified, risk.Existing, risk.Recommended, risk.Complete)
-		for _, source := range risk.Sources {
-			fmt.Fprintf(&text, "  风险：%s %s:%d %s\n", source.Kind, source.At, source.Line, source.Evidence)
-		}
-	}
-	for _, test := range record.Report.Tests {
-		if test.Change == "existing" && len(test.Requirements) == 0 {
-			continue
-		}
-		fmt.Fprintf(&text, "用例：%s [%s]；需求=%s；混合或未知来源=%t；用户保留=%t\n", test.At, test.Change, strings.Join(test.Requirements, ", "), test.Mixed, test.Retained)
-		for _, assertion := range test.Assertions {
-			fmt.Fprintf(&text, "  直接断言：%s 第 %d 行 %s\n", assertion.Kind, assertion.Line, assertion.Evidence)
-		}
-		for _, unknown := range test.Unknown {
-			fmt.Fprintln(&text, "  待核对："+unknown)
-		}
-	}
-	for _, note := range record.Report.ValidationNotes {
-		fmt.Fprintf(&text, "验证或用途说明：%s %s；记录时观察点=%d，需按当前内容核对\n", note.ID, note.Text, note.ObservationID)
-	}
-	for _, issue := range record.Issues {
-		if issue.Status == "retained" || issue.Status == "convention" {
-			fmt.Fprintf(&text, "[%s 已处理] %s；%s\n", issue.Rule, issue.At, strings.Join(issue.HandledBy, "; "))
-		}
-	}
-	for _, req := range record.Report.Requirements {
-		fmt.Fprintf(&text, "%s [%s] %s\n", req.ID, req.Status, req.Content)
-		for _, location := range req.ImplementedBy {
-			fmt.Fprintf(&text, "  %s %s；%s\n", location.Change, location.At, location.Purpose)
-			if location.Pending != "" {
-				fmt.Fprintln(&text, "  待核对："+location.Pending)
-			}
-		}
-		for _, change := range record.Report.ChangesByRequirement[req.ID] {
-			fmt.Fprintln(&text, "  累计改动："+change)
-		}
-	}
-	if len(record.Report.Unfinished) > 0 {
-		var ids []string
-		for _, req := range record.Report.Unfinished {
-			ids = append(ids, req.ID)
-		}
-		fmt.Fprintln(&text, "未完成需求："+strings.Join(ids, ", "))
-	}
-	for _, req := range record.Report.Revoked {
-		fmt.Fprintf(&text, "已撤销需求：%s %s\n", req.ID, req.Content)
-	}
-	for _, change := range record.Report.Changes {
-		fmt.Fprintln(&text, "累计改动："+change)
-	}
-	for _, note := range record.Report.Decisions {
-		fmt.Fprintf(&text, "用户决定：%s %s\n", note.ID, note.Text)
-	}
-	for _, update := range record.Report.WorkspaceUpdates {
-		fmt.Fprintf(&text, "工作区更新：%s；观察点=%d，保留当前内容\n", update.Path, update.AfterObservation)
-	}
-	missingLimit := len(record.Missing)
-	if hintLimit > 0 {
-		missingLimit = min(missingLimit, hintLimit)
-	}
-	for _, missing := range record.Missing[:missingLimit] {
-		label := "未完成检查"
-		if missing.Kind == "unsupported" {
-			label = "无法判断"
-		} else if missing.Kind == "error" {
-			label = "解析或执行错误"
-		}
-		fmt.Fprintf(&text, "%s：%s %s；%s\n", label, missing.Operation, missing.At, missing.Reason)
-	}
-	if missingLimit < len(record.Missing) {
-		fmt.Fprintf(&text, "另有 %d 项检查缺口，可用 taskbelay status 查看。\n", len(record.Missing)-missingLimit)
-	}
-	for _, notRun := range record.Report.NotRun {
-		fmt.Fprintln(&text, "未运行："+notRun)
-	}
-	for _, verification := range record.Report.Verifications {
-		state := verification.State
-		if verification.Denied {
-			state = "被拦截，未执行"
-		}
-		fmt.Fprintf(&text, "验证：%s %s；%s\n", verification.ID, state, verification.Command.Display)
-	}
-	return strings.TrimSpace(text.String())
+	return strings.TrimSpace(b.String())
 }
-
-func FormatPlans(plans ledger.PlanView) string {
-	var text strings.Builder
-	if len(plans.Versions) > 0 && plans.Effective == nil {
-		fmt.Fprintln(&text, "方案：当前没有有效确认范围，历史版本仍保留。")
+func FormatIssues(issues []ledger.Issue, limit int) string {
+	var b strings.Builder
+	n := 0
+	for _, i := range issues {
+		if i.Status != "open" && i.Status != "retained" {
+			continue
+		}
+		if limit > 0 && n >= limit {
+			break
+		}
+		n++
+		fmt.Fprintf(&b, "[%s %s] %s；编号=%s；状态=%s；可信度=%.3f\n%s\n%s\n", i.Rule, i.Level, i.At, i.ID, i.Status, i.Confidence, strings.Join(i.Facts, "；"), i.Advice)
 	}
-	if plans.Effective != nil {
-		fmt.Fprintf(&text, "有效方案：v%d；%s；授权时间=%s\n", plans.Effective.Version, plans.Effective.Path, plans.Effective.Confirmation.AuthorizedAt.Format("2006-01-02T15:04:05Z07:00"))
+	return strings.TrimSpace(b.String())
+}
+func FormatPlans(p ledger.PlanView) string {
+	if p.Effective == nil && p.Pending == nil {
+		return ""
 	}
-	if plans.Pending != nil {
-		fmt.Fprintf(&text, "待确认增补：v%d；%s\n", plans.Pending.Version, plans.Pending.Path)
+	var b strings.Builder
+	if p.Effective != nil {
+		fmt.Fprintf(&b, "有效方案：%s %s\n", p.Effective.ID, p.Effective.Path)
 	}
-	return text.String()
+	if p.Pending != nil {
+		fmt.Fprintf(&b, "待确认方案：%s %s\n", p.Pending.ID, p.Pending.Path)
+	}
+	return b.String()
+}
+func FormatVerification(r ledger.VerificationRecord) string {
+	if r.Issue == nil && r.Scope.Suggestion == "" {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "验证 %s：%s\n", r.ID, r.Command.Display)
+	if r.Issue != nil {
+		b.WriteString(FormatIssues([]ledger.Issue{*r.Issue}, 0))
+		if r.PreviousID != "" {
+			fmt.Fprintf(&b, "\n上次记录：%s\n", r.PreviousID)
+		}
+		b.WriteString(r.Issue.Advice)
+	}
+	if r.Scope.Suggestion != "" {
+		b.WriteString("\n" + r.Scope.Suggestion)
+	}
+	return LimitFeedback(b.String())
 }
