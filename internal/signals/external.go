@@ -54,7 +54,19 @@ func external(in Input) []External {
 			case (t.Kind == "key" || t.Kind == "string") && upperSnake(name):
 				item.Kind, item.Method = "env", "literal"
 			default:
-				continue
+				confirmed := false
+				for _, value := range in.Confirmed {
+					confirmed = confirmed || name == value
+				}
+				if !confirmed {
+					continue
+				}
+				item.Kind, item.Method = "cmd", "probe"
+			}
+			for _, value := range in.Confirmed {
+				if name == value {
+					item.Reliable, item.Method = true, "probe"
+				}
 			}
 			out = append(out, item)
 		}

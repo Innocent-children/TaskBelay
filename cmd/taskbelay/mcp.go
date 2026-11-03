@@ -8,6 +8,7 @@ import (
 
 	"github.com/Innocent-children/taskbelay/internal/agent/claude"
 	"github.com/Innocent-children/taskbelay/internal/agent/codex"
+	"github.com/Innocent-children/taskbelay/internal/check"
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/hook"
@@ -37,6 +38,10 @@ func runMCP(ctx context.Context, env platform.Env, dir string, input io.ReadClos
 	cancel()
 	if !errors.Is(err, gitstate.ErrNotWorkspace) {
 		service.ReportError = func(cause error) { _ = logWorkspaceError(env, workspace.ID, cause) }
+	}
+	if err == nil {
+		service.Background = check.NewBackground(ctx, service.Store, workspace, service.ReportError)
+		defer service.Background.Close()
 	}
 	// 初始化错误作为可读的工具结果返回；stdio 只写 MCP 协议内容。
 	return mcpserver.New(service, err, agentContext(service, os.Getenv("CLAUDE_CODE_SESSION_ID"))).Run(ctx, &mcp.IOTransport{Reader: input, Writer: outputCloser{output}})

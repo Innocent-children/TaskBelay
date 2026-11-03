@@ -11,7 +11,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-type processGroup struct{ job, process windows.Handle }
+type processGroup struct {
+	job, process windows.Handle
+	suspended    []windows.Handle
+}
 
 /**
  * 创建时即加入 Job，避免先启动再分组时子进程逃出回收范围。
@@ -77,7 +80,11 @@ func startProcess(input ProcessCommand) (_ *processGroup, resultErr error) {
 	startup.Flags = windows.STARTF_USESTDHANDLES
 	startup.StdInput, startup.StdOutput, startup.StdErr = handles[0], handles[1], handles[2]
 	var info windows.ProcessInformation
-	err = windows.CreateProcess(app, line, nil, nil, true, windows.CREATE_UNICODE_ENVIRONMENT|windows.EXTENDED_STARTUPINFO_PRESENT, &block[0], dir, &startup.StartupInfo, &info)
+	flags := uint32(windows.CREATE_UNICODE_ENVIRONMENT | windows.EXTENDED_STARTUPINFO_PRESENT)
+	if input.LowPriority {
+		flags |= windows.BELOW_NORMAL_PRIORITY_CLASS
+	}
+	err = windows.CreateProcess(app, line, nil, nil, true, flags, &block[0], dir, &startup.StartupInfo, &info)
 	runtime.KeepAlive(handles)
 	runtime.KeepAlive(job)
 	if err != nil {
@@ -97,7 +104,58 @@ func (p *processGroup) wait() (int, error) {
 }
 
 func (p *processGroup) terminate() error { return windows.TerminateJobObject(p.job, 1) }
-func (p *processGroup) close()           { windows.CloseHandle(p.process); windows.CloseHandle(p.job) }
+func (p *processGroup) close() {
+	for _, h := range p.suspended {
+		windows.CloseHandle(h)
+	}
+	windows.CloseHandle(p.process)
+	windows.CloseHandle(p.job)
+}
+
+func (p *processGroup) suspend(paused bool) error {
+	nt := windows.NewLazySystemDLL("ntdll.dll")
+	if !paused {
+		var failure error
+		for _, h := range p.suspended {
+			status, _, _ := nt.NewProc("NtResumeProcess").Call(uintptr(h))
+			windows.CloseHandle(h)
+			if status != 0 {
+				failure = fmt.Errorf("恢复副本进程失败：%x", status)
+			}
+		}
+		p.suspended = nil
+		return failure
+	}
+	buffer := make([]uintptr, 16)
+	for {
+		var returned uint32
+		err := windows.QueryInformationJobObject(p.job, windows.JobObjectBasicProcessIdList, uintptr(unsafe.Pointer(&buffer[0])), uint32(len(buffer))*uint32(unsafe.Sizeof(buffer[0])), &returned)
+		if err == windows.ERROR_MORE_DATA {
+			buffer = make([]uintptr, len(buffer)*2)
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		break
+	}
+	count := *(*uint32)(unsafe.Add(unsafe.Pointer(&buffer[0]), 4))
+	base := unsafe.Add(unsafe.Pointer(&buffer[0]), 8)
+	for i := uint32(0); i < count; i++ {
+		pid := *(*uintptr)(unsafe.Add(base, uintptr(i)*unsafe.Sizeof(uintptr(0))))
+		h, err := windows.OpenProcess(windows.PROCESS_SUSPEND_RESUME, false, uint32(pid))
+		if err != nil {
+			return err
+		}
+		status, _, _ := nt.NewProc("NtSuspendProcess").Call(uintptr(h))
+		if status != 0 {
+			windows.CloseHandle(h)
+			return fmt.Errorf("暂停副本进程失败：%x", status)
+		}
+		p.suspended = append(p.suspended, h)
+	}
+	return nil
+}
 
 /**
  * Windows 的 Job 与进程资源范围尚未原生核验，不能用零值代替缺失数据。

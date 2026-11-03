@@ -8,6 +8,9 @@ import (
 )
 
 type ProcessCommand struct {
+	LowPriority           bool
+	Pause                 func() bool
+	Poll                  time.Duration
 	Path                  string
 	Args                  []string
 	Dir                   string
@@ -51,12 +54,31 @@ func RunProcess(ctx context.Context, command ProcessCommand) (code int, evidence
 	}
 	done := make(chan result, 1)
 	go func() { code, err := process.wait(); done <- result{code, err} }()
-	select {
-	case completed := <-done:
-		return completed.code, evidence, errors.Join(completed.err, process.terminate())
-	case <-ctx.Done():
-		killErr := process.terminate()
-		completed := <-done
-		return completed.code, evidence, errors.Join(ctx.Err(), killErr)
+	var ticks <-chan time.Time
+	if command.Pause != nil && command.Poll > 0 {
+		timer := time.NewTicker(command.Poll)
+		defer timer.Stop()
+		ticks = timer.C
+	}
+	paused := false
+	for {
+		select {
+		case <-ticks:
+			want := command.Pause()
+			if want != paused {
+				if err := process.suspend(want); err != nil {
+					killErr := process.terminate()
+					completed := <-done
+					return completed.code, evidence, errors.Join(err, killErr)
+				}
+				paused = want
+			}
+		case completed := <-done:
+			return completed.code, evidence, errors.Join(completed.err, process.terminate())
+		case <-ctx.Done():
+			killErr := process.terminate()
+			completed := <-done
+			return completed.code, evidence, errors.Join(ctx.Err(), killErr)
+		}
 	}
 }

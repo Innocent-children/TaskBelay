@@ -16,6 +16,7 @@ type Input struct {
 	Regions       []changes.Region
 	Requirements  []changes.Requirement
 	Retained      []string
+	Confirmed     []string
 }
 type Candidate struct {
 	ID, Kind, Object, At, Cluster string

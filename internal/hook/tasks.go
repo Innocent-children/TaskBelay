@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/Innocent-children/taskbelay/internal/check"
 
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
@@ -15,6 +16,7 @@ import (
 type Tasks struct {
 	Observer
 	ReportError func(error)
+	Background  *check.Background
 }
 
 func (t Tasks) RecordUserMessage(ctx context.Context, e event.Event) (ledger.Message, error) {

@@ -163,6 +163,7 @@ func (s *Store) BeginVerification(ctx context.Context, record VerificationRecord
 			record.State = "unknown"
 		} else {
 			record.StartedAt = time.Now().UTC()
+			record.State = "running"
 		}
 		if err := saveVerification(ctx, tx, record); err != nil {
 			return err

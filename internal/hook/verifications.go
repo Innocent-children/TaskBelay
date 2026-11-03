@@ -60,7 +60,7 @@ func environmentChange(script shell.Script) bool {
 	return false
 }
 
-func toolIdentity(script shell.Script) string {
+func toolIdentity(ctx context.Context, script shell.Script) string {
 	var parts []string
 	for _, s := range script.Segments {
 		if len(s.Args) == 0 {
@@ -86,15 +86,14 @@ func toolIdentity(script shell.Script) string {
 		if err != nil {
 			return ""
 		}
-		info, err := os.Stat(resolved)
+		identity, err := platform.ExecutableDigest(ctx, resolved)
 		if err != nil {
 			return ""
 		}
-		identity, err := platform.FileIdentity(resolved)
-		if err != nil {
-			return ""
-		}
-		parts = append(parts, fmt.Sprintf("%s:%s:%d:%d:%s", resolved, identity, info.Size(), info.ModTime().UnixNano(), info.Mode()))
+		parts = append(parts, identity)
+	}
+	if len(parts) == 1 {
+		return parts[0]
 	}
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(parts, "\x00"))))
 }
@@ -141,7 +140,7 @@ func (t Tasks) BeforeCommand(ctx context.Context, e event.Event) (event.Decision
 		}
 		task = *view.Task
 		record.InputRevision, record.Tree = task.RecordRevision, observed.Tree
-		record.Scope.Tool = toolIdentity(record.Command)
+		record.Scope.Tool = toolIdentity(ctx, record.Command)
 		if err = check.Verification(ctx, t.Store, t.Workspace, task, &record); err != nil {
 			record.Scope.Complete = false
 			record.Scope.Reason = check.CommandResultReason(err)

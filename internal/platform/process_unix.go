@@ -19,6 +19,13 @@ func startProcess(input ProcessCommand) (*processGroup, error) {
 	if err := command.Start(); err != nil {
 		return nil, err
 	}
+	if input.LowPriority {
+		if err := syscall.Setpriority(syscall.PRIO_PROCESS, command.Process.Pid, 10); err != nil {
+			_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
+			_ = command.Wait()
+			return nil, err
+		}
+	}
 	return &processGroup{command: command}, nil
 }
 
@@ -43,6 +50,18 @@ func (p *processGroup) terminate() error {
 }
 
 func (p *processGroup) close() {}
+
+func (p *processGroup) suspend(paused bool) error {
+	signal := syscall.SIGCONT
+	if paused {
+		signal = syscall.SIGSTOP
+	}
+	err := syscall.Kill(-p.command.Process.Pid, signal)
+	if errors.Is(err, syscall.ESRCH) {
+		return nil
+	}
+	return err
+}
 
 func (p *processGroup) resources() *ProcessResources {
 	state := p.command.ProcessState

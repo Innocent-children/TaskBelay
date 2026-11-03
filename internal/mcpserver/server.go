@@ -210,6 +210,7 @@ func register[Input any](server *mcp.Server, name, description string, write boo
 		wire, _ := json.Marshal(toolResult)
 		ledger.DebugRecord(ctx, "mcp.output_size", map[string]any{"business_bytes": len(business), "protocol_bytes": len(wire), "estimated_tokens": summary.Tokens(string(wire)), "budget": outputBudget(name)})
 		failure = nil
+		service.Background.Schedule(actor)
 		return toolResult, nil, nil
 	})
 }

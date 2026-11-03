@@ -164,9 +164,14 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 			r.Report.Unfinished = append(r.Report.Unfinished, requirement)
 		}
 	}
-	if options.Depth == "tests" {
-		r.Missing = append(r.Missing, ledger.CheckGap{Operation: "dynamic", Kind: "unknown", Reason: "没有已完成的副本运行"})
-		r.Report.NotRun = append(r.Report.NotRun, "副本运行")
+	if options.Depth == "tests" && data.After.Tree != "" {
+		if err := runDynamic(work, store, w, actor, view, data, &r, options.Refresh); err != nil {
+			kind := "error"
+			if work.Err() != nil {
+				kind = "incomplete"
+			}
+			r.Missing = append(r.Missing, ledger.CheckGap{Operation: "dynamic", Kind: kind, Reason: err.Error()})
+		}
 	}
 	if len(r.Missing) > 0 {
 		r.Status = ledger.CheckPartial

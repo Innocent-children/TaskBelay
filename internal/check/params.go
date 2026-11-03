@@ -13,6 +13,7 @@ const (
 	Regularization          = 4.0                    // 向初始权重收缩的强度；见 algorithm.md 六节。
 	FitPrecision            = 0.000001               // 拟合梯度停止精度；见 algorithm.md 六节。
 	PublishReserve          = 300 * time.Millisecond // 为结果落账保留时间；见 product-architecture.md 性能预算。
+	BackgroundPoll          = time.Second            // MCP 后台观察已登记输入变化的间隔；见 algorithm.md 九节。
 	ReuseHints              = 3                      // 用户消息中已有单元提示上限；见 algorithm.md 九节。
 	CalibrationSignificance = 0.05                   // 恢复内容的多重比较显著性；见 algorithm.md 七节。
 )

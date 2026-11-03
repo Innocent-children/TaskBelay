@@ -181,6 +181,9 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 		if dynamic.Status == ledger.CheckExpired {
 			record.Status = ledger.CheckExpired
 		}
+		if dynamic.Status != ledger.CheckExpired {
+			record = *dynamic
+		}
 	}
 	current, err := t.Workspace.Capture(ctx)
 	record.Report.Verifications = view.Verifications
