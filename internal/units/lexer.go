@@ -1,0 +1,252 @@
+package units
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"sort"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
+
+type Source struct {
+	Path, Blob, Mode string
+	Data             []byte
+}
+type Syntax struct {
+	Quotes, Comments, Keywords, Returns []string
+	Samples                             int
+	CallRatio                           float64
+}
+type Token struct {
+	Kind, Text       string
+	Start, End, Line int
+}
+type Unit struct {
+	ID, Name                                     string
+	Start, End, HeaderEnd, Line, EndLine, Parent int
+	Tokens                                       []Token
+}
+type File struct {
+	Path, Blob, Mode                 string
+	Binary                           bool
+	Tokens                           []Token
+	Units                            []Unit
+	Lines                            []string
+	Layout                           string
+	Consistency, Confidence, Natural float64
+}
+
+func Hash(parts ...string) string {
+	h := sha256.New()
+	for _, part := range parts {
+		h.Write([]byte(part))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func (s Syntax) Key() string { b, _ := json.Marshal(s); return Hash(string(b)) }
+
+func Words(text string) []string {
+	var words []string
+	r := []rune(text)
+	start := -1
+	flush := func(end int) {
+		if start >= 0 && end > start {
+			words = append(words, strings.ToLower(string(r[start:end])))
+		}
+		start = -1
+	}
+	for i, c := range r {
+		if !unicode.IsLetter(c) && !unicode.IsDigit(c) {
+			flush(i)
+			continue
+		}
+		if start < 0 {
+			start = i
+			continue
+		}
+		if unicode.IsUpper(c) && (unicode.IsLower(r[i-1]) || (i+1 < len(r) && unicode.IsLower(r[i+1]) && unicode.IsUpper(r[i-1]))) {
+			flush(i)
+			start = i
+		}
+	}
+	flush(len(r))
+	return words
+}
+
+func Analyze(ctx context.Context, source Source, syntax Syntax) (File, error) {
+	f := File{Path: source.Path, Blob: source.Blob, Mode: source.Mode}
+	if err := ctx.Err(); err != nil {
+		return f, err
+	}
+	text := string(source.Data)
+	if strings.IndexByte(text, 0) >= 0 || !utf8.Valid(source.Data) {
+		f.Binary = true
+		return f, nil
+	}
+	f.Lines = strings.SplitAfter(text, "\n")
+	comments := append([]string(nil), syntax.Comments...)
+	sort.Slice(comments, func(i, j int) bool {
+		if len(comments[i]) == len(comments[j]) {
+			return comments[i] < comments[j]
+		}
+		return len(comments[i]) > len(comments[j])
+	})
+	line, nextPoll := 1, 0
+	for i := 0; i < len(text); {
+		if i >= nextPoll {
+			if err := ctx.Err(); err != nil {
+				return f, err
+			}
+			nextPoll = i + PollBytes
+		}
+		start, at := i, line
+		kind := "symbol"
+		r, n := utf8.DecodeRuneInString(text[i:])
+		matched := false
+		for _, prefix := range comments {
+			if prefix != "" && strings.HasPrefix(text[i:], prefix) {
+				if end := strings.IndexByte(text[i:], '\n'); end >= 0 {
+					i += end
+				} else {
+					i = len(text)
+				}
+				kind = "comment"
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			for _, quote := range syntax.Quotes {
+				if quote != "" && strings.HasPrefix(text[i:], quote) {
+					i += len(quote)
+					for i < len(text) {
+						if text[i] == '\\' && i+1 < len(text) {
+							_, size := utf8.DecodeRuneInString(text[i+1:])
+							i += 1 + size
+							continue
+						}
+						if strings.HasPrefix(text[i:], quote) {
+							i += len(quote)
+							break
+						}
+						_, size := utf8.DecodeRuneInString(text[i:])
+						i += size
+					}
+					kind = "string"
+					inner := strings.TrimSuffix(strings.TrimPrefix(text[start:i], quote), quote)
+					if isKey(inner) {
+						kind = "key"
+					}
+					matched = true
+					break
+				}
+			}
+		}
+		if !matched {
+			i += n
+			switch {
+			case unicode.IsSpace(r):
+				kind = "space"
+				for i < len(text) {
+					v, size := utf8.DecodeRuneInString(text[i:])
+					if !unicode.IsSpace(v) {
+						break
+					}
+					i += size
+				}
+			case unicode.IsLetter(r) || r == '_':
+				kind = "identifier"
+				for i < len(text) {
+					v, size := utf8.DecodeRuneInString(text[i:])
+					if !unicode.IsLetter(v) && !unicode.IsDigit(v) && v != '_' {
+						break
+					}
+					i += size
+				}
+			case unicode.IsDigit(r):
+				kind = "number"
+				for i < len(text) {
+					v, size := utf8.DecodeRuneInString(text[i:])
+					if !unicode.IsDigit(v) && v != '.' {
+						break
+					}
+					i += size
+				}
+			default:
+				if i < len(text) {
+					pair := text[start : i+1]
+					switch pair {
+					case "<=", ">=", "==", "!=", "&&", "||", ":=", "=>", "->", "++", "--", "**":
+						i++
+					}
+				}
+			}
+		}
+		line += strings.Count(text[start:i], "\n")
+		f.Tokens = append(f.Tokens, Token{Kind: kind, Text: text[start:i], Start: start, End: i, Line: at})
+	}
+	f.Units, f.Layout, f.Consistency = layout(f)
+	assignNames(&f, syntax)
+	var prose, total int
+	for _, t := range f.Tokens {
+		if t.Kind == "space" {
+			continue
+		}
+		total++
+		if t.Kind == "comment" || t.Kind == "string" {
+			prose += len(Words(t.Text))
+		}
+	}
+	if total > 0 {
+		f.Natural = float64(prose) / float64(total+prose)
+	}
+	sample := float64(syntax.Samples) / (float64(syntax.Samples) + ConfidencePrior)
+	f.Confidence = f.Consistency * sample * (1 + syntax.CallRatio) / 2
+	return f, ctx.Err()
+}
+
+func isKey(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '-' && r != '.' {
+			return false
+		}
+	}
+	return true
+}
+func Significant(tokens []Token) []Token {
+	out := make([]Token, 0, len(tokens))
+	for _, t := range tokens {
+		if t.Kind != "space" && t.Kind != "comment" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+func Sequence(tokens []Token, normalize bool) []string {
+	var out []string
+	for _, t := range Significant(tokens) {
+		if normalize && (t.Kind == "number" || t.Kind == "key" || t.Kind == "string") {
+			out = append(out, "@"+t.Kind)
+		} else {
+			out = append(out, t.Text)
+		}
+	}
+	return out
+}
+func Literal(t Token) string {
+	if t.Kind == "string" || t.Kind == "key" {
+		r := []rune(t.Text)
+		if len(r) > 1 {
+			return string(r[1 : len(r)-1])
+		}
+	}
+	return t.Text
+}
