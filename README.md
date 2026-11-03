@@ -20,10 +20,12 @@ TaskBelay 是一个在本机运行的 Go 命令行工具，通过 hook 和 MCP �
 | Agent | Claude Code、Codex |
 | 系统与架构 | macOS、Linux、Windows；amd64、arm64。WSL 按 Linux 安装和运行 |
 | 工作区 | Git 仓库及其 worktree，各工作区分别管理任务 |
-| 文件与代码 | 所有文件支持文件级记录与检查；内置语法和 tags 查询的语言支持代码级分析 |
-| 测试分析 | Go、Python、JavaScript、TypeScript、Java、Rust 的已支持框架；实际能力取决于框架和本机工具，见[语言支持](docs/languages.md) |
+| 当前文件与代码 | 所有文件支持文件级记录与检查；内置语法和 tags 查询的语言支持代码级分析 |
+| 当前测试分析 | Go、Python、JavaScript、TypeScript、Java、Rust 的已支持框架；实际能力取决于框架和本机工具 |
 
 TaskBelay 没有常驻后台服务。hook 在 Agent 事件发生时启动短进程，MCP 进程随 Agent 会话运行，二者通过本机 SQLite 账本共享记录。动态分析使用项目自己的测试工具。
+
+文档中的下一版算法改为语言无关的证据超图、增量维护、有限域约束优化和加权集合覆盖，不再按语言分级或用固定数量裁定过度设计、过度测试。上述支持表说明当前实现；新算法尚未落地，现有安装命令、MCP 和账本格式不因此改变。设计入口见[算法核心](docs/algorithm.md)和[输入与执行协议](docs/languages.md)。
 
 ## 快速开始
 
@@ -195,6 +197,7 @@ taskbelay uninstall --all
 | --- | --- |
 | [产品需求](docs/product.md) | 产品目标、使用场景、模式和默认行为 |
 | [任务和需求](docs/requirements.md) | 任务生命周期、累计改动、用户修改与需求变更 |
+| [算法核心](docs/algorithm.md)、[输入与执行协议](docs/languages.md) | 目标算法的统一事实、证据维护、语言无关协议及实现边界 |
 | [过度设计判定](docs/over-design.md)、[过度测试判定](docs/over-testing.md) | 检查依据、反馈和验证规则 |
 | [Agent 接入](docs/product-agent-integration.md) | 安装、hook、MCP、平台差异与故障处理 |
 | [系统架构](docs/product-architecture.md) | 进程、模块职责、存储和调试记录 |
