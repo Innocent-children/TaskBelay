@@ -36,6 +36,9 @@ func FormatIssues(issues []ledger.Issue, hintLimit int) string {
 }
 
 func Format(record ledger.CheckRecord, hintLimit int) string {
+	if hintLimit > 0 {
+		return compactReport(record, hintLimit)
+	}
 	var text strings.Builder
 	if record.Static != nil {
 		fmt.Fprintln(&text, Format(*record.Static, hintLimit))
@@ -44,6 +47,9 @@ func Format(record ledger.CheckRecord, hintLimit int) string {
 	fmt.Fprintf(&text, "检查时间：%s 至 %s\n", record.StartedAt.Format("2006-01-02T15:04:05Z07:00"), record.FinishedAt.Format("2006-01-02T15:04:05Z07:00"))
 	counts := record.GapCounts()
 	fmt.Fprintf(&text, "检查范围：%d 项无法判断；%d 项解析或执行错误；%d 项未完成。\n", counts["unsupported"], counts["error"], counts["incomplete"])
+	for _, coverage := range record.Report.Coverage {
+		fmt.Fprintf(&text, "文件覆盖：%s；级别=%s；已完成操作=%s\n", coverage.Path, coverage.Level, strings.Join(coverage.Operations, ", "))
+	}
 	if record.Reused {
 		fmt.Fprintln(&text, "本次复用上述执行结果，未知判断一并保留。")
 	}
@@ -93,6 +99,10 @@ func Format(record ledger.CheckRecord, hintLimit int) string {
 		}
 	}
 	for _, risk := range record.Report.TestRisk {
+		if !risk.Complete {
+			fmt.Fprintf(&text, "测试投入 %s：风险未完整核对，不提供数量建议；%s\n", risk.Requirement, strings.Join(risk.Evidence, "; "))
+			continue
+		}
 		fmt.Fprintf(&text, "测试投入 %s：新增 %d（用户保留 %d）、修改 %d、既有 %d；风险建议 %d，风险核对完整=%t。建议数不是上限。\n", risk.Requirement, risk.Added, risk.Retained, risk.Modified, risk.Existing, risk.Recommended, risk.Complete)
 		for _, source := range risk.Sources {
 			fmt.Fprintf(&text, "  风险：%s %s:%d %s\n", source.Kind, source.At, source.Line, source.Evidence)

@@ -101,7 +101,10 @@ func (t Tasks) HandleOutput(ctx context.Context, e event.Event, raw []byte, outp
 			err = fmt.Errorf("保存接续摘要交付状态: %w", err)
 		}
 	}
-	finishErr := t.Store.FinishHook(ctx, id, d, err)
+	// 终态写入不继承已耗尽的处理预算，否则失败事件会永久停留在 pending。
+	finishCtx, finishCancel := context.WithTimeout(context.WithoutCancel(ctx), ledger.NormalWait)
+	defer finishCancel()
+	finishErr := t.Store.FinishHook(finishCtx, id, d, err)
 	ledger.DebugRecord(ctx, "hook.recorded", map[string]any{"hook_id": id, "decision": d, "completed": err == nil && finishErr == nil})
 	if finishErr != nil {
 		finishErr = fmt.Errorf("登记 hook 结束: %w", finishErr)
@@ -146,7 +149,9 @@ func (t Tasks) dispatch(ctx context.Context, e event.Event) (event.Decision, err
 				_, err = t.Observe(ctx, e, task)
 			}
 		} else {
-			_, err = t.Observe(ctx, e, task)
+			if e.Command == nil || !CommandScript(e).ReadOnly() {
+				_, err = t.Observe(ctx, e, task)
+			}
 		}
 	default:
 		err = fmt.Errorf("不支持统一事件 %q", e.Kind)

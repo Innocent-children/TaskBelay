@@ -60,6 +60,10 @@ func Classify(s Segment) (Kind, string) {
 		if has("test", "verify", "package", "install", "compile", "build", "check", "assemble") {
 			return Verification, "java"
 		}
+	case "hvigor", "hvigorw", "hvigorw.bat", "hvigorw.cmd", "hvigor.js":
+		if has("assembleHap", "assembleApp", "assembleHar", "assembleHsp", "test", "ohosTest", "lint") {
+			return Verification, "arkts"
+		}
 	case "dotnet", "swift":
 		if oneOf(verb, "test", "build") {
 			return Verification, ""
@@ -138,6 +142,9 @@ func oneOf(value string, values ...string) bool {
 }
 
 func ReusableCommand(s Segment) bool {
+	if s.Language == "arkts" {
+		return false
+	}
 	if s.Kind != Verification || !s.Known || s.SideEffect || s.Background {
 		return false
 	}

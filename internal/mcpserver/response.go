@@ -208,6 +208,18 @@ func checkResponse(record ledger.CheckRecord, execution bool) map[string]any {
 	}
 	value := map[string]any{"task_id": record.Input.TaskID, "id": record.ID, "input_version": record.InputVersion, "status": record.Status, "computed_status": record.ComputedStatus, "level": record.Level, "depth": record.Depth, "started_at": record.StartedAt, "finished_at": record.FinishedAt, "issues_count": len(record.Issues), "missing_count": len(record.Missing), "evaluated_count": len(record.Evaluated), "tests_count": map[string]int{"added": added, "modified": modified, "existing_related": existing, "unknown": unknown}, "read": readLink(record.Input.TaskID, "checks", strconv.FormatInt(record.ID, 10), 0)}
 	value["gap_counts"] = record.GapCounts()
+	coverage := map[string]int{"code": 0, "file": 0, "excluded": 0}
+	for _, file := range record.Report.Coverage {
+		coverage[file.Level]++
+	}
+	unknownRisk := 0
+	for _, risk := range record.Report.TestRisk {
+		if !risk.Complete {
+			unknownRisk++
+		}
+	}
+	value["coverage_counts"], value["unknown_risk_count"] = coverage, unknownRisk
+	value["coverage_note"] = "status 表示执行状态；文件级不表示行为或测试风险已检查，未完整风险不提供数量建议。"
 	value["unconfirmed_count"] = len(record.Unconfirmed)
 	value["details"] = map[string]any{"issues": items, "missing": gaps, "tests": tests}
 	if execution {
@@ -235,6 +247,8 @@ func finishResponse(result ledger.FinishResult) map[string]any {
 			brief := checkResponse(*record, false)
 			details[depth] = brief["details"]
 			value[depth] = map[string]any{"id": record.ID, "status": record.Status, "level": record.Level, "issues_count": len(record.Issues), "gap_counts": record.GapCounts(), "unconfirmed_count": len(record.Unconfirmed), "read": brief["read"]}
+			value[depth].(map[string]any)["coverage_counts"] = brief["coverage_counts"]
+			value[depth].(map[string]any)["unknown_risk_count"] = brief["unknown_risk_count"]
 		}
 	}
 	value["details"] = details

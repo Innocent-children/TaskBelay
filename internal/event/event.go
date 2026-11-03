@@ -102,6 +102,7 @@ type SessionRecord struct {
  * 没有强制允许字段，避免覆盖 Agent 自己的权限判断。
  */
 type Decision struct {
+	FeedbackKey       string
 	Records           []SessionRecord `json:"-"`
 	AdditionalContext string
 	DenyTool          string
@@ -110,10 +111,11 @@ type Decision struct {
 }
 
 const (
-	FastBudget    = 50 * time.Millisecond
-	EditBudget    = 300 * time.Millisecond
-	MessageBudget = time.Second
-	MCPBudget     = time.Second
-	StaticBudget  = 20 * time.Second
-	TestsBudget   = 120 * time.Second
+	FastBudget        = 50 * time.Millisecond
+	EditBudget        = 300 * time.Millisecond
+	MessageBudget     = time.Second
+	ObservationBudget = 5 * time.Second
+	MCPBudget         = time.Second
+	StaticBudget      = 20 * time.Second
+	TestsBudget       = 120 * time.Second
 )

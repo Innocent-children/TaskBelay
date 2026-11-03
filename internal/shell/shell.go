@@ -211,6 +211,10 @@ func unwrap(s *Segment) {
 			if len(s.Args) > 2 && s.Args[1] == "-m" {
 				n = 2
 			}
+		case "node", "nodejs":
+			if len(s.Args) > 1 && Base(s.Args[1]) == "hvigor.js" {
+				n = 1
+			}
 		}
 		if n == 0 || n >= len(s.Args) {
 			break
@@ -260,6 +264,22 @@ func (s Script) HasVerification() bool {
 		}
 	}
 	return false
+}
+
+/**
+ * 只有完整解析且所有命令段均无写入的调用才能省略后置全量观察。
+ * 外部并发更新仍由编辑前目标核对、消息、检查和 Stop 的完整观察捕获。
+ */
+func (s Script) ReadOnly() bool {
+	if s.Complex || len(s.Missing) != 0 || len(s.Segments) == 0 {
+		return false
+	}
+	for _, segment := range s.Segments {
+		if !segment.Known || segment.SideEffect || segment.Background || segment.Kind != ReadOnly && segment.Kind != Context {
+			return false
+		}
+	}
+	return true
 }
 
 func (s Script) Mixed() bool {

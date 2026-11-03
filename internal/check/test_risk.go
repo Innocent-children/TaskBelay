@@ -37,6 +37,28 @@ func (s *staticAnalysis) testRisk(requirement ledger.Requirement) ledger.TestRis
 			}
 		}
 	}
+	// 未解析文件不能从声明集合中消失；混合需求也要保留其未覆盖部分。
+	for _, snapshot := range []codescan.Snapshot{s.before, s.after} {
+		for path, file := range snapshot.Files {
+			if excluded(file) || !s.fileChanged(path) || !slices.Contains(s.association.Requirements[path], requirement.ID) {
+				continue
+			}
+			if !file.CodeComplete || !file.Operations["risks"].Complete {
+				result.Complete = false
+				result.Evidence = append(result.Evidence, path+"：仅有文件级或部分分析，无法据此判断行为风险")
+			}
+		}
+	}
+	for _, location := range requirement.ImplementedBy {
+		if location.Pending != "" {
+			result.Complete = false
+			result.Evidence = append(result.Evidence, location.At+"：实现位置尚未核对")
+		}
+	}
+	if len(changes) == 0 {
+		result.Complete = false
+		result.Evidence = append(result.Evidence, "尚未定位可评估的需求代码；不提供测试数量建议，不代表没有行为风险")
+	}
 	var ids []string
 	for id := range changes {
 		ids = append(ids, id)
@@ -127,7 +149,7 @@ func (s *staticAnalysis) testRisk(requirement ledger.Requirement) ledger.TestRis
 			}
 		}
 		result.Recommended = min(8, result.Recommended+result.Branches/4)
-	} else {
+	} else if result.Complete {
 		result.Evidence = append(result.Evidence, "当前可定位范围只有简单取值或非行为变化，通常不额外增加测试；有明确回归目的的用例仍可保留")
 	}
 	for _, location := range requirement.ImplementedBy {
@@ -139,6 +161,11 @@ func (s *staticAnalysis) testRisk(requirement ledger.Requirement) ledger.TestRis
 		a, b := result.Sources[i], result.Sources[j]
 		return a.Kind+"\x00"+a.At+"\x00"+a.Evidence < b.Kind+"\x00"+b.At+"\x00"+b.Evidence
 	})
+	if !result.Complete {
+		result.Recommended = -1
+	}
+	slices.Sort(result.Evidence)
+	result.Evidence = slices.Compact(result.Evidence)
 	return result
 }
 

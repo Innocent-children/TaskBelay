@@ -61,7 +61,7 @@ func applyTextHunks(current string, hunks []event.TextHunk) (*string, error) {
 			}
 			if ok {
 				if match != -1 {
-					return -1
+					return -2
 				}
 				match = i
 			}
@@ -71,6 +71,9 @@ func applyTextHunks(current string, hunks []event.TextHunk) (*string, error) {
 	for _, hunk := range hunks {
 		if hunk.Anchor != nil {
 			at := find([]string{*hunk.Anchor}, offset, false)
+			if at == -2 {
+				return nil, fmt.Errorf("补丁锚点有多个匹配位置")
+			}
 			if at < 0 {
 				return nil, nil
 			}
@@ -88,6 +91,9 @@ func applyTextHunks(current string, hunks []event.TextHunk) (*string, error) {
 		at := len(lines)
 		if len(before) > 0 {
 			at = find(before, offset, hunk.AtEnd)
+			if at == -2 {
+				return nil, fmt.Errorf("补丁上下文有多个匹配位置")
+			}
 			if at < 0 {
 				return nil, nil
 			}

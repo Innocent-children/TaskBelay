@@ -63,6 +63,16 @@ ON CONFLICT(workspace_id,agent,session_id) DO UPDATE SET activity_at=excluded.ac
 	return id, err
 }
 
+func (s *Store) HookFeedbackSent(ctx context.Context, workspace string, actor Actor, key string) (bool, error) {
+	var found bool
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		return q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM hook_events_v11
+WHERE workspace_id=? AND agent=? AND session_id=? AND kind='stop' AND state='recorded'
+AND json_extract(decision,'$.FeedbackKey')=?)`, workspace, actor.Agent, actor.SessionID, key).Scan(&found)
+	})
+	return found, err
+}
+
 func (s *Store) FinishHook(ctx context.Context, id int64, d event.Decision, failure error) error {
 	encoded, err := json.Marshal(d)
 	if err != nil {

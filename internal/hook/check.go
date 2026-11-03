@@ -204,13 +204,14 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 	if record.Status == ledger.CheckPartial || record.Status == ledger.CheckFailed || dynamic != nil && (dynamic.Status == ledger.CheckPartial || dynamic.Status == ledger.CheckFailed) {
 		text = "TaskBelay 这次没有完成全部检查；已完成的事实和具体原因如下。\n" + text
 	}
+	text = check.LimitFeedback(text)
 	decision := event.Decision{AdditionalContext: text, UserMessage: text}
 	decision.Records = append(decision.Records, checkFeedback(delivery.Check, delivery.Blocked)...)
 	if dynamic != nil {
 		decision.Records = append(decision.Records, checkFeedback(*dynamic, nil)...)
 	}
 	if len(delivery.Blocked) > 0 {
-		decision.BlockStop = check.FormatIssues(delivery.Blocked, 0)
+		decision.BlockStop = check.LimitFeedback(check.FormatIssues(delivery.Blocked, 0))
 	}
 	return decision, nil
 }
@@ -218,6 +219,23 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 func (t Tasks) ordinaryStop(ctx context.Context, actor ledger.Actor, view ledger.TaskView, request *ledger.FinishRequest) (event.Decision, error) {
 	if request != nil && request.State == "expired" {
 		return event.Decision{UserMessage: "TaskBelay：本轮交付请求已过期，任务仍在进行中；完成当前修改后重新申请交付。"}, nil
+	}
+	if view.Task != nil && view.Task.State == ledger.TaskActive && len(view.Requirements) > 0 {
+		completed := false
+		for _, requirement := range view.Requirements {
+			if requirement.Status != "completed" && requirement.Status != "revoked" {
+				return event.Decision{}, nil
+			}
+			completed = completed || requirement.Status == "completed"
+		}
+		if completed {
+			key := fmt.Sprintf("missing_finish:%s:%d", view.Task.ID, view.Task.RequirementRevision)
+			sent, err := t.Store.HookFeedbackSent(ctx, t.Workspace.ID, actor, key)
+			if err != nil || sent {
+				return event.Decision{}, err
+			}
+			return event.Decision{FeedbackKey: key, UserMessage: "TaskBelay：需求已标记完成，但本轮没有有效交付请求，尚未执行交付检查。完成工作后调用 task_finish；本次停顿不会自动完成任务。"}, nil
+		}
 	}
 	return event.Decision{}, nil
 }

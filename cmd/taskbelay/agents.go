@@ -97,6 +97,8 @@ func runHook(ctx context.Context, args []string, env platform.Env, input io.Read
 			budget = event.EditBudget
 		} else if e.Kind == event.CommandUse && hook.CommandScript(e).HasVerification() {
 			budget, wait = event.MessageBudget, ledger.NormalWait
+		} else if e.Kind == event.SessionStart || e.Kind == event.UserPrompt || e.Kind == event.ToolEnd && len(e.Edits) == 0 && (e.Command == nil || !hook.CommandScript(e).ReadOnly()) {
+			budget = event.ObservationBudget
 		}
 		ctx, cancel := context.WithDeadline(ctx, started.Add(budget))
 		defer cancel()

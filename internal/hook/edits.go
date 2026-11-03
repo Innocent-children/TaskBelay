@@ -7,6 +7,8 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/event"
 )
 
+const patchContextMissing = "当前内容未精确匹配补丁上下文；请读取当前文件并补充上下文"
+
 /**
  * 每次都核对具体原文。此前的冲突提示不能成为覆盖过期内容的授权；
  * 无法解析的补丁保留为未核对，由适配层按自身故障处理。
@@ -21,10 +23,10 @@ func expectedContent(edit event.FileEdit, current string, exists, updated bool) 
 		}
 		content, err := applyTextHunks(current, edit.Hunks)
 		if err != nil {
-			return "", false, false, "补丁格式无法核对: " + err.Error()
+			return "", false, false, "补丁无法核对，实际变化保留为工作区更新: " + err.Error()
 		}
 		if content == nil {
-			return "", false, true, "补丁上下文与当前文件不一致或无法唯一定位"
+			return "", false, false, patchContextMissing
 		}
 		return *content, true, false, ""
 	}
@@ -40,10 +42,10 @@ func expectedContent(edit event.FileEdit, current string, exists, updated bool) 
 	if edit.Patch != "" {
 		content, err := applyPatch(current, edit.Patch)
 		if err != nil {
-			return "", false, false, "补丁格式无法核对: " + err.Error()
+			return "", false, false, "补丁无法核对，实际变化保留为工作区更新: " + err.Error()
 		}
 		if content == nil {
-			return "", false, true, "补丁上下文与当前文件不一致或无法唯一定位"
+			return "", false, false, patchContextMissing
 		}
 		return *content, true, false, ""
 	}
@@ -60,8 +62,11 @@ func expectedContent(edit event.FileEdit, current string, exists, updated bool) 
 		return *edit.After, true, false, ""
 	}
 	count := strings.Count(current, *edit.Before)
-	if !exists || *edit.Before == "" || count == 0 || !edit.ReplaceAll && count != 1 {
-		return "", false, true, "请求中的原文与当前内容不一致或无法唯一定位"
+	if *edit.Before == "" || !edit.ReplaceAll && count > 1 {
+		return "", false, false, "请求中的原文为空或有多个匹配位置，无法核对编辑归属"
+	}
+	if !exists || count == 0 {
+		return "", false, true, "请求中的原文与当前内容不一致"
 	}
 	if edit.ReplaceAll {
 		return strings.ReplaceAll(current, *edit.Before, *edit.After), true, false, ""
@@ -133,7 +138,10 @@ func applyPatch(current, patch string) (*string, error) {
 			current = hunk.after
 			continue
 		}
-		if strings.Count(current[offset:], hunk.before) != 1 {
+		if strings.Count(current[offset:], hunk.before) > 1 {
+			return nil, fmt.Errorf("补丁上下文有多个匹配位置")
+		}
+		if strings.Count(current[offset:], hunk.before) == 0 {
 			return nil, nil
 		}
 		start := offset + strings.Index(current[offset:], hunk.before)

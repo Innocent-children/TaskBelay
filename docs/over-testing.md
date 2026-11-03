@@ -22,6 +22,8 @@ TaskBelay 分别检查测试代码和验证过程。测试代码检查帮助 Age
 
 每类风险计一次，建议总数最多八条。这个数字用于提醒 Agent 复核测试投入；配置、安全默认值和删除旧行为等需求，仍可有需要保留的回归测试。
 
+没有定位到可评估的需求代码、实现位置待核对，或相关变更只有文件级能力时，风险保持未完整核对，不提供数量建议，不登记 T3、T6 已完成评估。接口中的 `recommended=-1` 表示没有有效建议，不能解释为零风险；一条需求同时关联可分析代码和未解析文件时，也保留未覆盖部分。文档等非代码任务不因没有声明被要求补测试。
+
 ## 测试代码规则
 
 ### T1 没观察到需求代码覆盖（提示）
@@ -67,6 +69,7 @@ TaskBelay 分别检查测试代码和验证过程。测试代码检查帮助 Age
 | Python 验证 | pytest、unittest、tox、nox、ruff check、mypy、pyright |
 | Rust 验证 | cargo test/build/check/clippy、cargo nextest run |
 | Java、Kotlin 验证 | Maven、Gradle 及其 wrapper 的 test/verify/package/install/compile/build/check/assemble |
+| HarmonyOS 验证记录 | hvigor、hvigorw 及 Windows wrapper 的 assembleHap/assembleApp/assembleHar/assembleHsp/test/ohosTest/lint；支持 node 启动 hvigor.js |
 | 其他验证 | dotnet test/build、rspec、rake test、rails test、phpunit、swift test/build、ctest、cmake --build；make 的 test/check/lint/build/ci 目标 |
 | 只读 | 读取和检索文件、查询位置、查看 git 状态或差异等无写入用法 |
 | 其他 | 安装、启动服务、修改环境或文件，以及未识别的命令 |
@@ -74,6 +77,8 @@ TaskBelay 分别检查测试代码和验证过程。测试代码检查帮助 Age
 只读类别按参数和重定向核对，命令名本身不代表只读。`sed -i`、`find -delete` 或输出重定向按实际写入处理。`npx`、`pnpm exec`、`bunx`、`uv run`、`poetry run`、`pipenv run`、`bundle exec`、`vendor/bin/`、`./` 和 Python 的 `-m` 前缀按后续命令分类。
 
 一条工具调用里有验证段，计一次验证；混有其他命令时照常记录，但不做重复拦截。记录实际工作目录、参数和环境标识。比较命令时按解析后的参数和执行目录比较，只规整语法层面的空白，保留引号内的空格和字面值。
+
+命令识别与 Runner 能力分开。Hvigor 可以记录退出状态、次数和前后事件，但尚无对应动态 Runner，不据此运行覆盖或变异，也不对构建产物命令作 V1 重复拦截。前置观察失败时，后置仍记录实际运行结果，并保留“命令前输入未知”。
 
 ## 验证过程规则
 

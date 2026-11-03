@@ -15,8 +15,8 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 )
 
-const RulesVersion = "D1-D8-E1-S1-S2-T3-T6-v5"
-const CapabilitiesVersion = "gotreesitter-0.56.0-facts-tests-v5"
+const RulesVersion = "D1-D8-E1-S1-S2-T3-T6-v6"
+const CapabilitiesVersion = "gotreesitter-0.56.0-facts-tests-v6"
 
 type staticAnalysis struct {
 	ctx         context.Context
@@ -48,6 +48,7 @@ func staticCheck(ctx context.Context, input ledger.CheckInput, view ledger.TaskV
 	s := staticAnalysis{ctx: ctx, before: before, after: after, view: view, changes: changes, association: association, sources: sources,
 		result: ledger.CheckRecord{Input: input, InputVersion: input.Version(), Depth: "static", Status: ledger.CheckComplete, Issues: []ledger.Issue{}, Missing: []ledger.CheckGap{}}, evaluated: map[string]bool{}}
 	s.result.Report = report(view, changes)
+	s.coverage()
 	s.result.Report.ChangesByRequirement = map[string][]string{}
 	for _, change := range changes {
 		d := change.After
@@ -291,7 +292,7 @@ func (s *staticAnalysis) requirementChange(change codescan.Change) {
 
 func (s *staticAnalysis) unused(d codescan.Declaration) {
 	at := d.Location()
-	if found, _ := s.explicit(at, d.File, false); found {
+	if found, _ := s.explicit(at, d.File, true); found {
 		s.scope("D1", at)
 		return
 	}

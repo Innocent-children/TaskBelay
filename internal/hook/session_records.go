@@ -27,7 +27,18 @@ func (t Tasks) recordCheck(actor ledger.Actor, record ledger.CheckRecord) {
 	if record.ID == 0 {
 		action = "检查结果未知"
 	}
-	t.recordSession(actor, event.SessionRecord{TaskID: record.Input.TaskID, Action: action, Object: record.Depth + " 检查", Detail: fmt.Sprintf("%s；状态：%s；结论：%s。", action, record.Status, record.Level), Sources: checkSource(record)})
+	fileOnly, unknownRisk := 0, 0
+	for _, file := range record.Report.Coverage {
+		if file.Level == "file" {
+			fileOnly++
+		}
+	}
+	for _, risk := range record.Report.TestRisk {
+		if !risk.Complete {
+			unknownRisk++
+		}
+	}
+	t.recordSession(actor, event.SessionRecord{TaskID: record.Input.TaskID, Action: action, Object: record.Depth + " 检查", Detail: fmt.Sprintf("%s；执行状态：%s；已核对范围结论：%s；仅文件级 %d 项，风险未完整核对 %d 项。", action, record.Status, record.Level, fileOnly, unknownRisk), Sources: checkSource(record)})
 }
 
 func feedbackRecord(task, action, object, detail string, sources ...string) event.SessionRecord {

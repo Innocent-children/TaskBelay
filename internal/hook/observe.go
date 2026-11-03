@@ -46,7 +46,9 @@ func (o Observer) observe(ctx context.Context, e event.Event, task string) (ledg
 		return ledger.Observation{}, err
 	}
 	observation := o.observation(e, task, string(e.Kind), view)
+	ledger.DebugRecord(ctx, "observation.capture.start", nil)
 	snapshot, captureErr := o.Workspace.Capture(ctx)
+	ledger.DebugRecord(ctx, "observation.capture.end", map[string]any{"complete": snapshot.Complete(), "files": len(snapshot.Files), "returned": captureErr == nil})
 	observation.Full, observation.Complete = true, snapshot.Complete()
 	observation.Tree, observation.Context = snapshot.Tree, snapshot.Context
 	observation.Files, observation.Incomplete, observation.Boundaries = snapshot.Files, snapshot.Incomplete, snapshot.Boundaries
@@ -64,10 +66,13 @@ func (o Observer) observe(ctx context.Context, e event.Event, task string) (ledg
 	if err != nil {
 		return observation, err
 	}
+	ledger.DebugRecord(ctx, "observation.retain.start", nil)
 	if err := o.retain(ctx, &observation, view, nil, nil); err != nil {
 		return observation, err
 	}
+	ledger.DebugRecord(ctx, "observation.retain.end", nil)
 	err = o.Store.SaveObservation(ctx, view, &observation, changes, nil)
+	ledger.DebugRecord(ctx, "observation.save.end", map[string]any{"id": observation.ID, "returned": err == nil})
 	return observation, errors.Join(captureErr, err)
 }
 
@@ -229,6 +234,17 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		requests := indices[path]
 		edit := e.Edits[requests[0]]
 		expected, verifiable, conflict, reason := expectedContent(edit, string(content), current.Blob != "", updated)
+		// 文件曾被用户修改不等于本次补丁过期。只有旧内容可匹配、当前内容
+		// 不可匹配且两次内容确实不同，才把上下文缺失升级为已证实冲突。
+		if reason == patchContextMissing && known && before.File.Blob != "" && before.File != current {
+			if previous, readErr := o.Workspace.ReadBlob(ctx, before.File.Blob); readErr == nil {
+				_, matched, _, _ := expectedContent(edit, string(previous), true, false)
+				if matched {
+					conflict = true
+					reason = "补丁匹配此前观察的内容，但目标内容随后发生变化；请按当前内容重新组织编辑"
+				}
+			}
+		}
 		if len(requests) > 1 {
 			// 同一补丁内的 hunks 有明确顺序；重复文件操作没有跨 Agent 共用的执行语义。
 			verifiable, conflict = false, false

@@ -112,6 +112,25 @@ type CheckGap struct {
 
 func (g CheckGap) Size() int { return max(1, g.Count) }
 
+/**
+ * 固定快照的语法错误不会因重跑消失；复用保留原状态和缺口。
+ * 执行错误、取消、超时及未知失败必须允许重新执行。
+ */
+func (r CheckRecord) ReusableStatic() bool {
+	if r.Depth != "static" || r.Status != CheckComplete && r.Status != CheckPartial {
+		return false
+	}
+	if r.Status == CheckPartial && len(r.Missing) == 0 {
+		return false
+	}
+	for _, gap := range r.Missing {
+		if gap.Kind != "unsupported" && !(gap.Kind == "error" && gap.Operation == "syntax" && gap.At != "") {
+			return false
+		}
+	}
+	return true
+}
+
 func (r CheckRecord) GapCounts() map[string]int {
 	counts := map[string]int{"unsupported": 0, "error": 0, "incomplete": 0}
 	for _, gap := range r.Missing {
@@ -184,6 +203,7 @@ type CheckRecord struct {
 }
 
 type DeliveryReport struct {
+	Coverage             []FileCoverage       `json:"coverage,omitempty"`
 	Dynamic              *testrun.Report      `json:"dynamic,omitempty"`
 	Tests                []TestFact           `json:"tests"`
 	TestRisk             []TestRisk           `json:"test_risk"`
@@ -198,6 +218,12 @@ type DeliveryReport struct {
 	Decisions            []Note               `json:"decisions"`
 	WorkspaceUpdates     []FileChange         `json:"workspace_updates"`
 	NotRun               []string             `json:"not_run"`
+}
+
+type FileCoverage struct {
+	Path       string   `json:"path"`
+	Level      string   `json:"level"`
+	Operations []string `json:"operations"`
 }
 
 type FinishInput struct {

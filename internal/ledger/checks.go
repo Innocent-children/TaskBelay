@@ -90,7 +90,7 @@ func (s *Store) CheckReusable(ctx context.Context, workspace string, actor Actor
 		if err := q.QueryRowContext(ctx, `SELECT seq,status FROM checks_v11 WHERE task_id=? AND depth=? AND input_version=? ORDER BY seq DESC LIMIT 1`, task.ID, record.Depth, record.InputVersion).Scan(&id, &status); err != nil {
 			return err
 		}
-		reusable = id == record.ID && status == CheckComplete
+		reusable = id == record.ID && status == record.Status && record.ReusableStatic()
 		return nil
 	})
 	return reusable, err

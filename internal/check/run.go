@@ -45,7 +45,7 @@ func runStatic(ctx context.Context, store *ledger.Store, workspace gitstate.Work
 		if err != nil {
 			return ledger.CheckRecord{}, err
 		}
-		if cached != nil && cached.Status == ledger.CheckComplete {
+		if cached != nil && cached.ReusableStatic() {
 			current, err := workspace.Capture(ctx)
 			if err != nil {
 				return ledger.CheckRecord{}, err
