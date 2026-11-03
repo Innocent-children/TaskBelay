@@ -139,7 +139,7 @@ func Calibrate(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v led
 					reason = "拒绝理由中的用户原话明确点名该对象"
 				}
 			}
-			gone, restored, userDeleted := false, false, false
+			gone, restored, userDeleted, acceptanceFailed := false, false, false, false
 			for _, r := range records {
 				if !r.At.After(note.At) || r.Path != strings.SplitN(issue.At, ":", 2)[0] {
 					continue
@@ -162,6 +162,11 @@ func Calibrate(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v led
 				}
 				if accepted && r.Kind == "agent_edit" && wasPresent && !present {
 					gone = true
+					failed, err := removalFailure(ctx, w, v, r, origin)
+					if err != nil {
+						return err
+					}
+					acceptanceFailed = acceptanceFailed || failed
 				}
 				if gone && r.Kind == "workspace_update" && present {
 					restored = true
@@ -172,6 +177,8 @@ func Calibrate(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v led
 			}
 			if restored {
 				reason = "Agent 采纳后，工作区更新恢复了相似内容"
+			} else if acceptanceFailed {
+				reason = "Agent 采纳后，在只有该文件撤回变化的快照上，既有验收由通过变为失败"
 			} else if accepted && gone && complete {
 				reason = "Agent 采纳，到任务完成时没有恢复"
 				label = true
@@ -180,13 +187,75 @@ func Calibrate(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v led
 				label = true
 			}
 			if reason != "" {
-				if err = s.SaveCalibration(ctx, ledger.CalibrationLabel{ID: units.Hash(v.Task.ID, issue.ID, note.ID, reason), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: reason, Signals: issue.Signals, Accepted: label}); err != nil {
+				if err = s.SaveCalibration(ctx, ledger.CalibrationLabel{ID: units.Hash(v.Task.ID, issue.ID, note.ID), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: reason, Signals: issue.Signals, Accepted: label}); err != nil {
 					return err
 				}
 			}
 		}
 	}
 	return nil
+}
+
+// 两次命令的输入只相差已记录的撤回文件时，才把验收失败关联到该反馈。
+func removalFailure(ctx context.Context, w gitstate.Workspace, view ledger.TaskView, edit ledger.FileChange, origin repostats.Repository) (bool, error) {
+	model := repostats.LearnResults(runSamples(view.Verifications), repostats.CaseNames(origin))
+	for _, failed := range view.Verifications {
+		if failed.Algorithm != Algorithm || !failed.Executed || failed.State != "failed" || !failed.StartedAt.After(edit.At) || failed.Tree != failed.AfterTree || !failed.Scope.Complete {
+			continue
+		}
+		commandText := strings.Join(append([]string{command(failed).Program}, command(failed).Args...), " ")
+		parsed, err := repostats.ParseResults(ctx, model, repostats.Run{ID: failed.ID, Output: failed.Output, ExitCode: failed.ExitCode, Started: true})
+		if err != nil {
+			return false, err
+		}
+		acceptance := false
+		for _, req := range view.History {
+			if req.Status == "revoked" || !req.At.Before(edit.At) {
+				continue
+			}
+			acceptance = acceptance || commandText != "" && strings.Contains(req.Acceptance, commandText)
+			for _, result := range parsed {
+				acceptance = acceptance || result.Name != failed.ID && result.State == "failed" && strings.Contains(req.Acceptance, result.Name)
+			}
+		}
+		if !acceptance {
+			continue
+		}
+		for _, passed := range view.Verifications {
+			if passed.Algorithm != Algorithm || !passed.Executed || passed.State != "passed" || passed.CommandKey != failed.CommandKey || passed.EnvironmentID != failed.EnvironmentID || passed.Scope.Tool != failed.Scope.Tool || !passed.Scope.Complete || !passed.EndedAt.Before(edit.At) || passed.Tree != passed.AfterTree {
+				continue
+			}
+			before, err := w.TreeFiles(ctx, passed.Tree)
+			if err != nil {
+				return false, err
+			}
+			after, err := w.TreeFiles(ctx, failed.Tree)
+			if err != nil {
+				return false, err
+			}
+			if before[edit.Path].Blob != edit.Before.Blob || after[edit.Path].Blob != edit.After.Blob {
+				continue
+			}
+			paths := map[string]bool{}
+			for p := range before {
+				paths[p] = true
+			}
+			for p := range after {
+				paths[p] = true
+			}
+			only := true
+			for p := range paths {
+				if p != edit.Path && (before[p].Blob != after[p].Blob || before[p].Mode != after[p].Mode) {
+					only = false
+					break
+				}
+			}
+			if only {
+				return true, nil
+			}
+		}
+	}
+	return false, ctx.Err()
 }
 
 func rejectionDependencies(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v ledger.TaskView, a analysis) error {
@@ -206,7 +275,9 @@ func rejectionDependencies(ctx context.Context, s *ledger.Store, w gitstate.Work
 				for _, needed := range region.Clusters {
 					for _, dependent := range closure {
 						if dependent != issue.LogicalAt && dependent == needed && strings.Contains(note.Text, dependent) {
-							return s.SaveCalibration(ctx, ledger.CalibrationLabel{ID: units.Hash(note.ID, issue.ID, "dependency"), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: "被需求相关区内的保留簇依赖", Signals: issue.Signals, Accepted: false})
+							if err := s.SaveCalibration(ctx, ledger.CalibrationLabel{ID: units.Hash(v.Task.ID, issue.ID, note.ID), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: "被需求相关区内的保留簇依赖", Signals: issue.Signals, Accepted: false}); err != nil {
+								return err
+							}
 						}
 					}
 				}

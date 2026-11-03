@@ -32,26 +32,36 @@ type External struct {
 	Reliable, AgentOnly                                    bool
 }
 type Case struct {
-	ID, Name, Path, Unit, Class, Shape string
-	Start, End                         int
-	Added, AgentOnly, Retained         bool
-	Targets                            []string
-	Inputs                             []string
-	Boundary                           []string
+	ID, Name, Path, Unit, Class, Shape, Cluster string
+	Start, End                                  int
+	Added, AgentOnly, Retained                  bool
+	Targets                                     []string
+	Inputs                                      []string
+	Boundary                                    []string
 }
 type Result struct {
 	Candidates []Candidate
 	External   []External
 	Cases      []Case
 	Gaps       []string
+	Defensive  []string
 	TestBudget map[string]int
 }
 
 func Analyze(ctx context.Context, in Input) (Result, error) {
 	r := Result{TestBudget: map[string]int{}}
+	if len(in.Changes.Hunks) == 0 {
+		return r, ctx.Err()
+	}
 	for _, c := range in.Changes.Clusters {
 		if err := ctx.Err(); err != nil {
 			return r, err
+		}
+		for _, h := range clusterHunks(in, c.ID) {
+			if isDefensive(in.After, h) {
+				r.Defensive = append(r.Defensive, c.ID)
+				break
+			}
 		}
 		known, related := false, false
 		for _, region := range in.Regions {
@@ -91,12 +101,18 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 			continue
 		}
 		c := Candidate{Kind: "external", Object: item.Kind + ":" + item.Name, At: item.At, Cluster: item.Cluster, AgentOnly: item.AgentOnly, Features: map[string]float64{"unanchored": boolFloat(item.Anchor == "none"), "reliable": boolFloat(item.Reliable), "agent": boolFloat(item.AgentOnly)}, Benefit: 1, Facts: []string{item.Method + "：" + item.Name, "锚定：" + item.Anchor}, Advice: "撤回该新增项，或用 implemented_by 登记它对应的需求和用途"}
+		if item.Kind != "file" {
+			c.Object = item.At + ":" + item.Kind + ":" + item.Name
+		}
 		if item.Anchor == "none" && item.Reliable && item.AgentOnly {
 			c.BlockFact = "external"
 		}
 		r.Candidates = append(r.Candidates, c)
 	}
-	indirect, gaps := indirections(in)
+	indirect, gaps, err := indirections(ctx, in)
+	if err != nil {
+		return r, err
+	}
 	r.Candidates = append(r.Candidates, indirect...)
 	r.Gaps = append(r.Gaps, gaps...)
 	duplicate, err := similarities(ctx, in)
@@ -105,7 +121,10 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 	}
 	r.Candidates = append(r.Candidates, duplicate...)
 	r.Candidates = append(r.Candidates, unused(in)...)
-	r.Cases, r.TestBudget, duplicate, gaps = cases(in)
+	r.Cases, r.TestBudget, duplicate, gaps, err = cases(ctx, in)
+	if err != nil {
+		return r, err
+	}
 	r.Candidates = append(r.Candidates, duplicate...)
 	r.Gaps = append(r.Gaps, gaps...)
 	var kept []Candidate
@@ -123,12 +142,42 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		if c.Features == nil {
 			c.Features = map[string]float64{}
 		}
+		for _, region := range in.Regions {
+			path := region.Paths[c.Cluster]
+			if len(path) == 0 {
+				continue
+			}
+			total := 0.0
+			mass := map[string]float64{}
+			for _, seed := range region.Seeds {
+				if seed.Node == path[0] {
+					mass[seed.Source] += seed.Weight
+					total += seed.Weight
+				}
+			}
+			for _, source := range keys(mass) {
+				if total > 0 {
+					c.Features["seed_"+source] = max(c.Features["seed_"+source], mass[source]/total)
+				}
+			}
+		}
 		if f, ok := in.After.Files[c.At]; ok {
 			c.Features["structure"] = f.Confidence
 		}
 		kept = append(kept, c)
 	}
-	r.Candidates = kept
+	distinct := map[string]Candidate{}
+	for _, c := range kept {
+		key := c.Kind + "\x00" + c.Object + "\x00" + c.At + "\x00" + strings.Join(c.Facts, "\x00")
+		prior, ok := distinct[key]
+		if !ok || c.Benefit > prior.Benefit {
+			distinct[key] = c
+		}
+	}
+	r.Candidates = nil
+	for _, key := range keys(distinct) {
+		r.Candidates = append(r.Candidates, distinct[key])
+	}
 	sort.Slice(r.Candidates, func(i, j int) bool { return r.Candidates[i].ID < r.Candidates[j].ID })
 	sort.Strings(r.Gaps)
 	return r, ctx.Err()
@@ -210,7 +259,7 @@ func isDefensive(repo repostats.Repository, h changes.Hunk) bool {
 			matches = matches || w == first
 		}
 		if !matches || u.EndLine-u.Line >= parent.EndLine-parent.Line {
-			return false
+			continue
 		}
 		previous := map[string]bool{}
 		for _, t := range parent.Tokens {

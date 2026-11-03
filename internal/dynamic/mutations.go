@@ -37,6 +37,9 @@ func generate(ctx context.Context, in Input, clusters []string) ([]Mutation, err
 		out = append(out, Mutation{ID: id, Cluster: cluster, Path: p, Operator: op, Extension: path.Ext(p), Start: start, End: end, Before: before, After: after})
 	}
 	for _, h := range in.Changes.Hunks {
+		if in.After.Roles[h.Path].Test {
+			continue
+		}
 		cluster := hunks[h.ID]
 		if cluster == "" {
 			continue
@@ -134,7 +137,14 @@ func (r *runner) mutations() error {
 			}
 		}
 	}
-	mutants, err := generate(r.search, r.input, clusters)
+	supported := r.supported()
+	var selected []string
+	for _, id := range clusters {
+		if supported[id] {
+			selected = append(selected, id)
+		}
+	}
+	mutants, err := generate(r.search, r.input, selected)
 	if err != nil {
 		return err
 	}
@@ -190,16 +200,22 @@ func (r *runner) mutations() error {
 		}
 		named := false
 		invalid := false
+		uncertain := false
 		for _, run := range runs {
 			invalid = invalid || run.State == "invalid"
+			uncertain = uncertain || run.State != "passed" && run.State != "failed" && run.State != "invalid"
+			failureFound := false
 			for _, c := range run.Cases {
 				if c.Name == run.Command {
 					continue
 				}
 				if c.State == "passed" || c.State == "failed" {
 					named = true
+				} else {
+					uncertain = true
 				}
 				if c.State == "failed" {
+					failureFound = true
 					matches := []string{}
 					for _, candidate := range r.input.Signals.Cases {
 						if candidate.Name == c.Name {
@@ -208,14 +224,17 @@ func (r *runner) mutations() error {
 					}
 					if len(matches) == 1 {
 						row.Cases = append(row.Cases, matches[0])
+					} else {
+						uncertain = true
 					}
 				}
 			}
+			uncertain = uncertain || run.State == "failed" && !failureFound
 		}
 		if invalid {
 			row.State = "invalid"
 			stat.Invalid++
-		} else if named || allPassed(runs) {
+		} else if !uncertain && (named || allPassed(runs)) {
 			row.State = "valid"
 			stat.Valid++
 			valid++

@@ -147,6 +147,9 @@ func basisState(b Basis, runs []RunResult) string {
 		if r.Command != b.Command {
 			continue
 		}
+		if r.State != "passed" && r.State != "failed" {
+			return "unknown"
+		}
 		if len(b.Cases) == 0 {
 			return r.State
 		}
@@ -225,15 +228,7 @@ func (r *runner) test(ctx context.Context, ids []string) Trial {
 	return trial
 }
 
-func (r *runner) eligible() []string {
-	scores := map[string]float64{}
-	defensive := map[string]bool{}
-	for _, c := range r.input.Signals.Candidates {
-		if c.AgentOnly && c.Cluster != "" {
-			scores[c.Cluster] = max(scores[c.Cluster], c.Benefit)
-		}
-		defensive[c.Cluster] = defensive[c.Cluster] || c.Defensive
-	}
+func (r *runner) supported() map[string]bool {
 	own := map[string]bool{}
 	for _, b := range r.result.Basis {
 		if b.Primary && b.Requirement != "" {
@@ -242,7 +237,7 @@ func (r *runner) eligible() []string {
 	}
 	allowed := map[string]bool{}
 	for _, c := range r.result.Clusters {
-		ok := c.Origin == "agent" && !defensive[c.ID]
+		ok := c.Origin == "agent"
 		for _, region := range r.input.Regions {
 			if !region.Known {
 				ok = false
@@ -267,6 +262,22 @@ func (r *runner) eligible() []string {
 		}
 		allowed[c.ID] = ok
 	}
+	return allowed
+}
+
+func (r *runner) eligible() []string {
+	scores := map[string]float64{}
+	defensive := map[string]bool{}
+	for _, id := range r.input.Signals.Defensive {
+		defensive[id] = true
+	}
+	for _, c := range r.input.Signals.Candidates {
+		if c.AgentOnly && c.Cluster != "" {
+			scores[c.Cluster] = max(scores[c.Cluster], c.Benefit)
+		}
+		defensive[c.Cluster] = defensive[c.Cluster] || c.Defensive
+	}
+	allowed := r.supported()
 	var out []string
 	for _, id := range sorted(scores) {
 		closure, err := changes.Closure(r.ctx, r.result.Clusters, []string{id})
@@ -275,7 +286,7 @@ func (r *runner) eligible() []string {
 		}
 		ok := true
 		for _, dep := range closure {
-			ok = ok && allowed[dep]
+			ok = ok && allowed[dep] && !defensive[dep]
 		}
 		if ok {
 			out = append(out, id)

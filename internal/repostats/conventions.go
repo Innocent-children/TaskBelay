@@ -22,7 +22,7 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			key := UnitKey(p, u)
 			match := false
 			for _, run := range runs {
-				if u.Name != "" && strings.Contains(run.Output, u.Name) {
+				if run.Started && run.ExitCode != nil && units.HasWord(run.Output, u.Name) {
 					match = true
 				}
 			}
@@ -173,11 +173,31 @@ func BinomialTail(k, n int, p float64) float64 {
 func CaseNames(r Repository) []string {
 	var names []string
 	for _, p := range sortedKeys(r.Files) {
-		for _, u := range r.Files[p].Units {
-			if r.TestUnits[UnitKey(p, u)] && u.Name != "" {
+		for _, u := range CaseUnits(r, p) {
+			if u.Name != "" {
 				names = append(names, u.Name)
 			}
 		}
 	}
 	return unique(names)
+}
+
+func CaseUnits(r Repository, p string) []units.Unit {
+	var out []units.Unit
+	for _, u := range r.Files[p].Units {
+		if !r.TestUnits[UnitKey(p, u)] {
+			continue
+		}
+		contained := false
+		for _, parent := range r.Files[p].Units {
+			if r.TestUnits[UnitKey(p, parent)] && parent.Start <= u.Start && parent.End > u.End {
+				contained = true
+				break
+			}
+		}
+		if !contained {
+			out = append(out, u)
+		}
+	}
+	return out
 }

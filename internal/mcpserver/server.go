@@ -110,7 +110,7 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		}
 		return noteResponse(result), nil
 	})
-	register(server, "check_run", "检查固定任务输入；depth 为 static 或 tests，tests 仅对本次请求开启动态检查，refresh 重新核对。返回输入版本、实际覆盖、有限变异证据及未完成部分。", false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input check.RunInput) (any, error) {
+	register(server, "check_run", "检查固定任务输入；depth 为 static 或 tests，tests 仅对本次请求开启动态检查，refresh 重新核对。返回输入版本、逻辑记录、确认结果，以及分别计数的未知、错误和未完成部分。", false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input check.RunInput) (any, error) {
 		result, err := service.Check(ctx, actor, input)
 		if err != nil {
 			return nil, err

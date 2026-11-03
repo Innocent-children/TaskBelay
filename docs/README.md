@@ -2,13 +2,11 @@
 
 本目录描述 TaskBelay 的产品目标、判定算法及实现设计。各份文档围绕同一条原则：用户照常开发，TaskBelay 记录事实，帮助 Agent 完成当前要求。
 
-## 设计与实现状态
+## 产品与算法
 
-算法文档定义语言无关的目标设计：统一词法与版面结构、从仓库统计学到的约定、变更簇、需求相关区（局部图聚类）、对外新增项与锚定、间接层的变化度、近似重复与没人使用的代码、撤回试验的分组检验、逐个运行的变异、验证输入记录，以及合并信号、反馈选择、校准和按事实拦截。目标设计尚未在产品代码中实现，不能据此认为新算法已经可用。
+TaskBelay 用语言无关的词法、版面树和仓库统计分析内容，再计算变更簇、需求相关区和设计、测试信号。静态信号用于排序；副本中的撤回试验、逐个变异和整组确认用于形成运行结论。拦截按可核对的事实决定，未知、出错和未完成分别记录。
 
-当前代码仍使用语言适配、D1 至 D8 / E1、T1 至 T6 / V1 至 V3 等规则及原有测试流程。它们的固定数量阈值和语言支持分级不是目标设计的约束。历史报告按其规则与程序版本解释，不重新标成新算法结论。
-
-安装命令、CLI、八个 MCP 工具、现有设置项、schema 11 和用户数据保留规则继续按现有实现说明使用。目标设计的输入通过现有工具的字段提供：验收标准写在 `requirement_save` 的 `acceptance`，对反馈的处理、保留决定和重跑理由用 `note_add` 记录。目标设计需要的新记录在 [任务账本](requirements-ledger.md#目标算法的逻辑记录) 中单列为逻辑记录，系统架构和账本明确区分当前实现与目标职责。
+验收标准通过 `requirement_save.acceptance` 保存；处理反馈、保留决定和重跑理由通过 `note_add` 保存；文件、入口和依赖通过 `implemented_by` 登记。数据记录见 [任务账本](requirements-ledger.md#算法的逻辑记录)，模块关系见 [系统架构](product-architecture.md)。
 
 ## 文档的层次
 
@@ -33,7 +31,7 @@
 | [requirements-ledger.md](requirements-ledger.md) | 记录、字段、修订、MCP 工具和保留期限 |
 | [product-agent-integration.md](product-agent-integration.md) | hook、MCP、Agent 与平台差异、安装和故障处理 |
 | [product-architecture.md](product-architecture.md) | 进程、模块、快照、观察与编辑核对、检查执行、存储和性能 |
-| [product-evaluation.md](product-evaluation.md) | 当前测试维护范围，以及目标算法的正确性、效果、普适性和成本评估口径 |
+| [product-evaluation.md](product-evaluation.md) | 当前测试维护范围，以及算法的正确性、效果、普适性和成本评估口径 |
 
 ## 共同术语
 

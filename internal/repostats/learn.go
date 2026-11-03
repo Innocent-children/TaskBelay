@@ -6,6 +6,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -17,6 +18,7 @@ type Input struct {
 	Sources []units.Source
 	Runs    []Run
 	Cached  map[string]units.File
+	Syntax  map[string]units.Syntax
 }
 type Role struct{ Test, Generated, Lock, Manifest, Dependency, Document, Config bool }
 type Pattern struct {
@@ -46,11 +48,15 @@ func Learn(ctx context.Context, in Input) (Repository, error) {
 	for _, src := range sources {
 		groups[path.Ext(src.Path)] = append(groups[path.Ext(src.Path)], src)
 	}
-	for _, ext := range sortedKeys(groups) {
-		if err := ctx.Err(); err != nil {
+	if in.Syntax == nil {
+		var err error
+		in.Syntax, err = LearnSyntax(ctx, sources, nil)
+		if err != nil {
 			return r, err
 		}
-		r.Syntax[ext] = learnSyntax(groups[ext])
+	}
+	for ext, syntax := range in.Syntax {
+		r.Syntax[ext] = syntax
 	}
 	for _, src := range sources {
 		if err := ctx.Err(); err != nil {
@@ -141,14 +147,9 @@ func Learn(ctx context.Context, in Input) (Repository, error) {
 	// 用已收敛的首行统计再次确定名字，缓存键包含约定，避免跨项目误用。
 	for _, src := range sources {
 		syn := r.Syntax[path.Ext(src.Path)]
-		key := units.Hash(src.Blob, syn.Key())
-		f, ok := in.Cached[key]
-		if !ok {
-			var err error
-			f, err = units.Analyze(ctx, src, syn)
-			if err != nil {
-				return r, err
-			}
+		f, err := units.Reclassify(ctx, r.Files[src.Path], syn)
+		if err != nil {
+			return r, err
 		}
 		f.Path, f.Blob, f.Mode = src.Path, src.Blob, src.Mode
 		r.Files[src.Path] = f
@@ -231,64 +232,8 @@ func (r Repository) Entry(p string, u units.Unit) bool {
 	return false
 }
 
-func learnSyntax(sources []units.Source) units.Syntax {
-	quoteLines, pairs := map[string]int{}, map[string]int{}
-	commentLines, proseLines := map[string]int{}, map[string]int{}
-	for _, src := range sources {
-		for _, line := range strings.Split(string(src.Data), "\n") {
-			counts := map[string]int{}
-			for _, c := range line {
-				if c == '\'' || c == '"' || c == '`' || unicode.Is(unicode.Pi, c) || unicode.Is(unicode.Pf, c) {
-					counts[string(c)]++
-				}
-			}
-			for q, n := range counts {
-				quoteLines[q]++
-				if n%2 == 0 {
-					pairs[q]++
-				}
-			}
-			trim := strings.TrimSpace(line)
-			end := 0
-			for _, c := range trim {
-				if !unicode.IsPunct(c) && !unicode.IsSymbol(c) {
-					break
-				}
-				end += len(string(c))
-			}
-			if end > 0 && end < len(trim) {
-				prefix := trim[:end]
-				commentLines[prefix]++
-				tail := trim[end:]
-				words := strings.Fields(tail)
-				symbols := 0
-				for _, c := range tail {
-					if unicode.IsPunct(c) || unicode.IsSymbol(c) {
-						symbols++
-					}
-				}
-				if len(words) > symbols {
-					proseLines[prefix]++
-				}
-			}
-		}
-	}
-	syn := units.Syntax{}
-	for _, q := range sortedKeys(quoteLines) {
-		if pairs[q]*2 > quoteLines[q] {
-			syn.Quotes = append(syn.Quotes, q)
-		}
-	}
-	for _, p := range sortedKeys(commentLines) {
-		if proseLines[p]*2 > commentLines[p] && !strings.ContainsAny(p, "{}[]()\"'`") {
-			syn.Comments = append(syn.Comments, p)
-		}
-	}
-	return syn
-}
-
 var versionPattern = regexp.MustCompile(`(^|[^[:alnum:]])[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?`)
-var hashPattern = regexp.MustCompile(`\b[[:xdigit:]]{16,}\b`)
+var hashPattern = regexp.MustCompile(`\b[[:xdigit:]]{` + strconv.Itoa(HashCharacters) + `,}\b`)
 
 func classify(f units.File) Role {
 	role := Role{}
@@ -321,7 +266,20 @@ func classify(f units.File) Role {
 	role.Lock = versions > 0 && versions == hashes && (float64(versions)+Prior)/float64(count+1) > Prior
 	role.Manifest = versions > 0 && hashes == 0 && (float64(versions)+Prior)/float64(count+1) > Prior
 	role.Config = keys > 0 && (float64(keys)+Prior)/float64(count+1) > Prior
-	role.Document = prose > symbols && !role.Config && !role.Manifest && !role.Lock
+	// 只有明确的自然语言句子且没有执行结构才排除；代码信息少时宁可计入验证输入。
+	sentences, executable := 0, false
+	for _, line := range f.Lines {
+		trim := strings.TrimSpace(line)
+		if strings.HasSuffix(trim, "。") || strings.HasSuffix(trim, ".") || strings.HasSuffix(trim, "！") || strings.HasSuffix(trim, "？") {
+			sentences++
+		}
+	}
+	for _, t := range f.Tokens {
+		if t.Kind == "symbol" && strings.ContainsAny(t.Text, "=(){};") {
+			executable = true
+		}
+	}
+	role.Document = sentences > 0 && !executable && prose > symbols && !role.Config && !role.Manifest && !role.Lock
 	if len(f.Lines) > 0 {
 		words := units.Words(f.Lines[0])
 		for _, w := range words {

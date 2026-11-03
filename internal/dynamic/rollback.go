@@ -32,7 +32,7 @@ func rollbackPatch(ctx context.Context, in Input, ids []string) ([]Patch, error)
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		f := in.After.Files[p]
+		f, currentExists := in.After.Files[p]
 		text := strings.Join(f.Lines, "")
 		lines := append([]string(nil), f.Lines...)
 		hunks := byPath[p]
@@ -56,9 +56,9 @@ func rollbackPatch(ctx context.Context, in Input, ids []string) ([]Patch, error)
 		}
 		restore := strings.Join(lines, "")
 		if oldPath != p {
-			out = append(out, Patch{Path: p, Before: text, Remove: true}, Patch{Path: oldPath, After: restore, Mode: before.Mode})
+			out = append(out, Patch{Path: p, Before: text, Remove: true}, Patch{Path: oldPath, After: restore, Create: true, Mode: before.Mode})
 		} else {
-			out = append(out, Patch{Path: p, Before: text, After: restore, Remove: !existed && restore == "", Mode: before.Mode})
+			out = append(out, Patch{Path: p, Before: text, After: restore, Create: !currentExists, Remove: !existed && restore == "", Mode: before.Mode})
 		}
 	}
 	return out, nil
@@ -179,6 +179,9 @@ func unified(patches []Patch) string {
 	for _, p := range patches {
 		before, after := split(p.Before), split(p.After)
 		from, to := "a/"+p.Path, "b/"+p.Path
+		if p.Create {
+			from = "/dev/null"
+		}
 		if p.Remove {
 			to = "/dev/null"
 		}

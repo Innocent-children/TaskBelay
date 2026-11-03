@@ -6,8 +6,8 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
+	"github.com/Innocent-children/taskbelay/internal/units"
 	"github.com/Innocent-children/taskbelay/internal/validation"
-	"strings"
 )
 
 func command(record ledger.VerificationRecord) validation.Command {
@@ -86,14 +86,14 @@ func Verification(ctx context.Context, s *ledger.Store, w gitstate.Workspace, ta
 func CompleteVerification(ctx context.Context, s *ledger.Store, w gitstate.Workspace, task ledger.TaskRecord, record ledger.VerificationRecord, after, output string) error {
 	scope := record.Scope
 	if task.ID != "" && after != "" {
-		repo, err := repository(ctx, s, w, task.OriginTree, after, nil)
+		repo, err := repository(ctx, s, w, task.OriginTree, after, []repostats.Run{{ID: record.ID, Output: output, ExitCode: record.ExitCode, Started: record.Executed}})
 		if err != nil {
 			return err
 		}
 		names := repostats.CaseNames(repo)
 		matcherNames := map[string]bool{}
 		for _, name := range names {
-			if strings.Contains(output, name) {
+			if units.HasWord(output, name) {
 				matcherNames[name] = true
 			}
 		}

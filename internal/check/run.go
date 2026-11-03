@@ -101,17 +101,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 		if err = rejectionDependencies(work, store, w, view, data); err != nil {
 			return r, err
 		}
-		labels, err := store.Calibration(work, w.ProjectID)
-		if err != nil {
-			return r, err
-		}
-		if len(labels) == 0 {
-			labels, err = store.Calibration(work, "")
-			if err != nil {
-				return r, err
-			}
-		}
-		weights, err := fit(work, labels)
+		weights, err := fittedWeights(work, store, w.ProjectID)
 		if err != nil {
 			return r, err
 		}
@@ -139,7 +129,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 			r.Issues = append(r.Issues, issue)
 		}
 		r.Issues = append(r.Issues, planIssues(w, view, data)...)
-		for _, kind := range []string{"external", "unrelated", "noise", "indirection", "duplicate", "unused", "equivalent_case", "mock_only", "S1", "S2"} {
+		for _, kind := range []string{"external", "unrelated", "noise", "abstraction", "forwarding", "old_name", "parameter", "duplicate", "unused", "test_equivalence", "test_budget", "assertion", "mock_only", "S1", "S2"} {
 			r.Evaluated = append(r.Evaluated, ledger.CheckScope(kind, "*"))
 		}
 		for _, h := range data.Changes.Hunks {
@@ -206,7 +196,7 @@ func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view le
 	if err != nil {
 		return a, err
 	}
-	a.After, err = repository(ctx, s, w, view.Task.OriginTree, observation.Tree, nil)
+	a.After, err = repository(ctx, s, w, view.Task.OriginTree, observation.Tree, runSamples(view.Verifications))
 	if err != nil {
 		return a, err
 	}
@@ -223,7 +213,11 @@ func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view le
 		return a, err
 	}
 	a.Requirements = requirements(view)
-	a.Regions, err = changes.Relate(ctx, changes.GraphInput{Before: a.Before, After: a.After, Changes: a.Changes, Requirements: a.Requirements})
+	weights, err := fittedWeights(ctx, s, w.ProjectID)
+	if err != nil {
+		return a, err
+	}
+	a.Regions, err = changes.Relate(ctx, changes.GraphInput{Before: a.Before, After: a.After, Changes: a.Changes, Requirements: a.Requirements, Weights: seedWeights(weights)})
 	if err != nil {
 		return a, err
 	}
@@ -234,6 +228,9 @@ func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view le
 		}
 	}
 	a.Signals, err = signals.Analyze(ctx, signals.Input{Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Retained: retained})
+	if !a.Before.Converged {
+		a.Signals.Gaps = append(a.Signals.Gaps, "测试内容的词汇重分类未收敛")
+	}
 	return a, err
 }
 

@@ -28,7 +28,9 @@ func Format(record ledger.CheckRecord, limit int) string {
 			selected = append(selected, i)
 		}
 	}
-	b.WriteString(FormatIssues(selected, limit))
+	if issues := FormatIssues(selected, limit); issues != "" {
+		b.WriteString(issues + "\n")
+	}
 	for i, gap := range record.Missing {
 		if limit > 0 && i >= limit {
 			break

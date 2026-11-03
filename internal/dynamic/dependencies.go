@@ -87,6 +87,11 @@ func (r *runner) mergeFailure(ctx context.Context, removed []string, runs []RunR
 			r.input.Signals.Candidates[i].Cluster = newID
 		}
 	}
+	for i, id := range r.input.Signals.Defensive {
+		if contains(ids, id) {
+			r.input.Signals.Defensive[i] = newID
+		}
+	}
 	if !contains(r.eligible(), newID) {
 		return false, unknown("失败关联的合并簇缺少撤回条件")
 	}

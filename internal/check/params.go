@@ -19,11 +19,14 @@ const (
 )
 
 var initialWeights = map[string]float64{
-	"bias":       -2,   // 无本机标签时采用保守先验；见 algorithm.md 六节。
-	"unrelated":  0.5,  // 相关区外仅提供有限支持；见 algorithm.md 三、六节。
-	"unanchored": 0.5,  // 缺少词汇对应的排序权重；见 over-design.md 二节。
-	"reliable":   0.5,  // 可靠识别的排序权重；见 over-design.md 二节。
-	"agent":      0.25, // 可核对来源的排序权重；见 algorithm.md 二节。
-	"structure":  0.25, // 结构置信度的排序权重；见 languages.md 结构置信度。
-	"confirmed":  2,    // 确认运行的排序权重；见 algorithm.md 五、六节。
+	"bias":          -2,   // 无本机标签时采用保守先验；见 algorithm.md 六节。
+	"unrelated":     0.5,  // 相关区外仅提供有限支持；见 algorithm.md 三、六节。
+	"unanchored":    0.5,  // 缺少词汇对应的排序权重；见 over-design.md 二节。
+	"reliable":      0.5,  // 可靠识别的排序权重；见 over-design.md 二节。
+	"agent":         0.25, // 可核对来源的排序权重；见 algorithm.md 二节。
+	"structure":     0.25, // 结构置信度的排序权重；见 languages.md 结构置信度。
+	"confirmed":     2,    // 确认运行的排序权重；见 algorithm.md 五、六节。
+	"seed_quote":    0,    // 原话种子校准的中性起点；见 algorithm.md 三、七节。
+	"seed_content":  0,    // 需求内容种子校准的中性起点；见 algorithm.md 三、七节。
+	"seed_location": 0,    // 实现位置种子校准的中性起点；见 algorithm.md 三、七节。
 }

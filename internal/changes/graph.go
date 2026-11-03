@@ -169,12 +169,16 @@ func Relate(ctx context.Context, in GraphInput) ([]Region, error) {
 		region := Region{Requirement: req.ID, Paths: map[string][]string{}}
 		seedMass := map[string]float64{}
 		for i, text := range []string{req.Quote + " " + req.Plan, req.Content + " " + req.Acceptance, strings.Join(req.Locations, " ")} {
-			matches, err := matcher.Find(ctx, strings.ToLower(text))
+			text = strings.ToLower(text)
+			matches, err := matcher.Find(ctx, text)
 			if err != nil {
 				return regions, err
 			}
 			seen := map[string]bool{}
 			for _, match := range matches {
+				if !units.WholeWord(text, match) {
+					continue
+				}
 				for _, node := range g.Matches[match.Pattern] {
 					if seen[node] {
 						continue

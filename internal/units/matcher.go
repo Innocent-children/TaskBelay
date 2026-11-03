@@ -3,12 +3,54 @@ package units
 import (
 	"context"
 	"sort"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 type Match struct {
 	Pattern    string
 	Start, End int
 }
+
+// WholeWord 避免把标识符内部的短子串当成独立种子或用例名。
+func WholeWord(text string, m Match) bool {
+	word := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' }
+	first, _ := utf8.DecodeRuneInString(m.Pattern)
+	last, _ := utf8.DecodeLastRuneInString(m.Pattern)
+	if m.Start > 0 && word(first) {
+		r, _ := utf8.DecodeLastRuneInString(text[:m.Start])
+		if word(r) {
+			return false
+		}
+	}
+	if m.End < len(text) && word(last) {
+		r, _ := utf8.DecodeRuneInString(text[m.End:])
+		if word(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func HasWord(text, word string) bool {
+	if word == "" {
+		return false
+	}
+	for offset := 0; offset < len(text); {
+		i := strings.Index(text[offset:], word)
+		if i < 0 {
+			return false
+		}
+		i += offset
+		if WholeWord(text, Match{word, i, i + len(word)}) {
+			return true
+		}
+		offset = i + len(word)
+	}
+	return false
+}
+
 type state struct {
 	Next    map[byte]int
 	Fail    int

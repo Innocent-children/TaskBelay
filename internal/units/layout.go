@@ -1,11 +1,13 @@
 package units
 
 import (
+	"context"
 	"sort"
+	"strconv"
 	"strings"
 )
 
-func layout(f File) ([]Unit, string, float64) {
+func layout(ctx context.Context, f File) ([]Unit, string, float64, error) {
 	tokens := Significant(f.Tokens)
 	var nodes []Unit
 	var stack []int
@@ -14,6 +16,9 @@ func layout(f File) ([]Unit, string, float64) {
 	lineStart := 0
 	matched, failed, aligned, total := 0, 0, 0, 0
 	for i, t := range tokens {
+		if err := ctx.Err(); err != nil {
+			return nil, "", 0, err
+		}
 		if i == 0 || tokens[i-1].Line != t.Line {
 			lineStart = i
 		}
@@ -53,12 +58,15 @@ func layout(f File) ([]Unit, string, float64) {
 	failed += len(stack)
 	consistency := float64(matched+aligned) / float64(max(1, total+matched+failed))
 	if failed == 0 && matched > 0 && aligned == matched {
-		return nodes, "brackets", consistency
+		return nodes, "brackets", consistency, nil
 	}
 	nodes = nil
 	stack = nil
 	offset := 0
 	for line, text := range f.Lines {
+		if err := ctx.Err(); err != nil {
+			return nil, "", 0, err
+		}
 		trim := strings.TrimSpace(text)
 		if trim == "" {
 			offset += len(text)
@@ -85,10 +93,14 @@ func layout(f File) ([]Unit, string, float64) {
 	}
 	for i := range nodes {
 		start := sort.Search(len(tokens), func(j int) bool { return tokens[j].Start >= nodes[i].Start })
-		end := sort.Search(len(tokens), func(j int) bool { return tokens[j].End > nodes[i].End })
+		end := sort.Search(len(tokens), func(j int) bool { return tokens[j].Start >= nodes[i].End })
+		// 跨行词只能归入完整包含它的单元，不能把半个字符串当作单元内容。
+		if end > start && tokens[end-1].End > nodes[i].End {
+			end--
+		}
 		nodes[i].Tokens = tokens[start:end]
 	}
-	return nodes, "indent", float64(len(nodes)) / float64(max(1, len(nodes)+failed))
+	return nodes, "indent", float64(len(nodes)) / float64(max(1, len(nodes)+failed)), ctx.Err()
 }
 
 func indent(line string) int {
@@ -102,13 +114,16 @@ func indent(line string) int {
 	return n
 }
 
-func assignNames(f *File, syntax Syntax) {
+func assignNames(ctx context.Context, f *File, syntax Syntax) error {
 	freq := map[string]int{}
 	keywords := map[string]bool{}
 	for _, k := range syntax.Keywords {
 		keywords[k] = true
 	}
 	for _, u := range f.Units {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		seen := map[string]bool{}
 		for _, t := range u.Tokens {
 			if t.End <= u.HeaderEnd && t.Kind == "identifier" {
@@ -119,8 +134,14 @@ func assignNames(f *File, syntax Syntax) {
 			freq[w]++
 		}
 	}
+	contexts := make([]string, len(f.Units))
+	occurrences := map[string]int{}
 	for i := range f.Units {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		u := &f.Units[i]
+		u.Name = ""
 		var names []string
 		for _, t := range u.Tokens {
 			if t.End <= u.HeaderEnd && (t.Kind == "identifier" || t.Kind == "key") && !keywords[Literal(t)] {
@@ -140,8 +161,23 @@ func assignNames(f *File, syntax Syntax) {
 				break
 			}
 		}
-		u.ID = Hash(strings.Join(Sequence(u.Tokens, false), "\x00"))
+		var header []Token
+		for _, token := range u.Tokens {
+			if token.End <= u.HeaderEnd {
+				header = append(header, token)
+			}
+		}
+		parent := ""
+		if u.Parent >= 0 {
+			parent = contexts[u.Parent]
+		}
+		// 父级只取首行，避免兄弟单元改动重置身份；同层重复首行按出现次序区分。
+		key := Hash(parent, strings.Join(Sequence(header, false), "\x00"))
+		occurrences[key]++
+		contexts[i] = Hash(key, strconv.Itoa(occurrences[key]))
+		u.ID = Hash(contexts[i], strings.Join(Sequence(u.Tokens, false), "\x00"))
 	}
+	return ctx.Err()
 }
 
 func Calls(tokens []Token) map[string][][]Token {

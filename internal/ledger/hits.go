@@ -54,6 +54,12 @@ func (s *Store) Hits(ctx context.Context, workspace string, since time.Time) ([]
 				return err
 			}
 			hit.Issue.Status = status
+			if hit.Issue.Algorithm == "" {
+				hit.Issue.Level = "historical"
+				hit.Issue.BlockOnDelivery = false
+				hit.Issue.Historical = json.RawMessage(raw)
+				hit.Issue.HistoricalVersion = "schema11"
+			}
 			byID[hit.Issue.ID] = &hit
 		}
 		err = rows.Err()
@@ -87,10 +93,18 @@ WHERE task_id IN (SELECT id FROM tasks_v12 WHERE workspace_id=?) AND julianday(j
 				return err
 			}
 			for _, issue := range issues {
+				if issue.Algorithm == "" {
+					issue.Level = "historical"
+					issue.BlockOnDelivery = false
+					issue.HistoricalVersion = algorithm
+				}
 				hit := byID[issue.ID]
 				if hit == nil {
 					hit = &Hit{TaskID: task, Issue: issue}
 					byID[issue.ID] = hit
+				}
+				if hit.Issue.Algorithm == "" {
+					hit.Issue.HistoricalVersion = algorithm
 				}
 				hit.Observations = append(hit.Observations, HitObservation{Algorithm: algorithm, At: observed, Kind: "check", RecordID: id, Status: status, InputVersion: version, Issue: issue})
 			}
@@ -118,6 +132,13 @@ WHERE task_id IN (SELECT id FROM tasks_v12 WHERE workspace_id=?) AND julianday(j
 			if v.Issue == nil {
 				continue
 			}
+			algorithm := v.Algorithm
+			if algorithm == "" {
+				algorithm = v.HistoricalVersion
+				v.Issue.Level = "historical"
+				v.Issue.BlockOnDelivery = false
+				v.Issue.HistoricalVersion = algorithm
+			}
 			hit := byID[v.Issue.ID]
 			if hit == nil {
 				hit = &Hit{TaskID: v.TaskID, Issue: *v.Issue}
@@ -131,7 +152,7 @@ WHERE task_id IN (SELECT id FROM tasks_v12 WHERE workspace_id=?) AND julianday(j
 			if v.Denied {
 				status = "denied"
 			}
-			hit.Observations = append(hit.Observations, HitObservation{At: at, Kind: "verification", RecordID: v.ID, Status: status, Issue: *v.Issue})
+			hit.Observations = append(hit.Observations, HitObservation{Algorithm: algorithm, At: at, Kind: "verification", RecordID: v.ID, Status: status, Issue: *v.Issue})
 		}
 		err = rows.Err()
 		rows.Close()

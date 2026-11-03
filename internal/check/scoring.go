@@ -2,12 +2,35 @@ package check
 
 import (
 	"context"
+	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/signals"
 	"math"
 	"sort"
 	"strings"
 )
+
+func fittedWeights(ctx context.Context, s *ledger.Store, project string) (map[string]float64, error) {
+	labels, err := s.Calibration(ctx, project)
+	if err != nil {
+		return nil, err
+	}
+	if len(labels) == 0 {
+		labels, err = s.Calibration(ctx, "")
+		if err != nil {
+			return nil, err
+		}
+	}
+	return fit(ctx, labels)
+}
+
+func seedWeights(w map[string]float64) []float64 {
+	// 建议成立意味着这类种子仍可能指向多余内容，降低其相对质量；保持原话优先。
+	quote := changes.QuoteWeight * math.Exp(-w["seed_quote"])
+	content := min(quote, changes.ContentWeight*math.Exp(-w["seed_content"]))
+	location := min(content, changes.LocationWeight*math.Exp(-w["seed_location"]))
+	return []float64{quote, content, location}
+}
 
 func fit(ctx context.Context, labels []ledger.CalibrationLabel) (map[string]float64, error) {
 	w := map[string]float64{}

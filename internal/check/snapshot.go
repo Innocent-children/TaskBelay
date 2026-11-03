@@ -6,6 +6,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
+	"path"
 	"sort"
 )
 
@@ -40,7 +41,42 @@ func repository(ctx context.Context, s *ledger.Store, w gitstate.Workspace, orig
 		if err != nil {
 			return base, err
 		}
-		base, err = repostats.Learn(ctx, repostats.Input{Tree: origin, Sources: src, Runs: runs})
+		counts := map[string]repostats.SyntaxCounts{}
+		for _, file := range src {
+			key := units.Hash(Algorithm, file.Blob)
+			var count repostats.SyntaxCounts
+			found, err := s.AnalysisCache(ctx, "syntax", key, &count)
+			if err != nil {
+				return base, err
+			}
+			if !found {
+				count, err = repostats.CountSyntax(ctx, file.Data)
+				if err != nil {
+					return base, err
+				}
+				if err = s.SaveAnalysisCache(ctx, "syntax", key, count); err != nil {
+					return base, err
+				}
+			}
+			counts[file.Blob] = count
+		}
+		syntax, err := repostats.LearnSyntax(ctx, src, counts)
+		if err != nil {
+			return base, err
+		}
+		cached := map[string]units.File{}
+		for _, file := range src {
+			key := units.Hash(file.Blob, syntax[path.Ext(file.Path)].Key())
+			var f units.File
+			found, err := s.AnalysisCache(ctx, "lexed", units.Hash(Algorithm, key), &f)
+			if err != nil {
+				return base, err
+			}
+			if found {
+				cached[key] = f
+			}
+		}
+		base, err = repostats.Learn(ctx, repostats.Input{Tree: origin, Sources: src, Syntax: syntax, Cached: cached})
 		if err != nil {
 			return base, err
 		}
@@ -49,18 +85,27 @@ func repository(ctx context.Context, s *ledger.Store, w gitstate.Workspace, orig
 		}
 		for _, p := range keys(base.Files) {
 			f := base.Files[p]
+			lexedKey := units.Hash(f.Blob, syntax[path.Ext(p)].Key())
+			if _, found := cached[lexedKey]; !found {
+				if err = s.SaveAnalysisCache(ctx, "lexed", units.Hash(Algorithm, lexedKey), f); err != nil {
+					return base, err
+				}
+			}
 			if err = s.SaveAnalysisCache(ctx, "file", units.Hash(Algorithm, f.Blob, base.SyntaxFor(p).Key()), f); err != nil {
 				return base, err
 			}
 		}
 	}
 	if tree == origin {
-		return base, nil
+		return repostats.Observe(ctx, base, runs)
 	}
 	currentKey := units.Hash(key, tree)
 	var current repostats.Repository
 	if found, err := s.AnalysisCache(ctx, "repository", currentKey, &current); found || err != nil {
-		return current, err
+		if err != nil {
+			return current, err
+		}
+		return observedRepository(ctx, base, current, runs)
 	}
 	entries, err := w.TreeFiles(ctx, tree)
 	if err != nil {
@@ -107,7 +152,21 @@ func repository(ctx context.Context, s *ledger.Store, w gitstate.Workspace, orig
 	if err == nil {
 		err = s.SaveAnalysisCache(ctx, "repository", currentKey, current)
 	}
-	return current, err
+	if err != nil {
+		return current, err
+	}
+	return observedRepository(ctx, base, current, runs)
+}
+
+func observedRepository(ctx context.Context, base, current repostats.Repository, runs []repostats.Run) (repostats.Repository, error) {
+	if len(runs) == 0 {
+		return current, ctx.Err()
+	}
+	observed, err := repostats.Observe(ctx, base, runs)
+	if err != nil {
+		return current, err
+	}
+	return repostats.Apply(ctx, observed, current.Tree, current.Files)
 }
 
 func keys[T any](m map[string]T) []string {

@@ -35,7 +35,7 @@ func interfaceWords(text string) []string {
 		}
 		rest := trimmed[len(key):]
 		gap := len(rest) - len(strings.TrimLeft(rest, " \t"))
-		if gap < 2 && !strings.HasPrefix(rest, "\t") {
+		if gap < ProbeColumnGap && !strings.HasPrefix(rest, "\t") {
 			continue
 		}
 		column := line[:len(line)-len(trimmed)]

@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
+	"github.com/Innocent-children/taskbelay/internal/platform"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/signals"
 	"time"
@@ -41,6 +42,7 @@ type RunResult struct {
 	ExitCode                                  *int
 	Started                                   bool
 	Duration                                  time.Duration
+	Resources                                 *platform.ProcessResources
 	Cases                                     []repostats.CaseResult
 }
 type Scope struct {
@@ -49,7 +51,7 @@ type Scope struct {
 }
 type Patch struct {
 	Path, Before, After string
-	Remove              bool
+	Remove, Create      bool
 	Mode                string
 }
 type Trial struct {

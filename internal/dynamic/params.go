@@ -15,6 +15,7 @@ const (
 	PollInterval       = 100 * time.Millisecond // 检查 Agent 验证和输出预算的间隔；见 languages.md 副本中的运行。
 	ConfirmReserve     = 0.2                    // 为最终确认保留的时间比例；见 algorithm.md 五节。
 	ProbeLimit         = 4                      // 接口清单探针的命令数量预算；见 over-design.md 三节。
+	ProbeColumnGap     = 2                      // 清单名称与说明之间的空格间距，制表符另行识别；见 over-design.md 三节。
 	ParallelMin        = 1                      // 副本并发下限；见 languages.md 副本中的运行。
 	ParallelMax        = 4                      // 副本并发上限；见 languages.md 副本中的运行。
 )

@@ -1,6 +1,7 @@
 package signals
 
 import (
+	"context"
 	"fmt"
 	"slices"
 	"strings"
@@ -17,7 +18,7 @@ type indirection struct {
 	replacement string
 }
 
-func measure(repo repostats.Repository) ([]indirection, []string) {
+func measure(ctx context.Context, repo repostats.Repository, affected map[string]bool) ([]indirection, []string, error) {
 	var out []indirection
 	var gaps []string
 	type callSite struct {
@@ -25,11 +26,41 @@ func measure(repo repostats.Repository) ([]indirection, []string) {
 		args []units.Token
 	}
 	allCalls := map[string][]callSite{}
+	type head struct {
+		id, name string
+		words    map[string]bool
+	}
+	var heads []head
+	byWord := map[string][]int{}
+	defined := map[string]bool{}
 	for _, p := range keys(repo.Files) {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
 		for name, sites := range units.Calls(repo.Files[p].Tokens) {
 			for _, args := range sites {
 				allCalls[name] = append(allCalls[name], callSite{p, args})
 			}
+		}
+		f := repo.Files[p]
+		for _, u := range f.Units {
+			defined[u.Name] = true
+			words := map[string]bool{}
+			add := func(v units.Unit) {
+				for _, t := range v.Tokens {
+					if t.End <= v.HeaderEnd {
+						words[t.Text] = true
+					}
+				}
+			}
+			add(u)
+			if u.Parent >= 0 {
+				add(f.Units[u.Parent])
+			}
+			for word := range words {
+				byWord[word] = append(byWord[word], len(heads))
+			}
+			heads = append(heads, head{repostats.UnitKey(p, u), u.Name, words})
 		}
 	}
 	for _, p := range keys(repo.Files) {
@@ -39,6 +70,12 @@ func measure(repo repostats.Repository) ([]indirection, []string) {
 			ignored[w] = true
 		}
 		for _, u := range f.Units {
+			if err := ctx.Err(); err != nil {
+				return out, gaps, err
+			}
+			if affected != nil && !affected[repostats.UnitKey(p, u)] {
+				continue
+			}
 			if u.Name == "" {
 				continue
 			}
@@ -72,35 +109,20 @@ func measure(repo repostats.Repository) ([]indirection, []string) {
 			}
 			if abstract && len(members) > 0 {
 				cooccurrences := map[string]map[string]bool{}
-				for _, q := range keys(repo.Files) {
-					for _, v := range repo.Files[q].Units {
-						if v.ID == u.ID || v.Name == u.Name {
+				for _, m := range members {
+					for _, idx := range byWord[m] {
+						if err := ctx.Err(); err != nil {
+							return out, gaps, err
+						}
+						v := heads[idx]
+						if v.id == repostats.UnitKey(p, u) || v.name == u.Name {
 							continue
 						}
-						words := map[string]bool{}
-						for _, t := range v.Tokens {
-							if t.End <= v.HeaderEnd {
-								words[t.Text] = true
+						for word := range v.words {
+							if cooccurrences[word] == nil {
+								cooccurrences[word] = map[string]bool{}
 							}
-						}
-						if v.Parent >= 0 {
-							parent := repo.Files[q].Units[v.Parent]
-							for _, t := range parent.Tokens {
-								if t.End <= parent.HeaderEnd {
-									words[t.Text] = true
-								}
-							}
-						}
-						for _, m := range members {
-							if !words[m] {
-								continue
-							}
-							for word := range words {
-								if cooccurrences[word] == nil {
-									cooccurrences[word] = map[string]bool{}
-								}
-								cooccurrences[word][m] = true
-							}
+							cooccurrences[word][m] = true
 						}
 					}
 				}
@@ -109,14 +131,8 @@ func measure(repo repostats.Repository) ([]indirection, []string) {
 					if word == u.Name || ignored[word] || slices.Contains(members, word) {
 						continue
 					}
-					if len(present) == len(members) {
-						for _, q := range keys(repo.Files) {
-							for _, v := range repo.Files[q].Units {
-								if v.Name == word {
-									implementations[word] = true
-								}
-							}
-						}
+					if len(present) == len(members) && defined[word] {
+						implementations[word] = true
 					}
 				}
 				out = append(out, indirection{p, u, "abstraction", len(implementations), strings.Join(keys(implementations), ", ")})
@@ -166,12 +182,26 @@ func measure(repo repostats.Repository) ([]indirection, []string) {
 			}
 		}
 	}
-	return out, gaps
+	return out, gaps, ctx.Err()
 }
 
-func indirections(in Input) ([]Candidate, []string) {
-	before, _ := measure(in.Before)
-	after, gaps := measure(in.After)
+func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) {
+	before, _, err := measure(ctx, in.Before, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	affected := map[string]bool{}
+	for _, p := range keys(in.After.Files) {
+		for _, u := range in.After.Files[p].Units {
+			if cluster, _ := clusterFor(in, p, u.Line, u.EndLine); cluster != "" {
+				affected[repostats.UnitKey(p, u)] = true
+			}
+		}
+	}
+	after, gaps, err := measure(ctx, in.After, affected)
+	if err != nil {
+		return nil, gaps, err
+	}
 	prior := map[string]float64{}
 	total := map[string]int{}
 	for _, v := range before {
@@ -195,9 +225,9 @@ func indirections(in Input) ([]Candidate, []string) {
 			kind = "old_name"
 			facts = append(facts, fmt.Sprintf("起点引用单元数 %d；外部调用方需核对发布约定", in.Before.Frequency[v.unit.Name]))
 		}
-		out = append(out, Candidate{Kind: kind, Object: v.unit.ID, At: location(v.path, v.unit), Cluster: cluster, AgentOnly: agent, Facts: facts, Advice: "把 " + location(v.path, v.unit) + " 的调用改用 " + v.replacement + "，核对后删除该间接层", Features: map[string]float64{"variation": float64(v.count), "convention": prior[v.kind], "structure": in.After.Files[v.path].Confidence}, Benefit: float64(v.unit.EndLine - v.unit.Line + 1)})
+		out = append(out, Candidate{Kind: kind, Object: repostats.UnitKey(v.path, v.unit) + ":" + v.replacement, At: location(v.path, v.unit), Cluster: cluster, AgentOnly: agent, Facts: facts, Advice: "把 " + location(v.path, v.unit) + " 的调用改用 " + v.replacement + "，核对后删除该间接层", Features: map[string]float64{"variation": float64(v.count), "convention": prior[v.kind], "structure": in.After.Files[v.path].Confidence}, Benefit: float64(v.unit.EndLine - v.unit.Line + 1)})
 	}
-	return out, gaps
+	return out, gaps, ctx.Err()
 }
 
 func unused(in Input) []Candidate {
@@ -225,7 +255,7 @@ func unused(in Input) []Candidate {
 				}
 			}
 			if !used {
-				out = append(out, Candidate{Kind: "unused", Object: u.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"新名字 " + u.Name + " 在定义单元之外没有生产内容引用，也不符合起点入口模式"}, Advice: "撤回 " + location(p, u) + "，或核对配置和外部调用", Features: map[string]float64{"unused": 1, "structure": f.Confidence}, Benefit: float64(u.EndLine - u.Line + 1)})
+				out = append(out, Candidate{Kind: "unused", Object: repostats.UnitKey(p, u), At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"新名字 " + u.Name + " 在定义单元之外没有生产内容引用，也不符合起点入口模式"}, Advice: "撤回 " + location(p, u) + "，或核对配置和外部调用", Features: map[string]float64{"unused": 1, "structure": f.Confidence}, Benefit: float64(u.EndLine - u.Line + 1)})
 			}
 		}
 	}

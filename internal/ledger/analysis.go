@@ -119,7 +119,7 @@ func (s *Store) SaveCalibration(ctx context.Context, label CalibrationLabel) err
 		return err
 	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, "INSERT INTO feedback_labels_v12 VALUES(?,?,?,?) ON CONFLICT(id) DO NOTHING", label.ID, label.ProjectID, label.IssueID, string(raw))
+		_, err := tx.ExecContext(ctx, "INSERT INTO feedback_labels_v12 VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data", label.ID, label.ProjectID, label.IssueID, string(raw))
 		return err
 	})
 }

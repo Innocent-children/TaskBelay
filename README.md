@@ -20,12 +20,12 @@ TaskBelay 是一个在本机运行的 Go 命令行工具，通过 hook 和 MCP �
 | Agent | Claude Code、Codex |
 | 系统与架构 | macOS、Linux、Windows；amd64、arm64。WSL 按 Linux 安装和运行 |
 | 工作区 | Git 仓库及其 worktree，各工作区分别管理任务 |
-| 当前文件与代码 | 所有文件支持文件级记录与检查；内置语法和 tags 查询的语言支持代码级分析 |
-| 当前测试分析 | Go、Python、JavaScript、TypeScript、Java、Rust 的已支持框架；实际能力取决于框架和本机工具 |
+| 文件与代码 | 统一词法、版面树和仓库统计；二进制内容按整体记录 |
+| 测试与验证 | 从仓库和已运行命令学习，不按扩展名或工具名分级；信息不足时保留未知 |
 
 TaskBelay 没有常驻后台服务。hook 在 Agent 事件发生时启动短进程，MCP 进程随 Agent 会话运行，二者通过本机 SQLite 账本共享记录。动态分析使用项目自己的测试工具。
 
-文档中的下一版算法改为语言无关的证据超图、增量维护、有限域约束优化和加权集合覆盖，不再按语言分级或用固定数量裁定过度设计、过度测试。上述支持表说明当前实现；新算法尚未落地，现有安装命令、MCP 和账本格式不因此改变。设计入口见[算法核心](docs/algorithm.md)和[输入与执行协议](docs/languages.md)。
+分析内核使用变更簇、需求相关区、静态信号和确认运行；反馈通过逻辑回归与带分类上限的背包选择。拦截只依据可核对的事实。设计入口见[算法核心](docs/algorithm.md)和[输入与执行协议](docs/languages.md)。
 
 ## 快速开始
 
@@ -106,6 +106,7 @@ taskbelay status
 | `workflow` | `auto` | 全自动开发；`semi` 表示先确认方案，再按方案开发 |
 | `enforcement` | `block` | 对满足拦截条件的问题有限拦截；`hint` 表示只提示 |
 | `analysis.tests` | `off` | 关闭自动动态测试检查；`on` 表示开启 |
+| `analysis.parallel` | `1` | 副本命令并发数，范围 1 至 4；大于 1 表示项目命令可以独立运行 |
 | `debug` | `off` | 关闭详细过程记录；`on` 表示开启 |
 
 默认的交付检查使用静态分析和已有验证记录，不额外启动项目测试。对满足条件的同一问题，每个会话最多拦截一次，每轮合计最多三次；依赖工程判断的建议交给 Agent 复核。TaskBelay 自身发生故障时，Agent 的原操作继续执行，检查未完成的情况会保留在状态和日志中。
@@ -149,7 +150,7 @@ TaskBelay 数据保存在本机：macOS、Linux 为 `~/.taskbelay`，Windows 为
 | `logs/` | 按天记录的错误日志，保留七天 |
 | `debug/<YYYY-MM-DD>/<任务唯一标识>.jsonl` | 开启 debug 后的详细过程记录 |
 
-任务快照及必要的内容证据保存在对应仓库的 Git 对象库中，由 TaskBelay 的引用保留。
+任务快照及必要的内容保存在对应仓库的 Git 对象库中，由 TaskBelay 的引用保留。
 
 需要排查接入、检查判断或任务接续问题时，可以为当前项目开启 debug：
 
@@ -172,7 +173,7 @@ debug 文件不会随任务结束或七天错误日志清理而自动删除，�
 
 从源码安装后，更新源码并重新执行对应系统的源码安装命令。使用发布版时，可通过菜单或 `taskbelay update` 下载并校验最新发布程序。程序更新后重新打开 Agent 会话，使 MCP 加载新程序；如果程序路径发生变化，重新执行对应的 `taskbelay install` 命令以更新接入路径。
 
-更新器比较正式版本和 Go 伪版本，只替换为更高版本。无法解析的开发版本显示构建信息并结束自动更新，可重新运行源码安装脚本。当前账本使用 schema 11，首次打开时原子升级；旧 MCP 在迁移后会返回账本访问错误，需重启 Agent 会话。升级后仅回退程序不能恢复旧版对新账本的访问。
+更新器比较正式版本和 Go 伪版本，只替换为更高版本。无法解析的开发版本显示构建信息并结束自动更新，可重新运行源码安装脚本。当前账本使用 schema 12，打开时原子更新结构。版本不兼容的进程不能继续读写；更换程序后重启 Agent session，使 MCP 加载同一程序。
 
 只移除某个 Agent 的接入：
 
@@ -197,7 +198,7 @@ taskbelay uninstall --all
 | --- | --- |
 | [产品需求](docs/product.md) | 产品目标、使用场景、模式和默认行为 |
 | [任务和需求](docs/requirements.md) | 任务生命周期、累计改动、用户修改与需求变更 |
-| [算法核心](docs/algorithm.md)、[输入与执行协议](docs/languages.md) | 目标算法的统一事实、证据维护、语言无关协议及实现边界 |
+| [算法核心](docs/algorithm.md)、[输入与执行协议](docs/languages.md) | 算法的统一事实、内容复用、语言无关协议及实现范围 |
 | [过度设计判定](docs/over-design.md)、[过度测试判定](docs/over-testing.md) | 检查依据、反馈和验证规则 |
 | [Agent 接入](docs/product-agent-integration.md) | 安装、hook、MCP、平台差异与故障处理 |
 | [系统架构](docs/product-architecture.md) | 进程、模块职责、存储和调试记录 |

@@ -6,28 +6,37 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 )
 
 func readIssues(ctx context.Context, q queryer, task string) ([]Issue, error) {
-	rows, err := q.QueryContext(ctx, "SELECT data,status FROM issues_v12 WHERE task_id=? ORDER BY seq", task)
+	rows, err := q.QueryContext(ctx, "SELECT data,status,COALESCE((SELECT json_extract(data,'$.input.rules') FROM checks_v12 WHERE task_id=? AND json_extract(data,'$.input.rules') IS NOT NULL ORDER BY seq DESC LIMIT 1),'schema11') FROM issues_v12 WHERE task_id=? ORDER BY seq", task, task)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var result []Issue
 	for rows.Next() {
-		var data, status string
+		var data, status, version string
 		var issue Issue
-		if err := rows.Scan(&data, &status); err != nil {
+		if err := rows.Scan(&data, &status, &version); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal([]byte(data), &issue); err != nil {
 			return nil, err
 		}
 		issue.Status = status
+		if issue.Algorithm == "" {
+			issue.HistoricalVersion = version
+			if len(issue.Historical) == 0 {
+				issue.Historical = json.RawMessage(data)
+			}
+			issue.Level = "historical"
+			issue.BlockOnDelivery = false
+		}
 		result = append(result, issue)
 	}
 	return result, rows.Err()
@@ -47,10 +56,10 @@ func relocated(at string, moves map[string]string) string {
 	if to := moves[at]; to != "" {
 		return to
 	}
-	// 参数和字段继承所属声明的迁移，但不继承整段声明的保留决定。
+	// 声明、参数和字段随所属文件或声明迁移，不据此扩大保留决定。
 	longest := ""
 	for from := range moves {
-		if len(from) > len(longest) && strings.HasPrefix(at, from+".") {
+		if len(from) > len(longest) && (strings.HasPrefix(at, from+".") || strings.HasPrefix(at, from+":")) {
 			longest = from
 		}
 	}
@@ -87,7 +96,7 @@ func reconcileIssues(ctx context.Context, tx *sql.Tx, result *CheckRecord) error
 		var previous *Issue
 		for _, key := range sortedIssueKeys(latest) {
 			prior := latest[key]
-			if prior.Rule == issue.Rule && prior.FactKey == issue.FactKey && (relocated(prior.LogicalAt, result.Relocations) == issue.LogicalAt || relocated(prior.At, result.Relocations) == issue.At && prior.LogicalAt == prior.At) {
+			if !seen[prior.Identity] && prior.Rule == issue.Rule && prior.FactKey == issue.FactKey && (relocated(prior.LogicalAt, result.Relocations) == issue.LogicalAt || relocated(prior.At, result.Relocations) != prior.At && relocated(prior.At, result.Relocations) == issue.At && (prior.LogicalAt == prior.At || len(prior.ContentSignature) > 0 && slices.Equal(prior.ContentSignature, issue.ContentSignature))) {
 				if previous != nil {
 					previous = nil
 					break

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/dynamic"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
@@ -119,8 +120,10 @@ func runDynamic(ctx context.Context, s *ledger.Store, w gitstate.Workspace, acto
 		record.Evaluated = append(record.Evaluated, ledger.CheckScope(kind, "*"))
 	}
 	if result.Confirmed {
+		removed := originalClusters(a, result.Rollback, result.Clusters)
+		block := rollbackBlockable(a, view.Requirements, removed)
 		for _, c := range a.Signals.Candidates {
-			if !stringIn(result.Rollback, c.Cluster) {
+			if !removed[c.Cluster] {
 				continue
 			}
 			issue := ledger.Issue{Algorithm: Algorithm, Rule: "rollback", At: c.At, LogicalAt: c.Object, FactKey: "confirmed", Level: "hint", Status: "open", Selected: true, Facts: append(append([]string(nil), c.Facts...), "撤回集合已整组确认："+strings.Join(result.Rollback, ",")), Advice: "可使用报告中的撤回补丁；副本中的全部既有及主要验收依据仍通过", Signals: c.Features}
@@ -128,17 +131,7 @@ func runDynamic(ctx context.Context, s *ledger.Store, w gitstate.Workspace, acto
 			if err != nil {
 				return err
 			}
-			unrelated := len(a.Regions) > 0
-			for _, region := range a.Regions {
-				unrelated = unrelated && region.Known && !stringIn(region.Clusters, c.Cluster)
-			}
-			anchored := false
-			for _, req := range view.Requirements {
-				for _, at := range req.ImplementedBy {
-					anchored = anchored || at.At == c.At || at.At == c.Object
-				}
-			}
-			issue.BlockOnDelivery = unrelated && !anchored && c.AgentOnly && !c.Defensive
+			issue.BlockOnDelivery = block && c.AgentOnly && !c.Defensive
 			record.Issues = append(record.Issues, issue)
 		}
 	}
@@ -176,7 +169,83 @@ func runDynamic(ctx context.Context, s *ledger.Store, w gitstate.Workspace, acto
 			}
 		}
 	}
-	return calibrateTrials(ctx, s, w, view, result)
+	return calibrateTrials(ctx, s, w, view, a, result)
+}
+
+func originalClusters(a analysis, ids []string, clusters []changes.Cluster) map[string]bool {
+	hunks := map[string]bool{}
+	for _, c := range clusters {
+		if stringIn(ids, c.ID) {
+			for _, h := range c.Hunks {
+				hunks[h] = true
+			}
+		}
+	}
+	out := map[string]bool{}
+	for _, c := range a.Changes.Clusters {
+		out[c.ID] = stringIn(ids, c.ID)
+		for _, h := range c.Hunks {
+			out[c.ID] = out[c.ID] || hunks[h]
+		}
+	}
+	return out
+}
+
+// 拦截所附的整组补丁必须全部无关且未登记，不能用整组通过推断其中一个子集可撤回。
+func rollbackBlockable(a analysis, reqs []ledger.Requirement, removed map[string]bool) bool {
+	if len(a.Regions) == 0 {
+		return false
+	}
+	for _, region := range a.Regions {
+		if !region.Known {
+			return false
+		}
+		for _, id := range region.Clusters {
+			if removed[id] {
+				return false
+			}
+		}
+	}
+	hunks := map[string]bool{}
+	for _, c := range a.Changes.Clusters {
+		if removed[c.ID] {
+			if c.Origin != "agent" || stringIn(a.Signals.Defensive, c.ID) {
+				return false
+			}
+			for _, id := range c.Hunks {
+				hunks[id] = true
+			}
+		}
+	}
+	for _, req := range reqs {
+		if req.Status == "revoked" {
+			continue
+		}
+		for _, location := range req.ImplementedBy {
+			at := strings.TrimPrefix(strings.TrimPrefix(location.At, "file:"), "test:")
+			if removed[at] {
+				return false
+			}
+			for _, c := range a.Signals.Candidates {
+				if removed[c.Cluster] && (at == c.At || at == c.Object) {
+					return false
+				}
+			}
+			for _, h := range a.Changes.Hunks {
+				if hunks[h.ID] {
+					if at == h.Path {
+						return false
+					}
+					for _, u := range a.After.Files[h.Path].Units {
+						if u.Line <= h.Span.AfterEnd && u.EndLine > h.Span.AfterStart && (at == h.Path+":"+u.Name || at == fmt.Sprintf("%s:%d", h.Path, u.Line)) {
+							return false
+						}
+					}
+				}
+			}
+		}
+	}
+	return true
 }
 
 func dynamicInput(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view ledger.TaskView, a analysis, record *ledger.CheckRecord) (dynamic.Input, error) {
@@ -288,7 +357,7 @@ func stringIn(items []string, value string) bool {
 	return false
 }
 
-func calibrateTrials(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view ledger.TaskView, r dynamic.Result) error {
+func calibrateTrials(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view ledger.TaskView, a analysis, r dynamic.Result) error {
 	for _, note := range view.Notes {
 		if note.Target == nil || note.Target.Kind != "issue" || !strings.HasPrefix(strings.TrimSpace(note.Text), "拒绝") {
 			continue
@@ -298,10 +367,18 @@ func calibrateTrials(ctx context.Context, s *ledger.Store, w gitstate.Workspace,
 				continue
 			}
 			for _, trial := range r.Trials {
-				if trial.State != "failed" || !stringIn(trial.IDs, issue.LogicalAt) {
+				if trial.State != "failed" || len(trial.IDs) != 1 {
 					continue
 				}
-				label := ledger.CalibrationLabel{ID: units.Hash(issue.ID, note.ID, "acceptance_failure"), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: "acceptance_failure", Reason: "撤回该建议指向的簇后既有或主要验收失败", Signals: issue.Signals}
+				removed := originalClusters(a, trial.IDs, r.Clusters)
+				matched := removed[issue.LogicalAt]
+				for _, c := range a.Signals.Candidates {
+					matched = matched || c.Object == issue.LogicalAt && removed[c.Cluster]
+				}
+				if !matched {
+					continue
+				}
+				label := ledger.CalibrationLabel{ID: units.Hash(view.Task.ID, issue.ID, note.ID), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: "撤回该建议指向的簇后既有或主要验收失败", Signals: issue.Signals}
 				if err := s.SaveCalibration(ctx, label); err != nil {
 					return err
 				}

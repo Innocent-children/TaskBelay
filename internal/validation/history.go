@@ -114,14 +114,14 @@ func Evaluate(ctx context.Context, current Run, history []Run) (Decision, error)
 	}
 	for i := len(history) - 1; i >= 0; i-- {
 		r := history[i]
-		if r.State != "passed" || !r.Executed || r.Before != r.After || r.Input.Content != current.Input.Content || !sameRuntime(current, r) {
+		if r.State != "passed" || !r.Executed || r.Before != r.After || r.Input.Content != current.Input.Content || current.Input.Environment != r.Input.Environment || current.Command.Directory != r.Command.Directory || current.Command.Shell != r.Command.Shell {
 			continue
 		}
-		if Contains(r.Command, current.Command) {
+		if sameRuntime(current, r) && Contains(r.Command, current.Command) {
 			d.Kind, d.PreviousID, d.Output, d.Reason = "contained", r.ID, r.Output, "较大范围已通过；范围包含仅作提示"
 			return d, nil
 		}
-		agreements, counter := implication(r.Command, current.Command, history)
+		agreements, counter := implication(r, current, history)
 		if credible(agreements, counter) {
 			d.Kind, d.PreviousID, d.Output, d.Reason = "implication", r.ID, r.Output, "历史通过规律表明可能没有新信息；仅作提示"
 			d.Agreements, d.Counterexamples = agreements, counter
@@ -139,10 +139,17 @@ func credible(agreements, counter int) bool {
 	return counter == 0 && agreements > 0 && math.Pow(1-Epsilon, float64(agreements+1)) < TailProbability
 }
 
-func implication(a, b Command, history []Run) (int, int) {
+func implication(a, b Run, history []Run) (int, int) {
 	byInput := map[string]map[string]string{}
 	for _, r := range history {
 		if !r.Executed || !known(r.State) || !r.Input.Complete {
+			continue
+		}
+		keyCommand := CommandKey(r.Command)
+		if keyCommand != CommandKey(a.Command) && keyCommand != CommandKey(b.Command) {
+			continue
+		}
+		if keyCommand == CommandKey(a.Command) && !sameRuntime(r, a) || keyCommand == CommandKey(b.Command) && !sameRuntime(r, b) || r.Before != r.After {
 			continue
 		}
 		key := r.Input.Content + "\x00" + r.Input.Environment
@@ -156,10 +163,10 @@ func implication(a, b Command, history []Run) (int, int) {
 	yes, no := 0, 0
 	for _, key := range sorted(byInput) {
 		row := byInput[key]
-		if row[CommandKey(a)] == "passed" {
-			if row[CommandKey(b)] == "passed" {
+		if row[CommandKey(a.Command)] == "passed" {
+			if row[CommandKey(b.Command)] == "passed" {
 				yes++
-			} else if row[CommandKey(b)] == "failed" {
+			} else if row[CommandKey(b.Command)] == "failed" {
 				no++
 			}
 		}

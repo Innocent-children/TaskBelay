@@ -218,8 +218,6 @@ func finishResponse(result ledger.FinishResult) map[string]any {
 			brief := checkResponse(*record, false)
 			details[depth] = brief["details"]
 			value[depth] = map[string]any{"id": record.ID, "status": record.Status, "level": record.Level, "issues_count": len(record.Issues), "gap_counts": record.GapCounts(), "unconfirmed_count": len(record.Unconfirmed), "read": brief["read"]}
-			value[depth].(map[string]any)["coverage_counts"] = brief["coverage_counts"]
-			value[depth].(map[string]any)["unknown_risk_count"] = brief["unknown_risk_count"]
 		}
 	}
 	value["details"] = details

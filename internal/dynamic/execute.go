@@ -220,6 +220,7 @@ func (r *runner) execute(ctx context.Context, phase, base string, patches []Patc
 	}
 	code, evidence, runErr := platform.RunProcess(ctx, platform.ProcessCommand{Path: program, Args: args, Dir: cwd, Env: env, Stdin: stdin, Stdout: stdout, Stderr: stdout, LowPriority: true, Pause: pause, Poll: PollInterval})
 	result.Started, result.Duration = evidence.Started, evidence.Duration
+	result.Resources = evidence.Resources
 	_, _ = stdout.Seek(0, io.SeekStart)
 	output, readErr := io.ReadAll(io.LimitReader(stdout, OutputBytes))
 	result.Output = string(output)

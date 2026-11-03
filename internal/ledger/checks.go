@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -54,7 +55,36 @@ func checkInput(ctx context.Context, q queryer, workspace, id string, actor Acto
 	if err != nil {
 		return CheckInput{}, err
 	}
-	return NewCheckInput(task, observation.Tree, settings, effectiveDecisions(notes, task, settings, actor), algorithm), nil
+	input := NewCheckInput(task, observation.Tree, settings, effectiveDecisions(notes, task, settings, actor), algorithm)
+	for _, note := range notes {
+		if note.Kind == "decision" && note.Target != nil && note.Target.Kind == "issue" {
+			raw, err := json.Marshal(struct {
+				Target   *DecisionTarget
+				Text     string
+				Citation *Citation
+			}{note.Target, note.Text, note.Citation})
+			if err != nil {
+				return CheckInput{}, err
+			}
+			input.Feedback = append(input.Feedback, string(raw))
+		}
+	}
+	rows, err := q.QueryContext(ctx, `SELECT data FROM verifications_v12 WHERE task_id=? AND executed=1 AND state<>'running' AND json_extract(data,'$.algorithm')=? ORDER BY seq`, id, algorithm)
+	if err != nil {
+		return CheckInput{}, err
+	}
+	defer rows.Close()
+	hash := sha256.New()
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return CheckInput{}, err
+		}
+		hash.Write([]byte(raw))
+		hash.Write([]byte{0})
+	}
+	input.Verifications = fmt.Sprintf("%x", hash.Sum(nil))
+	return input, rows.Err()
 }
 
 func (s *Store) CheckInput(ctx context.Context, workspace, id string, actor Actor, algorithm string) (CheckInput, error) {
@@ -137,6 +167,9 @@ func latestCheck(ctx context.Context, q queryer, task, depth, version string, ex
 		}
 		_ = json.Unmarshal([]byte(data), &old)
 		result.HistoricalVersion = old.Input.Version
+		if result.HistoricalVersion == "" {
+			result.HistoricalVersion = "schema11"
+		}
 		result.Level = "historical"
 		for i := range result.Issues {
 			result.Issues[i].Level = "historical"
@@ -178,6 +211,11 @@ func viewChecks(ctx context.Context, q queryer, view *TaskView, actor Actor) err
 			return err
 		}
 		if record == nil {
+			continue
+		}
+		if record.Input.Algorithm == "" {
+			view.Checks = append(view.Checks, *record)
+			labels = append(labels, depth+": historical "+record.HistoricalVersion)
 			continue
 		}
 		input, err := checkInput(ctx, q, view.Task.WorkspaceID, view.Task.ID, actor, record.Input.Algorithm)

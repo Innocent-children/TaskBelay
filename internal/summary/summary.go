@@ -377,9 +377,15 @@ func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 	} else {
 		var issues []string
 		expired := false
+		current := false
 		for _, record := range view.Checks {
+			if record.Input.Algorithm == "" {
+				lines = append(lines, fmt.Sprintf("历史检查 %s：规则版本 %s，状态 %s；不参与当前判定。", record.Depth, record.HistoricalVersion, record.Status))
+				continue
+			}
+			current = true
 			counts := record.GapCounts()
-			lines = append(lines, fmt.Sprintf("%s %s：无法判断 %d，错误 %d，未完成 %d。", record.Depth, record.Status, counts["unsupported"], counts["error"], counts["incomplete"]))
+			lines = append(lines, fmt.Sprintf("%s %s：未知 %d，错误 %d，未完成 %d。", record.Depth, record.Status, counts["unknown"], counts["error"], counts["incomplete"]))
 			if len(record.Unconfirmed) > 0 {
 				lines = append(lines, fmt.Sprintf("另有 %d 处历史问题本次未确认，不按已解决处理。", len(record.Unconfirmed)))
 			}
@@ -393,7 +399,11 @@ func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 				}
 			}
 		}
-		lines = append(lines, fmt.Sprintf("未解决问题：已完成的检查范围内有 %d 处。", len(issues)))
+		if current {
+			lines = append(lines, fmt.Sprintf("未解决问题：已完成的检查范围内有 %d 处。", len(issues)))
+		} else {
+			lines = append(lines, "当前算法尚未检查。")
+		}
 		for _, issue := range issues {
 			if remainingItems == 0 {
 				break
@@ -435,6 +445,9 @@ func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 			state = "被拦截，未执行"
 		}
 		verification = "最近验证：" + record.ID + " " + state + "。"
+		if record.Algorithm == "" {
+			verification = "历史验证（" + record.HistoricalVersion + "）：" + record.ID + " " + state + "；不参与当前判定。"
+		}
 	}
 	lines = append(lines, verification, "最近检查："+check+"。")
 	parts[6] = Truncate(strings.Join(lines, "\n"), 150)

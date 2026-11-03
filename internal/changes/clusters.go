@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Innocent-children/taskbelay/internal/repostats"
@@ -144,6 +145,15 @@ func Compare(ctx context.Context, in Input) (Result, error) {
 				}
 			}
 			h.Words, h.NewWords, h.Names, h.Units = sortedKeys(words), sortedKeys(newWords), sortedKeys(names), sortedKeys(objects)
+			// 同内容的多个片段以所属单元及出现次序区分，其他文件变化不改变身份。
+			identity := units.Hash(h.ID, strings.Join(h.Units, "\x00"))
+			occurrence := 0
+			for _, prior := range r.Hunks {
+				if prior.BeforePath == old && prior.Before == h.Before && prior.After == h.After {
+					occurrence++
+				}
+			}
+			h.ID = units.Hash(identity, strconv.Itoa(occurrence))
 			for _, edit := range in.Edits {
 				if edit.Path != p && edit.BeforePath != old {
 					continue

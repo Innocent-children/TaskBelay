@@ -193,8 +193,11 @@ func Analyze(ctx context.Context, source Source, syntax Syntax) (File, error) {
 		line += strings.Count(text[start:i], "\n")
 		f.Tokens = append(f.Tokens, Token{Kind: kind, Text: text[start:i], Start: start, End: i, Line: at})
 	}
-	f.Units, f.Layout, f.Consistency = layout(f)
-	assignNames(&f, syntax)
+	var err error
+	f.Units, f.Layout, f.Consistency, err = layout(ctx, f)
+	if err != nil {
+		return f, err
+	}
 	var prose, total int
 	for _, t := range f.Tokens {
 		if t.Kind == "space" {
@@ -207,6 +210,15 @@ func Analyze(ctx context.Context, source Source, syntax Syntax) (File, error) {
 	}
 	if total > 0 {
 		f.Natural = float64(prose) / float64(total+prose)
+	}
+	return Reclassify(ctx, f, syntax)
+}
+
+// Reclassify 在词法约定不变时复用词流与版面，只更新名字和结构置信度。
+func Reclassify(ctx context.Context, f File, syntax Syntax) (File, error) {
+	f.Units = append([]Unit(nil), f.Units...)
+	if err := assignNames(ctx, &f, syntax); err != nil {
+		return f, err
 	}
 	sample := float64(syntax.Samples) / (float64(syntax.Samples) + ConfidencePrior)
 	f.Confidence = f.Consistency * sample * (1 + syntax.CallRatio) / 2

@@ -44,6 +44,8 @@ type CheckInput struct {
 	PlanRevision          int64             `json:"plan_revision"`
 	EditRevision          int64             `json:"edit_revision"`
 	AuthorizationRevision int64             `json:"authorization_revision"`
+	Verifications         string            `json:"verifications,omitempty"`
+	Feedback              []string          `json:"feedback,omitempty"`
 	Decisions             []string          `json:"decisions"`
 	AnalysisSettings      map[string]string `json:"analysis_settings"`
 	Algorithm             string            `json:"algorithm"`
@@ -109,7 +111,7 @@ type CheckGap struct {
 func (g CheckGap) Size() int { return max(1, g.Count) }
 
 /**
- * 固定快照的语法错误不会因重跑消失；复用保留原状态和缺口。
+ * 固定输入的信息不足不会因重跑消失；复用保留原状态和缺口。
  * 执行错误、取消、超时及未知失败必须允许重新执行。
  */
 func (r CheckRecord) ReusableStatic() bool {
@@ -140,26 +142,28 @@ func (r CheckRecord) GapCounts() map[string]int {
 }
 
 type Issue struct {
-	ContentSignature []uint64           `json:"content_signature,omitempty"`
-	Selected         bool               `json:"selected"`
-	Algorithm        string             `json:"algorithm,omitempty"`
-	Confidence       float64            `json:"confidence"`
-	Signals          map[string]float64 `json:"signals,omitempty"`
-	BlockOnDelivery  bool               `json:"block_on_delivery,omitempty"`
-	ID               string             `json:"id"`
-	Identity         string             `json:"identity"`
-	Occurrence       int                `json:"occurrence"`
-	Rule             string             `json:"rule"`
-	Level            string             `json:"level"`
-	At               string             `json:"at"`
-	LogicalAt        string             `json:"logical_at"`
-	FactKey          string             `json:"fact_key"`
-	Facts            []string           `json:"facts"`
-	Advice           string             `json:"advice"`
-	Evidence         []string           `json:"evidence"`
-	Status           string             `json:"status"`
-	HandledBy        []string           `json:"handled_by,omitempty"`
-	Blocked          []Actor            `json:"blocked_sessions,omitempty"`
+	HistoricalVersion string             `json:"historical_version,omitempty"`
+	Historical        json.RawMessage    `json:"historical,omitempty"`
+	ContentSignature  []uint64           `json:"content_signature,omitempty"`
+	Selected          bool               `json:"selected"`
+	Algorithm         string             `json:"algorithm,omitempty"`
+	Confidence        float64            `json:"confidence"`
+	Signals           map[string]float64 `json:"signals,omitempty"`
+	BlockOnDelivery   bool               `json:"block_on_delivery,omitempty"`
+	ID                string             `json:"id"`
+	Identity          string             `json:"identity"`
+	Occurrence        int                `json:"occurrence"`
+	Rule              string             `json:"rule"`
+	Level             string             `json:"level"`
+	At                string             `json:"at"`
+	LogicalAt         string             `json:"logical_at"`
+	FactKey           string             `json:"fact_key"`
+	Facts             []string           `json:"facts"`
+	Advice            string             `json:"advice"`
+	Evidence          []string           `json:"evidence"`
+	Status            string             `json:"status"`
+	HandledBy         []string           `json:"handled_by,omitempty"`
+	Blocked           []Actor            `json:"blocked_sessions,omitempty"`
 }
 
 func WithDelivery(record CheckRecord, delivery bool) CheckRecord {

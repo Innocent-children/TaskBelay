@@ -87,7 +87,7 @@ func similarities(ctx context.Context, in Input) ([]Candidate, error) {
 				if variance > 0 {
 					z /= math.Sqrt(variance)
 				}
-				out = append(out, Candidate{Kind: "duplicate", Object: units.Hash(u.ID, v.unit.ID), At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{fmt.Sprintf("与 %s 相似度 %.3f；无关单元均值 %.3f", at, similarity, mean)}, Advice: "复用 " + at + "，合并 " + location(p, u), Features: map[string]float64{"similarity": similarity, "similarity_excess": z, "structure": in.After.Files[p].Confidence}, Benefit: float64(len(strings.Split(strings.Join(units.Sequence(u.Tokens, false), " "), "\n")))})
+				out = append(out, Candidate{Kind: "duplicate", Object: units.Hash(p, u.ID, v.path, v.unit.ID), At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{fmt.Sprintf("与 %s 相似度 %.3f；无关单元均值 %.3f", at, similarity, mean)}, Advice: "复用 " + at + "，合并 " + location(p, u), Features: map[string]float64{"similarity": similarity, "similarity_excess": z, "structure": in.After.Files[p].Confidence}, Benefit: float64(len(strings.Split(strings.Join(units.Sequence(u.Tokens, false), " "), "\n")))})
 			}
 		}
 	}

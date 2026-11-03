@@ -56,6 +56,9 @@ func ParseResults(ctx context.Context, m ResultModel, run Run) ([]CaseResult, er
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if !run.Started || run.ExitCode == nil {
+		return []CaseResult{{run.ID, "unknown"}}, nil
+	}
 	states := map[string]string{}
 	pass, fail := map[string]bool{}, map[string]bool{}
 	for _, w := range m.Pass {
@@ -74,6 +77,9 @@ func ParseResults(ctx context.Context, m ResultModel, run Run) ([]CaseResult, er
 			return nil, err
 		}
 		for _, match := range matches {
+			if !units.WholeWord(line, match) {
+				continue
+			}
 			state := "unknown"
 			for _, w := range units.Words(line[:match.Start] + " " + line[match.End:]) {
 				if fail[w] {
