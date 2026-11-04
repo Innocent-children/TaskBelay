@@ -36,7 +36,7 @@ func (r *runner) commands(ctx context.Context, phase, base string, patches []Pat
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	snapshot, err := r.input.Workspace.Capture(ctx)
+	snapshot, err := r.input.Workspace.CaptureTree(ctx)
 	if err != nil || !snapshot.Complete() {
 		return nil, fmt.Errorf("真实工作区状态无法核对：%v", err)
 	}
@@ -73,7 +73,11 @@ func (r *runner) commands(ctx context.Context, phase, base string, patches []Pat
 	for _, run := range out {
 		r.samples = append(r.samples, repostats.Run{ID: run.Command, Output: run.Output, ExitCode: run.ExitCode, Started: run.Started})
 	}
-	r.model = repostats.LearnResults(r.samples, repostats.CaseNames(r.input.After))
+	r.model, err = repostats.ResultsFor(r.input.After, r.samples)
+	if err != nil {
+		r.result.Runs = append(r.result.Runs, out...)
+		return out, err
+	}
 	for i := range out {
 		parsed, parseErr := repostats.ParseResults(ctx, r.model, repostats.Run{ID: out[i].Command, Output: out[i].Output, ExitCode: out[i].ExitCode, Started: out[i].Started})
 		if parseErr != nil {
@@ -88,7 +92,7 @@ func (r *runner) commands(ctx context.Context, phase, base string, patches []Pat
 			return out, err
 		}
 	}
-	current, err := r.input.Workspace.Capture(ctx)
+	current, err := r.input.Workspace.CaptureTree(ctx)
 	if err != nil || !current.Complete() || current.Tree != r.input.Tree {
 		return out, fmt.Errorf("副本运行期间真实工作区发生变化或无法核对")
 	}

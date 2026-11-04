@@ -6,8 +6,8 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/plan"
-	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
+	"path"
 	"strings"
 )
 
@@ -17,10 +17,15 @@ func ClassifyTargets(ctx context.Context, s *ledger.Store, w gitstate.Workspace,
 	if err != nil || task.ID == "" {
 		return out, err
 	}
-	var base repostats.Repository
-	found, err := s.AnalysisCache(ctx, "repository", units.Hash(Algorithm, task.OriginTree), &base)
-	if err != nil || !found {
+	index, err := taskIndex(ctx, s, w, task)
+	if err != nil {
 		return out, err
+	}
+	base := index.view(keys(contents))
+	for _, p := range keys(contents) {
+		var syn units.Syntax
+		index.get("syntax", path.Ext(p), &syn)
+		base.Syntax[path.Ext(p)] = syn
 	}
 	if !base.Converged {
 		return out, fmt.Errorf("测试内容的词汇重分类未收敛，无法确定编辑目标类别")
@@ -33,7 +38,7 @@ func ClassifyTargets(ctx context.Context, s *ledger.Store, w gitstate.Workspace,
 		}
 		files[p] = f
 	}
-	r, err := repostats.Apply(ctx, base, "", files)
+	r, err := index.apply(keys(contents), files, "")
 	if err != nil {
 		return out, err
 	}

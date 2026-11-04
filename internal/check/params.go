@@ -16,6 +16,9 @@ const (
 	BackgroundPoll          = time.Second            // MCP 后台观察已登记输入变化的间隔；见 algorithm.md 九节。
 	ReuseHints              = 3                      // 用户消息中已有单元提示上限；见 algorithm.md 九节。
 	CalibrationSignificance = 0.05                   // 恢复内容的多重比较显著性；见 algorithm.md 七节。
+	IndexBatch              = 256                    // 索引读写的单个短事务行数；见 algorithm.md 九节。
+	IndexBatchBytes         = 128 * 1024             // 索引短事务的正文批量目标；大条目单独写入，见 algorithm.md 九节。
+	MatcherPageSize         = 128                    // 自动机索引页的状态数，查询只读触及的页；见 algorithm.md 九节。
 )
 
 var initialWeights = map[string]float64{

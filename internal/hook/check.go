@@ -185,7 +185,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 			record = *dynamic
 		}
 	}
-	current, err := t.Workspace.Capture(ctx)
+	current, err := t.Workspace.CaptureTree(ctx)
 	record.Report.Verifications = view.Verifications
 	currentTree := current.Tree
 	if err != nil || !current.Complete() {

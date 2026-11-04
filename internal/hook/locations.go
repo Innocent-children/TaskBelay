@@ -66,9 +66,12 @@ func (t Tasks) resolveLocation(ctx context.Context, location ledger.Location, ta
 	if location.BeforeAt == "" {
 		location.BeforeAt = location.At
 	}
-	file := current.Files[path]
+	file, err := t.Store.ObservationFile(ctx, t.Workspace.ID, current.ID, path)
+	if err != nil {
+		return location, err
+	}
 	if file.Blob == "" && location.ObservationID != 0 && location.Change != "delete" {
-		previous, err := t.Store.Observation(ctx, location.ObservationID)
+		previous, err := t.Store.ObservationMetadata(ctx, location.ObservationID)
 		if err != nil {
 			return location, err
 		}
@@ -80,7 +83,10 @@ func (t Tasks) resolveLocation(ctx context.Context, location ledger.Location, ta
 			for _, change := range changes {
 				if change.BeforePath == path && change.UniqueRename {
 					path = change.Path
-					file = current.Files[path]
+					file, err = t.Store.ObservationFile(ctx, t.Workspace.ID, current.ID, path)
+					if err != nil {
+						return location, err
+					}
 					location.At = locationAt(kind, path, suffix)
 					break
 				}
@@ -104,11 +110,11 @@ func (t Tasks) resolveLocation(ctx context.Context, location ledger.Location, ta
 			old = location.Blob
 		}
 		if old == "" && task != nil {
-			origin, err := t.Store.Observation(ctx, task.OriginObservationID)
+			origin, err := t.Store.ObservationFile(ctx, t.Workspace.ID, task.OriginObservationID, path)
 			if err != nil {
 				return location, err
 			}
-			old = origin.Files[path].Blob
+			old = origin.Blob
 		}
 		if old == "" {
 			changes, err := t.Store.Changes(ctx, t.Workspace.ID, 0)

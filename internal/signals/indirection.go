@@ -18,7 +18,7 @@ type indirection struct {
 	replacement string
 }
 
-func measure(ctx context.Context, repo repostats.Repository, affected map[string]bool) ([]indirection, []string, error) {
+func measure(ctx context.Context, repo repostats.Repository, affected map[string]bool, query *Queries) ([]indirection, []string, error) {
 	var out []indirection
 	var gaps []string
 	type callSite struct {
@@ -33,37 +33,78 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 	var heads []head
 	byWord := map[string][]int{}
 	defined := map[string]bool{}
-	for _, p := range keys(repo.Files) {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, err
-		}
-		for name, sites := range units.Calls(repo.Files[p].Tokens) {
-			for _, args := range sites {
-				allCalls[name] = append(allCalls[name], callSite{p, args})
-			}
-		}
-		f := repo.Files[p]
-		for _, u := range f.Units {
-			defined[u.Name] = true
-			words := map[string]bool{}
-			add := func(v units.Unit) {
-				for _, t := range v.Tokens {
-					if t.End <= v.HeaderEnd {
-						words[t.Text] = true
-					}
-				}
-			}
-			add(u)
-			if u.Parent >= 0 {
-				add(f.Units[u.Parent])
-			}
-			for word := range words {
-				byWord[word] = append(byWord[word], len(heads))
-			}
-			heads = append(heads, head{repostats.UnitKey(p, u), u.Name, words})
+	currentPath := ""
+	depend := func(kind, word string) {
+		if query != nil && query.Depend != nil {
+			query.Depend(currentPath, kind, word)
 		}
 	}
+	if query == nil {
+		for _, p := range keys(repo.Files) {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, err
+			}
+			for name, sites := range units.Calls(repo.Files[p].Tokens) {
+				for _, args := range sites {
+					allCalls[name] = append(allCalls[name], callSite{p, args})
+				}
+			}
+			f := repo.Files[p]
+			for _, u := range f.Units {
+				defined[u.Name] = true
+				words := map[string]bool{}
+				add := func(v units.Unit) {
+					for _, t := range v.Tokens {
+						if t.End <= v.HeaderEnd {
+							words[t.Text] = true
+						}
+					}
+				}
+				add(u)
+				if u.Parent >= 0 {
+					add(f.Units[u.Parent])
+				}
+				for word := range words {
+					byWord[word] = append(byWord[word], len(heads))
+				}
+				heads = append(heads, head{repostats.UnitKey(p, u), u.Name, words})
+			}
+		}
+	}
+	callsFor := func(name string) []callSite {
+		depend("calls", name)
+		if query == nil {
+			return allCalls[name]
+		}
+		var out []callSite
+		for _, s := range query.Calls(name) {
+			out = append(out, callSite{s.Path, s.Args})
+		}
+		return out
+	}
+	headsFor := func(word string) []head {
+		depend("head", word)
+		var out []head
+		if query == nil {
+			for _, i := range byWord[word] {
+				out = append(out, heads[i])
+			}
+		} else {
+			for _, h := range query.Heads(word) {
+				out = append(out, head{h.ID, h.Name, h.Words})
+			}
+		}
+		return out
+	}
+	definedName := func(name string) bool {
+		depend("name", name)
+		if query != nil {
+			return query.Defined(name)
+		}
+		return defined[name]
+	}
 	for _, p := range keys(repo.Files) {
+		currentPath = p
 		f := repo.Files[p]
 		ignored := map[string]bool{}
 		for _, w := range append(append([]string(nil), repo.SyntaxFor(p).Keywords...), repo.SyntaxFor(p).Returns...) {
@@ -79,42 +120,31 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 			if u.Name == "" {
 				continue
 			}
+			var shape UnitStructure
+			if query != nil && query.Structure != nil {
+				shape = query.Structure(repostats.UnitKey(p, u))
+			} else {
+				shape = Structure(f, u)
+			}
 			var body, header []string
-			for _, t := range u.Tokens {
-				if t.Kind != "identifier" || ignored[t.Text] {
-					continue
-				}
-				if t.End <= u.HeaderEnd {
-					header = append(header, t.Text)
-				} else {
-					body = append(body, t.Text)
+			for _, word := range shape.Header {
+				if !ignored[word] {
+					header = append(header, word)
 				}
 			}
-			var members []string
-			abstract := true
-			for j, v := range f.Units {
-				if v.Parent < 0 || f.Units[v.Parent].ID != u.ID || j == u.Parent {
-					continue
+			for _, word := range shape.Body {
+				if !ignored[word] {
+					body = append(body, word)
 				}
-				if v.Name != "" {
-					members = append(members, v.Name)
-				}
-				count := 0
-				for _, t := range v.Tokens {
-					if t.Start >= v.HeaderEnd && t.Kind == "identifier" {
-						count++
-					}
-				}
-				abstract = abstract && count <= 1
 			}
-			if abstract && len(members) > 0 {
+			members := shape.Members
+			if shape.Abstract && len(members) > 0 {
 				cooccurrences := map[string]map[string]bool{}
 				for _, m := range members {
-					for _, idx := range byWord[m] {
+					for _, v := range headsFor(m) {
 						if err := ctx.Err(); err != nil {
 							return out, gaps, err
 						}
-						v := heads[idx]
 						if v.id == repostats.UnitKey(p, u) || v.name == u.Name {
 							continue
 						}
@@ -131,7 +161,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 					if word == u.Name || ignored[word] || slices.Contains(members, word) {
 						continue
 					}
-					if len(present) == len(members) && defined[word] {
+					if len(present) == len(members) && definedName(word) {
 						implementations[word] = true
 					}
 				}
@@ -144,13 +174,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 						params = append(params, w)
 					}
 				}
-				var bodyTokens []units.Token
-				for _, token := range u.Tokens {
-					if token.Start >= u.HeaderEnd {
-						bodyTokens = append(bodyTokens, token)
-					}
-				}
-				if len(units.Calls(bodyTokens)) == 1 && slices.Equal(body[1:], params) {
+				if shape.BodyCalls == 1 && slices.Equal(body[1:], params) {
 					out = append(out, indirection{p, u, "forwarding", 1, body[0]})
 				}
 			}
@@ -158,7 +182,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 				gaps = append(gaps, "实参未知："+location(p, u))
 				continue
 			}
-			sites := allCalls[u.Name]
+			sites := callsFor(u.Name)
 			if len(sites) == 0 {
 				continue
 			}
@@ -186,9 +210,24 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 }
 
 func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) {
-	before, _, err := measure(ctx, in.Before, nil)
-	if err != nil {
-		return nil, nil, err
+	prior := map[string]float64{}
+	if in.Queries != nil {
+		prior = in.Queries.Prior
+	} else {
+		before, _, err := measure(ctx, in.Before, nil, nil)
+		if err != nil {
+			return nil, nil, err
+		}
+		total := map[string]int{}
+		for _, v := range before {
+			total[v.kind]++
+			if v.count == 1 {
+				prior[v.kind]++
+			}
+		}
+		for k, n := range total {
+			prior[k] /= float64(n)
+		}
 	}
 	affected := map[string]bool{}
 	for _, p := range keys(in.After.Files) {
@@ -198,20 +237,9 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 			}
 		}
 	}
-	after, gaps, err := measure(ctx, in.After, affected)
+	after, gaps, err := measure(ctx, in.After, affected, in.Queries)
 	if err != nil {
 		return nil, gaps, err
-	}
-	prior := map[string]float64{}
-	total := map[string]int{}
-	for _, v := range before {
-		total[v.kind]++
-		if v.count == 1 {
-			prior[v.kind]++
-		}
-	}
-	for k, n := range total {
-		prior[k] /= float64(n)
 	}
 	var out []Candidate
 	for _, v := range after {
@@ -221,9 +249,9 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 		}
 		kind := v.kind
 		facts := []string{fmt.Sprintf("变化数 %d；%s", v.count, v.replacement)}
-		if kind == "forwarding" && in.Before.Frequency[v.unit.Name] > 0 {
+		if kind == "forwarding" && in.Before.FrequencyOf(v.unit.Name) > 0 {
 			kind = "old_name"
-			facts = append(facts, fmt.Sprintf("起点引用单元数 %d；外部调用方需核对发布约定", in.Before.Frequency[v.unit.Name]))
+			facts = append(facts, fmt.Sprintf("起点引用单元数 %d；外部调用方需核对发布约定", in.Before.FrequencyOf(v.unit.Name)))
 		}
 		out = append(out, Candidate{Kind: kind, Object: repostats.UnitKey(v.path, v.unit) + ":" + v.replacement, At: location(v.path, v.unit), Cluster: cluster, AgentOnly: agent, Facts: facts, Advice: "把 " + location(v.path, v.unit) + " 的调用改用 " + v.replacement + "，核对后删除该间接层", Features: map[string]float64{"variation": float64(v.count), "convention": prior[v.kind], "structure": in.After.Files[v.path].Confidence}, Benefit: float64(v.unit.EndLine - v.unit.Line + 1)})
 	}
@@ -235,7 +263,7 @@ func unused(in Input) []Candidate {
 	for _, p := range keys(in.After.Files) {
 		f := in.After.Files[p]
 		for _, u := range f.Units {
-			if u.Name == "" || in.Before.Frequency[u.Name] > 0 || in.After.Entry(p, u) {
+			if u.Name == "" || in.Before.FrequencyOf(u.Name) > 0 || in.After.Entry(p, u) {
 				continue
 			}
 			cluster, agent := clusterFor(in, p, u.Line, u.EndLine)
@@ -243,14 +271,26 @@ func unused(in Input) []Candidate {
 				continue
 			}
 			used := false
-			for _, q := range keys(in.After.Files) {
-				g := in.After.Files[q]
-				for _, t := range g.Tokens {
-					if p == q && t.Start >= u.Start && t.End <= u.End {
-						continue
+			if in.Queries != nil {
+				count := in.Queries.Uses(u.Name)
+				if !in.After.Roles[p].Test {
+					for _, t := range f.Tokens {
+						if t.Start >= u.Start && t.End <= u.End && units.Literal(t) == u.Name {
+							count--
+						}
 					}
-					if units.Literal(t) == u.Name && !in.After.Roles[q].Test {
-						used = true
+				}
+				used = count > 0
+			} else {
+				for _, q := range keys(in.After.Files) {
+					g := in.After.Files[q]
+					for _, t := range g.Tokens {
+						if p == q && t.Start >= u.Start && t.End <= u.End {
+							continue
+						}
+						if units.Literal(t) == u.Name && !in.After.Roles[q].Test {
+							used = true
+						}
 					}
 				}
 			}

@@ -11,6 +11,8 @@ import (
 )
 
 type Input struct {
+	EditPreview   bool
+	Queries       *Queries
 	Before, After repostats.Repository
 	Changes       changes.Result
 	Regions       []changes.Region
@@ -54,6 +56,9 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		return r, ctx.Err()
 	}
 	for _, c := range in.Changes.Clusters {
+		if in.EditPreview {
+			continue
+		}
 		if err := ctx.Err(); err != nil {
 			return r, err
 		}
@@ -109,27 +114,32 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		}
 		r.Candidates = append(r.Candidates, c)
 	}
-	indirect, gaps, err := indirections(ctx, in)
-	if err != nil {
-		return r, err
+	if !in.EditPreview {
+		indirect, gaps, err := indirections(ctx, in)
+		if err != nil {
+			return r, err
+		}
+		r.Candidates = append(r.Candidates, indirect...)
+		r.Gaps = append(r.Gaps, gaps...)
 	}
-	r.Candidates = append(r.Candidates, indirect...)
-	r.Gaps = append(r.Gaps, gaps...)
 	duplicate, err := similarities(ctx, in)
 	if err != nil {
 		return r, err
 	}
 	r.Candidates = append(r.Candidates, duplicate...)
-	if in.Before.Converged && in.After.Converged {
-		r.Candidates = append(r.Candidates, unused(in)...)
-		r.Cases, r.TestBudget, duplicate, gaps, err = cases(ctx, in)
-		if err != nil {
-			return r, err
+	if !in.EditPreview {
+		var gaps []string
+		if in.Before.Converged && in.After.Converged {
+			r.Candidates = append(r.Candidates, unused(in)...)
+			r.Cases, r.TestBudget, duplicate, gaps, err = cases(ctx, in)
+			if err != nil {
+				return r, err
+			}
+			r.Candidates = append(r.Candidates, duplicate...)
+			r.Gaps = append(r.Gaps, gaps...)
+		} else {
+			r.Gaps = append(r.Gaps, "测试内容的词汇重分类未收敛，未生成依赖测试划分的建议")
 		}
-		r.Candidates = append(r.Candidates, duplicate...)
-		r.Gaps = append(r.Gaps, gaps...)
-	} else {
-		r.Gaps = append(r.Gaps, "测试内容的词汇重分类未收敛，未生成依赖测试划分的建议")
 	}
 	var kept []Candidate
 	for _, c := range r.Candidates {

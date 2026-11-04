@@ -27,6 +27,10 @@ func gitEnvironment(extra []string) []string {
 }
 
 func (w Workspace) command(ctx context.Context, input io.Reader, env []string, args ...string) ([]byte, error) {
+	return w.commandTo(ctx, input, nil, env, args...)
+}
+
+func (w Workspace) commandTo(ctx context.Context, input io.Reader, target *os.File, env []string, args ...string) ([]byte, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -39,11 +43,14 @@ func (w Workspace) command(ctx context.Context, input io.Reader, env []string, a
 		return nil, err
 	}
 	defer os.RemoveAll(dir)
-	stdout, err := os.Create(filepath.Join(dir, "stdout"))
-	if err != nil {
-		return nil, err
+	stdout := target
+	if stdout == nil {
+		stdout, err = os.Create(filepath.Join(dir, "stdout"))
+		if err != nil {
+			return nil, err
+		}
+		defer stdout.Close()
 	}
-	defer stdout.Close()
 	stderr, err := os.Create(filepath.Join(dir, "stderr"))
 	if err != nil {
 		return nil, err
@@ -68,7 +75,11 @@ func (w Workspace) command(ctx context.Context, input io.Reader, env []string, a
 	}
 	arguments := append([]string{"-C", w.Root, "-c", "core.fsmonitor=false", "-c", "core.splitIndex=false", "-c", "gc.auto=0"}, args...)
 	code, _, runErr := platform.RunProcess(ctx, platform.ProcessCommand{Path: program, Args: arguments, Dir: w.Root, Env: gitEnvironment(env), Stdin: stdin, Stdout: stdout, Stderr: stderr})
-	out, readErr := os.ReadFile(stdout.Name())
+	var out []byte
+	var readErr error
+	if target == nil {
+		out, readErr = os.ReadFile(stdout.Name())
+	}
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}

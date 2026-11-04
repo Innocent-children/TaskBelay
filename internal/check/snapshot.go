@@ -2,12 +2,15 @@ package check
 
 import (
 	"context"
+	"encoding/json"
+	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
 	"path"
 	"sort"
+	"strings"
 )
 
 func sources(ctx context.Context, w gitstate.Workspace, tree string) ([]units.Source, error) {
@@ -17,7 +20,9 @@ func sources(ctx context.Context, w gitstate.Workspace, tree string) ([]units.So
 	}
 	var ids []string
 	for _, p := range keys(files) {
-		ids = append(ids, files[p].Blob)
+		if files[p].Mode != "160000" {
+			ids = append(ids, files[p].Blob)
+		}
 	}
 	blobs, err := w.ReadBlobs(ctx, ids)
 	if err != nil {
@@ -31,142 +36,170 @@ func sources(ctx context.Context, w gitstate.Workspace, tree string) ([]units.So
 	return out, nil
 }
 
-func repository(ctx context.Context, s *ledger.Store, w gitstate.Workspace, origin, tree string, runs []repostats.Run) (repostats.Repository, error) {
-	var base repostats.Repository
-	key := units.Hash(Algorithm, origin)
-	if found, err := s.AnalysisCache(ctx, "repository", key, &base); err != nil {
-		return base, err
-	} else if !found {
-		src, err := sources(ctx, w, origin)
-		if err != nil {
-			return base, err
-		}
-		counts := map[string]repostats.SyntaxCounts{}
-		for _, file := range src {
-			key := units.Hash(Algorithm, file.Blob)
-			var count repostats.SyntaxCounts
-			found, err := s.AnalysisCache(ctx, "syntax", key, &count)
-			if err != nil {
-				return base, err
-			}
-			if !found {
-				count, err = repostats.CountSyntax(ctx, file.Data)
-				if err != nil {
-					return base, err
-				}
-				if err = s.SaveAnalysisCache(ctx, "syntax", key, count); err != nil {
-					return base, err
-				}
-			}
-			counts[file.Blob] = count
-		}
-		syntax, err := repostats.LearnSyntax(ctx, src, counts)
-		if err != nil {
-			return base, err
-		}
-		cached := map[string]units.File{}
-		for _, file := range src {
-			key := units.Hash(file.Blob, syntax[path.Ext(file.Path)].Key())
-			var f units.File
-			found, err := s.AnalysisCache(ctx, "lexed", units.Hash(Algorithm, key), &f)
-			if err != nil {
-				return base, err
-			}
-			if found {
-				cached[key] = f
-			}
-		}
-		base, err = repostats.Learn(ctx, repostats.Input{Tree: origin, Sources: src, Syntax: syntax, Cached: cached})
-		if err != nil {
-			return base, err
-		}
-		if err = s.SaveAnalysisCache(ctx, "repository", key, base); err != nil {
-			return base, err
-		}
-		for _, p := range keys(base.Files) {
-			f := base.Files[p]
-			lexedKey := units.Hash(f.Blob, syntax[path.Ext(p)].Key())
-			if _, found := cached[lexedKey]; !found {
-				if err = s.SaveAnalysisCache(ctx, "lexed", units.Hash(Algorithm, lexedKey), f); err != nil {
-					return base, err
-				}
-			}
-			if err = s.SaveAnalysisCache(ctx, "file", units.Hash(Algorithm, f.Blob, base.SyntaxFor(p).Key()), f); err != nil {
-				return base, err
-			}
-		}
-	}
-	if tree == origin {
-		return repostats.Observe(ctx, base, runs)
-	}
-	currentKey := units.Hash(key, tree)
-	var current repostats.Repository
-	if found, err := s.AnalysisCache(ctx, "repository", currentKey, &current); found || err != nil {
-		if err != nil {
-			return current, err
-		}
-		return observedRepository(ctx, base, current, runs)
-	}
-	entries, err := w.TreeFiles(ctx, tree)
-	if err != nil {
-		return current, err
-	}
-	files := map[string]units.File{}
-	var missing []string
-	var paths []string
-	for _, p := range keys(entries) {
-		entry := entries[p]
-		f, ok := base.Files[p]
-		if ok && f.Blob == entry.Blob && f.Mode == entry.Mode {
-			files[p] = f
-			continue
-		}
-		found, err := s.AnalysisCache(ctx, "file", units.Hash(Algorithm, entry.Blob, base.SyntaxFor(p).Key()), &f)
-		if err != nil {
-			return current, err
-		}
-		if found {
-			f.Path, f.Blob, f.Mode = p, entry.Blob, entry.Mode
-			files[p] = f
-		} else {
-			paths = append(paths, p)
-			missing = append(missing, entry.Blob)
-		}
-	}
-	blobs, err := w.ReadBlobs(ctx, missing)
-	if err != nil {
-		return current, err
-	}
-	for _, p := range paths {
-		entry := entries[p]
-		f, err := units.Analyze(ctx, units.Source{Path: p, Blob: entry.Blob, Mode: entry.Mode, Data: blobs[entry.Blob]}, base.SyntaxFor(p))
-		if err != nil {
-			return current, err
-		}
-		files[p] = f
-		if err = s.SaveAnalysisCache(ctx, "file", units.Hash(Algorithm, entry.Blob, base.SyntaxFor(p).Key()), f); err != nil {
-			return current, err
-		}
-	}
-	current, err = repostats.Apply(ctx, base, tree, files)
-	if err == nil {
-		err = s.SaveAnalysisCache(ctx, "repository", currentKey, current)
-	}
-	if err != nil {
-		return current, err
-	}
-	return observedRepository(ctx, base, current, runs)
+type indexedSnapshot struct {
+	Origin, Current, Graph *repositoryIndex
+	Before, After          repostats.Repository
+	Paths                  []string
 }
 
-func observedRepository(ctx context.Context, base, current repostats.Repository, runs []repostats.Run) (repostats.Repository, error) {
-	if len(runs) == 0 {
-		return current, ctx.Err()
+func (x *repositoryIndex) overlay(tree string) *repositoryIndex {
+	y := newIndex(x.ctx, x.s, x.w)
+	y.id = x.id
+	y.variant = x.variant
+	if err := json.Unmarshal([]byte(encode(x.meta)), &y.meta); err != nil {
+		y.err = err
 	}
-	observed, err := repostats.Observe(ctx, base, runs)
+	y.meta.Tree = tree
+	return y
+}
+
+func (x *repositoryIndex) apply(paths []string, files map[string]units.File, tree string) (repostats.Repository, error) {
+	base := x.view(paths)
+	for p, f := range files {
+		var syn units.Syntax
+		x.get("syntax", path.Ext(p), &syn)
+		base.Syntax[path.Ext(p)] = syn
+		for _, t := range f.Tokens {
+			if t.Kind == "identifier" {
+				var v float64
+				x.get("test_model", t.Text, &v)
+				base.Tests.Weights[t.Text] = v
+			}
+		}
+	}
+	after, err := repostats.Apply(x.ctx, base, tree, files)
 	if err != nil {
-		return current, err
+		return after, err
 	}
-	return repostats.Apply(ctx, observed, current.Tree, current.Files)
+	return after, x.err
+}
+
+func snapshots(ctx context.Context, s *ledger.Store, w gitstate.Workspace, origin, tree string, runs []repostats.Run) (indexedSnapshot, error) {
+	var out indexedSnapshot
+	base, err := openIndex(ctx, s, w, origin)
+	if err != nil {
+		return out, err
+	}
+	base, err = observedIndex(base, runs)
+	if err != nil {
+		return out, err
+	}
+	out.Origin = base
+	out.Current = base.overlay(tree)
+	diff, err := w.Diff(ctx, origin, tree)
+	if err != nil {
+		return out, err
+	}
+	paths := map[string]bool{}
+	entries := map[string]gitstate.File{}
+	for _, d := range diff {
+		paths[d.BeforePath] = true
+		paths[d.Path] = true
+		entries[d.BeforePath] = gitstate.File{}
+		entries[d.Path] = d.After
+	}
+	out.Paths = keys(paths)
+	out.Before = base.view(out.Paths)
+	var ids []string
+	for _, e := range entries {
+		if e.Blob != "" && e.Mode != "160000" {
+			ids = append(ids, e.Blob)
+		}
+	}
+	blobs, err := w.ReadBlobs(ctx, ids)
+	if err != nil {
+		return out, err
+	}
+	files := map[string]units.File{}
+	for _, p := range out.Paths {
+		e := entries[p]
+		if e.Blob == "" {
+			continue
+		}
+		var syn units.Syntax
+		base.get("syntax", path.Ext(p), &syn)
+		key := units.Hash(Algorithm, e.Blob, syn.Key())
+		var f units.File
+		found, err := s.AnalysisCache(ctx, "file", key, &f)
+		if err != nil {
+			return out, err
+		}
+		if !found {
+			f, err = units.Analyze(ctx, units.Source{Path: p, Blob: e.Blob, Mode: e.Mode, Data: blobs[e.Blob]}, syn)
+			if err != nil {
+				return out, err
+			}
+		}
+		f.Path, f.Blob, f.Mode = p, e.Blob, e.Mode
+		files[p] = f
+	}
+	out.After, err = base.apply(out.Paths, files, tree)
+	if err != nil {
+		return out, err
+	}
+	for _, p := range out.Paths {
+		if f, ok := out.Before.Files[p]; ok {
+			out.Current.changeFile(p, f, out.Before, -1)
+		}
+		if f, ok := out.After.Files[p]; ok {
+			out.Current.changeFile(p, f, out.After, 1)
+		}
+	}
+	out.Current.buildMatchers()
+	if err = out.Current.updateValidation(base, out.Paths); err != nil {
+		return out, err
+	}
+	// 删除侧仍参与变更簇的图定位；验证输入只包含当前 tree 的文件。
+	out.Graph = out.Current
+	for _, p := range out.Paths {
+		if _, ok := out.After.Files[p]; !ok {
+			if f, old := out.Before.Files[p]; old {
+				if out.Graph == out.Current {
+					out.Graph = out.Current.copyOverlay()
+				}
+				out.Graph.changeFile(p, f, out.Before, 1)
+			}
+		}
+	}
+	return out, out.err()
+}
+
+func (x *repositoryIndex) copyOverlay() *repositoryIndex {
+	y := x.overlay(x.meta.Tree)
+	for k, r := range x.rows {
+		copy := map[string]string{}
+		for m, v := range r {
+			copy[m] = v
+		}
+		y.rows[k] = copy
+		y.loaded[k] = x.loaded[k]
+		kind, key, _ := strings.Cut(k, "\x00")
+		if y.rowKinds[kind] == nil {
+			y.rowKinds[kind] = map[string]bool{}
+		}
+		y.rowKinds[kind][key] = true
+	}
+	for p, f := range x.files {
+		y.files[p] = f
+	}
+	for key, node := range x.volumes {
+		copy := changes.VolumeNode{}
+		for b, v := range node {
+			copy[b] = v
+		}
+		y.volumes[key] = copy
+		y.volumeDirty[key] = x.volumeDirty[key]
+	}
+	return y
+}
+
+func (s indexedSnapshot) err() error {
+	for _, x := range []*repositoryIndex{s.Origin, s.Current, s.Graph} {
+		if x != nil && x.err != nil {
+			return x.err
+		}
+	}
+	return nil
 }
 
 func keys[T any](m map[string]T) []string {
@@ -177,11 +210,10 @@ func keys[T any](m map[string]T) []string {
 	sort.Strings(out)
 	return out
 }
-
 func runSamples(records []ledger.VerificationRecord) []repostats.Run {
 	var out []repostats.Run
 	for _, r := range records {
-		if r.Algorithm == Algorithm && r.Executed {
+		if r.Algorithm == Algorithm && r.Executed && r.ExitCode != nil && !r.EndedAt.IsZero() {
 			out = append(out, repostats.Run{ID: r.ID, Output: r.Output, ExitCode: r.ExitCode, Started: true})
 		}
 	}

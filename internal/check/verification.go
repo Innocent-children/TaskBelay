@@ -53,16 +53,17 @@ func Verification(ctx context.Context, s *ledger.Store, w gitstate.Workspace, ta
 			runs = append(runs, validationRun(r))
 		}
 	}
-	r, err := repository(ctx, s, w, task.OriginTree, record.Tree, runSamples(history))
+	r, err := snapshots(ctx, s, w, task.OriginTree, record.Tree, runSamples(history))
 	if err != nil {
 		return err
 	}
-	identity, err := validation.Input(ctx, validation.InputData{Files: r.Files, Roles: r.Roles, Command: command(*record)})
+	identity, err := validation.Input(ctx, validation.InputData{Summary: r.Current.meta.Validation, Set: r.Origin.id + "/" + record.Tree, Command: command(*record)})
 	if err != nil {
 		return err
 	}
 	record.Scope.Hash, record.Scope.Content, record.Scope.Semantic = identity.Hash, identity.Content, identity.Semantic
 	record.Scope.Included, record.Scope.Excluded = identity.Included, identity.Excluded
+	record.Scope.Set = identity.Set
 	record.Scope.Complete = identity.Complete
 	d, err := validation.Evaluate(ctx, validationRun(*record), runs)
 	if err != nil {
@@ -86,11 +87,25 @@ func Verification(ctx context.Context, s *ledger.Store, w gitstate.Workspace, ta
 func CompleteVerification(ctx context.Context, s *ledger.Store, w gitstate.Workspace, task ledger.TaskRecord, record ledger.VerificationRecord, after, output string) error {
 	scope := record.Scope
 	if task.ID != "" && after != "" {
-		repo, err := repository(ctx, s, w, task.OriginTree, after, []repostats.Run{{ID: record.ID, Output: output, ExitCode: record.ExitCode, Started: record.Executed}})
+		history, err := s.Verifications(ctx, w.ID, "")
 		if err != nil {
 			return err
 		}
-		names := repostats.CaseNames(repo)
+		samples := runSamples(history)
+		if record.Executed && record.ExitCode != nil {
+			present := false
+			for _, sample := range samples {
+				present = present || sample.ID == record.ID
+			}
+			if !present {
+				samples = append(samples, repostats.Run{ID: record.ID, Output: output, ExitCode: record.ExitCode, Started: true})
+			}
+		}
+		repo, err := snapshots(ctx, s, w, task.OriginTree, after, samples)
+		if err != nil {
+			return err
+		}
+		names := repo.Current.namesIn(output)
 		matcherNames := map[string]bool{}
 		for _, name := range names {
 			if units.HasWord(output, name) {
@@ -98,6 +113,9 @@ func CompleteVerification(ctx context.Context, s *ledger.Store, w gitstate.Works
 			}
 		}
 		scope.Cases = keys(matcherNames)
+		if err := repo.err(); err != nil {
+			return err
+		}
 	}
 	if record.Tree != after {
 		scope.Complete = false

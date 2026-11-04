@@ -63,20 +63,20 @@ func (t Tasks) resumeChanges(ctx context.Context, task ledger.TaskRecord, observ
 	if task.LastObservationID == 0 || task.LastObservationID == observation.ID {
 		return nil, nil
 	}
-	previous, err := t.Store.Observation(ctx, task.LastObservationID)
+	previous, err := t.Store.ObservationMetadata(ctx, task.LastObservationID)
 	if err != nil {
 		return nil, err
 	}
-	files := make(map[string]gitstate.File, len(previous.Files)+len(observation.Files))
-	for path := range previous.Files {
-		files[path] = gitstate.File{}
+	diff, err := t.Workspace.Diff(ctx, previous.Tree, observation.Tree)
+	if err != nil {
+		return nil, err
 	}
-	for path, file := range observation.Files {
-		files[path] = file
-	}
+	files := make(map[string]gitstate.File, len(diff))
 	view := ledger.ObservationView{LatestID: previous.ID, Files: map[string]ledger.ObservedFile{}}
-	for path, file := range previous.Files {
-		view.Files[path] = ledger.ObservedFile{File: file, ObservationID: previous.ID}
+	for _, change := range diff {
+		view.Files[change.BeforePath] = ledger.ObservedFile{File: change.Before, ObservationID: previous.ID}
+		files[change.BeforePath] = gitstate.File{}
+		files[change.Path] = change.After
 	}
 	changes, err := t.workspaceChanges(ctx, view, files)
 	if err != nil {
@@ -266,7 +266,10 @@ func (t Tasks) RecordProjectSource(ctx context.Context, path string, observation
 	if err != nil {
 		return ledger.Source{}, err
 	}
-	file := observation.Files[path]
+	file, err := t.Store.ObservationFile(ctx, t.Workspace.ID, observation.ID, path)
+	if err != nil {
+		return ledger.Source{}, err
+	}
 	if file.Blob == "" || file.Mode == "160000" {
 		return ledger.Source{}, fmt.Errorf("约定文件不在观察点内")
 	}

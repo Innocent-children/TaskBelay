@@ -18,13 +18,33 @@ type TestModel struct {
  * Test 使用起点分类模型；未见过的词不改变词表，相等时沿用原分类。
  */
 func (m TestModel) Test(tokens []units.Token, previous bool) bool {
-	score := m.LogPrior
+	counts := map[string]int{}
 	for _, t := range tokens {
 		if t.Kind == "identifier" {
-			score += m.Weights[t.Text]
+			counts[t.Text]++
 		}
 	}
+	return m.TestCounts(counts, previous)
+}
+func (m TestModel) TestCounts(counts map[string]int, previous bool) bool {
+	score := m.LogPrior
+	for _, w := range sortedKeys(counts) {
+		score += float64(counts[w]) * m.Weights[w]
+	}
 	return score > 0 || score == 0 && previous
+}
+
+func testCounts(r *Repository, p string, u units.Unit) map[string]int {
+	if r.TestCounts != nil {
+		return r.TestCounts[UnitKey(p, u)]
+	}
+	counts := map[string]int{}
+	for _, t := range u.Tokens {
+		if t.Kind == "identifier" {
+			counts[t.Text]++
+		}
+	}
+	return counts
 }
 
 func learnTests(ctx context.Context, r *Repository, runs []Run) error {
@@ -37,6 +57,13 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			r.Tests = TestModel{}
 		}
 	}()
+	type sample struct {
+		key    string
+		counts map[string]int
+		words  []string
+	}
+	var samples []sample
+	vocab := map[string]bool{}
 	seeds := map[string]bool{}
 	for _, p := range sortedKeys(r.Files) {
 		seed := false
@@ -50,6 +77,12 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 				return err
 			}
 			key := UnitKey(p, u)
+			counts := testCounts(r, p, u)
+			words := sortedKeys(counts)
+			samples = append(samples, sample{key, counts, words})
+			for _, w := range words {
+				vocab[w] = true
+			}
 			match := false
 			for _, run := range runs {
 				if run.Started && run.ExitCode != nil && units.HasWord(run.Output, u.Name) {
@@ -63,6 +96,8 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 		}
 	}
 	r.TestSeeds = seeds
+	vocabulary := sortedKeys(vocab)
+	alpha := Prior * float64(max(1, len(vocabulary)))
 	for iteration := 0; iteration < IterationBudget; iteration++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -70,40 +105,26 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 		a, b := map[string]int{}, map[string]int{}
 		na, nb := 0, 0
 		ca, cb := 0, 0
-		for _, p := range sortedKeys(r.Files) {
+		for _, s := range samples {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			for _, u := range r.Files[p].Units {
-				if r.TestUnits[UnitKey(p, u)] {
-					ca++
-				} else {
-					cb++
+			if r.TestUnits[s.key] {
+				ca++
+				for word, count := range s.counts {
+					a[word] += count
+					na += count
 				}
-				for _, t := range u.Tokens {
-					if t.Kind != "identifier" {
-						continue
-					}
-					if r.TestUnits[UnitKey(p, u)] {
-						a[t.Text]++
-						na++
-					} else {
-						b[t.Text]++
-						nb++
-					}
+			} else {
+				cb++
+				for word, count := range s.counts {
+					b[word] += count
+					nb += count
 				}
 			}
 		}
-		vocab := map[string]bool{}
-		for w := range a {
-			vocab[w] = true
-		}
-		for w := range b {
-			vocab[w] = true
-		}
-		alpha := Prior * float64(max(1, len(vocab)))
 		model := TestModel{LogPrior: math.Log((float64(ca) + Prior) / (float64(cb) + Prior)), Weights: map[string]float64{}}
-		for _, w := range sortedKeys(vocab) {
+		for _, w := range vocabulary {
 			x, y := float64(a[w])+Prior, float64(b[w])+Prior
 			model.Weights[w] = math.Log(x/(float64(na)+alpha)) - math.Log(y/(float64(nb)+alpha))
 			// 单词词表没有“其余词”，不能计算对数几率比。
@@ -114,19 +135,18 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 		}
 		next := map[string]bool{}
 		changed := false
-		for _, p := range sortedKeys(r.Files) {
+		for _, s := range samples {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			for _, u := range r.Files[p].Units {
-				key := UnitKey(p, u)
-				if seeds[key] || model.Test(u.Tokens, r.TestUnits[key]) {
-					next[key] = true
-				}
-				if next[key] != r.TestUnits[key] {
-					changed = true
-				}
+			score := model.LogPrior
+			for _, w := range s.words {
+				score += float64(s.counts[w]) * model.Weights[w]
 			}
+			if seeds[s.key] || score > 0 || score == 0 && r.TestUnits[s.key] {
+				next[s.key] = true
+			}
+			changed = changed || next[s.key] != r.TestUnits[s.key]
 		}
 		r.TestUnits = next
 		r.TestIterations = iteration + 1

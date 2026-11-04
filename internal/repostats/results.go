@@ -15,6 +15,26 @@ type Run struct {
 type ResultModel struct{ Cases, Pass, Fail []string }
 type CaseResult struct{ Name, State string }
 
+func ResultsFor(r Repository, runs []Run) (ResultModel, error) {
+	names := map[string]bool{}
+	for _, run := range runs {
+		if r.NamesLookup != nil {
+			found, err := r.NamesLookup(run.Output)
+			if err != nil {
+				return ResultModel{}, err
+			}
+			for _, name := range found {
+				names[name] = true
+			}
+		} else {
+			for _, name := range CaseNames(r) {
+				names[name] = true
+			}
+		}
+	}
+	return LearnResults(runs, sortedKeys(names)), nil
+}
+
 func LearnResults(runs []Run, names []string) ResultModel {
 	m := ResultModel{Cases: append([]string(nil), names...)}
 	pass, fail := map[string]bool{}, map[string]bool{}

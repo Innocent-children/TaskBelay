@@ -119,8 +119,17 @@ func feedbackSubjects(ctx context.Context, s *ledger.Store, w gitstate.Workspace
 	if err != nil {
 		return nil, origin, err
 	}
-	if found, err := s.AnalysisCache(ctx, "repository", units.Hash(Algorithm, v.Task.OriginTree), &origin); err != nil || !found {
+	index, err := openIndex(ctx, s, w, v.Task.OriginTree)
+	if err != nil {
 		return nil, origin, err
+	}
+	var paths []string
+	for _, f := range feedback {
+		paths = append(paths, strings.SplitN(f.Issue.At, ":", 2)[0])
+	}
+	origin = index.view(paths)
+	if index.err != nil {
+		return nil, origin, index.err
 	}
 	var out []feedbackSubject
 	for _, feedback := range feedback {
@@ -271,7 +280,10 @@ func Calibrate(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v led
 
 // 两次命令的输入只相差已记录的撤回文件时，才把验收失败关联到该反馈。
 func removalFailure(ctx context.Context, w gitstate.Workspace, view ledger.TaskView, edit ledger.FileChange, origin repostats.Repository) (bool, error) {
-	model := repostats.LearnResults(runSamples(view.Verifications), repostats.CaseNames(origin))
+	model, err := repostats.ResultsFor(origin, runSamples(view.Verifications))
+	if err != nil {
+		return false, err
+	}
 	for _, failed := range view.Verifications {
 		if failed.Algorithm != Algorithm || !failed.Executed || failed.State != "failed" || !failed.StartedAt.After(edit.At) || failed.Tree != failed.AfterTree || !failed.Scope.Complete {
 			continue
@@ -298,32 +310,11 @@ func removalFailure(ctx context.Context, w gitstate.Workspace, view ledger.TaskV
 			if passed.Algorithm != Algorithm || !passed.Executed || passed.State != "passed" || passed.CommandKey != failed.CommandKey || passed.EnvironmentID != failed.EnvironmentID || passed.Scope.Tool != failed.Scope.Tool || !passed.Scope.Complete || !passed.EndedAt.Before(edit.At) || passed.Tree != passed.AfterTree {
 				continue
 			}
-			before, err := w.TreeFiles(ctx, passed.Tree)
+			delta, err := w.Diff(ctx, passed.Tree, failed.Tree)
 			if err != nil {
 				return false, err
 			}
-			after, err := w.TreeFiles(ctx, failed.Tree)
-			if err != nil {
-				return false, err
-			}
-			if before[edit.Path].Blob != edit.Before.Blob || after[edit.Path].Blob != edit.After.Blob {
-				continue
-			}
-			paths := map[string]bool{}
-			for p := range before {
-				paths[p] = true
-			}
-			for p := range after {
-				paths[p] = true
-			}
-			only := true
-			for p := range paths {
-				if p != edit.Path && (before[p].Blob != after[p].Blob || before[p].Mode != after[p].Mode) {
-					only = false
-					break
-				}
-			}
-			if only {
+			if len(delta) == 1 && delta[0].Path == edit.Path && delta[0].BeforePath == edit.Path && delta[0].Before.Blob == edit.Before.Blob && delta[0].After.Blob == edit.After.Blob {
 				return true, nil
 			}
 		}

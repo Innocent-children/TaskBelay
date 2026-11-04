@@ -66,8 +66,10 @@ func Run(ctx context.Context, in Input, publish func(Result) error) (result Resu
 	for _, run := range baseline {
 		training = append(training, repostats.Run{ID: run.Command, Output: run.Output, ExitCode: run.ExitCode, Started: run.Started})
 	}
-	names := repostats.CaseNames(in.After)
-	r.model = repostats.LearnResults(training, names)
+	r.model, err = repostats.ResultsFor(in.After, training)
+	if err != nil {
+		return r.result, err
+	}
 	for _, b := range in.Basis {
 		if basisState(b, baseline) == "passed" {
 			r.result.Basis = append(r.result.Basis, b)

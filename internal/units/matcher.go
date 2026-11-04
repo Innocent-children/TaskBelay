@@ -51,18 +51,32 @@ func HasWord(text, word string) bool {
 	return false
 }
 
-type state struct {
-	Next    map[byte]int
-	Fail    int
-	Outputs []int
+type MatcherEdge struct {
+	Byte byte
+	Next int
 }
+type MatcherState struct {
+	Edges   []MatcherEdge
+	Fail    int
+	Outputs []string
+}
+
+func (s MatcherState) next(c byte) (int, bool) {
+	for _, edge := range s.Edges {
+		if edge.Byte == c {
+			return edge.Next, true
+		}
+	}
+	return 0, false
+}
+
 type Matcher struct {
-	nodes    []state
+	nodes    []MatcherState
 	patterns []string
 }
 
 func NewMatcher(ctx context.Context, patterns []string) (*Matcher, error) {
-	m := &Matcher{nodes: []state{{Next: map[byte]int{}}}}
+	m := &Matcher{nodes: []MatcherState{{}}}
 	patterns = append([]string(nil), patterns...)
 	sort.Strings(patterns)
 	for _, pattern := range patterns {
@@ -72,20 +86,19 @@ func NewMatcher(ctx context.Context, patterns []string) (*Matcher, error) {
 		if pattern == "" || (len(m.patterns) > 0 && pattern == m.patterns[len(m.patterns)-1]) {
 			continue
 		}
-		index := len(m.patterns)
 		m.patterns = append(m.patterns, pattern)
 		s := 0
 		for i := range len(pattern) {
 			c := pattern[i]
-			n, ok := m.nodes[s].Next[c]
+			n, ok := m.nodes[s].next(c)
 			if !ok {
 				n = len(m.nodes)
-				m.nodes = append(m.nodes, state{Next: map[byte]int{}})
-				m.nodes[s].Next[c] = n
+				m.nodes = append(m.nodes, MatcherState{})
+				m.nodes[s].Edges = append(m.nodes[s].Edges, MatcherEdge{c, n})
 			}
 			s = n
 		}
-		m.nodes[s].Outputs = append(m.nodes[s].Outputs, index)
+		m.nodes[s].Outputs = append(m.nodes[s].Outputs, pattern)
 	}
 	queue := []int{0}
 	for head := 0; head < len(queue); head++ {
@@ -93,26 +106,22 @@ func NewMatcher(ctx context.Context, patterns []string) (*Matcher, error) {
 			return nil, err
 		}
 		s := queue[head]
-		var keys []int
-		for c := range m.nodes[s].Next {
-			keys = append(keys, int(c))
-		}
-		sort.Ints(keys)
-		for _, key := range keys {
-			c := byte(key)
-			n := m.nodes[s].Next[c]
+		edges := m.nodes[s].Edges
+		sort.Slice(edges, func(i, j int) bool { return edges[i].Byte < edges[j].Byte })
+		for _, edge := range edges {
+			c, n := edge.Byte, edge.Next
 			queue = append(queue, n)
 			if s == 0 {
 				continue
 			}
 			fail := m.nodes[s].Fail
 			for fail != 0 {
-				if _, ok := m.nodes[fail].Next[c]; ok {
+				if _, ok := m.nodes[fail].next(c); ok {
 					break
 				}
 				fail = m.nodes[fail].Fail
 			}
-			if target, ok := m.nodes[fail].Next[c]; ok {
+			if target, ok := m.nodes[fail].next(c); ok {
 				m.nodes[n].Fail = target
 			}
 			m.nodes[n].Outputs = append(m.nodes[n].Outputs, m.nodes[m.nodes[n].Fail].Outputs...)
@@ -122,6 +131,15 @@ func NewMatcher(ctx context.Context, patterns []string) (*Matcher, error) {
 }
 
 func (m *Matcher) Find(ctx context.Context, text string) ([]Match, error) {
+	return FindStates(ctx, text, func(i int) (MatcherState, error) { return m.nodes[i], nil })
+}
+
+func (m *Matcher) States() []MatcherState { return m.nodes }
+
+/**
+ * FindStates 按文本触及的状态读取自动机，状态可来自内存或调用方的索引。
+ */
+func FindStates(ctx context.Context, text string, read func(int) (MatcherState, error)) ([]Match, error) {
 	var out []Match
 	s := 0
 	for i := range len(text) {
@@ -131,17 +149,28 @@ func (m *Matcher) Find(ctx context.Context, text string) ([]Match, error) {
 			}
 		}
 		c := text[i]
+		state, err := read(s)
+		if err != nil {
+			return out, err
+		}
 		for s != 0 {
-			if _, ok := m.nodes[s].Next[c]; ok {
+			if _, ok := state.next(c); ok {
 				break
 			}
-			s = m.nodes[s].Fail
+			s = state.Fail
+			state, err = read(s)
+			if err != nil {
+				return out, err
+			}
 		}
-		if n, ok := m.nodes[s].Next[c]; ok {
+		if n, ok := state.next(c); ok {
 			s = n
+			state, err = read(s)
+			if err != nil {
+				return out, err
+			}
 		}
-		for _, idx := range m.nodes[s].Outputs {
-			p := m.patterns[idx]
+		for _, p := range state.Outputs {
 			out = append(out, Match{p, i + 1 - len(p), i + 1})
 		}
 	}

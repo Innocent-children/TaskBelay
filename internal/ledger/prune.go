@@ -89,6 +89,7 @@ func (s *Store) Prune(ctx context.Context, workspace string, now time.Time) erro
 		table, where string
 		args         []any
 	}{
+		{"observation_paths_v12", `NOT EXISTS(SELECT 1 FROM observations_v12 WHERE id=c.observation_id) AND NOT EXISTS(SELECT 1 FROM observations_v12 o WHERE o.workspace_id=c.workspace_id AND o.id>=c.observation_id AND o.id<COALESCE((SELECT MIN(n.observation_id) FROM observation_paths_v12 n WHERE n.workspace_id=c.workspace_id AND n.path=c.path AND n.observation_id>c.observation_id),9223372036854775807))`, nil},
 		{"sources_v12", `julianday(json_extract(c.data,'$.at'))<julianday(?) AND NOT EXISTS(SELECT 1 FROM tasks_v12 WHERE id=c.task_id) AND NOT ` + sourceReferenced("c.id"), []any{cutoff}},
 		{"messages_v12", `julianday(json_extract(c.data,'$.at'))<julianday(?) AND NOT EXISTS(SELECT 1 FROM sources_v12 WHERE id=c.id) AND NOT ` + sourceReferenced("c.id"), []any{cutoff}},
 		{"verifications_v12", `julianday(json_extract(c.data,'$.started_at'))<julianday(?) AND NOT EXISTS(SELECT 1 FROM tasks_v12 WHERE id=c.task_id) AND NOT EXISTS(SELECT 1 FROM verifications_v12 WHERE json_extract(data,'$.previous_id')=c.id) AND NOT ` + activeSession + ` AND NOT ` + sessionTaskRoot("c"), []any{cutoff, cutoff}},

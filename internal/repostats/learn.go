@@ -2,7 +2,6 @@ package repostats
 
 import (
 	"context"
-	"math"
 	"path"
 	"regexp"
 	"sort"
@@ -26,6 +25,10 @@ type Pattern struct {
 	Probability float64
 }
 type Repository struct {
+	FrequencyLookup          func(string) int               `json:"-"`
+	EntryLookup              func(string, units.Unit) bool  `json:"-"`
+	TestWordLookup           func(string, bool) float64     `json:"-"`
+	NamesLookup              func(string) ([]string, error) `json:"-"`
 	Tree                     string
 	Syntax                   map[string]units.Syntax
 	Files                    map[string]units.File
@@ -35,6 +38,7 @@ type Repository struct {
 	TestWords                map[string]float64
 	TestUnits                map[string]bool
 	TestSeeds                map[string]bool
+	TestCounts               map[string]map[string]int `json:"-"`
 	Tests                    TestModel
 	TestIterations           int
 	Entries                  []Pattern
@@ -44,172 +48,57 @@ type Repository struct {
 }
 
 func Learn(ctx context.Context, in Input) (Repository, error) {
-	r := Repository{Tree: in.Tree, Syntax: map[string]units.Syntax{}, Files: map[string]units.File{}, Roles: map[string]Role{}, Frequency: map[string]int{}, HeadFrequency: map[string]int{}, IDF: map[string]float64{}, TestWords: map[string]float64{}, TestUnits: map[string]bool{}}
 	sources := append([]units.Source(nil), in.Sources...)
 	sort.Slice(sources, func(i, j int) bool { return sources[i].Path < sources[j].Path })
-	groups := map[string][]units.Source{}
-	for _, src := range sources {
-		groups[path.Ext(src.Path)] = append(groups[path.Ext(src.Path)], src)
-	}
-	if in.Syntax == nil {
-		var err error
-		in.Syntax, err = LearnSyntax(ctx, sources, nil)
+	syntax := in.Syntax
+	var err error
+	if syntax == nil {
+		syntax, err = LearnSyntax(ctx, sources, nil)
 		if err != nil {
-			return r, err
+			return Repository{}, err
 		}
 	}
-	for ext, syntax := range in.Syntax {
-		r.Syntax[ext] = syntax
-	}
+	files := map[string]units.File{}
+	var sketches []FileSketch
 	for _, src := range sources {
-		if err := ctx.Err(); err != nil {
-			return r, err
-		}
-		syn := r.Syntax[path.Ext(src.Path)]
+		syn := syntax[path.Ext(src.Path)]
 		key := units.Hash(src.Blob, syn.Key())
-		f, ok := in.Cached[key]
-		if !ok {
-			var err error
+		f, found := in.Cached[key]
+		if !found {
 			f, err = units.Analyze(ctx, src, syn)
 			if err != nil {
-				return r, err
+				return Repository{}, err
 			}
 		}
 		f.Path, f.Blob, f.Mode = src.Path, src.Blob, src.Mode
-		r.Files[src.Path] = f
+		files[src.Path] = f
+		sketch, err := Sketch(ctx, f, src.Data)
+		if err != nil {
+			return Repository{}, err
+		}
+		sketches = append(sketches, sketch)
 	}
-	for _, ext := range sortedKeys(groups) {
-		syn := r.Syntax[ext]
-		headDF := map[string]int{}
-		ends := map[string]int{}
-		calls, identifiers := 0, 0
-		for _, source := range groups[ext] {
-			f := r.Files[source.Path]
-			for _, u := range f.Units {
-				r.UnitCount++
-				seen := map[string]bool{}
-				heads := map[string]bool{}
-				for i, t := range u.Tokens {
-					if t.Kind == "identifier" || t.Kind == "key" {
-						w := units.Literal(t)
-						seen[w] = true
-						if t.End <= u.HeaderEnd {
-							heads[w] = true
-						}
-						identifiers++
-						if i+1 < len(u.Tokens) && strings.Contains("([<", u.Tokens[i+1].Text) && len(u.Tokens[i+1].Text) == 1 {
-							calls++
-						}
-					}
-				}
-				for w := range seen {
-					r.Frequency[w]++
-				}
-				for w := range heads {
-					r.HeadFrequency[w]++
-					headDF[w]++
-				}
-				lastLine := u.EndLine
-				for i := len(u.Tokens) - 1; i >= 0; i-- {
-					t := u.Tokens[i]
-					if t.Kind == "identifier" && t.Line < lastLine {
-						lastLine = t.Line
-						break
-					}
-				}
-				for _, t := range u.Tokens {
-					if t.Line == lastLine && t.Kind == "identifier" {
-						ends[t.Text]++
-						break
-					}
-				}
-			}
-			syn.Samples += len(f.Units)
-		}
-		if identifiers > 0 {
-			syn.CallRatio = float64(calls) / float64(identifiers)
-		}
-		for _, w := range sortedKeys(headDF) {
-			if float64(headDF[w]) > float64(syn.Samples)/2 {
-				syn.Keywords = append(syn.Keywords, w)
-			}
-		}
-		best := 0
-		for _, n := range ends {
-			best = max(best, n)
-		}
-		for _, w := range sortedKeys(ends) {
-			if ends[w] == best {
-				syn.Returns = append(syn.Returns, w)
-			}
-		}
-		syn.Keywords = unique(syn.Keywords)
-		syn.Returns = unique(syn.Returns)
-		r.Syntax[ext] = syn
+	r, err := Relearn(ctx, in.Tree, sketches, in.Runs)
+	if err != nil {
+		return r, err
 	}
-	// 用已收敛的首行统计再次确定名字，缓存键包含约定，避免跨项目误用。
-	for _, src := range sources {
-		syn := r.Syntax[path.Ext(src.Path)]
-		f, err := units.Reclassify(ctx, r.Files[src.Path], syn)
+	for _, p := range sortedKeys(files) {
+		f, err := units.Reclassify(ctx, files[p], r.SyntaxFor(p))
 		if err != nil {
 			return r, err
 		}
-		f.Path, f.Blob, f.Mode = src.Path, src.Blob, src.Mode
-		r.Files[src.Path] = f
-		r.Roles[src.Path] = classify(f)
+		r.Files[p] = f
 	}
-	for w, n := range r.Frequency {
-		r.IDF[w] = math.Log(float64(max(1, r.UnitCount)) / float64(max(1, n)))
-	}
-	if err := learnTests(ctx, &r, in.Runs); err != nil {
-		return r, err
-	}
-	learnEntries(&r)
-	for _, p := range sortedKeys(r.Files) {
-		role := r.Roles[p]
-		for _, u := range r.Files[p].Units {
-			if r.TestUnits[UnitKey(p, u)] {
-				role.Test = true
-			}
-		}
-		r.Roles[p] = role
-	}
-	for _, p := range sortedKeys(r.Roles) {
-		if !r.Roles[p].Manifest {
-			continue
-		}
-		dir := path.Dir(p)
-		if dir == "." {
-			continue
-		}
-		licensed := false
-		for _, q := range sortedKeys(r.Files) {
-			if path.Dir(q) == dir {
-				for _, w := range units.Words(strings.Join(r.Files[q].Lines, "")) {
-					if w == "license" || w == "licence" || w == "copyright" {
-						licensed = true
-						break
-					}
-				}
-			}
-		}
-		if licensed {
-			for _, q := range sortedKeys(r.Files) {
-				if strings.HasPrefix(q, dir+"/") {
-					role := r.Roles[q]
-					role.Dependency = true
-					r.Roles[q] = role
-				}
-			}
-		}
-	}
-	r.Results = LearnResults(in.Runs, CaseNames(r))
+	r.TestCounts = nil
 	return r, ctx.Err()
 }
 
 func UnitKey(p string, u units.Unit) string          { return p + ":" + u.ID }
 func (r Repository) SyntaxFor(p string) units.Syntax { return r.Syntax[path.Ext(p)] }
 func (r Repository) Entry(p string, u units.Unit) bool {
+	if r.EntryLookup != nil {
+		return r.EntryLookup(p, u)
+	}
 	for _, pattern := range r.Entries {
 		switch pattern.Kind {
 		case "prefix":
@@ -233,6 +122,28 @@ func (r Repository) Entry(p string, u units.Unit) bool {
 		}
 	}
 	return false
+}
+
+func (r Repository) FrequencyOf(word string) int {
+	if r.FrequencyLookup != nil {
+		return r.FrequencyLookup(word)
+	}
+	return r.Frequency[word]
+}
+func (r Repository) TestWord(word string, fold bool) float64 {
+	if r.TestWordLookup != nil {
+		return r.TestWordLookup(word, fold)
+	}
+	if !fold {
+		return r.TestWords[word]
+	}
+	best := 0.0
+	for w, v := range r.TestWords {
+		if strings.EqualFold(word, w) {
+			best = max(best, v)
+		}
+	}
+	return best
 }
 
 var versionPattern = regexp.MustCompile(`(^|[^[:alnum:]])[[:digit:]]+\.[[:digit:]]+(\.[[:digit:]]+)?`)

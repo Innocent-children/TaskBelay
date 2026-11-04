@@ -30,7 +30,10 @@ func Push(ctx context.Context, g Graph, seeds map[string]float64) (map[string]fl
 		}
 		v := queue[head]
 		queued[v] = false
-		degree := g.Degree[v]
+		degree, err := g.degree(ctx, v)
+		if err != nil {
+			return scores, pushes, err
+		}
 		mass := residual[v]
 		if degree == 0 {
 			scores[v] += mass
@@ -41,11 +44,19 @@ func Push(ctx context.Context, g Graph, seeds map[string]float64) (map[string]fl
 			continue
 		}
 		pushes++
+		edges, err := g.neighbours(ctx, v)
+		if err != nil {
+			return scores, pushes, err
+		}
 		scores[v] += Alpha * mass
 		residual[v] = (1 - Alpha) * mass / 2
-		for _, w := range sortedKeys(g.Edges[v]) {
-			residual[w] += (1 - Alpha) * mass * g.Edges[v][w] / (2 * degree)
-			if residual[w] >= Epsilon*g.Degree[w] && !queued[w] {
+		for _, w := range sortedKeys(edges) {
+			residual[w] += (1 - Alpha) * mass * edges[w] / (2 * degree)
+			d, err := g.degree(ctx, w)
+			if err != nil {
+				return scores, pushes, err
+			}
+			if residual[w] >= Epsilon*d && !queued[w] {
 				queue = append(queue, w)
 				queued[w] = true
 			}
@@ -58,8 +69,13 @@ func Push(ctx context.Context, g Graph, seeds map[string]float64) (map[string]fl
 	return scores, pushes, nil
 }
 
-func Sweep(g Graph, scores map[string]float64) ([]string, float64) {
+func Sweep(ctx context.Context, g Graph, scores map[string]float64) ([]string, float64, error) {
 	nodes := sortedKeys(scores)
+	for _, n := range nodes {
+		if _, err := g.degree(ctx, n); err != nil {
+			return nil, 0, err
+		}
+	}
 	sort.Slice(nodes, func(i, j int) bool {
 		a, b := scores[nodes[i]]/math.Max(Epsilon, g.Degree[nodes[i]]), scores[nodes[j]]/math.Max(Epsilon, g.Degree[nodes[j]])
 		if a == b {
@@ -73,8 +89,12 @@ func Sweep(g Graph, scores map[string]float64) ([]string, float64) {
 	for i, v := range nodes {
 		inside[v] = true
 		volume += g.Degree[v]
-		for _, w := range sortedKeys(g.Edges[v]) {
-			weight := g.Edges[v][w]
+		edges, err := g.neighbours(ctx, v)
+		if err != nil {
+			return nil, 0, err
+		}
+		for _, w := range sortedKeys(edges) {
+			weight := edges[w]
 			if inside[w] {
 				cut -= weight
 			} else {
@@ -97,7 +117,7 @@ func Sweep(g Graph, scores map[string]float64) ([]string, float64) {
 	}
 	result := append([]string(nil), nodes[:count]...)
 	sort.Strings(result)
-	return result, best
+	return result, best, nil
 }
 
 type distance struct {
@@ -143,6 +163,10 @@ func Strongest(ctx context.Context, g Graph, seeds map[string]float64, clusters 
 			remaining--
 		}
 		for _, n := range sortedKeys(g.Edges[d.node]) {
+			// 路径解释只使用推送已触及的邻域，不能为不可达的簇扩展到整个仓库。
+			if _, known := g.Edges[n]; !known {
+				continue
+			}
 			candidate := d.value - math.Log(g.Edges[d.node][n]/g.Degree[d.node])
 			old, ok := dist[n]
 			if !ok || candidate < old {

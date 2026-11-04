@@ -42,13 +42,20 @@ func (o Observer) Observe(ctx context.Context, e event.Event, task string) (ledg
 }
 
 func (o Observer) observe(ctx context.Context, e event.Event, task string) (ledger.Observation, error) {
-	view, err := o.Store.ObservationState(ctx, o.Workspace.ID, nil)
+	view, err := o.Store.ObservationState(ctx, o.Workspace.ID, []string{})
 	if err != nil {
 		return ledger.Observation{}, err
 	}
+	previous, pending, err := o.Store.FullObservationState(ctx, o.Workspace.ID)
+	if err != nil {
+		return ledger.Observation{}, err
+	}
+	if !previous.FilesIndexed {
+		previous.Tree = ""
+	}
 	observation := o.observation(e, task, string(e.Kind), view)
 	ledger.DebugRecord(ctx, "observation.capture.start", nil)
-	snapshot, captureErr := o.Workspace.Capture(ctx)
+	snapshot, captureErr := o.Workspace.Capture(ctx, previous.Tree)
 	ledger.DebugRecord(ctx, "observation.capture.end", map[string]any{"complete": snapshot.Complete(), "files": len(snapshot.Files), "returned": captureErr == nil})
 	observation.Full, observation.Complete = true, snapshot.Complete()
 	observation.Tree, observation.Context = snapshot.Tree, snapshot.Context
@@ -56,11 +63,28 @@ func (o Observer) observe(ctx context.Context, e event.Event, task string) (ledg
 	if ctx.Err() != nil {
 		return observation, ctx.Err()
 	}
-	if snapshot.Complete() {
-		for path := range view.Files {
-			if _, ok := observation.Files[path]; !ok {
-				observation.Files[path] = gitstate.File{}
-			}
+	if snapshot.Complete() && len(pending) > 0 {
+		files, err := o.Workspace.TreeFiles(ctx, snapshot.Tree, pending...)
+		if err != nil {
+			return observation, err
+		}
+		for _, path := range pending {
+			observation.Files[path] = files[path]
+		}
+	}
+	current, err := o.Store.ObservationState(ctx, o.Workspace.ID, sortedPaths(observation.Files))
+	if err != nil {
+		return observation, err
+	}
+	if current.Revision != view.Revision || current.Context != view.Context {
+		return observation, ledger.ErrObservationConflict
+	}
+	view = current
+	// 未变化的子模块边界不需要再次访问子仓库。
+	for _, boundary := range previous.Boundaries {
+		file, changed := observation.Files[boundary.Path]
+		if !changed || file.Mode == "160000" && file.Blob == boundary.Version {
+			observation.Boundaries = append(observation.Boundaries, boundary)
 		}
 	}
 	changes, err := o.workspaceChanges(ctx, view, observation.Files)

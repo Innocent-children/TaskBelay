@@ -145,7 +145,7 @@ func (t Tasks) BeforeCommand(ctx context.Context, e event.Event) (event.Decision
 			record.Scope.Complete = false
 			record.Scope.Reason = check.CommandResultReason(err)
 		}
-		current, err := t.Workspace.Capture(ctx)
+		current, err := t.Workspace.CaptureTree(ctx)
 		if err != nil || !current.Complete() || current.Tree != record.Tree {
 			record.Scope.Complete = false
 			record.Issue = nil

@@ -13,7 +13,6 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/dynamic"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
-	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/signals"
 	"github.com/Innocent-children/taskbelay/internal/units"
 )
@@ -148,8 +147,11 @@ func runDynamic(ctx context.Context, s *ledger.Store, w gitstate.Workspace, acto
 		}
 	}
 	if len(confirmed) > 0 {
-		updated, err := signals.Analyze(ctx, signals.Input{Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Confirmed: confirmed})
+		updated, err := signals.Analyze(ctx, signals.Input{Queries: a.Index.queries(), Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Confirmed: confirmed})
 		if err != nil {
+			return err
+		}
+		if err := a.Index.err(); err != nil {
 			return err
 		}
 		for _, c := range updated.Candidates {
@@ -282,10 +284,6 @@ func dynamicInput(ctx context.Context, s *ledger.Store, w gitstate.Workspace, vi
 			}
 		}
 	}
-	existing := map[string]bool{}
-	for _, name := range repostats.CaseNames(a.Before) {
-		existing[name] = true
-	}
 	seen := map[string]bool{}
 	for n := len(view.Verifications) - 1; n >= 0; n-- {
 		r := view.Verifications[n]
@@ -297,7 +295,7 @@ func dynamicInput(ctx context.Context, s *ledger.Store, w gitstate.Workspace, vi
 		in.Commands = append(in.Commands, dynamic.Command{ID: r.CommandKey, Program: c.Program, Args: c.Args, Directory: c.Directory, Shell: c.Shell, Environment: c.Environment, Tool: c.Tool, Output: r.Output, Cases: r.Scope.Cases, Trusted: true, Duration: r.EndedAt.Sub(r.StartedAt)})
 		var old []string
 		for _, name := range r.Scope.Cases {
-			if existing[name] {
+			if len(a.Index.Origin.read("case_name", name)) > 0 {
 				old = append(old, name)
 			}
 		}
@@ -345,7 +343,7 @@ func dynamicInput(ctx context.Context, s *ledger.Store, w gitstate.Workspace, vi
 			in.Basis = append(in.Basis, dynamic.Basis{ID: fmt.Sprintf("%s:%s", req.ID, r.ID), Command: r.CommandKey, Requirement: req.ID, Source: req.ID, Cases: names, Primary: primary})
 		}
 	}
-	return in, nil
+	return in, a.Index.err()
 }
 
 func stringIn(items []string, value string) bool {

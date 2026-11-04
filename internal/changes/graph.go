@@ -2,12 +2,8 @@ package changes
 
 import (
 	"context"
-	"fmt"
-	"math"
-	"strings"
-
-	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
+	"strings"
 )
 
 type Requirement struct {
@@ -15,90 +11,76 @@ type Requirement struct {
 	Locations                            []string
 }
 type GraphInput struct {
-	Before, After repostats.Repository
-	Changes       Result
-	Requirements  []Requirement
-	Weights       []float64
+	Graph        Graph
+	Changes      Result
+	Requirements []Requirement
+	Weights      []float64
 }
 type Graph struct {
-	Edges   map[string]map[string]float64
-	Degree  map[string]float64
-	Matches map[string][]string
-	Volume  float64
+	Neighbours func(context.Context, string) (map[string]float64, error)
+	NodeDegree func(context.Context, string) (float64, error)
+	Match      func(context.Context, string) (map[string][]string, error)
+	Edges      map[string]map[string]float64
+	Degree     map[string]float64
+	Volume     float64
 }
 type Seed struct {
 	Node, Source string
 	Weight       float64
 }
 type Region struct {
-	Requirement string
-	Known       bool
-	Seeds       []Seed
-	Scores      map[string]float64
-	Members     []string
-	Clusters    []string
-	Paths       map[string][]string
-	Conductance float64
-	Pushes      int
+	Requirement       string
+	Known             bool
+	Seeds             []Seed
+	Scores            map[string]float64
+	Members, Clusters []string
+	Paths             map[string][]string
+	Conductance       float64
+	Pushes            int
 }
 
+func (g Graph) degree(ctx context.Context, node string) (float64, error) {
+	if d, ok := g.Degree[node]; ok {
+		return d, nil
+	}
+	d, err := g.NodeDegree(ctx, node)
+	if err == nil {
+		g.Degree[node] = d
+	}
+	return d, err
+}
+func (g Graph) neighbours(ctx context.Context, node string) (map[string]float64, error) {
+	if e, ok := g.Edges[node]; ok {
+		return e, nil
+	}
+	e, err := g.Neighbours(ctx, node)
+	if err == nil {
+		g.Edges[node] = e
+	}
+	return e, err
+}
+
+/**
+ * BuildGraph 只增加本次变更簇的边；仓库邻接与度由调用方按节点查询。
+ */
 func BuildGraph(ctx context.Context, in GraphInput) (Graph, error) {
-	g := Graph{Edges: map[string]map[string]float64{}, Degree: map[string]float64{}, Matches: map[string][]string{}}
-	files := map[string]units.File{}
-	for p, f := range in.After.Files {
-		files[p] = f
-	}
-	for p, f := range in.Before.Files {
-		if _, ok := files[p]; !ok {
-			files[p] = f
+	g := in.Graph
+	g.Edges = map[string]map[string]float64{}
+	g.Degree = map[string]float64{}
+	extra := map[string]map[string]float64{}
+	add := func(a, b string, w float64) {
+		if a == b {
+			return
 		}
-	}
-	df := map[string]int{}
-	total := 0
-	for _, p := range sortedKeys(files) {
-		for _, u := range files[p].Units {
-			total++
-			seen := map[string]bool{}
-			for _, t := range u.Tokens {
-				if t.Kind == "identifier" || t.Kind == "key" {
-					seen[units.Literal(t)] = true
-				}
-			}
-			for w := range seen {
-				df[w]++
-			}
+		if extra[a] == nil {
+			extra[a] = map[string]float64{}
 		}
-	}
-	for _, p := range sortedKeys(files) {
-		if err := ctx.Err(); err != nil {
-			return g, err
+		if extra[b] == nil {
+			extra[b] = map[string]float64{}
 		}
-		g.Matches[strings.ToLower(p)] = append(g.Matches[strings.ToLower(p)], "f:"+p)
-		for _, u := range files[p].Units {
-			key := "u:" + repostats.UnitKey(p, u)
-			g.add(key, "f:"+p, FileWeight)
-			g.Matches[strings.ToLower(fmt.Sprintf("%s:%d", p, u.Line))] = append(g.Matches[strings.ToLower(fmt.Sprintf("%s:%d", p, u.Line))], key)
-			if u.Name != "" {
-				g.Matches[strings.ToLower(p+":"+u.Name)] = append(g.Matches[strings.ToLower(p+":"+u.Name)], key)
-			}
-			counts := map[string]int{}
-			for _, t := range u.Tokens {
-				if t.Kind == "identifier" || t.Kind == "key" {
-					counts[units.Literal(t)]++
-				}
-			}
-			for _, w := range sortedKeys(counts) {
-				weight := math.Log(float64(max(1, total))/float64(df[w])) * math.Log1p(float64(counts[w]))
-				if weight < Epsilon {
-					continue
-				}
-				g.add(key, "w:"+w, weight)
-				g.Matches[strings.ToLower(w)] = append(g.Matches[strings.ToLower(w)], "w:"+w)
-				for _, sub := range units.Words(w) {
-					g.Matches[sub] = append(g.Matches[sub], "w:"+w)
-				}
-			}
-		}
+		extra[a][b] += w
+		extra[b][a] += w
+		g.Volume += 2 * w
 	}
 	hunks := map[string]Hunk{}
 	for _, h := range in.Changes.Hunks {
@@ -109,8 +91,12 @@ func BuildGraph(ctx context.Context, in GraphInput) (Graph, error) {
 		for _, id := range c.Hunks {
 			h := hunks[id]
 			for _, u := range h.Units {
-				if _, ok := g.Edges["u:"+u]; ok {
-					g.add("c:"+c.ID, "u:"+u, ClusterWeight)
+				d, err := g.NodeDegree(ctx, "u:"+u)
+				if err != nil {
+					return g, err
+				}
+				if d > 0 {
+					add("c:"+c.ID, "u:"+u, ClusterWeight)
 				}
 			}
 			if h.Call != "" {
@@ -122,41 +108,37 @@ func BuildGraph(ctx context.Context, in GraphInput) (Graph, error) {
 		ids := calls[call]
 		for i, a := range ids {
 			for _, b := range ids[i+1:] {
-				if a != b {
-					g.add("c:"+a, "c:"+b, ClusterWeight)
-				}
+				add("c:"+a, "c:"+b, ClusterWeight)
 			}
 		}
 	}
-	for _, key := range sortedKeys(g.Edges) {
-		for _, to := range sortedKeys(g.Edges[key]) {
-			g.Degree[key] += g.Edges[key][to]
+	baseNeighbours, baseDegree := g.Neighbours, g.NodeDegree
+	g.Neighbours = func(ctx context.Context, node string) (map[string]float64, error) {
+		e, err := baseNeighbours(ctx, node)
+		if err != nil {
+			return nil, err
 		}
-		g.Volume += g.Degree[key]
+		out := map[string]float64{}
+		for k, v := range e {
+			out[k] = v
+		}
+		for k, v := range extra[node] {
+			out[k] += v
+		}
+		return out, nil
 	}
-	return g, nil
-}
-
-func (g *Graph) add(a, b string, w float64) {
-	if a == b {
-		return
+	g.NodeDegree = func(ctx context.Context, node string) (float64, error) {
+		d, err := baseDegree(ctx, node)
+		for _, v := range extra[node] {
+			d += v
+		}
+		return d, err
 	}
-	if g.Edges[a] == nil {
-		g.Edges[a] = map[string]float64{}
-	}
-	if g.Edges[b] == nil {
-		g.Edges[b] = map[string]float64{}
-	}
-	g.Edges[a][b] += w
-	g.Edges[b][a] += w
+	return g, ctx.Err()
 }
 
 func Relate(ctx context.Context, in GraphInput) ([]Region, error) {
 	g, err := BuildGraph(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-	matcher, err := units.NewMatcher(ctx, sortedKeys(g.Matches))
 	if err != nil {
 		return nil, err
 	}
@@ -166,51 +148,54 @@ func Relate(ctx context.Context, in GraphInput) ([]Region, error) {
 	}
 	var regions []Region
 	for _, req := range in.Requirements {
-		region := Region{Requirement: req.ID, Paths: map[string][]string{}}
-		seedMass := map[string]float64{}
+		r := Region{Requirement: req.ID, Paths: map[string][]string{}}
+		mass := map[string]float64{}
 		for i, text := range []string{req.Quote + " " + req.Plan, req.Content + " " + req.Acceptance, strings.Join(req.Locations, " ")} {
 			text = strings.ToLower(text)
-			matches, err := matcher.Find(ctx, text)
+			matches, err := g.Match(ctx, text)
 			if err != nil {
 				return regions, err
 			}
 			seen := map[string]bool{}
-			for _, match := range matches {
-				if !units.WholeWord(text, match) {
+			for _, pattern := range sortedKeys(matches) {
+				if !units.HasWord(text, pattern) {
 					continue
 				}
-				for _, node := range g.Matches[match.Pattern] {
+				for _, node := range matches[pattern] {
 					if seen[node] {
 						continue
 					}
 					seen[node] = true
 					if i < 2 {
-						region.Known = true
+						r.Known = true
 					}
-					seedMass[node] += weights[i]
-					region.Seeds = append(region.Seeds, Seed{node, []string{"quote", "content", "location"}[i], weights[i]})
+					mass[node] += weights[i]
+					r.Seeds = append(r.Seeds, Seed{node, []string{"quote", "content", "location"}[i], weights[i]})
 				}
 			}
 		}
-		if !region.Known {
-			regions = append(regions, region)
+		if !r.Known {
+			regions = append(regions, r)
 			continue
 		}
-		region.Scores, region.Pushes, err = Push(ctx, g, seedMass)
+		r.Scores, r.Pushes, err = Push(ctx, g, mass)
 		if err != nil {
 			return regions, err
 		}
-		region.Members, region.Conductance = Sweep(g, region.Scores)
-		for _, node := range region.Members {
-			if strings.HasPrefix(node, "c:") {
-				region.Clusters = append(region.Clusters, strings.TrimPrefix(node, "c:"))
+		r.Members, r.Conductance, err = Sweep(ctx, g, r.Scores)
+		if err != nil {
+			return regions, err
+		}
+		for _, n := range r.Members {
+			if strings.HasPrefix(n, "c:") {
+				r.Clusters = append(r.Clusters, strings.TrimPrefix(n, "c:"))
 			}
 		}
-		region.Paths, err = Strongest(ctx, g, seedMass, in.Changes.Clusters)
+		r.Paths, err = Strongest(ctx, g, mass, in.Changes.Clusters)
 		if err != nil {
 			return regions, err
 		}
-		regions = append(regions, region)
+		regions = append(regions, r)
 	}
 	return regions, nil
 }

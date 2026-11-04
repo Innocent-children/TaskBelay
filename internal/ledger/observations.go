@@ -77,6 +77,7 @@ type Observation struct {
 	Full               bool
 	Complete           bool
 	Files              map[string]gitstate.File
+	FilesIndexed       bool `json:"-"`
 	Boundaries         []gitstate.Boundary
 	Incomplete         []gitstate.Incomplete
 	SnapshotRef        string
@@ -300,7 +301,7 @@ func (s *Store) SaveObservation(ctx context.Context, view ObservationView, obser
 	if err := publishObservationRefs(ctx, tx, *observation); err != nil {
 		return err
 	}
-	result, err := tx.ExecContext(ctx, "INSERT INTO observations_v12(workspace_id,task_id,data,files_set_id) VALUES (?,?,?,?)", observation.WorkspaceID, observation.TaskID, string(data), filesID)
+	result, err := tx.ExecContext(ctx, "INSERT INTO observations_v12(workspace_id,task_id,data,files_set_id,paths_indexed) VALUES (?,?,?,?,1)", observation.WorkspaceID, observation.TaskID, string(data), filesID)
 	if err != nil {
 		return err
 	}
@@ -329,6 +330,9 @@ func (s *Store) SaveObservation(ctx context.Context, view ObservationView, obser
 	}
 	changed := false
 	for path, file := range observation.Files {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO observation_paths_v12 VALUES (?,?,?,?,?)`, observation.WorkspaceID, path, id, file.Blob, file.Mode); err != nil {
+			return err
+		}
 		old := view.Files[path]
 		if old.File != file {
 			changed = true

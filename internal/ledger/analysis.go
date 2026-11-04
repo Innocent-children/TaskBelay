@@ -16,7 +16,9 @@ type DynamicReport struct {
 }
 type VerificationInput struct {
 	Hash, Content, Semantic, Tool, Environment         string
-	Included, Excluded, Cases                          []string
+	Cases                                              []string
+	Set                                                string
+	Included, Excluded                                 int
 	Complete, Validation, Unstable, EnvironmentChanged bool
 	Reason, Suggestion                                 string
 }

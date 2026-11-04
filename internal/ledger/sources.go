@@ -125,11 +125,11 @@ func (s *Store) RecordSource(ctx context.Context, source Source) error {
 			if source.Path == "" || source.Blob == "" || source.ObservationID == 0 {
 				return fmt.Errorf("项目约定须引用已观察的文件内容")
 			}
-			observation, err := loadObservation(ctx, tx, source.WorkspaceID, source.ObservationID)
+			file, err := observationFile(ctx, tx, source.WorkspaceID, source.ObservationID, source.Path)
 			if err != nil {
 				return err
 			}
-			if observation.Files[source.Path].Blob != source.Blob {
+			if file.Blob != source.Blob {
 				return fmt.Errorf("约定来源与观察内容不一致")
 			}
 		case "confirmed_plan":
@@ -162,7 +162,7 @@ func (s *Store) RecordSource(ctx context.Context, source Source) error {
 }
 
 func loadObservation(ctx context.Context, q queryer, workspace string, id int64) (Observation, error) {
-	result, err := readObservation(ctx, q, id)
+	result, err := readObservation(ctx, q, id, false)
 	if err == nil && result.WorkspaceID != workspace {
 		return Observation{}, fmt.Errorf("观察 %d 不属于当前工作区", id)
 	}

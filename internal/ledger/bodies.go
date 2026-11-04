@@ -137,17 +137,20 @@ func saveFileSet(ctx context.Context, tx *sql.Tx, body *storedBody) (any, error)
 	return id, nil
 }
 
-func readObservation(ctx context.Context, q queryer, id int64) (Observation, error) {
+func readObservation(ctx context.Context, q queryer, id int64, withFiles ...bool) (Observation, error) {
 	var result Observation
 	var data string
 	var filesID sql.NullString
-	if err := q.QueryRowContext(ctx, `SELECT data,files_set_id FROM observations_v12 WHERE id=?`, id).Scan(&data, &filesID); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT data,files_set_id,paths_indexed FROM observations_v12 WHERE id=?`, id).Scan(&data, &filesID, &result.FilesIndexed); err != nil {
 		return result, fmt.Errorf("观察 %d: %w", id, err)
 	}
 	if err := json.Unmarshal([]byte(data), &result); err != nil {
 		return result, fmt.Errorf("观察 %d: %w", id, err)
 	}
 	result.ID = id
+	if len(withFiles) > 0 && !withFiles[0] {
+		return result, nil
+	}
 	if filesID.Valid {
 		var body storedBody
 		var format int

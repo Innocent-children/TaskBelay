@@ -162,7 +162,7 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 				}
 			}
 			for name, sites := range units.Calls(body) {
-				if in.After.TestWords[name] <= 0 || name == u.Name {
+				if in.After.TestWord(name, false) <= 0 || name == u.Name {
 					continue
 				}
 				asserted = true
@@ -171,12 +171,7 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 					seenWord := false
 					for _, arg := range args {
 						for _, word := range units.Words(arg.Text) {
-							found := false
-							for learned, weight := range in.After.TestWords {
-								if strings.ToLower(learned) == word && weight > 0 {
-									found = true
-								}
-							}
+							found := in.After.TestWord(word, true) > 0
 							onlyTest = onlyTest && found
 							seenWord = true
 						}

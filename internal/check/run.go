@@ -18,6 +18,7 @@ type RunInput struct {
 	Refresh bool   `json:"refresh,omitempty"`
 }
 type analysis struct {
+	Index         indexedSnapshot
 	Before, After repostats.Repository
 	Changes       changes.Result
 	Regions       []changes.Region
@@ -65,7 +66,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 		r.Missing = append(r.Missing, ledger.CheckGap{Operation: options.Depth, Kind: kind, Reason: failure.Error()})
 		r.Report.Counts = r.GapCounts()
 		tree := ""
-		if current, err := w.Capture(publish); err == nil && current.Complete() {
+		if current, err := w.CaptureTree(publish); err == nil && current.Complete() {
 			tree = current.Tree
 		}
 		if saved, err := store.SaveCheck(publish, w.ID, actor, tree, r); err == nil {
@@ -89,6 +90,9 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 	} else {
 		r.Relocations = data.Changes.Relocations
 		r.Locations = resolveLocations(view.Requirements, data)
+		if err := data.Index.err(); err != nil {
+			return r, err
+		}
 		for _, gap := range data.Signals.Gaps {
 			r.Missing = append(r.Missing, ledger.CheckGap{Operation: "signals", Kind: "unknown", Reason: gap})
 		}
@@ -135,7 +139,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 		for _, h := range data.Changes.Hunks {
 			r.Report.Changes = append(r.Report.Changes, h.Path)
 		}
-		sections := map[string]any{"conventions": map[string]any{"tree": data.Before.Tree, "syntax": data.Before.Syntax, "entries": data.Before.Entries, "test_words": data.Before.TestWords, "test_converged": data.Before.Converged, "test_iterations": data.Before.TestIterations}, "changes": data.Changes, "regions": data.Regions, "signals": data.Signals, "weights": weights, "selected": chosen}
+		sections := map[string]any{"conventions": map[string]any{"tree": data.Before.Tree, "index": data.Index.Origin.id, "syntax": data.Before.Syntax, "test_converged": data.Before.Converged, "test_iterations": data.Before.TestIterations}, "changes": data.Changes, "regions": data.Regions, "signals": data.Signals, "weights": weights, "selected": chosen}
 		for _, kind := range keys(sections) {
 			raw, err := json.Marshal(sections[kind])
 			if err != nil {
@@ -181,7 +185,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 			r.Issues[i].Level = "hint"
 		}
 	}
-	current, captureErr := w.Capture(ctx)
+	current, captureErr := w.CaptureTree(ctx)
 	tree := ""
 	if captureErr == nil && current.Complete() {
 		tree = current.Tree
@@ -192,14 +196,11 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view ledger.TaskView, observation ledger.Observation) (analysis, error) {
 	var a analysis
 	var err error
-	a.Before, err = repository(ctx, s, w, view.Task.OriginTree, view.Task.OriginTree, runSamples(view.Verifications))
+	a.Index, err = snapshots(ctx, s, w, view.Task.OriginTree, observation.Tree, runSamples(view.Verifications))
 	if err != nil {
 		return a, err
 	}
-	a.After, err = repository(ctx, s, w, view.Task.OriginTree, observation.Tree, runSamples(view.Verifications))
-	if err != nil {
-		return a, err
-	}
+	a.Before, a.After = a.Index.Before, a.Index.After
 	a.Edits, err = s.TaskEdits(ctx, w.ID, view.Task.ID, observation.ID)
 	if err != nil {
 		return a, err
@@ -217,7 +218,7 @@ func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view le
 	if err != nil {
 		return a, err
 	}
-	a.Regions, err = changes.Relate(ctx, changes.GraphInput{Before: a.Before, After: a.After, Changes: a.Changes, Requirements: a.Requirements, Weights: seedWeights(weights)})
+	a.Regions, err = changes.Relate(ctx, changes.GraphInput{Graph: a.Index.Graph.graph(), Changes: a.Changes, Requirements: a.Requirements, Weights: seedWeights(weights)})
 	if err != nil {
 		return a, err
 	}
@@ -227,8 +228,13 @@ func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view le
 			retained = append(retained, note.Target.At)
 		}
 	}
-	a.Signals, err = signals.Analyze(ctx, signals.Input{Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Retained: retained})
-	return a, err
+	a.Index.caseNeighbourhood()
+	a.Before, a.After = a.Index.Before, a.Index.After
+	a.Signals, err = signals.Analyze(ctx, signals.Input{Queries: a.Index.queries(), Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Retained: retained})
+	if err != nil {
+		return a, err
+	}
+	return a, a.Index.err()
 }
 
 func requirements(view ledger.TaskView) []changes.Requirement {
@@ -280,7 +286,7 @@ func resolveLocations(requirements []ledger.Requirement, a analysis) []ledger.Re
 				at = to
 			}
 			file := strings.SplitN(at, ":", 2)[0]
-			if f, ok := a.After.Files[file]; ok {
+			if f := a.Index.Current.fileInfo(file); f.Blob != "" {
 				l.File, l.Blob, l.Pending = file, f.Blob, ""
 			}
 			for _, external := range a.Signals.External {

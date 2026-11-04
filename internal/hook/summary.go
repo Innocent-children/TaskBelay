@@ -16,7 +16,7 @@ func (t Tasks) summaryInput(ctx context.Context, actor ledger.Actor, view ledger
 	if err != nil {
 		return input, err
 	}
-	observation, err := t.Store.Observation(ctx, state.LatestID)
+	observation, err := t.Store.ObservationMetadata(ctx, state.LatestID)
 	if err != nil {
 		return input, err
 	}

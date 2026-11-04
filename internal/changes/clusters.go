@@ -127,7 +127,7 @@ func Compare(ctx context.Context, in Input) (Result, error) {
 				}
 			}
 			for _, t := range after {
-				if t.Kind == "identifier" && in.Before.Frequency[t.Text] == 0 {
+				if t.Kind == "identifier" && in.Before.FrequencyOf(t.Text) == 0 {
 					newWords[t.Text] = true
 				}
 			}
