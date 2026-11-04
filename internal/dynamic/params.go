@@ -5,7 +5,6 @@ import "time"
 
 const (
 	Budget             = 120 * time.Second      // 一次动态检查总预算；见 product-architecture.md 性能预算。
-	CommandBudget      = 30 * time.Second       // 单次副本命令等待上限；见 languages.md 副本中的运行。
 	RunLimit           = 128                    // 进程运行数量预算，确认运行也计入；见 algorithm.md 五节。
 	MutationLimit      = 64                     // 逐个变异的抽样预算；见 over-testing.md 三节。
 	Epsilon            = 0.05                   // Good–Turing 新发现集合概率停止精度；见 over-testing.md 三节。

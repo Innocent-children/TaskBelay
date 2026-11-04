@@ -294,7 +294,7 @@ func dynamicInput(ctx context.Context, s *ledger.Store, w gitstate.Workspace, vi
 			continue
 		}
 		seen[r.CommandKey] = true
-		in.Commands = append(in.Commands, dynamic.Command{ID: r.CommandKey, Program: c.Program, Args: c.Args, Directory: c.Directory, Shell: c.Shell, Environment: c.Environment, Tool: c.Tool, Output: r.Output, Cases: r.Scope.Cases, Trusted: true})
+		in.Commands = append(in.Commands, dynamic.Command{ID: r.CommandKey, Program: c.Program, Args: c.Args, Directory: c.Directory, Shell: c.Shell, Environment: c.Environment, Tool: c.Tool, Output: r.Output, Cases: r.Scope.Cases, Trusted: true, Duration: r.EndedAt.Sub(r.StartedAt)})
 		var old []string
 		for _, name := range r.Scope.Cases {
 			if existing[name] {

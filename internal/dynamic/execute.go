@@ -105,8 +105,12 @@ func (r *runner) execute(ctx context.Context, phase, base string, patches []Patc
 		result.Reason = "当前环境与已成功命令不同"
 		return result
 	}
-	ctx, cancel := context.WithTimeout(ctx, CommandBudget)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	if reason := commandBudget(ctx, c); reason != "" {
+		result.Reason = reason
+		return result
+	}
 	for r.input.Pause != nil {
 		paused, err := r.input.Pause(ctx)
 		if err != nil {
@@ -218,6 +222,11 @@ func (r *runner) execute(ctx context.Context, phase, base string, patches []Patc
 		}
 		return paused
 	}
+	// 等待并发槽位、暂停和准备副本消耗同一阶段的预算，启动前再次核对。
+	if reason := commandBudget(ctx, c); reason != "" {
+		result.Reason = reason
+		return result
+	}
 	code, evidence, runErr := platform.RunProcess(ctx, platform.ProcessCommand{Path: program, Args: args, Dir: cwd, Env: env, Stdin: stdin, Stdout: stdout, Stderr: stdout, LowPriority: true, Pause: pause, Poll: PollInterval})
 	result.Started, result.Duration = evidence.Started, evidence.Duration
 	result.Resources = evidence.Resources
@@ -235,6 +244,21 @@ func (r *runner) execute(ctx context.Context, phase, base string, patches []Patc
 		result.State = "failed"
 	}
 	return result
+}
+
+func commandBudget(ctx context.Context, c Command) string {
+	end, ok := ctx.Deadline()
+	if !ok {
+		return "动态检查没有可核对的截止时间"
+	}
+	remaining := max(time.Duration(0), time.Until(end))
+	if c.Duration <= 0 {
+		return fmt.Sprintf("命令实测耗时未知，未启动；剩余预算=%s", remaining)
+	}
+	if ctx.Err() != nil || remaining < c.Duration {
+		return fmt.Sprintf("剩余预算不足，未启动；剩余预算=%s，真实工作区实测耗时=%s", remaining, c.Duration)
+	}
+	return ""
 }
 
 func relocate(value, source, target string) string { return strings.ReplaceAll(value, source, target) }
