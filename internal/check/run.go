@@ -135,7 +135,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 		for _, h := range data.Changes.Hunks {
 			r.Report.Changes = append(r.Report.Changes, h.Path)
 		}
-		sections := map[string]any{"conventions": map[string]any{"tree": data.Before.Tree, "syntax": data.Before.Syntax, "entries": data.Before.Entries, "test_words": data.Before.TestWords}, "changes": data.Changes, "regions": data.Regions, "signals": data.Signals, "weights": weights, "selected": chosen}
+		sections := map[string]any{"conventions": map[string]any{"tree": data.Before.Tree, "syntax": data.Before.Syntax, "entries": data.Before.Entries, "test_words": data.Before.TestWords, "test_converged": data.Before.Converged, "test_iterations": data.Before.TestIterations}, "changes": data.Changes, "regions": data.Regions, "signals": data.Signals, "weights": weights, "selected": chosen}
 		for _, kind := range keys(sections) {
 			raw, err := json.Marshal(sections[kind])
 			if err != nil {
@@ -228,9 +228,6 @@ func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view le
 		}
 	}
 	a.Signals, err = signals.Analyze(ctx, signals.Input{Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Retained: retained})
-	if !a.Before.Converged {
-		a.Signals.Gaps = append(a.Signals.Gaps, "测试内容的词汇重分类未收敛")
-	}
 	return a, err
 }
 

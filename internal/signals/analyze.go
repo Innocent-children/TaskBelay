@@ -120,13 +120,17 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		return r, err
 	}
 	r.Candidates = append(r.Candidates, duplicate...)
-	r.Candidates = append(r.Candidates, unused(in)...)
-	r.Cases, r.TestBudget, duplicate, gaps, err = cases(ctx, in)
-	if err != nil {
-		return r, err
+	if in.Before.Converged && in.After.Converged {
+		r.Candidates = append(r.Candidates, unused(in)...)
+		r.Cases, r.TestBudget, duplicate, gaps, err = cases(ctx, in)
+		if err != nil {
+			return r, err
+		}
+		r.Candidates = append(r.Candidates, duplicate...)
+		r.Gaps = append(r.Gaps, gaps...)
+	} else {
+		r.Gaps = append(r.Gaps, "测试内容的词汇重分类未收敛，未生成依赖测试划分的建议")
 	}
-	r.Candidates = append(r.Candidates, duplicate...)
-	r.Gaps = append(r.Gaps, gaps...)
 	var kept []Candidate
 	for _, c := range r.Candidates {
 		retain := false

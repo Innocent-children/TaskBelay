@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"fmt"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/plan"
@@ -20,6 +21,9 @@ func ClassifyTargets(ctx context.Context, s *ledger.Store, w gitstate.Workspace,
 	found, err := s.AnalysisCache(ctx, "repository", units.Hash(Algorithm, task.OriginTree), &base)
 	if err != nil || !found {
 		return out, err
+	}
+	if !base.Converged {
+		return out, fmt.Errorf("测试内容的词汇重分类未收敛，无法确定编辑目标类别")
 	}
 	files := map[string]units.File{}
 	for _, p := range keys(contents) {
@@ -73,7 +77,7 @@ func planIssues(w gitstate.Workspace, v ledger.TaskView, a analysis) []ledger.Is
 					allowed = allowed || err == nil && match
 				}
 			}
-			if !allowed {
+			if !allowed && a.After.Converged {
 				out = append(out, ledger.Issue{Algorithm: Algorithm, Selected: true, Rule: "S2", At: h.Path, LogicalAt: h.Path, FactKey: "plan_scope", Status: "open", Level: "hint", BlockOnDelivery: true, Facts: []string{"半自动模式下的 Agent 改动超出当前有效方案范围"}, Advice: "核对需要保留的行为，补充方案并取得确认"})
 				seen["S2:"+h.Path] = true
 			}

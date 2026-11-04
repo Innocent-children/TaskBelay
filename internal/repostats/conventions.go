@@ -9,7 +9,34 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/units"
 )
 
+type TestModel struct {
+	LogPrior float64
+	Weights  map[string]float64
+}
+
+/**
+ * Test 使用起点分类模型；未见过的词不改变词表，相等时沿用原分类。
+ */
+func (m TestModel) Test(tokens []units.Token, previous bool) bool {
+	score := m.LogPrior
+	for _, t := range tokens {
+		if t.Kind == "identifier" {
+			score += m.Weights[t.Text]
+		}
+	}
+	return score > 0 || score == 0 && previous
+}
+
 func learnTests(ctx context.Context, r *Repository, runs []Run) error {
+	r.Converged, r.TestIterations = false, 0
+	r.TestUnits, r.TestWords = map[string]bool{}, map[string]float64{}
+	r.Tests = TestModel{}
+	defer func() {
+		if !r.Converged {
+			r.TestUnits, r.TestWords, r.TestSeeds = nil, nil, nil
+			r.Tests = TestModel{}
+		}
+	}()
 	seeds := map[string]bool{}
 	for _, p := range sortedKeys(r.Files) {
 		seed := false
@@ -19,6 +46,9 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			}
 		}
 		for _, u := range r.Files[p].Units {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			key := UnitKey(p, u)
 			match := false
 			for _, run := range runs {
@@ -32,14 +62,24 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			}
 		}
 	}
+	r.TestSeeds = seeds
 	for iteration := 0; iteration < IterationBudget; iteration++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		a, b := map[string]int{}, map[string]int{}
 		na, nb := 0, 0
+		ca, cb := 0, 0
 		for _, p := range sortedKeys(r.Files) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			for _, u := range r.Files[p].Units {
+				if r.TestUnits[UnitKey(p, u)] {
+					ca++
+				} else {
+					cb++
+				}
 				for _, t := range u.Tokens {
 					if t.Kind != "identifier" {
 						continue
@@ -62,23 +102,25 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			vocab[w] = true
 		}
 		alpha := Prior * float64(max(1, len(vocab)))
+		model := TestModel{LogPrior: math.Log((float64(ca) + Prior) / (float64(cb) + Prior)), Weights: map[string]float64{}}
 		for _, w := range sortedKeys(vocab) {
 			x, y := float64(a[w])+Prior, float64(b[w])+Prior
-			delta := math.Log(x/(float64(na)+alpha-x+Prior)) - math.Log(y/(float64(nb)+alpha-y+Prior))
-			r.TestWords[w] = delta / math.Sqrt(1/x+1/y)
+			model.Weights[w] = math.Log(x/(float64(na)+alpha)) - math.Log(y/(float64(nb)+alpha))
+			// 单词词表没有“其余词”，不能计算对数几率比。
+			if len(vocab) > 1 {
+				delta := math.Log(x/(float64(na)+alpha-x)) - math.Log(y/(float64(nb)+alpha-y))
+				r.TestWords[w] = delta / math.Sqrt(1/x+1/y)
+			}
 		}
 		next := map[string]bool{}
 		changed := false
 		for _, p := range sortedKeys(r.Files) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			for _, u := range r.Files[p].Units {
 				key := UnitKey(p, u)
-				score := 0.0
-				for _, t := range u.Tokens {
-					if t.Kind == "identifier" {
-						score += r.TestWords[t.Text]
-					}
-				}
-				if seeds[key] || na > 0 && nb > 0 && score > 0 {
+				if seeds[key] || model.Test(u.Tokens, r.TestUnits[key]) {
 					next[key] = true
 				}
 				if next[key] != r.TestUnits[key] {
@@ -87,8 +129,10 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			}
 		}
 		r.TestUnits = next
+		r.TestIterations = iteration + 1
 		if !changed {
 			r.Converged = true
+			r.Tests = model
 			return nil
 		}
 	}
@@ -184,6 +228,9 @@ func CaseNames(r Repository) []string {
 
 func CaseUnits(r Repository, p string) []units.Unit {
 	var out []units.Unit
+	if !r.Converged {
+		return out
+	}
 	for _, u := range r.Files[p].Units {
 		if !r.TestUnits[UnitKey(p, u)] {
 			continue

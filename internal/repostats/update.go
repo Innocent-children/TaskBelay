@@ -47,13 +47,8 @@ func Apply(ctx context.Context, origin Repository, tree string, files map[string
 			role.Dependency = old.Dependency
 		}
 		for _, u := range f.Units {
-			score := 0.0
-			for _, t := range u.Tokens {
-				if t.Kind == "identifier" {
-					score += origin.TestWords[t.Text]
-				}
-			}
-			if origin.TestUnits[UnitKey(p, u)] || score > 0 {
+			key := UnitKey(p, u)
+			if origin.Converged && (origin.TestSeeds[key] || origin.Tests.Test(u.Tokens, origin.TestUnits[key])) {
 				r.TestUnits[UnitKey(p, u)] = true
 				role.Test = true
 			}

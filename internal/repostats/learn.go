@@ -34,6 +34,9 @@ type Repository struct {
 	IDF                      map[string]float64
 	TestWords                map[string]float64
 	TestUnits                map[string]bool
+	TestSeeds                map[string]bool
+	Tests                    TestModel
+	TestIterations           int
 	Entries                  []Pattern
 	UnitCount                int
 	Converged                bool

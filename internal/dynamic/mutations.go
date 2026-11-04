@@ -121,6 +121,10 @@ func generate(ctx context.Context, in Input, clusters []string) ([]Mutation, err
 }
 
 func (r *runner) mutations() error {
+	if !r.input.Before.Converged || !r.input.After.Converged {
+		r.result.Gaps = append(r.result.Gaps, "测试内容的词汇重分类未收敛，未运行变异和测试约简")
+		return nil
+	}
 	clusters := append([]string(nil), r.result.Required...)
 	if len(clusters) == 0 {
 		var scores []float64
