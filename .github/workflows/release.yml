@@ -1,28 +1,59 @@
+# Builds trusted version tags and publishes verified assets; PR review remains advisory.
 name: Release
 
-on:
+'on':
   push:
     tags: ['v*']
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release:
+    name: TaskBelay release
+    concurrency:
+      group: release-${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      RELEASE_VERSION: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - name: Validate release request
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const tag = process.env.RELEASE_VERSION;
+            if (!/^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(tag)) {
+              core.setFailed('Release tags must use vX.Y.Z without a prerelease suffix.');
+              return;
+            }
+            // Listing with write access includes drafts; a tag lookup only covers published releases.
+            for await (const page of github.paginate.iterator(github.rest.repos.listReleases, { ...context.repo, per_page: 100 })) {
+              const release = page.data.find(item => item.tag_name === tag);
+              if (!release) continue;
+              core.setFailed(release.draft
+                ? `A draft already exists for ${tag}. Inspect and delete that draft before rerunning; keep the tag unchanged.`
+                : `Release ${tag} is already published. Its assets will not be overwritten; use a new version for changes.`);
+              return;
+            }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: Verify installation maintenance
         run: go test ./internal/agent ./internal/platform ./internal/distribution ./cmd/taskbelay
       - name: Build release assets
         env:
-          RELEASE_VERSION: ${{ github.ref_name }}
           CGO_ENABLED: '0'
         run: |
-          [[ "$RELEASE_VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           mkdir -p dist
           for system in darwin linux windows; do
             for arch in amd64 arm64; do
@@ -43,8 +74,47 @@ jobs:
             done
             printf ']}\n'
           } > release-manifest.json
+      - name: Verify release assets
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { createHash } = require('node:crypto');
+            const { execFileSync } = require('node:child_process');
+            const assets = ['darwin', 'linux', 'windows'].flatMap(system =>
+              ['amd64', 'arm64'].map(arch => `taskbelay-${system}-${arch}${system === 'windows' ? '.exe' : ''}`));
+            assets.push('install.sh', 'install.ps1');
+            const expected = [...assets, 'SHA256SUMS', 'release-manifest.json'].sort();
+            if (JSON.stringify(fs.readdirSync('dist').sort()) !== JSON.stringify(expected)) {
+              throw new Error('Release directory does not contain exactly the expected assets.');
+            }
+            for (const name of expected) {
+              const stat = fs.lstatSync(`dist/${name}`);
+              if (!stat.isFile() || !stat.size) throw new Error(`Invalid or empty release asset: ${name}`);
+            }
+            const manifest = JSON.parse(fs.readFileSync('dist/release-manifest.json', 'utf8'));
+            if (JSON.stringify(Object.keys(manifest).sort()) !== JSON.stringify(['assets', 'revision', 'version']) ||
+                manifest.version !== process.env.RELEASE_VERSION || manifest.revision !== process.env.GITHUB_SHA ||
+                JSON.stringify(manifest.assets) !== JSON.stringify([...assets, 'SHA256SUMS'])) {
+              throw new Error('Release metadata does not match the tag, commit or asset list.');
+            }
+            const checksums = assets.map(name => `${createHash('sha256').update(fs.readFileSync(`dist/${name}`)).digest('hex')}  ${name}\n`).join('');
+            if (fs.readFileSync('dist/SHA256SUMS', 'utf8') !== checksums) {
+              throw new Error('Release checksums do not match the assets.');
+            }
+            const version = execFileSync('./dist/taskbelay-linux-amd64', ['--version'], { encoding: 'utf8', timeout: 10000 }).trim();
+            if (version !== `TaskBelay ${process.env.RELEASE_VERSION} (linux/amd64)` &&
+                !version.startsWith(`TaskBelay ${process.env.RELEASE_VERSION} (linux/amd64) revision=`)) {
+              throw new Error(`Release executable reports an unexpected version: ${version}`);
+            }
+            core.info('Verified release file list, metadata, SHA-256 checksums and Linux amd64 executable version.');
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_VERSION" dist/* --verify-tag --generate-notes
+        run: |
+          tag_commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_VERSION" --jq .sha)"
+          if [[ "$tag_commit" != "$GITHUB_SHA" ]]; then
+            echo '::error::The release tag moved during this run. No release was created; rerun for the intended commit.'
+            exit 1
+          fi
+          gh release create "$RELEASE_VERSION" dist/* --verify-tag --generate-notes
