@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"modernc.org/sqlite"
@@ -49,6 +50,10 @@ func Open(ctx context.Context, dataDir string, waitLimit time.Duration) (*Store,
 		return nil, err
 	}
 	uri := url.URL{Scheme: "file", Path: filepath.ToSlash(path)}
+	// Windows 盘符路径也须以 / 开头，避免盘符被解析为 URI 主机名。
+	if !strings.HasPrefix(uri.Path, "/") {
+		uri.Path = "/" + uri.Path
+	}
 	query := uri.Query()
 	query.Set("_pragma", "foreign_keys(1)")
 	query.Set("_txlock", "immediate")
