@@ -220,6 +220,9 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 	if len(delivery.Blocked) > 0 {
 		decision.BlockStop = check.LimitFeedback(check.FormatIssues(delivery.Blocked, 0))
 	}
+	if feedbackErr := t.Store.RecordFeedback(ctx, t.Workspace.ID, record.Input.TaskID, text+"\n"+decision.BlockStop); feedbackErr != nil && t.ReportError != nil {
+		t.ReportError(feedbackErr)
+	}
 	return decision, nil
 }
 

@@ -28,6 +28,11 @@ CREATE TABLE feedback_labels_v12 (
  data TEXT NOT NULL
 );
 CREATE INDEX feedback_project_v12 ON feedback_labels_v12(project_id,id);
+CREATE TABLE issue_feedback_v12 (
+ task_id TEXT NOT NULL REFERENCES tasks_v12(id) ON DELETE CASCADE,
+ issue_id TEXT NOT NULL, data TEXT NOT NULL,
+ PRIMARY KEY(task_id,issue_id)
+);
 CREATE TABLE analysis_weights_v12 (
  project_id TEXT PRIMARY KEY, data TEXT NOT NULL
 );

@@ -21,7 +21,12 @@ func (s *Store) CommandContext(ctx context.Context, workspace string) (TaskRecor
 		if err = q.QueryRowContext(ctx, "SELECT json_remove(data,'$.Files') FROM observations_v12 WHERE workspace_id=? AND id=?", workspace, task.LastObservationID).Scan(&raw); err != nil {
 			return err
 		}
-		return json.Unmarshal([]byte(raw), &observation)
+		if err := json.Unmarshal([]byte(raw), &observation); err != nil {
+			return err
+		}
+		// 正文在插入前编码，观察编号以数据库主键为准。
+		observation.ID = task.LastObservationID
+		return nil
 	})
 	return task, observation, err
 }

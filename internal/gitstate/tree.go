@@ -14,11 +14,15 @@ import (
  * 固定 tree 的目录清单只含 Git 对象，不跟随工作区符号链接或展开子模块。
  * 后续分析全部通过 blob 读取，避免检查期间读取混合版本的工作区内容。
  */
-func (w Workspace) TreeFiles(ctx context.Context, tree string) (map[string]File, error) {
+func (w Workspace) TreeFiles(ctx context.Context, tree string, paths ...string) (map[string]File, error) {
 	if !validObjectID(tree) {
 		return nil, fmt.Errorf("文件分析需要有效的固定 tree")
 	}
-	out, err := w.command(ctx, nil, nil, "ls-tree", "-r", "-z", "--full-tree", tree)
+	args := []string{"--literal-pathspecs", "ls-tree", "-r", "-z", "--full-tree", tree}
+	if len(paths) > 0 {
+		args = append(append(args, "--"), paths...)
+	}
+	out, err := w.command(ctx, nil, nil, args...)
 	if err != nil {
 		return nil, err
 	}

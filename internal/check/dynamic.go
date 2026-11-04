@@ -358,14 +358,16 @@ func stringIn(items []string, value string) bool {
 }
 
 func calibrateTrials(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view ledger.TaskView, a analysis, r dynamic.Result) error {
+	subjects, _, err := feedbackSubjects(ctx, s, w, view)
+	if err != nil {
+		return err
+	}
 	for _, note := range view.Notes {
-		if note.Target == nil || note.Target.Kind != "issue" || !strings.HasPrefix(strings.TrimSpace(note.Text), "拒绝") {
-			continue
-		}
-		for _, issue := range view.Issues {
-			if issue.ID != note.Target.ID || issue.Algorithm != Algorithm {
+		for _, subject := range subjects {
+			if !retentionNote(note, subject) {
 				continue
 			}
+			issue := subject.Feedback.Issue
 			for _, trial := range r.Trials {
 				if trial.State != "failed" || len(trial.IDs) != 1 {
 					continue
@@ -378,7 +380,7 @@ func calibrateTrials(ctx context.Context, s *ledger.Store, w gitstate.Workspace,
 				if !matched {
 					continue
 				}
-				label := ledger.CalibrationLabel{ID: units.Hash(view.Task.ID, issue.ID, note.ID), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: "撤回该建议指向的簇后既有或主要验收失败", Signals: issue.Signals}
+				label := ledger.CalibrationLabel{ID: feedbackID(view.Task.ID, subject.Feedback), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: "撤回该建议指向的簇后既有或主要验收失败", Signals: issue.Signals}
 				if err := s.SaveCalibration(ctx, label); err != nil {
 					return err
 				}

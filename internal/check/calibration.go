@@ -88,109 +88,182 @@ func signatureMatch(ctx context.Context, signature []uint64, f units.File) (bool
 	return repostats.BinomialTail(best, len(signature), null) < CalibrationSignificance/float64(len(matches)), nil
 }
 
-// 处理说明只有和后续内容变化对应时才产生标签；缺少因果记录时不猜测。
-func Calibrate(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v ledger.TaskView, complete bool) error {
+type feedbackSubject struct {
+	Feedback                                               ledger.IssueFeedback
+	Present, Followed, Restored, WorkspaceDeleted, Unknown bool
+	Removals                                               []ledger.FileChange
+}
+
+func feedbackID(task string, f ledger.IssueFeedback) string {
+	return units.Hash(task, f.Issue.ID)
+}
+
+/**
+ * 从实际展示时的快照开始核对编辑链；混合来源、缺失记录或无法识别的内容不产生标签。
+ * 是否采纳取决于 Agent 是否删除过对象，不能用最后快照或笔记措辞代替。
+ */
+func feedbackSubjects(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v ledger.TaskView) ([]feedbackSubject, repostats.Repository, error) {
+	var origin repostats.Repository
 	if v.Task == nil {
-		return nil
+		return nil, origin, nil
+	}
+	feedback, err := s.IssueFeedback(ctx, v.Task.ID)
+	if err != nil || len(feedback) == 0 {
+		return nil, origin, err
+	}
+	task, current, err := s.CommandContext(ctx, w.ID)
+	if err != nil || task.ID != v.Task.ID || current.ID != v.Task.LastObservationID {
+		return nil, origin, err
 	}
 	records, err := s.TaskChanges(ctx, w.ID, v.Task.ID, v.Task.LastObservationID)
 	if err != nil {
-		return err
+		return nil, origin, err
 	}
-	var ids []string
-	for _, r := range records {
-		if r.Before.Blob != "" {
-			ids = append(ids, r.Before.Blob)
-		}
-		if r.After.Blob != "" {
-			ids = append(ids, r.After.Blob)
-		}
-	}
-	blobs, err := w.ReadBlobs(ctx, ids)
-	if err != nil {
-		return err
-	}
-	var origin repostats.Repository
 	if found, err := s.AnalysisCache(ctx, "repository", units.Hash(Algorithm, v.Task.OriginTree), &origin); err != nil || !found {
-		return err
+		return nil, origin, err
 	}
-	issues, err := s.Issues(ctx, v.Task.ID)
-	if err != nil {
-		return err
-	}
-	for _, note := range v.Notes {
-		if note.Target == nil || note.Target.Kind != "issue" {
+	var out []feedbackSubject
+	for _, feedback := range feedback {
+		issue := feedback.Issue
+		if issue.Algorithm != Algorithm {
 			continue
 		}
-		accepted := strings.HasPrefix(strings.TrimSpace(note.Text), "采纳")
-		rejected := strings.HasPrefix(strings.TrimSpace(note.Text), "拒绝") || note.Target.Effect == "retain"
-		if !accepted && !rejected {
-			continue
+		x := feedbackSubject{Feedback: feedback}
+		path := strings.SplitN(issue.At, ":", 2)[0]
+		start, err := w.TreeFiles(ctx, feedback.Tree, path)
+		if err != nil {
+			return nil, origin, err
 		}
-		for _, issue := range issues {
-			if issue.Algorithm != Algorithm || issue.ID != note.Target.ID {
-				continue
+		end, err := w.TreeFiles(ctx, current.Tree, path)
+		if err != nil {
+			return nil, origin, err
+		}
+		var events []ledger.FileChange
+		ids := []string{}
+		add := func(blob string) {
+			if blob != "" {
+				ids = append(ids, blob)
 			}
-			reason := ""
-			label := false
-			if rejected && note.Citation != nil {
-				object := strings.TrimPrefix(issue.LogicalAt, "file:")
-				if strings.Contains(note.Citation.Quote, object) || strings.Contains(note.Citation.Quote, strings.TrimPrefix(object, "dep:")) {
-					reason = "拒绝理由中的用户原话明确点名该对象"
+		}
+		add(start[path].Blob)
+		add(end[path].Blob)
+		for _, record := range records {
+			if record.Path == path && record.AfterObservation > feedback.ObservationID && record.At.After(feedback.At) {
+				events = append(events, record)
+				add(record.Before.Blob)
+				add(record.After.Blob)
+			}
+		}
+		blobs, err := w.ReadBlobs(ctx, ids)
+		if err != nil {
+			return nil, origin, err
+		}
+		match := func(file gitstate.File) (bool, error) {
+			if file.Blob == "" {
+				return false, nil
+			}
+			if file.Mode != "100644" && file.Mode != "100755" {
+				x.Unknown = true
+				return false, nil
+			}
+			f, err := units.Analyze(ctx, units.Source{Path: path, Data: blobs[file.Blob]}, origin.SyntaxFor(path))
+			if err != nil {
+				return false, err
+			}
+			if f.Binary {
+				x.Unknown = true
+				return false, nil
+			}
+			return signatureMatch(ctx, issue.ContentSignature, f)
+		}
+		prior := start[path]
+		x.Present, err = match(prior)
+		if err != nil {
+			return nil, origin, err
+		}
+		x.Unknown = x.Unknown || !x.Present || len(issue.ContentSignature) == 0
+		for i, event := range events {
+			if event.Before != prior || (i > 0 && events[i-1].AfterObservation == event.AfterObservation) || (i+1 < len(events) && events[i+1].AfterObservation == event.AfterObservation) {
+				x.Unknown = true
+			}
+			present, err := match(event.After)
+			if err != nil {
+				return nil, origin, err
+			}
+			if x.Present && !present {
+				switch event.Kind {
+				case "agent_edit":
+					x.Followed = true
+					x.Removals = append(x.Removals, event)
+				case "workspace_update":
+					x.WorkspaceDeleted = true
+				default:
+					x.Unknown = true
 				}
 			}
-			gone, restored, userDeleted, acceptanceFailed := false, false, false, false
-			for _, r := range records {
-				if !r.At.After(note.At) || r.Path != strings.SplitN(issue.At, ":", 2)[0] {
+			if !x.Present && present && x.Followed && event.Kind == "workspace_update" {
+				x.Restored = true
+			}
+			x.Present, prior = present, event.After
+		}
+		x.Unknown = x.Unknown || prior != end[path]
+		out = append(out, x)
+	}
+	return out, origin, nil
+}
+
+func retentionNote(note ledger.Note, subject feedbackSubject) bool {
+	return !subject.Unknown && !subject.Followed && subject.Present && note.Target != nil && note.Target.Kind == "issue" && note.Target.ID == subject.Feedback.Issue.ID && note.At.After(subject.Feedback.At)
+}
+
+func Calibrate(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v ledger.TaskView, complete bool) error {
+	subjects, origin, err := feedbackSubjects(ctx, s, w, v)
+	if err != nil {
+		return err
+	}
+	for _, subject := range subjects {
+		issue := subject.Feedback.Issue
+		id := feedbackID(v.Task.ID, subject.Feedback)
+		if subject.Unknown || (subject.Followed && subject.Present && !subject.Restored) {
+			if err := s.RemoveCalibration(ctx, id); err != nil {
+				return err
+			}
+			continue
+		}
+		reason, label := "", false
+		failed := false
+		for _, removal := range subject.Removals {
+			ok, err := removalFailure(ctx, w, v, removal, origin)
+			if err != nil {
+				return err
+			}
+			failed = failed || ok
+		}
+		switch {
+		case subject.Restored:
+			reason = "Agent 删除后，工作区更新恢复了相似内容"
+		case failed:
+			reason = "Agent 删除后，在只有该文件撤回变化的快照上，既有验收由通过变为失败"
+		case subject.Followed && !subject.Present && complete:
+			reason, label = "Agent 删除，到任务完成时没有恢复或可核对的验收失败", true
+		case !subject.Followed && subject.WorkspaceDeleted && !subject.Present:
+			reason, label = "Agent 未删除，后续工作区更新删除了对应内容", true
+		default:
+			for _, note := range v.Notes {
+				if !retentionNote(note, subject) || note.Citation == nil {
 					continue
 				}
-				f, err := units.Analyze(ctx, units.Source{Path: r.Path, Data: blobs[r.After.Blob]}, origin.SyntaxFor(r.Path))
-				if err != nil {
-					return err
-				}
-				present, err := signatureMatch(ctx, issue.ContentSignature, f)
-				if err != nil {
-					return err
-				}
-				prior, err := units.Analyze(ctx, units.Source{Path: r.Path, Data: blobs[r.Before.Blob]}, origin.SyntaxFor(r.Path))
-				if err != nil {
-					return err
-				}
-				wasPresent, err := signatureMatch(ctx, issue.ContentSignature, prior)
-				if err != nil {
-					return err
-				}
-				if accepted && r.Kind == "agent_edit" && wasPresent && !present {
-					gone = true
-					failed, err := removalFailure(ctx, w, v, r, origin)
-					if err != nil {
-						return err
-					}
-					acceptanceFailed = acceptanceFailed || failed
-				}
-				if gone && r.Kind == "workspace_update" && present {
-					restored = true
-				}
-				if rejected && r.Kind == "workspace_update" && wasPresent && !present {
-					userDeleted = true
+				object := strings.TrimPrefix(issue.LogicalAt, "file:")
+				if object != "" && (strings.Contains(note.Citation.Quote, object) || strings.Contains(note.Citation.Quote, strings.TrimPrefix(object, "dep:"))) {
+					reason = "保留理由中的用户原话明确点名该对象"
 				}
 			}
-			if restored {
-				reason = "Agent 采纳后，工作区更新恢复了相似内容"
-			} else if acceptanceFailed {
-				reason = "Agent 采纳后，在只有该文件撤回变化的快照上，既有验收由通过变为失败"
-			} else if accepted && gone && complete {
-				reason = "Agent 采纳，到任务完成时没有恢复"
-				label = true
-			} else if rejected && userDeleted {
-				reason = "Agent 拒绝后，工作区更新删除了对应内容"
-				label = true
-			}
-			if reason != "" {
-				if err = s.SaveCalibration(ctx, ledger.CalibrationLabel{ID: units.Hash(v.Task.ID, issue.ID, note.ID), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: reason, Signals: issue.Signals, Accepted: label}); err != nil {
-					return err
-				}
-			}
+		}
+		if reason == "" {
+			continue
+		}
+		if err := s.SaveCalibration(ctx, ledger.CalibrationLabel{ID: id, ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: reason, Signals: issue.Signals, Accepted: label}); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -259,14 +332,16 @@ func removalFailure(ctx context.Context, w gitstate.Workspace, view ledger.TaskV
 }
 
 func rejectionDependencies(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v ledger.TaskView, a analysis) error {
+	subjects, _, err := feedbackSubjects(ctx, s, w, v)
+	if err != nil {
+		return err
+	}
 	for _, note := range v.Notes {
-		if note.Target == nil || note.Target.Kind != "issue" || !strings.HasPrefix(strings.TrimSpace(note.Text), "拒绝") {
-			continue
-		}
-		for _, issue := range v.Issues {
-			if issue.ID != note.Target.ID || issue.Algorithm != Algorithm {
+		for _, subject := range subjects {
+			if !retentionNote(note, subject) {
 				continue
 			}
+			issue := subject.Feedback.Issue
 			closure, err := changes.Closure(ctx, a.Changes.Clusters, []string{issue.LogicalAt})
 			if err != nil {
 				return err
@@ -275,7 +350,7 @@ func rejectionDependencies(ctx context.Context, s *ledger.Store, w gitstate.Work
 				for _, needed := range region.Clusters {
 					for _, dependent := range closure {
 						if dependent != issue.LogicalAt && dependent == needed && strings.Contains(note.Text, dependent) {
-							if err := s.SaveCalibration(ctx, ledger.CalibrationLabel{ID: units.Hash(v.Task.ID, issue.ID, note.ID), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: "被需求相关区内的保留簇依赖", Signals: issue.Signals, Accepted: false}); err != nil {
+							if err := s.SaveCalibration(ctx, ledger.CalibrationLabel{ID: feedbackID(v.Task.ID, subject.Feedback), ProjectID: w.ProjectID, IssueID: issue.ID, Kind: issue.Rule, Reason: "被需求相关区内的保留簇依赖", Signals: issue.Signals, Accepted: false}); err != nil {
 								return err
 							}
 						}

@@ -47,6 +47,12 @@ func runCheck(ctx context.Context, args []string, env platform.Env, dir string, 
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintln(output, check.Format(result, 5))
+	text := check.Format(result, 5)
+	_, err = fmt.Fprintln(output, text)
+	if err == nil {
+		if feedbackErr := store.RecordFeedback(ctx, workspace.ID, result.Input.TaskID, text); feedbackErr != nil {
+			_ = logWorkspaceError(env, workspace.ID, feedbackErr)
+		}
+	}
 	return err
 }
