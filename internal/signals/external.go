@@ -120,13 +120,20 @@ func external(in Input) []External {
 			continue
 		}
 		seen[key] = true
-		item.Anchor, item.Source = anchor(item, in)
+		item.Anchor, item.Source, item.Location = anchor(item, in)
 		result = append(result, item)
 	}
 	return result
 }
 
-func anchor(item External, in Input) (string, string) {
+func (item External) Object() string {
+	if item.Kind == "file" {
+		return item.Kind + ":" + item.Name
+	}
+	return item.At + ":" + item.Kind + ":" + item.Name
+}
+
+func anchor(item External, in Input) (string, string, string) {
 	for _, r := range in.Requirements {
 		source := r.Quote + " " + r.Plan
 		words := map[string]bool{}
@@ -140,15 +147,15 @@ func anchor(item External, in Input) (string, string) {
 		}
 		value := strings.TrimSpace(item.Value)
 		if all || value != "" && strings.Contains(strings.ToLower(source), strings.ToLower(value)) {
-			return "quote", r.ID
+			return "quote", r.ID, ""
 		}
 		for _, at := range r.Locations {
 			if at == item.Kind+":"+item.Name || item.Kind == "file" && at == item.Name || item.Kind == "entry" && strings.HasSuffix(at, ":"+item.Name) {
-				return "agent", r.ID
+				return "agent", r.ID, at
 			}
 		}
 	}
-	return "none", ""
+	return "none", "", ""
 }
 func upperSnake(s string) bool {
 	if !strings.Contains(s, "_") {

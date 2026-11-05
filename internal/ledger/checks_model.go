@@ -189,6 +189,7 @@ func WithDelivery(record CheckRecord, delivery bool) CheckRecord {
 
 type CheckRecord struct {
 	HistoricalVersion string            `json:"historical_version,omitempty"`
+	FeedbackVersion   int               `json:"feedback_version,omitempty"`
 	Reused            bool              `json:"-"`
 	Static            *CheckRecord      `json:"static,omitempty"`
 	Locations         []Requirement     `json:"-"`

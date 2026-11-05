@@ -140,7 +140,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 				return event.Decision{}, err
 			}
 		}
-		if cached != nil {
+		if cached != nil && cached.FeedbackVersion == check.FeedbackVersion {
 			ledger.DebugRecord(ctx, "delivery.cache", map[string]any{"depth": "static", "record": cached, "reason": "本次交付已反馈且输入未变化"})
 			record = *cached
 			record.Reused = true
@@ -160,7 +160,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 			if err != nil {
 				return event.Decision{}, err
 			}
-			if dynamic != nil && (dynamic.Report.Dynamic == nil || dynamic.Input.Algorithm != check.Algorithm) {
+			if dynamic != nil && (dynamic.Report.Dynamic == nil || dynamic.Input.Algorithm != check.Algorithm || dynamic.FeedbackVersion != check.FeedbackVersion) {
 				dynamic = nil
 			}
 		}

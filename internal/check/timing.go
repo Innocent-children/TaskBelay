@@ -61,11 +61,11 @@ func ReuseAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, act
 }
 
 func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, contents map[string][]byte) (string, error) {
-	task, _, err := s.CommandContext(ctx, w.ID)
-	if err != nil || task.ID == "" {
+	view, err := s.EditAnalysisContext(ctx, w.ID)
+	if err != nil || view.Task == nil {
 		return "", err
 	}
-	base, err := taskIndex(ctx, s, w, task)
+	base, err := taskIndex(ctx, s, w, *view.Task)
 	if err != nil {
 		return "", err
 	}
@@ -90,18 +90,22 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, cont
 		return "", err
 	}
 	snapshot := indexedSnapshot{Origin: base, Current: base, Before: before, After: after, Paths: paths}
-	result, err := signals.Analyze(ctx, signals.Input{EditPreview: true, Queries: snapshot.queries(), Before: snapshot.Before, After: snapshot.After, Changes: delta})
+	result, err := analyzeSignals(ctx, view, signals.Input{EditPreview: true, Queries: snapshot.queries(), Before: snapshot.Before, After: snapshot.After, Changes: delta, Requirements: requirements(view)})
 	if err != nil {
 		return "", err
 	}
 	var advice []string
 	for _, c := range result.Candidates {
 		if c.Kind == "external" || c.Kind == "duplicate" {
-			advice = append(advice, c.At+"："+c.Advice)
+			text := c.At + "："
+			if c.Kind == "external" {
+				text += strings.Join(c.Facts, "；") + "；"
+			}
+			advice = append(advice, text+c.Advice)
 			if len(advice) >= CategoryLimit {
 				break
 			}
 		}
 	}
-	return strings.Join(advice, "\n"), snapshot.err()
+	return LimitFeedback(strings.Join(advice, "\n")), snapshot.err()
 }
