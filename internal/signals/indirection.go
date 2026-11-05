@@ -262,7 +262,7 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 			facts = append(facts, "按成员名与首行共现识别出一个实现候选："+v.replacement+"；未确认类型关系或隔离用途")
 			advice = "核对 " + at + " 是否承担当前需求中的依赖隔离或替换约定；确认不需要、且调用方可直接使用 " + v.replacement + " 后，再调整引用并删除该抽象"
 		case "parameter":
-			facts = append(facts, "按同名调用形状统计，该位置只有一种实参写法："+v.replacement+"；相同写法不代表运行值固定", "调用形状所在位置："+strings.Join(v.sites, "、"))
+			facts = append(facts, "按同名调用形状统计，该位置只有一种实参写法："+v.replacement+"；相同写法不代表运行值固定", fmt.Sprintf("调用形状共记录 %d 处位置；位置示例：%s", len(v.sites), v.sites[0]))
 			advice = "核对 " + at + " 的" + v.replacement + " 是否需要由调用方提供；确认调用属于该声明、取值固定、求值行为不变且调用范围完整后，才将值移入实现并删除对应形参和各调用实参，保留函数及其他参数"
 		case "forwarding":
 			facts = append(facts, "主体标识符序列符合转发形状，目标名字为 "+v.replacement+"；未核对运算符、字面量或调用语义")
