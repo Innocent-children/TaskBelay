@@ -31,6 +31,7 @@ type Candidate struct {
 }
 type External struct {
 	Kind, Method, Name, Value, At, Cluster, Anchor, Source string
+	Location                                               string
 	Reliable, AgentOnly                                    bool
 }
 type Case struct {
@@ -105,9 +106,11 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		if item.Anchor == "quote" {
 			continue
 		}
-		c := Candidate{Kind: "external", Object: item.Kind + ":" + item.Name, At: item.At, Cluster: item.Cluster, AgentOnly: item.AgentOnly, Features: map[string]float64{"unanchored": boolFloat(item.Anchor == "none"), "reliable": boolFloat(item.Reliable), "agent": boolFloat(item.AgentOnly)}, Benefit: 1, Facts: []string{item.Method + "：" + item.Name, "需求对应关系：" + item.Anchor}, Advice: "撤回该新增项，或用 implemented_by 登记它对应的需求和用途"}
-		if item.Kind != "file" {
-			c.Object = item.At + ":" + item.Kind + ":" + item.Name
+		c := Candidate{Kind: "external", Object: item.Object(), At: item.At, Cluster: item.Cluster, AgentOnly: item.AgentOnly, Features: map[string]float64{"unanchored": boolFloat(item.Anchor == "none"), "reliable": boolFloat(item.Reliable), "agent": boolFloat(item.AgentOnly)}, Benefit: 1, Facts: []string{item.Method + "：" + item.Name, "需求对应关系：没有对应说明"}, Advice: "撤回该新增项，或用 implemented_by 登记它对应的需求和用途"}
+		if item.Anchor == "agent" {
+			c.Facts[1] = "需求对应关系：Agent 已说明对应需求 " + item.Source
+			c.Facts = append(c.Facts, "登记只说明关联，不能据此确认实现有必要或已获用户授权")
+			c.Advice = "沿用已有登记，无需重复登记；是否需要精简，仍须结合当前需求和实际用途判断"
 		}
 		if item.Anchor == "none" && item.Reliable && item.AgentOnly {
 			c.BlockFact = "external"

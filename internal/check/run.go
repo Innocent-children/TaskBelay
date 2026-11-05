@@ -46,12 +46,12 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 		if err != nil {
 			return ledger.CheckRecord{}, err
 		}
-		if previous != nil && previous.ReusableStatic() {
+		if previous != nil && previous.FeedbackVersion == FeedbackVersion && previous.ReusableStatic() {
 			previous.Reused = true
 			return *previous, nil
 		}
 	}
-	r := ledger.CheckRecord{Depth: options.Depth, Input: input, InputVersion: input.Version(), Status: ledger.CheckComplete, StartedAt: time.Now().UTC(), Report: ledger.DeliveryReport{Analysis: map[string]json.RawMessage{}, Requirements: view.Requirements, Plans: view.Plans, Decisions: view.EffectiveDecisions, Verifications: view.Verifications, WorkspaceUpdates: view.WorkspaceUpdates, ChangesByRequirement: map[string][]string{}}}
+	r := ledger.CheckRecord{FeedbackVersion: FeedbackVersion, Depth: options.Depth, Input: input, InputVersion: input.Version(), Status: ledger.CheckComplete, StartedAt: time.Now().UTC(), Report: ledger.DeliveryReport{Analysis: map[string]json.RawMessage{}, Requirements: view.Requirements, Plans: view.Plans, Decisions: view.EffectiveDecisions, Verifications: view.Verifications, WorkspaceUpdates: view.WorkspaceUpdates, ChangesByRequirement: map[string][]string{}}}
 	defer func() {
 		if failure == nil || result.ID != 0 {
 			return
@@ -230,11 +230,48 @@ func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view le
 	}
 	a.Index.caseNeighbourhood()
 	a.Before, a.After = a.Index.Before, a.Index.After
-	a.Signals, err = signals.Analyze(ctx, signals.Input{Queries: a.Index.queries(), Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Retained: retained})
+	a.Signals, err = analyzeSignals(ctx, view, signals.Input{Queries: a.Index.queries(), Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Retained: retained})
 	if err != nil {
 		return a, err
 	}
 	return a, a.Index.err()
+}
+
+func analyzeSignals(ctx context.Context, view ledger.TaskView, input signals.Input) (signals.Result, error) {
+	result, err := signals.Analyze(ctx, input)
+	if err != nil {
+		return result, err
+	}
+	locations := map[[2]string][]string{}
+	for _, requirement := range view.Requirements {
+		if requirement.Status == "revoked" {
+			continue
+		}
+		for _, location := range requirement.ImplementedBy {
+			purpose := location.Purpose
+			if purpose == "" {
+				purpose = "未填写"
+			}
+			citation := "引用：未填写"
+			if location.Citation != nil {
+				citation = "引用 " + location.Citation.SourceID + "：" + location.Citation.Quote
+			}
+			locations[[2]string{requirement.ID, location.At}] = []string{"需求 " + requirement.ID + "：" + requirement.Content, "登记位置：" + location.At, "用途：" + purpose, citation}
+		}
+	}
+	facts := map[string][]string{}
+	for _, item := range result.External {
+		if item.Anchor == "agent" {
+			facts[item.Object()] = locations[[2]string{item.Source, item.Location}]
+		}
+	}
+	for i := range result.Candidates {
+		candidate := &result.Candidates[i]
+		if candidate.Kind == "external" {
+			candidate.Facts = append(candidate.Facts, facts[candidate.Object]...)
+		}
+	}
+	return result, nil
 }
 
 func requirements(view ledger.TaskView) []changes.Requirement {

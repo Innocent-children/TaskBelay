@@ -147,7 +147,7 @@ func runDynamic(ctx context.Context, s *ledger.Store, w gitstate.Workspace, acto
 		}
 	}
 	if len(confirmed) > 0 {
-		updated, err := signals.Analyze(ctx, signals.Input{Queries: a.Index.queries(), Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Confirmed: confirmed})
+		updated, err := analyzeSignals(ctx, view, signals.Input{Queries: a.Index.queries(), Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Confirmed: confirmed})
 		if err != nil {
 			return err
 		}
