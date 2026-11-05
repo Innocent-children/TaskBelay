@@ -16,6 +16,7 @@ type indirection struct {
 	kind        string
 	count       int
 	replacement string
+	sites       []string
 }
 
 func measure(ctx context.Context, repo repostats.Repository, affected map[string]bool, query *Queries) ([]indirection, []string, error) {
@@ -165,7 +166,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 						implementations[word] = true
 					}
 				}
-				out = append(out, indirection{p, u, "abstraction", len(implementations), strings.Join(keys(implementations), ", ")})
+				out = append(out, indirection{path: p, unit: u, kind: "abstraction", count: len(implementations), replacement: strings.Join(keys(implementations), ", ")})
 			}
 			if len(body) > 0 {
 				var params []string
@@ -175,7 +176,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 					}
 				}
 				if shape.BodyCalls == 1 && slices.Equal(body[1:], params) {
-					out = append(out, indirection{p, u, "forwarding", 1, body[0]})
+					out = append(out, indirection{path: p, unit: u, kind: "forwarding", count: 1, replacement: body[0]})
 				}
 			}
 			if repo.SyntaxFor(p).CallRatio <= CallPrecision {
@@ -187,6 +188,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 				continue
 			}
 			positions := map[int]map[string]bool{}
+			locations := map[int]map[string]bool{}
 			for _, site := range sites {
 				for i, arg := range site.args {
 					if site.path == p && arg.Start <= u.HeaderEnd && arg.End >= u.Start {
@@ -194,14 +196,18 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 					}
 					if positions[i] == nil {
 						positions[i] = map[string]bool{}
+						locations[i] = map[string]bool{}
 					}
 					positions[i][arg.Text] = true
+					if affected != nil {
+						locations[i][fmt.Sprintf("%s:%d", site.path, arg.Line)] = true
+					}
 				}
 			}
 			for i := 0; i < len(positions); i++ {
 				values := positions[i]
 				if len(values) > 0 {
-					out = append(out, indirection{p, u, "parameter", len(values), fmt.Sprintf("参数 %d = %s", i+1, strings.Join(keys(values), ", "))})
+					out = append(out, indirection{path: p, unit: u, kind: "parameter", count: len(values), replacement: fmt.Sprintf("参数 %d = %s", i+1, strings.Join(keys(values), ", ")), sites: keys(locations[i])})
 				}
 			}
 		}
@@ -248,12 +254,52 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 			continue
 		}
 		kind := v.kind
-		facts := []string{fmt.Sprintf("变化数 %d；%s", v.count, v.replacement)}
+		at := location(v.path, v.unit)
+		var facts []string
+		var advice string
+		switch kind {
+		case "abstraction":
+			facts = append(facts, "按成员名与首行共现识别出一个实现候选："+v.replacement+"；未确认类型关系或隔离用途")
+			advice = "核对 " + at + " 是否承担当前需求中的依赖隔离或替换约定；确认不需要、且调用方可直接使用 " + v.replacement + " 后，再调整引用并删除该抽象"
+		case "parameter":
+			facts = append(facts, "按同名调用形状统计，该位置只有一种实参写法："+v.replacement+"；相同写法不代表运行值固定", "调用形状所在位置："+strings.Join(v.sites, "、"))
+			advice = "核对 " + at + " 的" + v.replacement + " 是否需要由调用方提供；确认调用属于该声明、取值固定、求值行为不变且调用范围完整后，才将值移入实现并删除对应形参和各调用实参，保留函数及其他参数"
+		case "forwarding":
+			facts = append(facts, "主体标识符序列符合转发形状，目标名字为 "+v.replacement+"；未核对运算符、字面量或调用语义")
+			advice = "核对 " + at + " 的独立职责、返回结果和副作用；确认直接调用 " + v.replacement + " 行为等价且无需保留该层后，再修改调用并删除此包装"
+		}
 		if kind == "forwarding" && in.Before.FrequencyOf(v.unit.Name) > 0 {
 			kind = "old_name"
-			facts = append(facts, fmt.Sprintf("起点引用单元数 %d；外部调用方需核对发布约定", in.Before.FrequencyOf(v.unit.Name)))
+			facts = append(facts, fmt.Sprintf("该名字在起点出现于 %d 个单元；外部调用与兼容承诺尚未确认", in.Before.FrequencyOf(v.unit.Name)))
+			advice = "先核对 " + at + " 的仓库内引用、外部调用方和发布兼容约定；仍需兼容时保留旧名，确认无需兼容且行为等价后，才将调用迁移到 " + v.replacement + " 并删除旧名包装"
 		}
-		out = append(out, Candidate{Kind: kind, Object: repostats.UnitKey(v.path, v.unit) + ":" + v.replacement, At: location(v.path, v.unit), Cluster: cluster, AgentOnly: agent, Facts: facts, Advice: "把 " + location(v.path, v.unit) + " 的调用改用 " + v.replacement + "，核对后删除该间接层", Features: map[string]float64{"variation": float64(v.count), "convention": prior[v.kind], "structure": in.After.Files[v.path].Confidence}, Benefit: float64(v.unit.EndLine - v.unit.Line + 1)})
+		related, unknown := map[string]bool{}, map[string]bool{}
+		known := false
+		for _, region := range in.Regions {
+			if !region.Known {
+				unknown[region.Requirement] = true
+				continue
+			}
+			known = true
+			if slices.Contains(region.Clusters, cluster) {
+				related[region.Requirement] = true
+			}
+		}
+		if len(related) > 0 {
+			facts = append(facts, "位于需求相关区："+strings.Join(keys(related), "、")+"；词汇关联不证明实现有必要或已获授权")
+		} else if known {
+			facts = append(facts, "未落入已知需求相关区；不能据此认定没有实际用途")
+		}
+		if len(unknown) > 0 {
+			facts = append(facts, "需求相关区未知："+strings.Join(keys(unknown), "、"))
+		} else if !known {
+			facts = append(facts, "未取得需求相关区，实际用途待核对")
+		}
+		facts = append(facts, "以上仅为静态结构信号，尚未确认可以精简")
+		if !agent {
+			advice = "该变更簇不能全部核对为 Agent 编辑，保留当前内容；仅结合以上结构信号核对实际用途"
+		}
+		out = append(out, Candidate{Kind: kind, Object: repostats.UnitKey(v.path, v.unit) + ":" + v.replacement, At: at, Cluster: cluster, AgentOnly: agent, Facts: facts, Advice: advice, Features: map[string]float64{"variation": float64(v.count), "convention": prior[v.kind], "structure": in.After.Files[v.path].Confidence}, Benefit: float64(v.unit.EndLine - v.unit.Line + 1)})
 	}
 	return out, gaps, ctx.Err()
 }
