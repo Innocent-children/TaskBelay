@@ -147,31 +147,50 @@ func runDynamic(ctx context.Context, s *ledger.Store, w gitstate.Workspace, acto
 		}
 	}
 	if len(confirmed) > 0 {
-		updated, err := analyzeSignals(ctx, view, signals.Input{Queries: a.Index.queries(), Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Confirmed: confirmed})
+		var retained []string
+		for _, note := range view.EffectiveDecisions {
+			if note.Target != nil && note.Target.Effect == "retain" {
+				retained = append(retained, note.Target.At)
+			}
+		}
+		updated, err := analyzeSignals(ctx, view, signals.Input{Queries: a.Index.queries(), Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Confirmed: confirmed, Retained: retained})
 		if err != nil {
 			return err
 		}
 		if err := a.Index.err(); err != nil {
 			return err
 		}
-		for _, c := range updated.Candidates {
-			if c.Kind != "external" || c.BlockFact != "external" {
-				continue
-			}
-			found := false
-			for i := range record.Issues {
-				if record.Issues[i].Rule == c.Kind && record.Issues[i].LogicalAt == c.Object {
-					record.Issues[i].BlockOnDelivery = true
-					record.Issues[i].Facts = c.Facts
-					found = true
-				}
-			}
-			if !found {
-				record.Issues = append(record.Issues, ledger.Issue{Algorithm: Algorithm, Rule: c.Kind, At: c.At, LogicalAt: c.Object, FactKey: c.Kind, Level: "hint", Status: "open", Selected: true, BlockOnDelivery: true, Facts: c.Facts, Advice: c.Advice})
-			}
-		}
+		mergeProbeFeedback(record, updated)
 	}
 	return calibrateTrials(ctx, s, w, view, a, result)
+}
+
+func mergeProbeFeedback(record *ledger.CheckRecord, updated signals.Result) {
+	explained := map[string]bool{}
+	for _, item := range updated.External {
+		if item.Method == "probe" && item.Anchor == "agent" {
+			explained[item.Object()] = true
+		}
+	}
+	for _, c := range updated.Candidates {
+		if c.Kind != "external" || c.BlockFact != "external" && !explained[c.Object] {
+			continue
+		}
+		block := c.BlockFact == "external"
+		found := false
+		for i := range record.Issues {
+			if record.Issues[i].Rule == c.Kind && record.Issues[i].LogicalAt == c.Object {
+				record.Issues[i].BlockOnDelivery = block
+				record.Issues[i].Facts = c.Facts
+				record.Issues[i].Advice = c.Advice
+				found = true
+				break
+			}
+		}
+		if !found {
+			record.Issues = append(record.Issues, ledger.Issue{Algorithm: Algorithm, Rule: c.Kind, At: c.At, LogicalAt: c.Object, FactKey: c.Kind, Level: "hint", Status: "open", Selected: true, BlockOnDelivery: block, Facts: c.Facts, Advice: c.Advice})
+		}
+	}
 }
 
 func originalClusters(a analysis, ids []string, clusters []changes.Cluster) map[string]bool {
