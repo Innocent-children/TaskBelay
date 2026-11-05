@@ -10,9 +10,10 @@ Agent 通过 `requirement_save.acceptance` 保存验收标准，通过 `note_add
 
 ## 文档的层次
 
-1. **产品需求**：[product.md](product.md) 定义产品解决什么问题、正常使用方式和成功标准。
-2. **核心设计**：[requirements.md](requirements.md) 定义任务、需求、工作区更新和改动归属；[algorithm.md](algorithm.md) 定义共享的算法：变更簇、需求相关区、验收依据、分组检验、合并信号与校准；[over-design.md](over-design.md) 与 [over-testing.md](over-testing.md) 定义两类判定；[languages.md](languages.md) 定义统一词法、仓库统计、命令记录与副本运行；[handoff.md](handoff.md) 与 [semi-auto.md](semi-auto.md) 定义接续和方案流程。
-3. **衍生设计**：账本、Agent 接入、系统架构和评估文档依据前两层设计展开。核心行为改变时，同步修改数据、事件、执行流程和验收场景。
+1. **长期路线图**：[roadmap.md](roadmap.md) 定义长期方向、各阶段目标和完成条件，并在“已完成记录”中保存实际开发进展。除必要的 bug 修复外，后续开发必须按路线图推进，具体要求见项目根目录的 `AGENTS.md`。
+2. **产品需求**：[product.md](product.md) 定义产品解决什么问题、保持产品简单的原则、正常使用方式和成功标准。
+3. **核心设计**：[requirements.md](requirements.md) 定义任务、需求、工作区更新和改动归属；[algorithm.md](algorithm.md) 定义共享的算法：变更簇、需求相关区、验收依据、分组检验、合并信号与校准；[over-design.md](over-design.md) 与 [over-testing.md](over-testing.md) 定义两类判定；[languages.md](languages.md) 定义统一词法、仓库统计、命令记录与副本运行；[handoff.md](handoff.md) 与 [semi-auto.md](semi-auto.md) 定义接续和方案流程。
+4. **衍生设计**：账本、Agent 接入、系统架构和评估文档依据产品需求与核心设计展开。核心行为改变时，同步修改数据、事件、执行流程和验收场景。
 
 每件事在负责它的文档中完整定义，其余文档引用，不另立一套规则。
 
@@ -20,7 +21,8 @@ Agent 通过 `requirement_save.acceptance` 保存验收标准，通过 `note_add
 
 | 文档 | 内容 |
 | --- | --- |
-| [product.md](product.md) | 目标用户、正常开发场景、功能、模式、默认行为和成功标准 |
+| [roadmap.md](roadmap.md) | 长期方向、各阶段目标和完成条件、保持产品简单的原则、已完成记录 |
+| [product.md](product.md) | 目标用户、保持产品简单的原则、正常开发场景、功能、模式、默认行为和成功标准 |
 | [requirements.md](requirements.md) | 任务开始、暂停、恢复、交付；累计 diff；用户修改；需求变更、位置与归属 |
 | [algorithm.md](algorithm.md) | 设计原则、变更簇、需求相关区、验收依据、分组检验、合并信号与反馈选择、拦截条件、校准、问题标识、计算时机和复杂度 |
 | [over-design.md](over-design.md) | 与需求无关的改动、对外新增项与需求的对应关系、间接层的变化度、重复实现、没人使用的代码和撤回试验 |
