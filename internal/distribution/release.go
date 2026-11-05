@@ -36,17 +36,17 @@ func parseRelease(data, asset string) (releaseManifest, error) {
 		return manifest, fmt.Errorf("发布元数据包含多余内容")
 	}
 	if !releaseVersion.MatchString(wire.Version) || !semver.IsValid(wire.Version) || !revisionID.MatchString(wire.Revision) {
-		return manifest, fmt.Errorf("发布版本或构建身份无效")
+		return manifest, fmt.Errorf("发布版本号或构建对应的提交编号无效")
 	}
 	manifest.Version, manifest.Revision = wire.Version, wire.Revision
 	for _, name := range wire.Assets {
 		if !releaseAsset.MatchString(name) || manifest.Assets[name] {
-			return manifest, fmt.Errorf("发布资产无效或重复: %s", name)
+			return manifest, fmt.Errorf("发布文件名无效或重复: %s", name)
 		}
 		manifest.Assets[name] = true
 	}
 	if manifest.Version == "" || manifest.Revision == "" || !manifest.Assets[asset] || !manifest.Assets["SHA256SUMS"] {
-		return manifest, fmt.Errorf("发布元数据缺少版本、构建身份或 %s 资产", asset)
+		return manifest, fmt.Errorf("发布元数据缺少版本号、提交编号或 %s 文件记录", asset)
 	}
 	return manifest, nil
 }

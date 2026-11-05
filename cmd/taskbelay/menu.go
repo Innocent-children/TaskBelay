@@ -131,7 +131,7 @@ func menuSettings(ctx context.Context, menu *terminal.Menu, env platform.Env, di
 		return err
 	}
 	if key == "analysis.tests" && value[0] == 1 {
-		ok, err := menu.Confirm(ctx, "确认开启动态测试检查？会在副本中运行已观察到的可信项目命令。")
+		ok, err := menu.Confirm(ctx, "确认开启动态测试检查？会在副本中运行已有成功记录且输入可核对的项目命令。")
 		if err != nil {
 			return err
 		}

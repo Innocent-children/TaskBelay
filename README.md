@@ -7,11 +7,11 @@ TaskBelay 是一个在本机运行的 Go 命令行工具，通过 hook 和 MCP �
 ## 能做什么
 
 - **约束改动范围**：围绕任务起点查看累计改动，检查与需求缺少联系的修改、没有说明用途的入口、未使用的代码和不必要的抽象。
-- **减少无效验证**：检查测试代码与验证过程，提示值得合并的用例、过大的验证范围和满足条件的重复验证。
+- **减少无效验证**：检查测试代码与验证过程，提示可以合并的用例、不必要地扩大的验证范围，以及符合判定条件的重复验证。
 - **接续任务**：保存需求、决定、进度和检查结果，帮助 Agent 在会话重开、上下文压缩、任务暂停恢复或切换 Agent 后继续工作。
-- **保留正常开发习惯**：提交不会结束任务；用户手改、文件移动和分支变化会作为新的工作区事实记录，后续工作以当前内容为准。
+- **保留正常开发习惯**：提交不会结束任务；TaskBelay 会记录用户手改、文件移动和分支变化，后续工作以当前内容为准。
 
-例如，你要求“给 export 命令增加 CSV 导出”，TaskBelay 会帮助 Agent 核对新增代码是否服务于这个需求，并提示缺少用途依据的额外选项。涉及工程取舍的建议仍由 Agent 结合需求和项目惯例复核。
+例如，你要求“给 export 命令增加 CSV 导出”，TaskBelay 会帮助 Agent 核对新增代码是否服务于这个需求，并提示没有说明为什么需要的额外选项。涉及工程取舍的建议仍由 Agent 结合需求和项目惯例复核。
 
 ## 支持范围
 
@@ -21,11 +21,11 @@ TaskBelay 是一个在本机运行的 Go 命令行工具，通过 hook 和 MCP �
 | 系统与架构 | macOS、Linux、Windows；amd64、arm64。WSL 按 Linux 安装和运行 |
 | 工作区 | Git 仓库及其 worktree，各工作区分别管理任务 |
 | 文件与代码 | 统一词法、版面树和仓库统计；二进制内容按整体记录 |
-| 测试与验证 | 从仓库和已运行命令学习，不按扩展名或工具名分级；信息不足时保留未知 |
+| 测试与验证 | 从仓库内容和已有命令运行记录中学习约定，不按扩展名或工具名分级；信息不足时将结果记为未知 |
 
 TaskBelay 没有常驻后台服务。hook 在 Agent 事件发生时启动短进程，MCP 进程随 Agent 会话运行，二者通过本机 SQLite 账本共享记录。动态分析使用项目自己的测试工具。
 
-分析内核使用变更簇、需求相关区、静态信号和确认运行；反馈通过逻辑回归与带分类上限的背包选择。拦截只依据可核对的事实。设计入口见[算法核心](docs/algorithm.md)和[输入与执行协议](docs/languages.md)。
+TaskBelay 先分析改动与需求的关系，找出值得复核的问题；开启动态检查时，还会通过确认运行核对候选结果。它用逻辑回归综合各项分析信号，再用背包算法在反馈长度和每类条目数的限制内选择要展示的建议。拦截只依据可核对的事实。具体设计见[算法核心](docs/algorithm.md)和[输入与执行协议](docs/languages.md)。
 
 ## 快速开始
 
@@ -65,7 +65,7 @@ taskbelay
 
 `taskbelay` 打开终端管理菜单。上下方向键选择，右方向键或回车进入，左方向键返回，空格勾选 Agent，Ctrl+C 退出。菜单提供 Agent 接入、设置、状态查看、检查、更新和卸载入口。
 
-安装脚本省略 `--source` 或 `-Source` 时会下载发布包。所选 Release 需要提供对应系统和架构的程序、`release-manifest.json` 元数据及 `SHA256SUMS`；安装器确定版本后从固定标签下载。源码安装不依赖这些资产，`go install github.com/Innocent-children/taskbelay/cmd/taskbelay@new` 指向开发分支，`@latest` 不表示 `new`。发布安装方式见[安装和卸载](docs/product-agent-integration.md#安装和卸载)。
+安装脚本省略 `--source` 或 `-Source` 时会下载发布包。所选 Release 需要提供对应系统和架构的程序、`release-manifest.json` 元数据及 `SHA256SUMS`；安装器确定版本后，从该版本标签下载文件。源码安装不依赖这些发布文件，`go install github.com/Innocent-children/taskbelay/cmd/taskbelay@new` 指向开发分支，`@latest` 不表示 `new`。发布安装方式见[安装和卸载](docs/product-agent-integration.md#安装和卸载)。
 
 ### 3. 接入 Agent
 
@@ -76,7 +76,7 @@ taskbelay install claude
 taskbelay install codex
 ```
 
-接入命令会配置 hook 并注册 MCP。安装使用用户级配置，对本机该 Agent 的 Git 工作区生效，用户原有的其他配置会保留。重复执行安装命令可更新或修复 TaskBelay 自己的接入配置。
+接入命令会配置 hook 并注册 MCP。配置写入用户级文件，对本机该 Agent 的 Git 工作区生效，用户原有的其他配置会保留。重复执行安装命令可更新或修复 TaskBelay 自己的接入配置。
 
 - **Claude Code**：新建会话以加载接入配置。
 - **Codex**：重新打开会话，再用 `/hooks` 确认信任 TaskBelay 的 hook；完成信任后 hook 才会运行。
@@ -161,7 +161,7 @@ taskbelay config get debug
 
 记录包含任务事件、MCP 调用、处理阶段、检查依据、结果、错误和耗时，也可能包含需求原文、编辑内容和工具参数。文件按本机日期分组，同一任务跨天时分别写入各日期目录。记录只保存在本机，不自动分析或上传。
 
-关闭后停止记录后续调用，已有文件继续保留：
+关闭 debug 后，不再详细记录后续调用，已有文件继续保留：
 
 ```sh
 taskbelay config set debug off --project
@@ -173,7 +173,7 @@ debug 文件不会随任务结束或七天错误日志清理而自动删除，�
 
 从源码安装后，更新源码并重新执行对应系统的源码安装命令。使用发布版时，可通过菜单或 `taskbelay update` 下载并校验最新发布程序。程序更新后重新打开 Agent 会话，使 MCP 加载新程序；如果程序路径发生变化，重新执行对应的 `taskbelay install` 命令以更新接入路径。
 
-更新器比较正式版本和 Go 伪版本，只替换为更高版本。无法解析的开发版本显示构建信息并结束自动更新，可重新运行源码安装脚本。当前账本使用 schema 12，打开时原子更新结构。版本不兼容的进程不能继续读写；更换程序后重启 Agent session，使 MCP 加载同一程序。
+更新器比较正式版本和 Go 伪版本，只替换为更高版本。当前安装版本无法解析时，更新器显示构建信息并停止自动更新；用户可以重新运行源码安装脚本。当前账本使用 schema 12，程序打开账本时在同一事务中更新结构。版本不兼容的进程不能继续读写；更换程序后重启 Agent session，使 MCP 加载同一程序。
 
 只移除某个 Agent 的接入：
 
@@ -198,7 +198,7 @@ taskbelay uninstall --all
 | --- | --- |
 | [产品需求](docs/product.md) | 产品目标、使用场景、模式和默认行为 |
 | [任务和需求](docs/requirements.md) | 任务生命周期、累计改动、用户修改与需求变更 |
-| [算法核心](docs/algorithm.md)、[输入与执行协议](docs/languages.md) | 算法的统一事实、内容复用、语言无关协议及实现范围 |
+| [算法核心](docs/algorithm.md)、[输入与执行协议](docs/languages.md) | 算法共用的输入、内容分析结果的复用、语言无关协议及实现范围 |
 | [过度设计判定](docs/over-design.md)、[过度测试判定](docs/over-testing.md) | 检查依据、反馈和验证规则 |
 | [Agent 接入](docs/product-agent-integration.md) | 安装、hook、MCP、平台差异与故障处理 |
 | [系统架构](docs/product-architecture.md) | 进程、模块职责、存储和调试记录 |

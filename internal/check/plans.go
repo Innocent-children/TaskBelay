@@ -28,7 +28,7 @@ func ClassifyTargets(ctx context.Context, s *ledger.Store, w gitstate.Workspace,
 		base.Syntax[path.Ext(p)] = syn
 	}
 	if !base.Converged {
-		return out, fmt.Errorf("测试内容的词汇重分类未收敛，无法确定编辑目标类别")
+		return out, fmt.Errorf("按词汇识别测试内容的分类结果尚未稳定，无法确定编辑目标类别")
 	}
 	files := map[string]units.File{}
 	for _, p := range keys(contents) {

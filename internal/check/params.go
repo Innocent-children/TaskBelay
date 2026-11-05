@@ -1,4 +1,4 @@
-// Package check 编排内容分析、事实拦截和交付报告；职责见 docs/algorithm.md 六至九节。
+// Package check 组织内容分析，依据已核对的事实决定是否拦截，并生成交付报告；职责见 docs/algorithm.md 六至九节。
 package check
 
 import "time"
@@ -12,7 +12,7 @@ const (
 	FitRate                 = 0.1                    // 确定性梯度下降步长；见 algorithm.md 七节。
 	Regularization          = 4.0                    // 向初始权重收缩的强度；见 algorithm.md 六节。
 	FitPrecision            = 0.000001               // 拟合梯度停止精度；见 algorithm.md 六节。
-	PublishReserve          = 300 * time.Millisecond // 为结果落账保留时间；见 product-architecture.md 性能预算。
+	PublishReserve          = 300 * time.Millisecond // 为结果写入账本预留时间；见 product-architecture.md 性能预算。
 	BackgroundPoll          = time.Second            // MCP 后台观察已登记输入变化的间隔；见 algorithm.md 九节。
 	ReuseHints              = 3                      // 用户消息中已有单元提示上限；见 algorithm.md 九节。
 	CalibrationSignificance = 0.05                   // 恢复内容的多重比较显著性；见 algorithm.md 七节。

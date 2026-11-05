@@ -14,7 +14,7 @@ import (
 
 const Budget = 2000
 const GuidanceBudget = 350
-const Footer = "用 task_get 查看完整任务；在编辑工作区更新涉及的位置前，先读当前内容。"
+const Footer = "用 task_get 查看完整任务；编辑已发生变化的位置前，先读当前内容。"
 
 type Input struct {
 	View            ledger.TaskView
@@ -123,7 +123,7 @@ func Guidance(settings ledger.EffectiveSettings) string {
 	if settings.Values["analysis.tests"].Value == "on" {
 		tests = "开启"
 	}
-	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新状态；用 note_add 记录决定和未完成的下一步。工作区更新不新增授权，不恢复旧代码覆盖当前修改。"+enforcement+"需要可核对编辑记录时使用编辑工具；shell 写入按实际取得的信息记录。动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
+	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新状态；用 note_add 记录决定和待办事项。工作区发生变化不代表用户授权了新工作，不恢复旧代码覆盖当前修改。"+enforcement+"需要可核对的编辑记录时使用编辑工具；shell 写入按实际取得的信息记录。动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
 }
 
 func GuidanceVersion(settings ledger.EffectiveSettings) string {
@@ -132,7 +132,7 @@ func GuidanceVersion(settings ledger.EffectiveSettings) string {
 
 /**
  * 观察编号、活动时间和新消息本身不产生重复摘要。任务修订、实际内容修订、
- * 分支/HEAD、有效设置、仍有效的决定、检查事实和活跃 session 集合才影响输入身份。
+ * 分支/HEAD、有效设置、仍有效的决定、检查结果和活跃 session 集合才影响摘要输入版本。
  */
 func Version(input Input) string {
 	type taskVersion struct {
@@ -284,7 +284,7 @@ func updates(view ledger.TaskView) string {
 		if Tokens(position) > 35 {
 			position = "位置较长，请用 task_get 查看"
 		}
-		lines = append(lines, position+"；观察于 "+stamp(item.At))
+		lines = append(lines, position+"；发现于 "+stamp(item.At))
 	}
 	if len(lines) == 1 {
 		return "工作区更新：暂无记录。"
@@ -339,10 +339,10 @@ func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 			for _, file := range effective.Files {
 				scopes = append(scopes, file.Path)
 			}
-			parts[2] += "\n有效路径：" + Truncate(effective.Path, 45) + "；范围：" + Truncate(strings.Join(scopes, ", "), 25)
+			parts[2] += "\n已确认方案文件：" + Truncate(effective.Path, 45) + "；范围：" + Truncate(strings.Join(scopes, ", "), 25)
 		}
 		if pending := view.Plans.Pending; pending != nil {
-			parts[2] += "\n待确认路径：" + Truncate(pending.Path, 45) + "；变更：" + Truncate(strings.Join(pending.Changes, "；"), 25)
+			parts[2] += "\n待确认方案文件：" + Truncate(pending.Path, 45) + "；变更：" + Truncate(strings.Join(pending.Changes, "；"), 25)
 		}
 		parts[2] = Truncate(parts[2], 180)
 	}
@@ -402,7 +402,7 @@ func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 		if current {
 			lines = append(lines, fmt.Sprintf("未解决问题：已完成的检查范围内有 %d 处。", len(issues)))
 		} else {
-			lines = append(lines, "当前算法尚未检查。")
+			lines = append(lines, "尚未按当前算法版本执行检查。")
 		}
 		for _, issue := range issues {
 			if remainingItems == 0 {
@@ -431,7 +431,7 @@ func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 		lines = append(lines, "暂无累计改动。")
 	}
 	if input.Partial {
-		lines = []string{"累计改动文件：本次只观察目标文件；完整改动待下次完整观察核对。"}
+		lines = []string{"累计改动文件：本次只查看了目标文件；全部改动将在下次查看完整工作区时核对。"}
 	}
 	check := "尚未检查"
 	if view.LatestCheck != "" && view.LatestCheck != "not_checked" {
@@ -466,7 +466,7 @@ func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 	}
 	compose := func() string { return strings.TrimSpace(prelude + "\n" + strings.Join(parts, "\n") + "\n" + Footer) }
 	text := compose()
-	// 固定身份、模式、方案状态和完整入口始终保留，从最后的可变项开始缩减。
+	// 任务标识、工作模式、方案状态和查看完整任务的入口始终保留，从最后的可变项开始缩减。
 	for _, i := range []int{6, 5, 4, 3, 1} {
 		if Tokens(text) <= Budget {
 			break

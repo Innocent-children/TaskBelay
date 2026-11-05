@@ -122,7 +122,7 @@ func generate(ctx context.Context, in Input, clusters []string) ([]Mutation, err
 
 func (r *runner) mutations() error {
 	if !r.input.Before.Converged || !r.input.After.Converged {
-		r.result.Gaps = append(r.result.Gaps, "测试内容的词汇重分类未收敛，未运行变异和测试约简")
+		r.result.Gaps = append(r.result.Gaps, "按词汇识别测试内容的分类结果尚未稳定，未运行变异和测试精简")
 		return nil
 	}
 	clusters := append([]string(nil), r.result.Required...)
@@ -162,8 +162,8 @@ func (r *runner) mutations() error {
 	valid := 0
 	for sampled := 0; sampled < MutationLimit; sampled++ {
 		if err := r.search.Err(); err != nil {
-			r.result.Gaps = append(r.result.Gaps, "变异抽样预算到期，保留已完成发现矩阵")
-			r.result.Incomplete = append(r.result.Incomplete, "变异抽样预算到期，保留已完成发现矩阵")
+			r.result.Gaps = append(r.result.Gaps, "变异抽样已中断，已保留完成的变异检测结果")
+			r.result.Incomplete = append(r.result.Incomplete, "变异抽样已中断，已保留完成的变异检测结果")
 			break
 		}
 		total := 0

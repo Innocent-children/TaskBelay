@@ -215,7 +215,7 @@ func (t Tasks) SaveRequirement(ctx context.Context, actor ledger.Actor, input le
 	if input.ImplementedBy != nil {
 		locations := make([]ledger.Location, len(*input.ImplementedBy))
 		for i, location := range *input.ImplementedBy {
-			// 对外请求只采用文档规定的字段，定位证据由本机重新取得。
+			// 对外请求只采用文档规定的字段，文件位置和内容标识由本机重新核对。
 			clean := ledger.Location{At: location.At, Quote: location.Quote, SourceID: location.SourceID, Purpose: location.Purpose, Change: location.Change}
 			locations[i], err = t.resolveLocation(ctx, clean, view.Task, observation)
 			if err != nil {

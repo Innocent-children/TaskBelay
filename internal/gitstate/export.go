@@ -11,7 +11,7 @@ import (
 
 /**
  * 只向新建的副本目录导出固定 Git 对象；不读取当前源码、不运行 checkout
- * 过滤器，也不沿符号链接写入。子模块及副本外链接无法提供固定源码证明。
+ * 过滤器，也不沿符号链接写入。对于子模块及指向副本外部的链接，无法保证源码来自固定快照。
  */
 func (w Workspace) ExportTree(ctx context.Context, tree, destination string) error {
 	files, err := w.TreeFiles(ctx, tree)

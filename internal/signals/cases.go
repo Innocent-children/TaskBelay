@@ -183,7 +183,7 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 				out = append(out, Candidate{Kind: "mock_only", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"测试侧调用的参数只包含从测试中学到的词"}, Advice: "核对 " + c.Name + " 是否只检查了 mock 调用；若调用次数本身是需求则保留", Features: map[string]float64{"mock_only": 1}, Benefit: 1})
 			}
 			if !asserted && c.Added {
-				out = append(out, Candidate{Kind: "assertion", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"用例中没有学到的断言词"}, Advice: "核对 " + c.Name + " 是否检查了行为结果", Features: map[string]float64{"assertion_missing": 1}, Benefit: 1})
+				out = append(out, Candidate{Kind: "assertion", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"用例中未出现从仓库识别出的断言词"}, Advice: "核对 " + c.Name + " 是否检查了行为结果", Features: map[string]float64{"assertion_missing": 1}, Benefit: 1})
 			}
 			all = append(all, c)
 			// 同一列表中骨架相同的兄弟元素逐行参与，避免把整张表当成一条用例。
@@ -239,7 +239,7 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 		limit, known := budget[key]
 		used[key]++
 		if known && used[key] > limit && c.AgentOnly && !c.Retained {
-			out = append(out, Candidate{Kind: "test_budget", Object: c.ID, At: c.Path + ":" + c.Name, Cluster: c.Cluster, AgentOnly: true, Facts: []string{fmt.Sprintf("新增用例超出等价类与边界点预算 %d；等价类 %s", limit, c.Class)}, Advice: "核对 " + c.Name + " 是否增加了不同的行为检查；预算只用于提示", Features: map[string]float64{"budget_excess": float64(used[key] - limit)}, Benefit: 1})
+			out = append(out, Candidate{Kind: "test_budget", Object: c.ID, At: c.Path + ":" + c.Name, Cluster: c.Cluster, AgentOnly: true, Facts: []string{fmt.Sprintf("新增用例数超过按等价类和边界点计算的建议数量 %d；等价类 %s", limit, c.Class)}, Advice: "核对 " + c.Name + " 是否增加了不同的行为检查；建议数量只用于提示", Features: map[string]float64{"budget_excess": float64(used[key] - limit)}, Benefit: 1})
 		}
 	}
 	return all, budget, out, gaps, ctx.Err()

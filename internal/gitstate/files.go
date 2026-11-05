@@ -204,7 +204,7 @@ func validObjectID(id string) bool {
 }
 
 /**
- * 编辑证据保存原始字节，避免过滤器和换行转换改变待核对内容。
+ * 按原始字节保存用于核对编辑的文件内容，避免过滤器和换行转换改变内容。
  * 特殊文件记为未完成，不尝试阻塞读取 FIFO 或设备。
  */
 func (w Workspace) ReadFile(ctx context.Context, path string) (File, []byte, error) {
@@ -213,7 +213,7 @@ func (w Workspace) ReadFile(ctx context.Context, path string) (File, []byte, err
 
 /**
  * 始终读取当前字节和模式，只复用内容完全相同的已保留 blob。
- * 文件大小、时间和已有观察不能证明内容未变；不一致时仍由 Git 保存新证据。
+ * 文件大小、时间和已有观察不能证明内容未变；内容不一致时仍由 Git 保存新版本。
  */
 func (w Workspace) ReadObservedFile(ctx context.Context, path string, observed File) (File, []byte, error) {
 	if err := ctx.Err(); err != nil {

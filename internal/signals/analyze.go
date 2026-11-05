@@ -105,7 +105,7 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		if item.Anchor == "quote" {
 			continue
 		}
-		c := Candidate{Kind: "external", Object: item.Kind + ":" + item.Name, At: item.At, Cluster: item.Cluster, AgentOnly: item.AgentOnly, Features: map[string]float64{"unanchored": boolFloat(item.Anchor == "none"), "reliable": boolFloat(item.Reliable), "agent": boolFloat(item.AgentOnly)}, Benefit: 1, Facts: []string{item.Method + "：" + item.Name, "锚定：" + item.Anchor}, Advice: "撤回该新增项，或用 implemented_by 登记它对应的需求和用途"}
+		c := Candidate{Kind: "external", Object: item.Kind + ":" + item.Name, At: item.At, Cluster: item.Cluster, AgentOnly: item.AgentOnly, Features: map[string]float64{"unanchored": boolFloat(item.Anchor == "none"), "reliable": boolFloat(item.Reliable), "agent": boolFloat(item.AgentOnly)}, Benefit: 1, Facts: []string{item.Method + "：" + item.Name, "需求对应关系：" + item.Anchor}, Advice: "撤回该新增项，或用 implemented_by 登记它对应的需求和用途"}
 		if item.Kind != "file" {
 			c.Object = item.At + ":" + item.Kind + ":" + item.Name
 		}
@@ -138,7 +138,7 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 			r.Candidates = append(r.Candidates, duplicate...)
 			r.Gaps = append(r.Gaps, gaps...)
 		} else {
-			r.Gaps = append(r.Gaps, "测试内容的词汇重分类未收敛，未生成依赖测试划分的建议")
+			r.Gaps = append(r.Gaps, "按词汇识别测试内容的分类结果尚未稳定，未生成依赖该分类的建议")
 		}
 	}
 	var kept []Candidate

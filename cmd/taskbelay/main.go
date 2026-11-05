@@ -15,7 +15,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/terminal"
 )
 
-const usage = `TaskBelay：记录需求和开发事实，帮助 Agent 完成当前任务。
+const usage = `TaskBelay：记录需求、改动和验证结果，帮助 Agent 完成当前任务。
 
 用法：
   taskbelay                         打开交互菜单

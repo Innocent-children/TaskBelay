@@ -119,7 +119,7 @@ func CompleteVerification(ctx context.Context, s *ledger.Store, w gitstate.Works
 	}
 	if record.Tree != after {
 		scope.Complete = false
-		scope.Reason = "命令前后内容变化，结果不可用于重复拦截"
+		scope.Reason = "命令执行前后文件内容发生变化，不能用这次结果拦截后续的重复验证"
 	}
 	scope.Validation = scope.Validation || len(scope.Cases) > 0 && record.Tree == after && after != ""
 	if !scope.Validation {
@@ -146,4 +146,4 @@ func CompleteVerification(ctx context.Context, s *ledger.Store, w gitstate.Works
 	return s.UpdateVerificationInput(ctx, record.ID, scope, after, output)
 }
 
-func CommandResultReason(err error) string { return fmt.Sprintf("验证输入未完成：%v", err) }
+func CommandResultReason(err error) string { return fmt.Sprintf("未能完整核对验证输入：%v", err) }

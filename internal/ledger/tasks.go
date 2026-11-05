@@ -230,7 +230,7 @@ ON CONFLICT(scope,scope_id,name) DO UPDATE SET value=excluded.value,revision=set
 
 /**
  * 起点消息可能早于任务建立。把这段时间已经观察到的变化带入新任务，
- * 保留原记录及其作者证据；新任务只把开始时已有的内容视为工作区更新。
+ * 保留原记录及其作者信息；新任务只把开始时已有的内容视为工作区更新。
  */
 func changesBeforeStart(ctx context.Context, q queryer, workspace string, origin, current int64) ([]FileChange, error) {
 	rows, err := q.QueryContext(ctx, "SELECT data FROM file_changes_v12 WHERE workspace_id=? AND observation_id>? AND observation_id<=? ORDER BY id", workspace, origin, current)

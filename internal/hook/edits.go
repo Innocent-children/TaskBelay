@@ -35,7 +35,7 @@ func expectedContent(edit event.FileEdit, current string, exists, updated bool) 
 			return "", true, false, ""
 		}
 		if edit.Before == nil || *edit.Before != current {
-			return "", false, true, "删除请求缺少与当前文件一致的前置内容"
+			return "", false, true, "删除请求缺少与当前文件一致的编辑前原文"
 		}
 		return "", true, false, ""
 	}
@@ -54,7 +54,7 @@ func expectedContent(edit event.FileEdit, current string, exists, updated bool) 
 	}
 	if edit.WholeFile || edit.Before == nil {
 		if edit.Before != nil && (!exists || *edit.Before != current) {
-			return "", false, true, "整文件编辑的前置内容已经过期"
+			return "", false, true, "整文件编辑所依据的原文已经过期"
 		}
 		if edit.Before == nil && exists && updated {
 			return "", false, true, "整文件写入会覆盖工作区更新；请读取当前文件并改用带当前上下文的编辑"

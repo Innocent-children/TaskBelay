@@ -142,7 +142,7 @@ func (r *runner) reduce() error {
 			r.result.Kept = append(r.result.Kept, c.ID)
 		}
 		if len(r.input.Signals.Cases) > 0 {
-			r.result.Gaps = append(r.result.Gaps, "没有可用于测试约简的有效发现矩阵")
+			r.result.Gaps = append(r.result.Gaps, "尚无有效的用例与变异对应结果，无法判断哪些测试可以精简")
 		}
 		return nil
 	}

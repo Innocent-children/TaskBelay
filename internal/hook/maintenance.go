@@ -10,8 +10,8 @@ import (
 )
 
 /**
- * 清理共用入口提供的独立维护预算，不在快速工具前路径或后台循环运行。
- * 记录先提交，耗时的 git 引用操作随后执行；失败项留待下次入口并可查看。
+ * 各项清理共用调用方单独分配的维护时间，不在工具调用前的快速处理流程或后台循环中运行。
+ * 记录先提交，耗时的 git 引用操作随后执行；失败项可查看，并留到下次维护时重试。
  */
 func (t Tasks) Maintain(ctx context.Context, now time.Time) error {
 	if err := t.Store.Prune(ctx, t.Workspace.ID, now); err != nil {

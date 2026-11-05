@@ -73,7 +73,7 @@ func runDoctor(ctx context.Context, env platform.Env, output io.Writer) error {
 		}
 		fmt.Fprintf(output, "\n%s：%s\n", name, command)
 		if err != nil {
-			fmt.Fprintln(output, "接入状态未完成核对：", err)
+			fmt.Fprintln(output, "未能完整核对接入状态：", err)
 			problems = append(problems, fmt.Errorf("%s: %w", name, err))
 			continue
 		}

@@ -71,7 +71,7 @@ func queueObservationRefs(ctx context.Context, tx *sql.Tx, workspace string, obs
 			continue
 		}
 		if ref.Object != "" && (ref.WorkspaceID != workspace || ref.Validate() != nil) {
-			return fmt.Errorf("观察 %d 引用身份无效", observation.ID)
+			return fmt.Errorf("观察 %d 的 Git 引用无效或不属于当前工作区", observation.ID)
 		}
 		// schema 10 观察没有对象字段；空 expected 只允许释放经元数据核对的旧 commit。
 		if err := queueCleanup(ctx, tx, workspace, "ref", ref.Ref, ref.Object, now); err != nil {

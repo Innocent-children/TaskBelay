@@ -82,7 +82,7 @@ func Evaluate(ctx context.Context, current Run, history []Run) (Decision, error)
 	}
 	d.PreviousID, d.Output = previous.ID, previous.Output
 	if current.Rerun || current.Command.Mixed || current.Command.Writes || current.Command.Unknown || previous.Before != previous.After || previous.Command.Writes || previous.State != "passed" || !current.Input.Complete || !previous.Input.Complete || d.Unstable {
-		d.Reason = "重跑决定、输入未知、写入、混合动作、不稳定或上次未通过，本次照常运行"
+		d.Reason = "已有重跑决定、输入信息不全、命令会写入或包含多项操作、结果不稳定，或上次未通过，因此本次照常运行"
 		return d, nil
 	}
 	if current.Input.Hash == previous.Input.Hash {
@@ -109,7 +109,7 @@ func Evaluate(ctx context.Context, current Run, history []Run) (Decision, error)
 	d.CommentInsensitive = credible(d.Agreements, d.Counterexamples)
 	if d.CommentInsensitive && current.Input.Semantic == previous.Input.Semantic && sameRuntime(current, *previous) {
 		d.Kind = "comments"
-		d.Reason = "该命令的历史结果显示注释变化很少提供新信息"
+		d.Reason = "从历史结果看，仅修改注释后重跑该命令很少提供新信息"
 		return d, nil
 	}
 	for i := len(history) - 1; i >= 0; i-- {
@@ -118,12 +118,12 @@ func Evaluate(ctx context.Context, current Run, history []Run) (Decision, error)
 			continue
 		}
 		if sameRuntime(current, r) && Contains(r.Command, current.Command) {
-			d.Kind, d.PreviousID, d.Output, d.Reason = "contained", r.ID, r.Output, "较大范围已通过；范围包含仅作提示"
+			d.Kind, d.PreviousID, d.Output, d.Reason = "contained", r.ID, r.Output, "此前已通过的验证包含本次验证范围；这里只作提示，不阻止运行"
 			return d, nil
 		}
 		agreements, counter := implication(r, current, history)
 		if credible(agreements, counter) {
-			d.Kind, d.PreviousID, d.Output, d.Reason = "implication", r.ID, r.Output, "历史通过规律表明可能没有新信息；仅作提示"
+			d.Kind, d.PreviousID, d.Output, d.Reason = "implication", r.ID, r.Output, "从历史通过情况看，本次验证可能不会提供新信息；这里只作提示"
 			d.Agreements, d.Counterexamples = agreements, counter
 			return d, nil
 		}

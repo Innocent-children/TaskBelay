@@ -73,7 +73,7 @@ ON CONFLICT(id) DO UPDATE SET denied=excluded.denied,executed=excluded.executed,
 }
 
 /**
- * 分析在事务外完成；这里只核对前置事实、消费一次授权并保存同一工具调用的决定。
+ * 分析在事务外完成；这里只核对分析所用的前置信息、标记已使用的一次性授权，并保存同一工具调用的决定。
  * 并发到来的新验证不能绕过上一条仍在运行或状态未知的验证。
  */
 func (s *Store) BeginVerification(ctx context.Context, record VerificationRecord) (VerificationRecord, error) {

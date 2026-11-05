@@ -81,7 +81,7 @@ func (Adapter) ParseEvent(hook string, data []byte) (event.Event, error) {
 		if tool.Notebook == "" {
 			return e, fmt.Errorf("NotebookEdit 缺少 notebook_path")
 		}
-		e.Edits = []event.FileEdit{{Path: tool.Notebook, After: tool.Source, Unverifiable: "NotebookEdit 未提供可核对的单元格前置内容；实际变化保留为工作区更新"}}
+		e.Edits = []event.FileEdit{{Path: tool.Notebook, After: tool.Source, Unverifiable: "NotebookEdit 未提供可核对的单元格编辑前原文；实际变化按工作区更新记录"}}
 	default:
 		return e, fmt.Errorf("未接入 Claude Code 工具 %q", in.Tool)
 	}

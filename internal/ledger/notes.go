@@ -132,13 +132,13 @@ func (s *Store) AddNote(ctx context.Context, call Call, current string, observat
 				return fmt.Errorf("未知决定目标")
 			}
 			if target.Effect != "" && input.Kind != "decision" {
-				return fmt.Errorf("下一步笔记不能授予决定权限")
+				return fmt.Errorf("next_step 只记录下一步，不能指定 effect；需要保存决定时请使用 decision")
 			}
 			switch target.Effect {
 			case "":
 			case "allow_edit":
 				if proof == nil || target.Kind != "task" || target.Scope != "task" || target.At == "" {
-					return fmt.Errorf("分析草稿授权需要用户消息、当前任务、具体文件或目录及任务期限")
+					return fmt.Errorf("允许编辑分析草稿时，须引用用户消息、指向当前任务、指定文件或目录，并将 scope 设为 task")
 				}
 				source, err := loadSource(ctx, tx, call.WorkspaceID, proof.SourceID)
 				if err != nil {
@@ -157,17 +157,17 @@ func (s *Store) AddNote(ctx context.Context, call Call, current string, observat
 				result.Active = true
 			case "retain":
 				if proof == nil || target.At == "" || target.Kind == "task" || target.Kind == "verification" || target.Scope != "task" {
-					return fmt.Errorf("保留决定需要来源、具体位置及任务期限")
+					return fmt.Errorf("保留决定须引用来源、指明具体对象和位置，并将 scope 设为 task")
 				}
 				result.Active = true
 			case "pause_checks":
 				if proof == nil || target.Kind != "task" || (target.Scope != "round" && target.Scope != "task") {
-					return fmt.Errorf("暂停检查需要用户来源、当前任务和 round 或 task 期限")
+					return fmt.Errorf("暂停检查须引用用户消息、指向当前任务，并将 scope 设为 round 或 task")
 				}
 				result.Active = true
 			case "rerun_once":
 				if target.Kind != "verification" || target.Scope != "once" {
-					return fmt.Errorf("重跑授权必须指向一次验证，期限为 once")
+					return fmt.Errorf("重跑决定必须指向一条验证记录，scope 须为 once")
 				}
 				result.Active = true
 			case "revoke":
@@ -190,7 +190,7 @@ func (s *Store) AddNote(ctx context.Context, call Call, current string, observat
 					touchTask(&task)
 				}
 			default:
-				return fmt.Errorf("未知决定作用")
+				return fmt.Errorf("不支持该 effect 值")
 			}
 			if result.Active && proof != nil {
 				source, err := loadSource(ctx, tx, call.WorkspaceID, proof.SourceID)
@@ -287,7 +287,7 @@ func expireRoundDecisions(ctx context.Context, tx *sql.Tx, message Message) erro
 
 /**
  * 相同验证编号代表同一命令及环境输入，由验证模块核对；同时核对任务输入版本。
- * 工具重试返回同一次消费结果，不再消耗另一条授权。
+ * 工具重试仍返回首次使用授权时的结果，不占用另一条授权。
  */
 func (s *Store) ConsumeRerun(ctx context.Context, call Call, taskID, verification string) (Note, error) {
 	var result Note

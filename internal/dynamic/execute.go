@@ -48,7 +48,7 @@ func (r *runner) commands(ctx context.Context, phase, base string, patches []Pat
 		limit = int(float64(limit) * (1 - ConfirmReserve))
 	}
 	if r.started+len(commands) > limit {
-		return nil, fmt.Errorf("副本进程运行预算已用完")
+		return nil, fmt.Errorf("剩余的副本运行次数不足以执行本组命令")
 	}
 	r.started += len(commands)
 	out := make([]RunResult, len(commands))
@@ -106,7 +106,7 @@ func (r *runner) execute(ctx context.Context, phase, base string, patches []Patc
 		return result
 	}
 	if environmentID(os.Environ()) != c.Environment {
-		result.Reason = "当前环境与已成功命令不同"
+		result.Reason = "当前环境与记录中该命令成功运行时的环境不同"
 		return result
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -183,7 +183,7 @@ func (r *runner) execute(ctx context.Context, phase, base string, patches []Patc
 	}
 	digest, err := platform.ExecutableDigest(ctx, program)
 	if err != nil || digest != c.Tool {
-		result.Reason = "副本工具内容与已成功运行的工具不同"
+		result.Reason = "无法确认副本中工具的文件内容与成功运行记录一致"
 		return result
 	}
 	args := append([]string(nil), c.Args...)
@@ -238,7 +238,7 @@ func (r *runner) execute(ctx context.Context, phase, base string, patches []Patc
 	output, readErr := io.ReadAll(io.LimitReader(stdout, OutputBytes))
 	result.Output = string(output)
 	if runErr != nil || readErr != nil || pauseErr != nil || outputExceeded {
-		result.Reason = fmt.Sprintf("运行或输出未完成：%v %v %v；输出预算=%t", runErr, readErr, pauseErr, outputExceeded)
+		result.Reason = fmt.Sprintf("运行或输出未完成。运行错误：%v；读取输出时的错误：%v；查询暂停状态时的错误：%v；输出是否超出大小上限：%t", runErr, readErr, pauseErr, outputExceeded)
 		return result
 	}
 	result.ExitCode = &code
@@ -257,10 +257,10 @@ func commandBudget(ctx context.Context, c Command) string {
 	}
 	remaining := max(time.Duration(0), time.Until(end))
 	if c.Duration <= 0 {
-		return fmt.Sprintf("命令实测耗时未知，未启动；剩余预算=%s", remaining)
+		return fmt.Sprintf("没有该命令的实测耗时，本次未启动；剩余时间=%s", remaining)
 	}
 	if ctx.Err() != nil || remaining < c.Duration {
-		return fmt.Sprintf("剩余预算不足，未启动；剩余预算=%s，真实工作区实测耗时=%s", remaining, c.Duration)
+		return fmt.Sprintf("运行已取消或剩余时间不足，本次未启动；剩余时间=%s，工作区中的实测耗时=%s", remaining, c.Duration)
 	}
 	return ""
 }
@@ -282,7 +282,7 @@ func apply(root string, patches []Patch) error {
 			return err
 		}
 		if string(old) != p.Before {
-			return fmt.Errorf("补丁前置内容不对应：%s", p.Path)
+			return fmt.Errorf("补丁所依据的原文与副本当前内容不匹配：%s", p.Path)
 		}
 		if p.Remove {
 			if err := dir.Remove(p.Path); err != nil && !os.IsNotExist(err) {

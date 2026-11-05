@@ -58,7 +58,7 @@ func (input CheckInput) Version() string {
 
 /**
  * 输入比较只采用判定所需的值；设置来源、观察时间和普通笔记修订不参与。
- * 决定按生效目标及引用去重，避免重复记同一决定改变分析身份。
+ * 决定按生效目标及引用去重，避免重复记录同一决定导致分析输入版本变化。
  */
 func NewCheckInput(task TaskRecord, tree string, settings EffectiveSettings, decisions []Note, algorithm string) CheckInput {
 	input := CheckInput{TaskID: task.ID, OriginTree: task.OriginTree, Tree: tree,

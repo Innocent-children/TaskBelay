@@ -28,7 +28,7 @@ func (t Tasks) recordCheck(actor ledger.Actor, record ledger.CheckRecord) {
 		action = "检查结果未知"
 	}
 	counts := record.GapCounts()
-	t.recordSession(actor, event.SessionRecord{TaskID: record.Input.TaskID, Action: action, Object: record.Depth + " 检查", Detail: fmt.Sprintf("%s；处理状态 %s；结论 %s；未知 %d，出错 %d，未完成 %d。", action, record.Status, record.Level, counts["unknown"], counts["error"], counts["incomplete"]), Sources: checkSource(record)})
+	t.recordSession(actor, event.SessionRecord{TaskID: record.Input.TaskID, Action: action, Object: record.Depth + " 检查", Detail: fmt.Sprintf("%s；检查状态 %s；结论 %s；未知 %d，出错 %d，未完成 %d。", action, record.Status, record.Level, counts["unknown"], counts["error"], counts["incomplete"]), Sources: checkSource(record)})
 }
 
 func feedbackRecord(task, action, object, detail string, sources ...string) event.SessionRecord {

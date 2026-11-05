@@ -40,12 +40,12 @@ func rollbackPatch(ctx context.Context, in Input, ids []string) ([]Patch, error)
 		oldPath := p
 		for _, h := range hunks {
 			if h.Kind == "binary" {
-				return nil, fmt.Errorf("二进制撤回未知：%s", p)
+				return nil, fmt.Errorf("无法确定二进制内容应如何撤回：%s", p)
 			}
 			oldPath = h.BeforePath
 			start, end := h.Span.AfterStart, h.Span.AfterEnd
 			if start < 0 || end > len(lines) || strings.Join(lines[start:end], "") != h.After {
-				return nil, fmt.Errorf("撤回片段不对应：%s", p)
+				return nil, fmt.Errorf("待撤回片段与当前内容不匹配：%s", p)
 			}
 			replacement := split(h.Before)
 			lines = append(append(append([]string(nil), lines[:start]...), replacement...), lines[end:]...)

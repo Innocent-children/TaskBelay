@@ -33,7 +33,7 @@ func Open(ctx context.Context, dataDir string, waitLimit time.Duration) (*Store,
 		return nil, err
 	}
 	if waitLimit <= 0 || waitLimit > NormalWait {
-		return nil, fmt.Errorf("数据库等待预算须在 0 至 %s 之间", NormalWait)
+		return nil, fmt.Errorf("数据库等待时限须大于 0，且不超过 %s", NormalWait)
 	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, fmt.Errorf("建立数据目录: %w", err)
@@ -75,8 +75,8 @@ func Open(ctx context.Context, dataDir string, waitLimit time.Duration) (*Store,
 func (s *Store) Close() error { return s.db.Close() }
 
 /**
- * connection 把连接池等待和 SQLite 的忙等待放进同一个预算。
- * 每次借连接都重设 busy_timeout，不能沿用上一次事件较长的剩余时间。
+ * connection 让连接池等待和 SQLite 的忙等待共用一个时限。
+ * 每次取得连接都重设 busy_timeout，不能沿用上一次事件较长的剩余时间。
  */
 func (s *Store) connection(ctx context.Context) (*sql.Conn, context.Context, func(), error) {
 	ctx, cancel := context.WithTimeout(ctx, s.waitLimit)
@@ -108,7 +108,7 @@ func (s *Store) initialize(ctx context.Context) error {
 			return err
 		}
 		// 同时首次启动的进程可能在切换 WAL 时立即返回 SQLITE_BUSY，
-		// 不调用 SQLite 的忙等待；重试仍共用本次初始化的原有预算。
+		// 不调用 SQLite 的忙等待；重试仍受本次初始化的原有时限约束。
 		timer := time.NewTimer(time.Millisecond)
 		select {
 		case <-ctx.Done():
@@ -243,7 +243,7 @@ PRAGMA user_version=1;
 
 func (s *Store) RegisterWorkspace(ctx context.Context, id, projectID, path string) error {
 	if id == "" || projectID == "" || path == "" {
-		return fmt.Errorf("工作区身份、项目身份和路径不能为空")
+		return fmt.Errorf("工作区标识、项目标识和路径不能为空")
 	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		_, err := tx.ExecContext(ctx, `INSERT INTO workspaces_v12 (id, project_id, path) VALUES (?, ?, ?)

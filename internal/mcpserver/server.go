@@ -44,10 +44,10 @@ type getInput struct {
 	RecordID   string `json:"record_id,omitempty" jsonschema:"单条正文编号，从列表或写入结果取得"`
 	Revision   int64  `json:"revision,omitempty" jsonschema:"需求和方案正文必须指定列表给出的修订号"`
 	CharOffset int    `json:"char_offset,omitempty" jsonschema:"正文的 Unicode 字符偏移，默认 0"`
-	CharLimit  int    `json:"char_limit,omitempty" jsonschema:"正文字符数，默认 2000，最多 12000；最终响应预算可能进一步缩短"`
+	CharLimit  int    `json:"char_limit,omitempty" jsonschema:"正文字符数，默认 2000，最多 12000；受响应长度上限限制，实际返回内容可能更短"`
 }
 type finishInput struct {
-	Outcome string `json:"outcome,omitempty" jsonschema:"complete 请求交付；仅用户明确放弃时用 cancel，中止原因保留本轮用户消息"`
+	Outcome string `json:"outcome,omitempty" jsonschema:"complete 表示请求交付；仅用户明确放弃时用 cancel，并保存本轮用户消息作为中止原因"`
 }
 type locationInput struct {
 	At       string `json:"at" jsonschema:"文档规定的文件、声明、test、flag、cmd、env、route、config 或 dep 位置"`
@@ -72,10 +72,10 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		resolver = MetadataContext
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "taskbelay", Version: "0.1.0"}, nil)
-	register(server, "task_get", "默认返回有限概要与记录总数；category 按 after_seq 分页。record_id 定位完整 JSON 正文，需求和方案同时指定 revision；按 next_offset 继续读取并拼接后解析。state 是查询时状态，正文不随显示状态改写。", false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input getInput) (any, error) {
+	register(server, "task_get", "默认返回简要信息与记录总数。指定 category 后，按 after_seq 分页读取；指定 record_id 可读取完整 JSON 正文，需求和方案还须指定 revision。按 next_offset 续读，拼接完整后再解析。state 表示查询时的状态，已保存的正文不随状态变化而改写。", false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input getInput) (any, error) {
 		return getTask(ctx, service, actor, input)
 	})
-	register(server, "task_start", "开始、恢复或重新打开任务；保留原始起点并保存当前恢复观察。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.StartTaskInput) (any, error) {
+	register(server, "task_start", "开始、恢复或重新打开任务；保留原始起点，并记录此时的工作区状态。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.StartTaskInput) (any, error) {
 		result, err := service.Start(ctx, actor, input)
 		if err != nil {
 			return nil, err
@@ -88,7 +88,7 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		response["details"] = map[string]any{"summary": text}
 		return response, nil
 	})
-	register(server, "requirement_save", "保存需求修订；引用须对应完整来源，冲突返回最新版本供合并。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input requirementInput) (any, error) {
+	register(server, "requirement_save", "保存需求的新修订；引用须能在完整来源中找到。发生修订冲突时返回最新版本，供合并后重试。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input requirementInput) (any, error) {
 		request := ledger.RequirementInput{ID: input.ID, Content: input.Content, Quote: input.Quote, SourceID: input.SourceID, Acceptance: input.Acceptance, Status: input.Status, BaseRevision: input.BaseRevision}
 		if input.ImplementedBy != nil {
 			locations := make([]ledger.Location, len(*input.ImplementedBy))
@@ -103,21 +103,21 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		}
 		return requirementResponse(result), nil
 	})
-	register(server, "note_add", "保存 decision 或 next_step。决定 target 指定 kind、id、精确 at、effect 和 scope；retain 用 task 期限，pause_checks 用 round/task，rerun_once 用 verification 目标及 once 期限；allow_edit 仅按用户消息授予当前 task 的具体草稿文件或目录，scope 为 task。revoke 撤回同一目标；撤回 plan 时 at 可省略以撤回整版，或精确列出范围、入口、dep:模块名。普通说明不豁免检查。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.NoteInput) (any, error) {
+	register(server, "note_add", "保存 decision 或 next_step。用 target 的 kind、id、at、effect 和 scope 指明决定针对的对象、准确位置、作用和有效范围。retain 的 scope 为 task；pause_checks 为 round 或 task；rerun_once 指向 verification，scope 为 once。allow_edit 须依据用户消息，仅允许编辑当前 task 中指定的草稿文件或目录，scope 为 task。revoke 撤回对同一对象的决定；撤回 plan 时，省略 at 表示撤回整版，也可准确列出范围、入口或 dep:模块名。普通说明不改变检查规则。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.NoteInput) (any, error) {
 		result, err := service.AddNote(ctx, actor, input)
 		if err != nil {
 			return nil, err
 		}
 		return noteResponse(result), nil
 	})
-	register(server, "check_run", "检查固定任务输入；depth 为 static 或 tests，tests 仅对本次请求开启动态检查，refresh 重新核对。返回输入版本、逻辑记录、确认结果，以及分别计数的未知、错误和未完成部分。", false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input check.RunInput) (any, error) {
+	register(server, "check_run", "按本次捕获的任务状态和代码快照执行检查。depth 为 static 或 tests；tests 仅为本次请求开启动态检查，refresh 表示重新检查。返回输入版本、分析记录和确认结果，并分别统计无法判断、执行出错和尚未完成的部分。", false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input check.RunInput) (any, error) {
 		result, err := service.Check(ctx, actor, input)
 		if err != nil {
 			return nil, err
 		}
 		return checkResponse(result, true), nil
 	})
-	register(server, "task_finish", "申请 complete 待交付，立即返回已有检查；Stop 完成交付。用户明确放弃时用 cancel，保存本轮消息作为中止原因。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input finishInput) (any, error) {
+	register(server, "task_finish", "outcome 为 complete 时提交交付请求，立即返回已有检查结果，后续由 Stop 处理交付。仅用户明确放弃任务时使用 cancel，并保存本轮消息作为中止原因。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input finishInput) (any, error) {
 		result, err := service.Finish(ctx, actor, ledger.FinishInput{Outcome: input.Outcome})
 		if err != nil {
 			return nil, err
@@ -131,7 +131,7 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		}
 		return planResponse(result), nil
 	})
-	register(server, "plan_confirm", "仅在用户明确确认后调用，核对完整消息的否定和附带修改；version、source_id、quote 绑定具体版本及原话。通常消息晚于提交；同一请求明确要求按方案直接开发时允许随请求授权。讨论或要求继续分析应保持待确认。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.PlanConfirmInput) (any, error) {
+	register(server, "plan_confirm", "仅在用户明确确认后调用，须结合完整消息核对否定表述和附带修改；version、source_id、quote 指明方案版本及确认原话。确认消息通常晚于方案提交；若提出方案的同一请求已明确要求直接开发，也可使用该请求。用户只讨论方案或要求继续分析时，保持待确认状态。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.PlanConfirmInput) (any, error) {
 		result, err := service.ConfirmPlan(ctx, actor, input)
 		if err != nil {
 			return nil, err

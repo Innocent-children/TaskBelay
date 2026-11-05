@@ -186,7 +186,7 @@ func (s *Store) RecordMessage(ctx context.Context, message Message) (Message, er
 		return Message{}, err
 	}
 	if message.WorkspaceID == "" || message.EventID == "" || message.ObservationID == 0 {
-		return Message{}, fmt.Errorf("消息缺少身份或到达时观察点")
+		return Message{}, fmt.Errorf("消息缺少工作区标识、事件标识或接收时的工作区观察记录")
 	}
 	var result Message
 	err := s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
@@ -197,7 +197,7 @@ func (s *Store) RecordMessage(ctx context.Context, message Message) (Message, er
 				return err
 			}
 			if result.Text != message.Text || result.Actor.RoundID != message.Actor.RoundID {
-				return fmt.Errorf("消息身份与既有内容冲突")
+				return fmt.Errorf("同一消息已记录，但内容或请求轮次不同")
 			}
 			return nil
 		}
@@ -209,7 +209,7 @@ func (s *Store) RecordMessage(ctx context.Context, message Message) (Message, er
 			return err
 		}
 		if observation.Agent != message.Actor.Agent || observation.SessionID != message.Actor.SessionID || observation.RoundID != message.Actor.RoundID {
-			return fmt.Errorf("消息与观察点的来源不一致")
+			return fmt.Errorf("消息与工作区观察记录对应的 Agent、session 或请求轮次不一致")
 		}
 		message.Context = observation.Context
 		if message.At.IsZero() {

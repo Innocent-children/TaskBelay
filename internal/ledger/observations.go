@@ -133,12 +133,12 @@ type UnverifiedEdit struct {
 }
 
 /**
- * 将 G01 的路径身份接到稳定的 git 目录身份，保留原有项目与任务设置。
- * 目录移动只更新位置；身份和位置都没变时不申请写锁。
+ * 将 G01 使用的路径标识关联到稳定的 git 目录标识，保留原有项目与任务设置。
+ * 目录移动只更新位置；标识和位置都没变时不申请写锁。
  */
 func (s *Store) RegisterGitWorkspace(ctx context.Context, w gitstate.Workspace) error {
 	if w.ID == "" || w.ProjectID == "" || w.Root == "" || w.GitDir == "" || w.CommonDir == "" {
-		return fmt.Errorf("工作区身份和 git 路径不能为空")
+		return fmt.Errorf("工作区标识和 git 路径不能为空")
 	}
 	conn, ctx, release, err := s.connection(ctx)
 	if err != nil {
@@ -184,7 +184,7 @@ SELECT scope,?,name,value,revision FROM settings_v12 WHERE scope='project' AND s
 ON CONFLICT(scope,scope_id,name) DO NOTHING`, w.ProjectID, w.CommonDir); err != nil {
 		return err
 	}
-	// 保留旧路径记录以供核查，新的观察记录都使用稳定身份。
+	// 保留旧路径记录以供核查，新的观察记录都使用稳定的工作区标识。
 	return tx.Commit()
 }
 
@@ -248,7 +248,7 @@ func (s *Store) ObservationState(ctx context.Context, workspace string, paths []
 }
 
 /**
- * 文件采集完成后，以短事务一起发布观察、变化证据和编辑阶段。
+ * 文件采集完成后，用短事务一起保存观察记录、文件变化和编辑阶段。
  * 并发观察使旧基线失效时返回冲突，不覆盖另一进程的新记录。
  */
 func (s *Store) SaveObservation(ctx context.Context, view ObservationView, observation *Observation, changes []FileChange, edit *EditRecord) error {

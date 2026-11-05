@@ -48,8 +48,8 @@ func protocolResult(value map[string]any, isError bool) (*mcp.CallToolResult, []
 }
 
 /**
- * 预算覆盖文本与结构化结果的最终序列化，同时为 JSON-RPC 外层预留空间。
- * 身份、状态、总数和续读入口不裁剪；正文缩短后同步续读偏移。
+ * 响应长度限制包含文本与结构化结果序列化后的内容，并为 JSON-RPC 外层预留空间。
+ * 编号、状态、总数和续读入口不裁剪；正文缩短后同步调整续读偏移。
  */
 func boundedResponse(name string, value map[string]any, isError bool) *mcp.CallToolResult {
 	budget := outputBudget(name) - 64
@@ -84,8 +84,8 @@ func boundedResponse(name string, value map[string]any, isError bool) *mcp.CallT
 			value["error"] = summary.Truncate(message, 80)
 			continue
 		}
-		// 固定元数据只使用程序生成的短身份；不能截断一条无法再缩短的响应。
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "响应元数据超出预算，请缩小查询范围。"}}}
+		// 必须保留的元数据只含程序生成的短标识；响应无法再缩短时返回错误，不能直接截断。
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "响应元数据超过长度上限，请缩小查询范围。"}}}
 	}
 }
 
@@ -135,9 +135,9 @@ func requirementResponse(record ledger.Requirement) map[string]any {
 }
 
 func noteResponse(note ledger.Note) map[string]any {
-	reason := "已保存普通笔记，不授予检查例外。"
+	reason := "笔记已保存；仅记录说明，不改变现有检查规则。"
 	if note.Active {
-		reason = "决定已按来源和目标生效。"
+		reason = "决定已生效，适用对象和范围以记录为准。"
 	} else if note.InvalidatedBy != "" {
 		reason = "决定已失效：" + note.InvalidatedBy
 	} else if note.Consumed {
@@ -190,7 +190,7 @@ func checkResponse(record ledger.CheckRecord, execution bool) map[string]any {
 	}
 	value := map[string]any{"task_id": record.Input.TaskID, "id": record.ID, "input_version": record.InputVersion, "status": record.Status, "computed_status": record.ComputedStatus, "level": record.Level, "depth": record.Depth, "started_at": record.StartedAt, "finished_at": record.FinishedAt, "issues_count": len(record.Issues), "missing_count": len(record.Missing), "evaluated_count": len(record.Evaluated), "algorithm": record.Input.Algorithm, "historical_version": record.HistoricalVersion, "read": readLink(record.Input.TaskID, "checks", strconv.FormatInt(record.ID, 10), 0)}
 	value["gap_counts"] = record.GapCounts()
-	value["analysis_note"] = "处理状态、未知范围、结论和产品动作分别记录；完整逻辑记录见 task_get。"
+	value["analysis_note"] = "检查进度、尚无法判断的部分、检查结论，以及是否提示或拦截，均分别记录。用 task_get 查看完整检查记录。"
 	value["unconfirmed_count"] = len(record.Unconfirmed)
 	value["details"] = map[string]any{"issues": items, "missing": gaps}
 	if execution {
@@ -198,7 +198,7 @@ func checkResponse(record ledger.CheckRecord, execution bool) map[string]any {
 	}
 	if record.Static != nil {
 		value["static"] = checkResponse(*record.Static, execution)
-		// 静态明细也受同一对外预算约束。
+		// 静态检查明细也受相同的响应长度限制。
 		static := value["static"].(map[string]any)
 		value["details"].(map[string]any)["static"] = static["details"]
 		delete(static, "details")

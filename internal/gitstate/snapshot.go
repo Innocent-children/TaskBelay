@@ -218,8 +218,8 @@ func safeComponent(value string) bool {
 }
 
 /**
- * 原始前后内容和请求内容单独保留，避免 clean filter 改写快照后丢失核对证据。
- * 条目名只是证据槽位，原始文件路径与片段范围由观察记录保存。
+ * 单独保存编辑前后的原始内容和请求内容，避免 clean filter 改写快照后无法核对编辑。
+ * tree 条目名只给这些内容编号；原文件路径和片段范围另存于观察记录。
  */
 func (w Workspace) EvidenceTree(ctx context.Context, files []File, tree string) (string, error) {
 	input, err := evidenceInput(files, tree)
@@ -228,13 +228,13 @@ func (w Workspace) EvidenceTree(ctx context.Context, files []File, tree string) 
 	}
 	out, err := w.command(ctx, strings.NewReader(input), nil, "mktree", "-z")
 	if err != nil {
-		err = fmt.Errorf("构造证据 tree: %w", err)
+		err = fmt.Errorf("创建保存原始内容的 Git tree: %w", err)
 	}
 	return strings.TrimSpace(string(out)), err
 }
 
 /**
- * 证据 tree 进程先等待输入，与新 blob 的写入重叠启动。
+ * 先启动 git mktree 等待输入，同时写入新的 blob。
  * 只有内容全部保存后才发送条目；失败和取消同样关闭管道并等待子进程退出。
  */
 func (w Workspace) WriteEvidenceTree(ctx context.Context, files []File, tree string, contents [][]byte) (string, []string, error) {
@@ -244,7 +244,7 @@ func (w Workspace) WriteEvidenceTree(ctx context.Context, files []File, tree str
 	}
 	input, writer, err := os.Pipe()
 	if err != nil {
-		return "", nil, fmt.Errorf("创建证据 tree 管道: %w", err)
+		return "", nil, fmt.Errorf("创建 git mktree 输入管道: %w", err)
 	}
 	type outcome struct {
 		output []byte
@@ -254,7 +254,7 @@ func (w Workspace) WriteEvidenceTree(ctx context.Context, files []File, tree str
 	go func() {
 		out, err := w.command(ctx, input, nil, "mktree", "-z")
 		if err != nil {
-			err = fmt.Errorf("构造证据 tree: %w", err)
+			err = fmt.Errorf("创建保存原始内容的 Git tree: %w", err)
 		}
 		done <- outcome{out, errors.Join(err, input.Close())}
 	}()
@@ -264,7 +264,7 @@ func (w Workspace) WriteEvidenceTree(ctx context.Context, files []File, tree str
 		var blob string
 		blob, err = w.WriteBlob(ctx, content)
 		if err != nil {
-			err = fmt.Errorf("写入证据 blob: %w", err)
+			err = fmt.Errorf("将原始内容写入 Git blob: %w", err)
 			break
 		}
 		blobs = append(blobs, blob)
@@ -276,13 +276,13 @@ func (w Workspace) WriteEvidenceTree(ctx context.Context, files []File, tree str
 		if err == nil {
 			_, err = io.WriteString(writer, entries)
 			if err != nil {
-				err = fmt.Errorf("发送证据 tree 条目: %w", err)
+				err = fmt.Errorf("向 git mktree 发送条目: %w", err)
 			}
 		}
 	}
 	closeErr := writer.Close()
 	if closeErr != nil {
-		closeErr = fmt.Errorf("关闭证据 tree 管道: %w", closeErr)
+		closeErr = fmt.Errorf("关闭 git mktree 输入管道: %w", closeErr)
 	}
 	result := <-done
 	if err = errors.Join(err, closeErr, result.err); err != nil {
@@ -299,7 +299,7 @@ func evidenceInput(files []File, tree string) (string, error) {
 			continue
 		}
 		if !validObjectID(file.Blob) {
-			return "", fmt.Errorf("无效的证据对象")
+			return "", fmt.Errorf("原始内容的 Git blob 标识无效")
 		}
 		seen[file.Blob] = true
 		entries = append(entries, "100644 blob "+file.Blob+"\t"+strconv.Itoa(len(entries)))

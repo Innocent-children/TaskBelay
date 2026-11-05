@@ -297,7 +297,7 @@ func Install(env platform.Env, exe, name string, run Runner) (string, error) {
 	if err := file.Write(data); err != nil {
 		return "", err
 	}
-	partial := "TaskBelay hook 配置已写入；MCP 注册尚未完成，可修复原因后重试。\n"
+	partial := "TaskBelay hook 配置已写入；MCP 注册尚未完成，请处理报错后重试。\n"
 	if exists {
 		if _, err := run(ctx, name, mcpArgs(name, "remove", "")...); err != nil {
 			return partial, fmt.Errorf("移除旧 MCP 注册: %w", err)

@@ -88,7 +88,7 @@ func update(ctx context.Context, env platform.Env, executable, current, baseURL 
 		return "", err
 	}
 	if semver.Compare(current, release.Version) >= 0 {
-		return fmt.Sprintf("当前版本 %s 已满足发布版本 %s，无需更新。\n", current, release.Version), nil
+		return fmt.Sprintf("当前版本 %s 不低于最新发布版本 %s，无需更新。\n", current, release.Version), nil
 	}
 	baseURL += "download/" + release.Version + "/"
 	var sums strings.Builder

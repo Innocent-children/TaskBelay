@@ -164,14 +164,14 @@ func (o Observer) retain(ctx context.Context, observation *ledger.Observation, v
 	}
 	tree, blobs, err := o.Workspace.WriteEvidenceTree(ctx, files, observation.Tree, contents)
 	if err != nil {
-		return fmt.Errorf("写入证据 tree: %w", err)
+		return fmt.Errorf("保存原始内容的 Git tree: %w", err)
 	}
 	for i, blob := range blobs {
 		prepared[positions[i]].Expected.Blob = blob
 	}
 	retained, err := retain(id+"-evidence", tree)
 	if err != nil {
-		return fmt.Errorf("保留证据引用: %w", err)
+		return fmt.Errorf("保留原始内容的 Git 引用: %w", err)
 	}
 	observation.EvidenceRef = retained.Ref
 	observation.EvidenceObject, observation.EvidenceType = retained.Object, retained.Type
@@ -179,8 +179,8 @@ func (o Observer) retain(ctx context.Context, observation *ledger.Observation, v
 }
 
 /**
- * 编辑前只读取目标文件。冲突始终返回当前内容；hint 只改变返回决定，
- * 不改变核对结果，也不把过期请求记为能够归责的 Agent 编辑。
+ * 编辑前只读取目标文件。发生冲突时始终返回当前内容；hint 只改变提示或拦截方式，
+ * 不改变核对结果，也不会把过期请求记为已确认由 Agent 完成的编辑。
  */
 func (o Observer) BeforeEdit(ctx context.Context, e event.Event, task, enforcement string) (event.Decision, error) {
 	decision, err := o.beforeEdit(ctx, e, task, enforcement)
@@ -222,7 +222,7 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		}
 		key, err := o.Workspace.TargetKey(path)
 		if err != nil {
-			skip(i, "无法核对路径身份："+err.Error())
+			skip(i, "无法确定路径对应的文件："+err.Error())
 			continue
 		}
 		if first, ok := canonical[key]; ok {
@@ -300,7 +300,7 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 			}
 			record.Decision.Records = append(record.Decision.Records, feedbackRecord(task, action, path, reason))
 			if enforcement == "block" {
-				record.Decision.DenyTool = "编辑前置内容已过期，请依据返回的当前内容重新组织编辑。"
+				record.Decision.DenyTool = "编辑所依据的原文已过期，请依据返回的当前内容重新组织编辑。"
 			}
 		} else if reason != "" {
 			messages = append(messages, path+": "+reason)
@@ -315,7 +315,7 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 			if observation.Files[file.Path] != file.Before {
 				decision := event.Decision{AdditionalContext: fmt.Sprintf("%s 在此前核对后发生变化，请按当前内容重新提交编辑：\n%s", file.Path, contents[file.Path])}
 				if enforcement == "block" {
-					decision.DenyTool = "原工具调用的前置内容已过期，请重新核对。"
+					decision.DenyTool = "原工具调用所依据的文件内容已过期，请重新核对。"
 				}
 				action := "过期编辑提示已输出"
 				if decision.DenyTool != "" {
@@ -374,7 +374,7 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 	}
 	if len(observation.Files) > 0 {
 		if err := o.retain(ctx, &observation, view, record.Files, expectedContents); err != nil {
-			return event.Decision{}, fmt.Errorf("保存编辑证据: %w", err)
+			return event.Decision{}, fmt.Errorf("保存用于核对编辑的原始内容: %w", err)
 		}
 	}
 	if err := o.Store.SaveObservation(ctx, view, &observation, changes, &record); err != nil {

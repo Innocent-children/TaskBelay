@@ -22,7 +22,7 @@ func runStatus(ctx context.Context, env platform.Env, dir string, output io.Writ
 	var workspaceID string
 	defer func() {
 		if resultErr != nil {
-			fmt.Fprintln(output, "TaskBelay 状态未完成："+resultErr.Error())
+			fmt.Fprintln(output, "未能完整查询 TaskBelay 状态："+resultErr.Error())
 		}
 		entries, err := recentErrors(env, workspaceID, time.Now())
 		if err != nil {
@@ -95,7 +95,7 @@ func runStatus(ctx context.Context, env platform.Env, dir string, output io.Writ
 		fmt.Fprintln(&text, "\n未解决问题：\n"+unresolved)
 	}
 	if pending, err := store.CleanupStatus(ctx, workspace.ID); err != nil {
-		fmt.Fprintln(&text, "保留期清理状态未完成："+err.Error())
+		fmt.Fprintln(&text, "无法查询过期记录的清理状态："+err.Error())
 	} else if pending != "" {
 		fmt.Fprintln(&text, "\n"+pending)
 	}

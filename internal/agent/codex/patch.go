@@ -9,7 +9,7 @@ import (
 
 /**
  * apply_patch 转为独立于 Agent 的行补丁，保留定位锚点和文件结束约束。
- * 没有前置内容的删除、移动不凭当前文件补造请求证据。
+ * 删除或移动请求未提供编辑前内容时，不能用当前文件内容冒充请求中的内容。
  */
 func parsePatch(input string) ([]event.FileEdit, error) {
 	lines := strings.Split(strings.TrimSpace(strings.ReplaceAll(input, "\r\n", "\n")), "\n")
@@ -37,7 +37,7 @@ func parsePatch(input string) ([]event.FileEdit, error) {
 			edit.After = &value
 		case strings.HasPrefix(header, "*** Delete File: "):
 			edit.Path, edit.Delete = strings.TrimPrefix(header, "*** Delete File: "), true
-			edit.Unverifiable = "删除请求没有前置内容；实际变化保留为工作区更新"
+			edit.Unverifiable = "删除请求未提供编辑前原文；实际变化按工作区更新记录"
 		case strings.HasPrefix(header, "*** Update File: "):
 			edit.Path = strings.TrimPrefix(header, "*** Update File: ")
 			var move string

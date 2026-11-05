@@ -45,8 +45,8 @@ func runDynamic(ctx context.Context, s *ledger.Store, w gitstate.Workspace, acto
 			select {
 			case <-ctx.Done():
 				timer.Stop()
-				result.Gaps = append(result.Gaps, "等待副本运行未完成："+ctx.Err().Error())
-				result.Incomplete = append(result.Incomplete, "等待副本运行未完成："+ctx.Err().Error())
+				result.Gaps = append(result.Gaps, "等待副本运行结果时中断："+ctx.Err().Error())
+				result.Incomplete = append(result.Incomplete, "等待副本运行结果时中断："+ctx.Err().Error())
 				result.State = "partial"
 			case <-timer.C:
 				continue
@@ -125,7 +125,7 @@ func runDynamic(ctx context.Context, s *ledger.Store, w gitstate.Workspace, acto
 			if !removed[c.Cluster] {
 				continue
 			}
-			issue := ledger.Issue{Algorithm: Algorithm, Rule: "rollback", At: c.At, LogicalAt: c.Object, FactKey: "confirmed", Level: "hint", Status: "open", Selected: true, Facts: append(append([]string(nil), c.Facts...), "撤回集合已整组确认："+strings.Join(result.Rollback, ",")), Advice: "可使用报告中的撤回补丁；副本中的全部既有及主要验收依据仍通过", Signals: c.Features}
+			issue := ledger.Issue{Algorithm: Algorithm, Rule: "rollback", At: c.At, LogicalAt: c.Object, FactKey: "confirmed", Level: "hint", Status: "open", Selected: true, Facts: append(append([]string(nil), c.Facts...), "已一起撤回以下变更簇，再运行验收依据中列出的用例和命令，结果通过："+strings.Join(result.Rollback, ",")), Advice: "可使用报告中的撤回补丁；本次采用的既有验收依据和主要验收依据中列出的用例和命令仍全部通过", Signals: c.Features}
 			issue.ContentSignature, err = objectSignature(ctx, a, c)
 			if err != nil {
 				return err
@@ -135,7 +135,7 @@ func runDynamic(ctx context.Context, s *ledger.Store, w gitstate.Workspace, acto
 		}
 	}
 	if result.ReductionConfirmed && len(result.Removed) > 0 {
-		record.Issues = append(record.Issues, ledger.Issue{Algorithm: Algorithm, Rule: "test_reduction", LogicalAt: units.Hash(result.Removed...), At: strings.Join(result.Removed, ","), FactKey: "confirmed", Level: "hint", Status: "open", Selected: true, Facts: []string{"发现矩阵约简后，保留用例及验收依据已整组确认通过"}, Advice: "可删除报告中已确认的测试集合；这只覆盖本次已抽样的变异"})
+		record.Issues = append(record.Issues, ledger.Issue{Algorithm: Algorithm, Rule: "test_reduction", LogicalAt: units.Hash(result.Removed...), At: strings.Join(result.Removed, ","), FactKey: "confirmed", Level: "hint", Status: "open", Selected: true, Facts: []string{"根据各用例发现变异的情况选出保留用例后，已一起运行保留用例，以及验收依据中列出的用例和命令，结果全部通过"}, Advice: "可删除报告中已确认的测试集合；这一结论只覆盖本次抽样的变异"})
 	}
 	for _, gap := range result.TestGaps {
 		record.Issues = append(record.Issues, ledger.Issue{Algorithm: Algorithm, Rule: "test_gap", LogicalAt: gap, At: gap, FactKey: "survived", Level: "hint", Status: "open", Selected: true, Facts: []string{"有效变异未被已运行的用例发现"}, Advice: "核对该变异所代表的行为是否应被验收覆盖"})

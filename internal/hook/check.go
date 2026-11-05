@@ -209,7 +209,7 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 		text += "\n" + check.Format(*dynamic, 5)
 	}
 	if record.Status == ledger.CheckPartial || record.Status == ledger.CheckFailed || dynamic != nil && (dynamic.Status == ledger.CheckPartial || dynamic.Status == ledger.CheckFailed) {
-		text = "TaskBelay 这次没有完成全部检查；已完成的事实和具体原因如下。\n" + text
+		text = "TaskBelay 本次未完成全部检查。以下列出已取得的结果，以及其余检查未完成的原因。\n" + text
 	}
 	text = check.LimitFeedback(text)
 	decision := event.Decision{AdditionalContext: text, UserMessage: text}

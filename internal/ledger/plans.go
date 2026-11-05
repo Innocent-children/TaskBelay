@@ -27,7 +27,7 @@ func readPlans(ctx context.Context, q queryer, task TaskRecord) (PlanView, error
 		}
 		result.Versions = append(result.Versions, plan)
 		if plan.Confirmation != nil {
-			// 最新的完整方案被撤回时，旧版历史不能重新授予同一范围。
+			// 最新的完整方案被撤回后，不能再依据旧版方案允许编辑同一范围。
 			result.Effective = effectivePlan(plan)
 			result.Pending = nil
 		} else {
@@ -310,9 +310,9 @@ func (s *Store) ConfirmPlan(ctx context.Context, call Call, taskID string, input
 			if message.ID != plan.RequestMessageID || message.Actor.Agent != plan.Author.Agent || message.Actor.SessionID != plan.Author.SessionID || message.Actor.RoundID != plan.Author.RoundID {
 				return fmt.Errorf("确认消息早于该方案，且不是提交方案时的本次请求")
 			}
-			// 随请求的例外只接受明确执行措辞；语义和附带限制仍由 Agent 核对完整原话。
+			// 使用提交方案时的请求作确认来源时，只接受明确要求执行的表述；语义和附带限制仍由 Agent 核对完整原话。
 			if !explicitPlanExecution(message.Text) || !explicitPlanExecution(input.Quote) {
-				return fmt.Errorf("提交前的消息没有可核对的随请求执行授权")
+				return fmt.Errorf("提交方案前的消息或引用中未找到明确要求直接开发的表述")
 			}
 			method = "with_request"
 		}

@@ -16,7 +16,7 @@ func LimitFeedback(text string) string {
 
 func Format(record ledger.CheckRecord, limit int) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "TaskBelay %s：处理状态 %s；结论 %s；输入 %s\n", record.Depth, record.Status, record.Level, record.InputVersion)
+	fmt.Fprintf(&b, "TaskBelay %s：检查状态 %s；结论 %s；输入版本 %s\n", record.Depth, record.Status, record.Level, record.InputVersion)
 	if record.HistoricalVersion != "" {
 		fmt.Fprintf(&b, "历史规则版本：%s（不参与当前判定）\n", record.HistoricalVersion)
 	}
@@ -38,10 +38,10 @@ func Format(record ledger.CheckRecord, limit int) string {
 		fmt.Fprintf(&b, "%s %s：%s\n", gap.Kind, gap.At, gap.Reason)
 	}
 	if len(record.Issues) == 0 {
-		b.WriteString("本次未形成建议；这不表示已证明没有多余改动或测试足够。\n")
+		b.WriteString("本次没有给出建议，但仍不能据此认定改动都必要或测试已充分。\n")
 	}
 	if d := record.Report.Dynamic; d != nil {
-		fmt.Fprintf(&b, "副本：%s；运行 %d 次；整组确认 %t。\n", d.State, d.Runs, d.Confirmed)
+		fmt.Fprintf(&b, "副本检查状态：%s；运行 %d 次；撤回集合是否整体确认通过：%t。\n", d.State, d.Runs, d.Confirmed)
 	}
 	for _, v := range record.Report.Verifications {
 		if v.Algorithm == Algorithm && v.Scope.Validation {

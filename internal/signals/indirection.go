@@ -295,7 +295,7 @@ func unused(in Input) []Candidate {
 				}
 			}
 			if !used {
-				out = append(out, Candidate{Kind: "unused", Object: repostats.UnitKey(p, u), At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"新名字 " + u.Name + " 在定义单元之外没有生产内容引用，也不符合起点入口模式"}, Advice: "撤回 " + location(p, u) + "，或核对配置和外部调用", Features: map[string]float64{"unused": 1, "structure": f.Confidence}, Benefit: float64(u.EndLine - u.Line + 1)})
+				out = append(out, Candidate{Kind: "unused", Object: repostats.UnitKey(p, u), At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"新增标识符 " + u.Name + " 在定义它的单元之外未被其他非测试内容引用，也未匹配任务开始时识别出的入口写法"}, Advice: "撤回 " + location(p, u) + "，或核对配置和外部调用", Features: map[string]float64{"unused": 1, "structure": f.Confidence}, Benefit: float64(u.EndLine - u.Line + 1)})
 			}
 		}
 	}

@@ -9,5 +9,5 @@ const (
 	QuoteWeight     = 1.0     // 原话及有效方案的种子初始权重，见 docs/algorithm.md 种子和校准。
 	ContentWeight   = 0.6     // 需求及验收的种子初始权重，见 docs/algorithm.md 种子和校准。
 	LocationWeight  = 0.2     // 实现位置的种子初始权重，见 docs/algorithm.md 种子和校准。
-	DiffTraceBudget = 8 << 20 // Myers 回溯最多保存的整数数量，到期返回未完成，见 docs/product-architecture.md 性能预算。
+	DiffTraceBudget = 8 << 20 // Myers 回溯最多保存的整数数量，达到上限时返回未完成，见 docs/product-architecture.md 性能预算。
 )

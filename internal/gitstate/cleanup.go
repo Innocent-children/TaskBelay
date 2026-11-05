@@ -13,7 +13,7 @@ type SnapshotRef struct{ Ref, Object, Type, WorkspaceID string }
 func (ref SnapshotRef) Validate() error {
 	parts := strings.Split(ref.Ref, "/")
 	if len(parts) != 4 || parts[0] != "refs" || parts[1] != "taskbelay" || !safeComponent(parts[2]) || !safeComponent(parts[3]) || !validObjectID(ref.Object) || (ref.Type != "tree" && ref.Type != "commit") || ref.WorkspaceID == "" {
-		return fmt.Errorf("快照引用身份无效: %s", ref.Ref)
+		return fmt.Errorf("快照引用的名称、对象或所属工作区无效: %s", ref.Ref)
 	}
 	return nil
 }

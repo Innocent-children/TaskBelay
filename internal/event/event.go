@@ -98,7 +98,7 @@ type SessionRecord struct {
 }
 
 /**
- * Decision 的零值表示不干预；上下文、工具拒绝、结束阻止和用户提示可以组合。
+ * Decision 的零值表示不干预；可同时提供上下文、拒绝工具调用、阻止结束和提示用户。
  * 没有强制允许字段，避免覆盖 Agent 自己的权限判断。
  */
 type Decision struct {

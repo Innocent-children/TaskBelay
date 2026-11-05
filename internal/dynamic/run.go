@@ -41,7 +41,7 @@ func Run(ctx context.Context, in Input, publish func(Result) error) (result Resu
 		}
 	}()
 	if len(in.Commands) == 0 {
-		r.result.Gaps = append(r.result.Gaps, "没有本任务中已成功运行且输入完整的可信命令")
+		r.result.Gaps = append(r.result.Gaps, "本任务尚无成功运行且输入记录完整的命令，无法在副本中执行检查")
 		return r.result, nil
 	}
 	root, err := os.MkdirTemp("", "taskbelay-analysis-")
@@ -293,7 +293,7 @@ func (r *runner) eligible() []string {
 		if ok {
 			out = append(out, id)
 		} else {
-			r.result.Gaps = append(r.result.Gaps, "撤回候选缺少自身验收、文件作用范围或包含不可撤回内容："+id)
+			r.result.Gaps = append(r.result.Gaps, "候选未纳入撤回试验：缺少对应需求的验收依据、无法确认命令读取相关文件，或包含须保留的内容："+id)
 		}
 	}
 	return out
