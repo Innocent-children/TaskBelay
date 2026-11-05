@@ -32,11 +32,12 @@ func (s *Store) CommandContext(ctx context.Context, workspace string) (TaskRecor
 }
 
 /**
- * 编辑前分析只加载需求判定所需的记录；没有有效需求时读取任务原话，
- * 避免加载历史检查与验证记录。
+ * 有有效需求时只读取匹配所需的记录；没有有效需求时沿用完整任务视图，
+ * 使原话回退包含历史引用展开的消息，避免另写一套来源递归规则。
  */
 func (s *Store) EditAnalysisContext(ctx context.Context, workspace string) (TaskView, error) {
 	var view TaskView
+	hasRequirement := false
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		var err error
 		view.CurrentTaskID, err = currentID(ctx, q, workspace)
@@ -77,35 +78,18 @@ ON r.task_id=? AND r.id=latest.id AND r.revision=latest.revision ORDER BY latest
 			return err
 		}
 		rows.Close()
-		hasRequirement := false
 		for i := range view.Requirements {
 			if err := currentLocations(ctx, q, &view.Requirements[i]); err != nil {
 				return err
 			}
 			hasRequirement = hasRequirement || view.Requirements[i].Status != "revoked"
 		}
-		if hasRequirement {
-			return nil
-		}
-		rows, err = q.QueryContext(ctx, `SELECT data FROM messages_v12 WHERE workspace_id=? AND seq>=COALESCE((SELECT seq FROM messages_v12 WHERE id=?),0) ORDER BY seq`, workspace, task.StartMessageID)
-		if err != nil {
-			return err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var raw string
-			var message Message
-			if err := rows.Scan(&raw); err != nil {
-				return err
-			}
-			if err := json.Unmarshal([]byte(raw), &message); err != nil {
-				return err
-			}
-			view.Messages = append(view.Messages, message)
-		}
-		return rows.Err()
+		return nil
 	})
-	return view, err
+	if err != nil || view.Task == nil || hasRequirement {
+		return view, err
+	}
+	return s.TaskView(ctx, workspace, view.Task.ID, Actor{})
 }
 
 func (s *Store) TaskChanges(ctx context.Context, workspace, task string, through int64) ([]FileChange, error) {
