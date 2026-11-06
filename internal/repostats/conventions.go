@@ -85,7 +85,13 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 		f := r.Files[p]
 		matched := map[string]bool{}
 		for _, u := range f.Units {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			for _, run := range runs {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				if run.Started && run.ExitCode != nil && u.Name != "" && units.HasWord(run.Output, u.Name) {
 					matched[UnitKey(p, testRoot(f, u))] = true
 				}
@@ -171,11 +177,13 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 		r.TestUnits = next
 		r.TestIterations = iteration + 1
 		if !changed {
-			r.Converged = true
 			r.Tests = model
 			a, b = map[string]int{}, map[string]int{}
 			bodyWords := map[string]bool{}
 			for _, s := range samples {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				for word := range s.body {
 					bodyWords[word] = true
 					if r.TestUnits[s.key] {
@@ -186,17 +194,27 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 				}
 			}
 			for word := range bodyWords {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				x, y := float64(a[word])+Prior, float64(b[word])+Prior
 				xn, yn := float64(ca-a[word])+Prior, float64(cb-b[word])+Prior
 				r.TestWords[word] = (math.Log(x/xn) - math.Log(y/yn)) / math.Sqrt(1/x+1/xn+1/y+1/yn)
 			}
 			for p, f := range r.Files {
 				for _, u := range f.Units {
+					if err := ctx.Err(); err != nil {
+						return err
+					}
 					if r.TestUnits[UnitKey(p, testRoot(f, u))] {
 						r.TestUnits[UnitKey(p, u)] = true
 					}
 				}
 			}
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			r.Converged = true
 			return nil
 		}
 	}

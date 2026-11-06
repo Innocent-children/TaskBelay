@@ -725,7 +725,7 @@ func openIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree 
 		sketch.Classified = raw.Roles[source.Path]
 		info := x.fileInfo(source.Path)
 		sketch.Tests, sketch.Seeds = info.Tests, info.Seeds
-		x.put("learning", source.Path, "", sketch)
+		x.saveSketch(sketch)
 	}
 	mean, variance, err := signals.SimilarityStatistics(ctx, raw)
 	if err != nil {

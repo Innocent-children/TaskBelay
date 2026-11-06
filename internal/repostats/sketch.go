@@ -9,6 +9,7 @@ import (
 )
 
 type UnitSketch struct {
+	Callable           bool
 	Unit               units.Unit
 	Identifiers, Words map[string]int
 }

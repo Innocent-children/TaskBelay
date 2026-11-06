@@ -64,7 +64,7 @@ func (x *repositoryIndex) refreshStatistics(before *repositoryIndex, changed []s
 	for _, s := range sketches {
 		for _, u := range s.Units {
 			key := repostats.UnitKey(s.Path, u.Unit)
-			if x.unit(key).Structure.Callable {
+			if u.Callable {
 				order = append(order, key)
 			}
 		}

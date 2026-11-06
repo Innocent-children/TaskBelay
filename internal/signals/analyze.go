@@ -186,9 +186,12 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 				c.Advice += "；涉及的错误分支先保留，另行核对失败条件和处理职责"
 			}
 		}
-		if !c.AgentOnly {
+		if !c.AgentOnly && !in.EditPreview {
 			c.Facts = append(c.Facts, "含工作区更新或无法核对为全部由 Agent 编辑，只报告现状")
 			c.Advice = "保留当前内容，不据此撤回、内联或合并用户修改"
+		}
+		if in.EditPreview {
+			c.Advice += "；仅核对本次拟编辑内容，不据此覆盖或撤回已有用户修改"
 		}
 		c.ID = units.Hash(c.Kind, c.Object)
 		if c.Features == nil {

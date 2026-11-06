@@ -12,6 +12,14 @@ import (
 	"strings"
 )
 
+func (x *repositoryIndex) saveSketch(sketch repostats.FileSketch) {
+	sketch.Units = append([]repostats.UnitSketch(nil), sketch.Units...)
+	for i, u := range sketch.Units {
+		sketch.Units[i].Callable = x.unit(repostats.UnitKey(sketch.Path, u.Unit)).Structure.Callable
+	}
+	x.put("learning", sketch.Path, "", sketch)
+}
+
 func (x *repositoryIndex) sketches() []repostats.FileSketch {
 	rows := x.prefix("learning", "")
 	var out []repostats.FileSketch
@@ -151,7 +159,7 @@ func (x *repositoryIndex) conventions(sketches []repostats.FileSketch, r reposta
 		}
 		x.put("file", p, "", info)
 		sketch.Classified, sketch.Tests, sketch.Seeds = info.Role, tests, seeds
-		x.put("learning", p, "", sketch)
+		x.saveSketch(sketch)
 		delete(x.files, p)
 	}
 }
@@ -285,7 +293,7 @@ func buildNextIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, 
 		sketch.Classified = r.Roles[p]
 		info := x.fileInfo(p)
 		sketch.Tests, sketch.Seeds = info.Tests, info.Seeds
-		x.put("learning", p, "", sketch)
+		x.saveSketch(sketch)
 	}
 	sketches := x.sketches()
 	if x.err != nil {
@@ -331,7 +339,7 @@ func buildNextIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, 
 		next.Classified = r.Roles[p]
 		info := x.fileInfo(p)
 		next.Tests, next.Seeds = info.Tests, info.Seeds
-		x.put("learning", p, "", next)
+		x.saveSketch(next)
 		changed[p] = true
 	}
 	if len(invalid) > 0 {
