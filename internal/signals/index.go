@@ -23,6 +23,7 @@ type SimilarUnit struct {
 	Callable         bool
 }
 type Queries struct {
+	Syntax         func(string) units.Syntax
 	Structure      func(string) UnitStructure
 	Depend         func(path, kind, word string)
 	Calls          func(string) []CallSite

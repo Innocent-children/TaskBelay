@@ -25,7 +25,7 @@ func (x *repositoryIndex) refreshStatistics(before *repositoryIndex, changed []s
 		paths[p] = true
 	}
 	for _, row := range x.writes {
-		if row.Kind == "head" || row.Kind == "name" || row.Kind == "calls" {
+		if row.Kind == "head" || row.Kind == "name" || row.Kind == "calls" || row.Kind == "syntax" {
 			for p := range before.read("signal_dep", rowKey(row.Kind, row.Key)) {
 				paths[p] = true
 			}

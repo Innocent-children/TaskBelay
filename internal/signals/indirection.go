@@ -3,6 +3,7 @@ package signals
 import (
 	"context"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 
@@ -199,6 +200,11 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 			unknown := map[int]bool{}
 			locations := map[int]map[string]bool{}
 			for _, site := range sites {
+				syntax := repo.SyntaxFor(site.path)
+				if query != nil && query.Syntax != nil {
+					depend("syntax", path.Ext(site.path))
+					syntax = query.Syntax(site.path)
+				}
 				for i, arg := range site.args {
 					if site.path == p && arg.Start <= u.HeaderEnd && arg.End >= u.Start {
 						continue
@@ -208,7 +214,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 						locations[i] = map[string]bool{}
 					}
 					positions[i][arg.Text] = true
-					value, err := units.Analyze(ctx, units.Source{Data: []byte(arg.Text)}, repo.SyntaxFor(site.path))
+					value, err := units.Analyze(ctx, units.Source{Data: []byte(arg.Text)}, syntax)
 					if err != nil {
 						return out, gaps, err
 					}

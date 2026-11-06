@@ -5,6 +5,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/signals"
 	"github.com/Innocent-children/taskbelay/internal/units"
+	"path"
 )
 
 func (s indexedSnapshot) queries() *signals.Queries {
@@ -12,6 +13,17 @@ func (s indexedSnapshot) queries() *signals.Queries {
 	q := &signals.Queries{Prior: origin.meta.Indirection, Mean: origin.meta.SimilarityMean, Variance: origin.meta.SimilarityVariance}
 	callsByName := map[string][]signals.CallSite{}
 	headsByWord := map[string][]signals.Head{}
+	syntaxByExtension := map[string]units.Syntax{}
+	q.Syntax = func(p string) units.Syntax {
+		ext := path.Ext(p)
+		if syntax, ok := syntaxByExtension[ext]; ok {
+			return syntax
+		}
+		var syntax units.Syntax
+		x.get("syntax", ext, &syntax)
+		syntaxByExtension[ext] = syntax
+		return syntax
+	}
 	q.Structure = func(key string) signals.UnitStructure { return x.unit(key).Structure }
 	q.Calls = func(name string) []signals.CallSite {
 		if calls, ok := callsByName[name]; ok {
