@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
+	"strings"
 )
 
 type CallSite struct {
@@ -19,8 +20,10 @@ type SimilarUnit struct {
 	Path             string
 	Unit             units.Unit
 	Grams, Signature []uint64
+	Callable         bool
 }
 type Queries struct {
+	Syntax         func(string) units.Syntax
 	Structure      func(string) UnitStructure
 	Depend         func(path, kind, word string)
 	Calls          func(string) []CallSite
@@ -36,13 +39,93 @@ type UnitStructure struct {
 	Header, Body, Members []string
 	Abstract              bool
 	BodyCalls             int
+	Callable              bool
+}
+
+/**
+ * 排除只有首行或闭合标点的版面节点，它们不能独立作为实现复用。
+ */
+func hasBody(u units.Unit) bool {
+	for _, t := range u.Tokens {
+		if t.Start >= u.HeaderEnd && (t.Kind == "identifier" || t.Kind == "number" || t.Kind == "key" || t.Kind == "string") {
+			return true
+		}
+	}
+	return false
+}
+
+/**
+ * 要求参数括号在首行部分完整闭合，避免把调用的实参节点当作声明。
+ */
+func callable(u units.Unit) bool {
+	if u.Name == "" || !hasBody(u) {
+		return false
+	}
+	tokens := units.Significant(u.Tokens)
+	depth := 0
+	for _, t := range tokens {
+		if t.End > u.HeaderEnd {
+			break
+		}
+		if depth == 0 && strings.ContainsAny(t.Text, "=!") && t.Kind == "symbol" {
+			return false
+		}
+		if t.Text == "(" {
+			depth++
+		}
+		if t.Text == ")" {
+			depth--
+		}
+	}
+	for i, t := range tokens {
+		if t.End > u.HeaderEnd {
+			break
+		}
+		if t.Text != u.Name || i+1 >= len(tokens) || tokens[i+1].Text != "(" {
+			continue
+		}
+		if i > 0 && tokens[i-1].Text == "." {
+			return false
+		}
+		depth := 0
+		for _, arg := range tokens[i+1:] {
+			if arg.End > u.HeaderEnd {
+				break
+			}
+			if arg.Text == "(" {
+				depth++
+			}
+			if arg.Text == ")" {
+				depth--
+				if depth == 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+/**
+ * 不将函数主体内的版面节点再次解释为独立声明。
+ */
+func declaration(f units.File, u units.Unit) bool {
+	if !callable(u) {
+		return false
+	}
+	for parent := u.Parent; parent >= 0; parent = f.Units[parent].Parent {
+		if callable(f.Units[parent]) {
+			return false
+		}
+	}
+	return true
 }
 
 /**
  * 保留间接层计算需要的顺序和结构；学习约定变化后重新过滤词汇。
  */
 func Structure(f units.File, u units.Unit) UnitStructure {
-	s := UnitStructure{Abstract: true}
+	s := UnitStructure{Abstract: true, Callable: declaration(f, u)}
 	var bodyTokens []units.Token
 	for _, t := range u.Tokens {
 		if t.Start >= u.HeaderEnd {
@@ -102,7 +185,11 @@ func SimilarityBuckets(signature []uint64) []string {
 func SimilarityStatistics(ctx context.Context, r repostats.Repository) (float64, float64, error) {
 	var all []units.Unit
 	for _, p := range keys(r.Files) {
-		all = append(all, r.Files[p].Units...)
+		for _, u := range r.Files[p].Units {
+			if declaration(r.Files[p], u) {
+				all = append(all, u)
+			}
+		}
 	}
 	var distribution []float64
 	for i := 0; i < len(all) && len(distribution) < SimilaritySamples; i++ {

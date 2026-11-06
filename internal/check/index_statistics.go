@@ -25,7 +25,15 @@ func (x *repositoryIndex) refreshStatistics(before *repositoryIndex, changed []s
 		paths[p] = true
 	}
 	for _, row := range x.writes {
-		if row.Kind == "head" || row.Kind == "name" || row.Kind == "calls" {
+		if row.Kind == "syntax" {
+			var old, next units.Syntax
+			before.get("syntax", row.Key, &old)
+			x.get("syntax", row.Key, &next)
+			if reflect.DeepEqual(old, next) {
+				continue
+			}
+		}
+		if row.Kind == "head" || row.Kind == "name" || row.Kind == "calls" || row.Kind == "syntax" {
 			for p := range before.read("signal_dep", rowKey(row.Kind, row.Key)) {
 				paths[p] = true
 			}
@@ -63,7 +71,10 @@ func (x *repositoryIndex) refreshStatistics(before *repositoryIndex, changed []s
 	var order []string
 	for _, s := range sketches {
 		for _, u := range s.Units {
-			order = append(order, repostats.UnitKey(s.Path, u.Unit))
+			key := repostats.UnitKey(s.Path, u.Unit)
+			if u.Callable {
+				order = append(order, key)
+			}
 		}
 	}
 	var distribution []float64
@@ -124,6 +135,9 @@ func (x *repositoryIndex) saveFacts(paths []string) error {
 	q := (indexedSnapshot{Origin: x, Current: x}).queries()
 	q.Depend = func(p, kind, word string) {
 		key := rowKey(kind, word)
+		if dependencies[p][key] {
+			return
+		}
 		dependencies[p][key] = true
 		x.put("signal_dep", key, p, true)
 	}

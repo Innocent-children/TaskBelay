@@ -41,18 +41,17 @@ func (s *Store) FindIndex(ctx context.Context, project, tree, variant string) (A
  * 行按内容版本不可变；空正文遮蔽父索引条目。根记录最后发布，未完成的构建不会被读取。
  */
 func (s *Store) SaveIndexRows(ctx context.Context, id string, rows []IndexRow) error {
+	if len(rows) == 0 {
+		return ctx.Err()
+	}
+	args := make([]any, 0, 5*len(rows))
+	for _, r := range rows {
+		args = append(args, id, r.Kind, r.Key, r.Member, r.Data)
+	}
+	query := "INSERT INTO analysis_index_rows_v12 VALUES " + strings.TrimSuffix(strings.Repeat("(?,?,?,?,?),", len(rows)), ",") + " ON CONFLICT(index_id,kind,key,member) DO NOTHING"
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		stmt, err := tx.PrepareContext(ctx, "INSERT INTO analysis_index_rows_v12 VALUES(?,?,?,?,?) ON CONFLICT(index_id,kind,key,member) DO NOTHING")
-		if err != nil {
-			return err
-		}
-		defer stmt.Close()
-		for _, r := range rows {
-			if _, err := stmt.ExecContext(ctx, id, r.Kind, r.Key, r.Member, r.Data); err != nil {
-				return err
-			}
-		}
-		return nil
+		_, err := tx.ExecContext(ctx, query, args...)
+		return err
 	})
 }
 func (s *Store) PublishIndex(ctx context.Context, r AnalysisIndex) error {

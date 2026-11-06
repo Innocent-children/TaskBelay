@@ -3,6 +3,7 @@ package signals
 import (
 	"context"
 	"fmt"
+	"path"
 	"slices"
 	"strings"
 
@@ -140,29 +141,34 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 			}
 			members := shape.Members
 			if shape.Abstract && len(members) > 0 {
-				cooccurrences := map[string]map[string]bool{}
+				var common map[string]bool
+				memberSet := map[string]bool{}
+				unitKey := repostats.UnitKey(p, u)
 				for _, m := range members {
-					for _, v := range headsFor(m) {
+					memberSet[m] = true
+					matches := headsFor(m)
+					present := map[string]bool{}
+					for _, v := range matches {
 						if err := ctx.Err(); err != nil {
 							return out, gaps, err
 						}
-						if v.id == repostats.UnitKey(p, u) || v.name == u.Name {
+						if v.id == unitKey || v.name == u.Name || common != nil && len(common) == 0 {
 							continue
 						}
 						for word := range v.words {
-							if cooccurrences[word] == nil {
-								cooccurrences[word] = map[string]bool{}
+							if common == nil || common[word] {
+								present[word] = true
 							}
-							cooccurrences[word][m] = true
 						}
 					}
+					common = present
 				}
 				implementations := map[string]bool{}
-				for word, present := range cooccurrences {
+				for word := range common {
 					if word == u.Name || ignored[word] || slices.Contains(members, word) {
 						continue
 					}
-					if len(present) == len(members) && definedName(word) {
+					if len(memberSet) == len(members) && definedName(word) {
 						implementations[word] = true
 					}
 				}
@@ -175,9 +181,12 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 						params = append(params, w)
 					}
 				}
-				if shape.BodyCalls == 1 && slices.Equal(body[1:], params) {
+				if shape.Callable && shape.BodyCalls == 1 && slices.Equal(body[1:], params) {
 					out = append(out, indirection{path: p, unit: u, kind: "forwarding", count: 1, replacement: body[0]})
 				}
+			}
+			if !shape.Callable {
+				continue
 			}
 			if repo.SyntaxFor(p).CallRatio <= CallPrecision {
 				gaps = append(gaps, "实参未知："+location(p, u))
@@ -188,8 +197,14 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 				continue
 			}
 			positions := map[int]map[string]bool{}
+			unknown := map[int]bool{}
 			locations := map[int]map[string]bool{}
 			for _, site := range sites {
+				syntax := repo.SyntaxFor(site.path)
+				if query != nil && query.Syntax != nil {
+					depend("syntax", path.Ext(site.path))
+					syntax = query.Syntax(site.path)
+				}
 				for i, arg := range site.args {
 					if site.path == p && arg.Start <= u.HeaderEnd && arg.End >= u.Start {
 						continue
@@ -199,6 +214,15 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 						locations[i] = map[string]bool{}
 					}
 					positions[i][arg.Text] = true
+					value, err := units.Analyze(ctx, units.Source{Data: []byte(arg.Text)}, syntax)
+					if err != nil {
+						return out, gaps, err
+					}
+					tokens := units.Significant(value.Tokens)
+					if len(tokens) == 2 && tokens[0].Text == "-" && tokens[1].Kind == "number" {
+						tokens = tokens[1:]
+					}
+					unknown[i] = unknown[i] || len(tokens) != 1 || (tokens[0].Kind != "number" && tokens[0].Kind != "string" && tokens[0].Kind != "key")
 					if affected != nil {
 						locations[i][fmt.Sprintf("%s:%d", site.path, arg.Line)] = true
 					}
@@ -206,6 +230,9 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 			}
 			for i := 0; i < len(positions); i++ {
 				values := positions[i]
+				if unknown[i] {
+					continue
+				}
 				if len(values) > 0 {
 					out = append(out, indirection{path: p, unit: u, kind: "parameter", count: len(values), replacement: fmt.Sprintf("参数 %d = %s", i+1, strings.Join(keys(values), ", ")), sites: keys(locations[i])})
 				}
@@ -254,6 +281,18 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 			continue
 		}
 		kind := v.kind
+		if kind == "parameter" {
+			unchanged := false
+			for _, old := range in.Before.Files[v.path].Units {
+				if old.Name == v.unit.Name && slices.Equal(Structure(in.Before.Files[v.path], old).Header, Structure(in.After.Files[v.path], v.unit).Header) {
+					unchanged = true
+					break
+				}
+			}
+			if unchanged {
+				continue
+			}
+		}
 		at := location(v.path, v.unit)
 		var facts []string
 		var advice string
@@ -309,7 +348,7 @@ func unused(in Input) []Candidate {
 	for _, p := range keys(in.After.Files) {
 		f := in.After.Files[p]
 		for _, u := range f.Units {
-			if u.Name == "" || in.Before.FrequencyOf(u.Name) > 0 || in.After.Entry(p, u) {
+			if !declaration(f, u) || in.Before.FrequencyOf(u.Name) > 0 || in.After.Entry(p, u) {
 				continue
 			}
 			cluster, agent := clusterFor(in, p, u.Line, u.EndLine)
