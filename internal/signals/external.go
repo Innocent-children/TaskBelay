@@ -38,7 +38,7 @@ func external(in Input) []External {
 				if j >= len(f.Tokens) || (f.Tokens[j].Text != ":" && f.Tokens[j].Text != "=") {
 					continue
 				}
-				item.Kind, item.Method, item.Reliable = "config", "config_key", true
+				item.Kind, item.Method = "config", "config_key"
 				if j+1 < len(f.Tokens) {
 					for _, next := range f.Tokens[j+1:] {
 						if next.Kind != "space" {
@@ -47,7 +47,7 @@ func external(in Input) []External {
 						}
 					}
 				}
-			case (t.Kind == "key" || t.Kind == "string") && strings.HasPrefix(name, "--"):
+			case (t.Kind == "key" || t.Kind == "string") && strings.HasPrefix(name, "--") && name != "--":
 				item.Kind, item.Method = "flag", "literal"
 			case (t.Kind == "key" || t.Kind == "string") && strings.HasPrefix(name, "/"):
 				item.Kind, item.Method = "route", "literal"
@@ -75,7 +75,6 @@ func external(in Input) []External {
 			if cl == "" {
 				continue
 			}
-			text := strings.Join(units.Sequence(u.Tokens, false), " ")
 			if role.Manifest {
 				var name, version string
 				for _, t := range u.Tokens {
@@ -92,23 +91,40 @@ func external(in Input) []External {
 					out = append(out, External{Kind: "dep", Method: "manifest", Name: name, Value: version, At: p, Cluster: cl, Reliable: true, AgentOnly: ag})
 				}
 			}
-			if in.After.SyntaxFor(p).CallRatio <= CallPrecision {
-				continue
-			}
-			hasSentence := false
-			var key, value string
-			for _, t := range u.Tokens {
-				if t.Kind == "string" && strings.Contains(units.Literal(t), " ") {
-					hasSentence = true
-				}
-				if t.Kind == "key" && !oldTokens[t.Kind+":"+units.Literal(t)] && key == "" {
-					key = units.Literal(t)
-				} else if key != "" && value == "" && (t.Kind == "key" || t.Kind == "number" || t.Kind == "string") {
-					value = units.Literal(t)
+		}
+		if in.After.SyntaxFor(p).CallRatio > CallPrecision {
+			literals := map[int]units.Token{}
+			for _, t := range f.Tokens {
+				if t.Kind == "key" || t.Kind == "string" || t.Kind == "number" {
+					literals[t.Start] = t
 				}
 			}
-			if hasSentence && key != "" && strings.Contains(text, "(") {
-				out = append(out, External{Kind: "entry", Method: "registration", Name: key, Value: value, At: p, Cluster: cl, AgentOnly: ag})
+			calls := units.Calls(f.Tokens)
+			for _, name := range keys(calls) {
+				for _, args := range calls[name] {
+					var key, value string
+					line := 0
+					hasSentence := false
+					for _, arg := range args {
+						t, ok := literals[arg.Start]
+						if !ok || t.End != arg.End {
+							continue
+						}
+						literal := units.Literal(t)
+						hasSentence = hasSentence || t.Kind == "string" && strings.ContainsFunc(literal, unicode.IsSpace)
+						if key == "" && t.Kind == "key" && strings.ContainsFunc(literal, func(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) }) && !oldTokens[t.Kind+":"+literal] {
+							key, line = literal, t.Line
+						} else if key != "" && value == "" {
+							value = literal
+						}
+					}
+					if hasSentence && key != "" {
+						cl, ag := clusterFor(in, p, line, line)
+						if cl != "" {
+							out = append(out, External{Kind: "entry", Method: "registration", Name: key, Value: value, At: p, Cluster: cl, AgentOnly: ag})
+						}
+					}
+				}
 			}
 		}
 	}

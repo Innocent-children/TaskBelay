@@ -10,26 +10,34 @@ import (
 )
 
 type TestModel struct {
-	LogPrior float64
-	Weights  map[string]float64
+	LogPrior   float64
+	Weights    map[string]float64
+	Extensions map[string]bool
 }
 
 /**
- * Test 使用起点分类模型；未见过的词不改变词表，相等时沿用原分类。
+ * TestFeatures 只取文件名和首行，不让函数体中的断言式写法决定测试身份。
  */
-func (m TestModel) Test(tokens []units.Token, previous bool) bool {
+func TestFeatures(p string, u units.Unit) map[string]int {
 	counts := map[string]int{}
-	for _, t := range tokens {
-		if t.Kind == "identifier" {
-			counts[t.Text]++
+	for _, w := range units.Words(strings.TrimSuffix(path.Base(p), path.Ext(p))) {
+		counts["file:"+w] = 1
+	}
+	for _, t := range u.Tokens {
+		if t.End <= u.HeaderEnd && t.Kind == "identifier" {
+			for _, w := range units.Words(t.Text) {
+				counts["head:"+w] = 1
+			}
 		}
 	}
-	return m.TestCounts(counts, previous)
+	return counts
 }
 func (m TestModel) TestCounts(counts map[string]int, previous bool) bool {
 	score := m.LogPrior
 	for _, w := range sortedKeys(counts) {
-		score += float64(counts[w]) * m.Weights[w]
+		if counts[w] > 0 {
+			score += m.Weights[w]
+		}
 	}
 	return score > 0 || score == 0 && previous
 }
@@ -59,12 +67,14 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 	}()
 	type sample struct {
 		key    string
+		ext    string
 		counts map[string]int
+		body   map[string]int
 		words  []string
 	}
 	var samples []sample
-	vocab := map[string]bool{}
 	seeds := map[string]bool{}
+	extensions := map[string]bool{}
 	for _, p := range sortedKeys(r.Files) {
 		seed := false
 		for _, w := range units.Words(strings.TrimSuffix(p, path.Ext(p))) {
@@ -72,38 +82,52 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 				seed = true
 			}
 		}
-		for _, u := range r.Files[p].Units {
+		f := r.Files[p]
+		matched := map[string]bool{}
+		for _, u := range f.Units {
+			for _, run := range runs {
+				if run.Started && run.ExitCode != nil && u.Name != "" && units.HasWord(run.Output, u.Name) {
+					matched[UnitKey(p, testRoot(f, u))] = true
+				}
+			}
+		}
+		for _, u := range f.Units {
+			if u.Parent >= 0 {
+				continue
+			}
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			key := UnitKey(p, u)
-			counts := testCounts(r, p, u)
+			counts := TestFeatures(p, u)
 			words := sortedKeys(counts)
-			samples = append(samples, sample{key, counts, words})
-			for _, w := range words {
-				vocab[w] = true
-			}
-			match := false
-			for _, run := range runs {
-				if run.Started && run.ExitCode != nil && units.HasWord(run.Output, u.Name) {
-					match = true
-				}
-			}
-			if match || len(runs) == 0 && seed {
+			samples = append(samples, sample{key, path.Ext(p), counts, testCounts(r, p, u), words})
+			if matched[key] || len(runs) == 0 && seed {
 				seeds[key] = true
 				r.TestUnits[key] = true
+				extensions[path.Ext(p)] = true
 			}
 		}
 	}
 	r.TestSeeds = seeds
+	eligible := samples[:0]
+	vocab := map[string]bool{}
+	for _, s := range samples {
+		if !extensions[s.ext] {
+			continue
+		}
+		eligible = append(eligible, s)
+		for _, word := range s.words {
+			vocab[word] = true
+		}
+	}
+	samples = eligible
 	vocabulary := sortedKeys(vocab)
-	alpha := Prior * float64(max(1, len(vocabulary)))
 	for iteration := 0; iteration < IterationBudget; iteration++ {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		a, b := map[string]int{}, map[string]int{}
-		na, nb := 0, 0
 		ca, cb := 0, 0
 		for _, s := range samples {
 			if err := ctx.Err(); err != nil {
@@ -111,27 +135,23 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			}
 			if r.TestUnits[s.key] {
 				ca++
-				for word, count := range s.counts {
-					a[word] += count
-					na += count
+				for word := range s.counts {
+					a[word]++
 				}
 			} else {
 				cb++
-				for word, count := range s.counts {
-					b[word] += count
-					nb += count
+				for word := range s.counts {
+					b[word]++
 				}
 			}
 		}
-		model := TestModel{LogPrior: math.Log((float64(ca) + Prior) / (float64(cb) + Prior)), Weights: map[string]float64{}}
+		model := TestModel{LogPrior: math.Log((float64(ca) + Prior) / (float64(cb) + Prior)), Weights: map[string]float64{}, Extensions: extensions}
 		for _, w := range vocabulary {
 			x, y := float64(a[w])+Prior, float64(b[w])+Prior
-			model.Weights[w] = math.Log(x/(float64(na)+alpha)) - math.Log(y/(float64(nb)+alpha))
-			// 单词词表没有“其余词”，不能计算对数几率比。
-			if len(vocab) > 1 {
-				delta := math.Log(x/(float64(na)+alpha-x)) - math.Log(y/(float64(nb)+alpha-y))
-				r.TestWords[w] = delta / math.Sqrt(1/x+1/y)
-			}
+			xAbsent, yAbsent := float64(ca-a[w])+Prior, float64(cb-b[w])+Prior
+			model.LogPrior += math.Log(xAbsent/(x+xAbsent)) - math.Log(yAbsent/(y+yAbsent))
+			delta := math.Log(x/xAbsent) - math.Log(y/yAbsent)
+			model.Weights[w] = delta
 		}
 		next := map[string]bool{}
 		changed := false
@@ -141,7 +161,7 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			}
 			score := model.LogPrior
 			for _, w := range s.words {
-				score += float64(s.counts[w]) * model.Weights[w]
+				score += model.Weights[w]
 			}
 			if seeds[s.key] || score > 0 || score == 0 && r.TestUnits[s.key] {
 				next[s.key] = true
@@ -153,10 +173,41 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 		if !changed {
 			r.Converged = true
 			r.Tests = model
+			a, b = map[string]int{}, map[string]int{}
+			bodyWords := map[string]bool{}
+			for _, s := range samples {
+				for word := range s.body {
+					bodyWords[word] = true
+					if r.TestUnits[s.key] {
+						a[word]++
+					} else {
+						b[word]++
+					}
+				}
+			}
+			for word := range bodyWords {
+				x, y := float64(a[word])+Prior, float64(b[word])+Prior
+				xn, yn := float64(ca-a[word])+Prior, float64(cb-b[word])+Prior
+				r.TestWords[word] = (math.Log(x/xn) - math.Log(y/yn)) / math.Sqrt(1/x+1/xn+1/y+1/yn)
+			}
+			for p, f := range r.Files {
+				for _, u := range f.Units {
+					if r.TestUnits[UnitKey(p, testRoot(f, u))] {
+						r.TestUnits[UnitKey(p, u)] = true
+					}
+				}
+			}
 			return nil
 		}
 	}
 	return nil
+}
+
+func testRoot(f units.File, u units.Unit) units.Unit {
+	for u.Parent >= 0 {
+		u = f.Units[u.Parent]
+	}
+	return u
 }
 
 func learnEntries(r *Repository) {

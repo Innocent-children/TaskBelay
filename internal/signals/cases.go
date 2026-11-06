@@ -41,6 +41,12 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 			if !in.After.TestUnits[repostats.UnitKey(p, u)] {
 				continue
 			}
+			if !declaration(f, u) {
+				if cluster, _ := clusterFor(in, p, u.Line, u.EndLine); cluster != "" && u.Parent < 0 {
+					gaps = append(gaps, "用例结构未知："+location(p, u))
+				}
+				continue
+			}
 			contained := false
 			for _, parent := range f.Units {
 				if parent.Name == u.Name && parent.Start <= u.Start && parent.End > u.End {
@@ -150,7 +156,7 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 				budget[key] = len(boundaryPoints) + len(stringsSet) + classes
 				identity := key + "\x00" + c.Class + "\x00" + c.Shape
 				if prev, ok := seen[identity]; ok && c.Added && c.AgentOnly && !c.Retained {
-					out = append(out, Candidate{Kind: "test_equivalence", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: true, Facts: []string{"与 " + prev.Name + " 的被测单元、等价类和断言形状相同"}, Advice: "核对断言后合并用例 " + c.Name + " 与 " + prev.Name, Features: map[string]float64{"equivalent": 1, "structure": f.Confidence}, Benefit: float64(u.EndLine - u.Line + 1)})
+					out = append(out, Candidate{Kind: "test_equivalence", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: true, Facts: []string{"与 " + prev.Path + ":" + prev.Name + " 的被测单元、等价类和断言形状相同", "被测单元：" + key + "；等价类：" + c.Class, "静态形状相同不证明行为检查重复"}, Advice: "比较 " + c.Name + " 与 " + prev.Name + " 的输出约定、副作用、权限、时序和共享状态；仅在没有独特检查时合并，否则保留", Features: map[string]float64{"equivalent": 1, "structure": f.Confidence}, Benefit: float64(u.EndLine - u.Line + 1)})
 				}
 				seen[identity] = c
 			}
@@ -215,7 +221,7 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 					child.Class, child.Boundary = equivalence(child.Inputs, constants, stringsSet)
 					identity := strings.Join(child.Targets, "|") + "\x00" + child.Class + "\x00" + child.Shape
 					if previous, ok := seen[identity]; ok && child.Added && !child.Retained && (len(constants) > 0 || len(stringsSet) > 0) {
-						out = append(out, Candidate{Kind: "test_equivalence", Object: child.ID, At: p + ":" + child.Name, Cluster: cluster, AgentOnly: child.AgentOnly, Facts: []string{"与 " + previous.Name + " 的表格骨架和等价类相同"}, Advice: "核对断言后合并表格行 " + child.Name + " 与 " + previous.Name, Features: map[string]float64{"equivalent": 1}, Benefit: 1})
+						out = append(out, Candidate{Kind: "test_equivalence", Object: child.ID, At: p + ":" + child.Name, Cluster: cluster, AgentOnly: child.AgentOnly, Facts: []string{"与 " + previous.Path + ":" + previous.Name + " 的表格骨架和等价类相同", "被测单元：" + strings.Join(child.Targets, "|") + "；等价类：" + child.Class, "静态形状相同不证明行为检查重复"}, Advice: "比较表格行 " + child.Name + " 与 " + previous.Name + " 的输出约定、副作用、权限、时序和共享状态；仅在没有独特检查时合并，否则保留", Features: map[string]float64{"equivalent": 1}, Benefit: 1})
 					}
 					seen[identity] = child
 					all = append(all, child)

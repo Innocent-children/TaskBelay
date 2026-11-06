@@ -49,6 +49,7 @@ func (x *repositoryIndex) replaceValues(kind string, values map[string]string) {
 func (x *repositoryIndex) conventions(sketches []repostats.FileSketch, r repostats.Repository) {
 	defer func() { x.files = map[string]units.File{} }()
 	x.meta.Converged, x.meta.Iterations, x.meta.LogPrior = r.Converged, r.TestIterations, r.Tests.LogPrior
+	x.meta.TestExtensions = r.Tests.Extensions
 	syntax := map[string]string{}
 	for k, v := range r.Syntax {
 		syntax[k] = encode(v)

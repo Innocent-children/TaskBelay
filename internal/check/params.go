@@ -4,8 +4,8 @@ package check
 import "time"
 
 const (
-	Algorithm               = "content-2"            // 计算格式版本；见 algorithm.md 一、八节。
-	FeedbackVersion         = 1                      // 反馈格式版本；见 requirements-ledger.md MCP 工具。
+	Algorithm               = "content-8"            // 计算格式版本；见 algorithm.md 一、八节。
+	FeedbackVersion         = 2                      // 反馈格式版本；见 requirements-ledger.md MCP 工具。
 	FeedbackBudget          = 6000                   // 交付反馈字符预算；见 product-architecture.md 性能预算。
 	FeedbackUnit            = 20                     // 背包容量的字符换算单位；见 algorithm.md 六节。
 	CategoryLimit           = 3                      // 每类建议的反馈上限；见 algorithm.md 六节。
@@ -17,8 +17,8 @@ const (
 	BackgroundPoll          = time.Second            // MCP 后台观察已登记输入变化的间隔；见 algorithm.md 九节。
 	ReuseHints              = 3                      // 用户消息中已有单元提示上限；见 algorithm.md 九节。
 	CalibrationSignificance = 0.05                   // 恢复内容的多重比较显著性；见 algorithm.md 七节。
-	IndexBatch              = 256                    // 索引读写的单个短事务行数；见 algorithm.md 九节。
-	IndexBatchBytes         = 128 * 1024             // 索引短事务的正文批量目标；大条目单独写入，见 algorithm.md 九节。
+	IndexBatch              = 1024                   // 索引读写的单个短事务行数；见 algorithm.md 九节。
+	IndexBatchBytes         = 512 * 1024             // 索引短事务的正文批量目标；大条目单独写入，见 algorithm.md 九节。
 	MatcherPageSize         = 128                    // 自动机索引页的状态数，查询只读触及的页；见 algorithm.md 九节。
 )
 

@@ -21,8 +21,19 @@ func provenance(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v le
 		return nil, err
 	}
 	byPath := map[string][]ledger.FileChange{}
+	agentPaths := map[string]bool{}
+	for _, h := range history {
+		_, beforeChanged := before.Files[h.Path]
+		_, afterChanged := after.Files[h.Path]
+		if (beforeChanged || afterChanged) && h.Kind == "agent_edit" {
+			agentPaths[h.Path] = true
+		}
+	}
 	var ids []string
 	for _, h := range history {
+		if !agentPaths[h.Path] {
+			continue
+		}
 		byPath[h.Path] = append(byPath[h.Path], h)
 		if h.Before.Blob != "" {
 			ids = append(ids, h.Before.Blob)

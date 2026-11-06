@@ -111,6 +111,16 @@ func feedbackSubjects(ctx context.Context, s *ledger.Store, w gitstate.Workspace
 	if err != nil || len(feedback) == 0 {
 		return nil, origin, err
 	}
+	currentFeedback := feedback[:0]
+	for _, item := range feedback {
+		if item.Issue.Algorithm == Algorithm {
+			currentFeedback = append(currentFeedback, item)
+		}
+	}
+	feedback = currentFeedback
+	if len(feedback) == 0 {
+		return nil, origin, nil
+	}
 	task, current, err := s.CommandContext(ctx, w.ID)
 	if err != nil || task.ID != v.Task.ID || current.ID != v.Task.LastObservationID {
 		return nil, origin, err
@@ -134,9 +144,6 @@ func feedbackSubjects(ctx context.Context, s *ledger.Store, w gitstate.Workspace
 	var out []feedbackSubject
 	for _, feedback := range feedback {
 		issue := feedback.Issue
-		if issue.Algorithm != Algorithm {
-			continue
-		}
 		x := feedbackSubject{Feedback: feedback}
 		path := strings.SplitN(issue.At, ":", 2)[0]
 		start, err := w.TreeFiles(ctx, feedback.Tree, path)

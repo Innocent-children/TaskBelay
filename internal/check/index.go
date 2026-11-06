@@ -22,6 +22,7 @@ type indexMeta struct {
 	Converged                          bool
 	Iterations                         int
 	LogPrior                           float64
+	TestExtensions                     map[string]bool
 	Matchers                           map[string][]string
 	SimilarityMean, SimilarityVariance float64
 	Indirection                        map[string]float64
@@ -50,6 +51,7 @@ type wordStats struct {
 	Counts   map[int]int
 }
 type repositoryIndex struct {
+	base        *repositoryIndex
 	ctx         context.Context
 	s           *ledger.Store
 	w           gitstate.Workspace
@@ -77,7 +79,12 @@ func (x *repositoryIndex) read(kind, key string) map[string]string {
 		return x.rows[k]
 	}
 	r := map[string]string{}
-	if x.id != "" && x.err == nil {
+	if x.base != nil && x.err == nil {
+		for member, raw := range x.base.read(kind, key) {
+			r[member] = raw
+		}
+		x.err = x.base.err
+	} else if x.id != "" && x.err == nil {
 		rows, err := x.s.IndexRows(x.ctx, x.id, kind, key)
 		if err != nil {
 			x.err = err
@@ -164,6 +171,12 @@ func (x *repositoryIndex) unit(key string) indexUnit {
 	if u, ok := x.unitCache[key]; ok {
 		return u
 	}
+	if _, local := x.rows[rowKey("unit", key)]; !local && x.base != nil && x.err == nil {
+		u := x.base.unit(key)
+		x.err = x.base.err
+		x.unitCache[key] = u
+		return u
+	}
 	var u indexUnit
 	x.get("unit", key, &u)
 	x.unitCache[key] = u
@@ -243,7 +256,7 @@ func (x *repositoryIndex) load(p string) units.File {
 	return f
 }
 func (x *repositoryIndex) view(paths []string) repostats.Repository {
-	r := repostats.Repository{Tree: x.meta.Tree, UnitCount: x.meta.Units, Converged: x.meta.Converged, TestIterations: x.meta.Iterations, Files: map[string]units.File{}, Roles: map[string]repostats.Role{}, Syntax: map[string]units.Syntax{}, TestUnits: map[string]bool{}, TestSeeds: map[string]bool{}, Tests: repostats.TestModel{LogPrior: x.meta.LogPrior, Weights: map[string]float64{}}}
+	r := repostats.Repository{Tree: x.meta.Tree, UnitCount: x.meta.Units, Converged: x.meta.Converged, TestIterations: x.meta.Iterations, Files: map[string]units.File{}, Roles: map[string]repostats.Role{}, Syntax: map[string]units.Syntax{}, TestUnits: map[string]bool{}, TestSeeds: map[string]bool{}, Tests: repostats.TestModel{LogPrior: x.meta.LogPrior, Weights: map[string]float64{}, Extensions: x.meta.TestExtensions}}
 	r.FrequencyLookup = func(w string) int { return x.stats(w).DF }
 	r.NamesLookup = func(text string) ([]string, error) { names := x.namesIn(text); return names, x.err }
 	r.TestWordLookup = func(w string, fold bool) float64 {
@@ -547,19 +560,21 @@ func (x *repositoryIndex) changeFile(p string, f units.File, r repostats.Reposit
 				put("match", match, key+":"+wordID, "lexeme:"+wordID)
 			}
 		}
-		var err error
-		v.Grams, err = units.Grams(x.ctx, units.Sequence(u.Tokens, true))
-		if err != nil {
-			x.err = err
-			return
-		}
-		v.Signature, err = units.MinHash(x.ctx, v.Grams)
-		if err != nil {
-			x.err = err
-			return
-		}
-		for _, bucket := range signals.SimilarityBuckets(v.Signature) {
-			put("lsh", bucket, key, true)
+		if v.Structure.Callable {
+			var err error
+			v.Grams, err = units.Grams(x.ctx, units.Sequence(u.Tokens, true))
+			if err != nil {
+				x.err = err
+				return
+			}
+			v.Signature, err = units.MinHash(x.ctx, v.Grams)
+			if err != nil {
+				x.err = err
+				return
+			}
+			for _, bucket := range signals.SimilarityBuckets(v.Signature) {
+				put("lsh", bucket, key, true)
+			}
 		}
 		put("unit", key, "", v)
 	}
@@ -678,6 +693,7 @@ func openIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree 
 	}
 	x.meta.Tree = tree
 	x.meta.Converged, x.meta.Iterations, x.meta.LogPrior = raw.Converged, raw.TestIterations, raw.Tests.LogPrior
+	x.meta.TestExtensions = raw.Tests.Extensions
 	for ext, v := range raw.Syntax {
 		x.put("syntax", ext, "", v)
 	}

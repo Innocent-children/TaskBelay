@@ -63,7 +63,10 @@ func (x *repositoryIndex) refreshStatistics(before *repositoryIndex, changed []s
 	var order []string
 	for _, s := range sketches {
 		for _, u := range s.Units {
-			order = append(order, repostats.UnitKey(s.Path, u.Unit))
+			key := repostats.UnitKey(s.Path, u.Unit)
+			if x.unit(key).Structure.Callable {
+				order = append(order, key)
+			}
 		}
 	}
 	var distribution []float64
@@ -124,6 +127,9 @@ func (x *repositoryIndex) saveFacts(paths []string) error {
 	q := (indexedSnapshot{Origin: x, Current: x}).queries()
 	q.Depend = func(p, kind, word string) {
 		key := rowKey(kind, word)
+		if dependencies[p][key] {
+			return
+		}
 		dependencies[p][key] = true
 		x.put("signal_dep", key, p, true)
 	}

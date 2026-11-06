@@ -135,7 +135,7 @@ func runDynamic(ctx context.Context, s *ledger.Store, w gitstate.Workspace, acto
 		}
 	}
 	if result.ReductionConfirmed && len(result.Removed) > 0 {
-		record.Issues = append(record.Issues, ledger.Issue{Algorithm: Algorithm, Rule: "test_reduction", LogicalAt: units.Hash(result.Removed...), At: strings.Join(result.Removed, ","), FactKey: "confirmed", Level: "hint", Status: "open", Selected: true, Facts: []string{"根据各用例发现变异的情况选出保留用例后，已一起运行保留用例，以及验收依据中列出的用例和命令，结果全部通过"}, Advice: "可删除报告中已确认的测试集合；这一结论只覆盖本次抽样的变异"})
+		record.Issues = append(record.Issues, ledger.Issue{Algorithm: Algorithm, Rule: "test_reduction", LogicalAt: units.Hash(result.Removed...), At: strings.Join(result.Removed, ","), FactKey: "confirmed", Level: "hint", Status: "open", Selected: true, Facts: []string{"根据各用例发现变异的情况选出保留用例后，已一起运行保留用例，以及验收依据中列出的用例和命令，结果全部通过"}, Advice: "本次抽样变异支持精简报告中的测试集合；删除前仍须核对输出约定、副作用、权限、时序和共享状态，保留抽样未覆盖的独特检查"})
 	}
 	for _, gap := range result.TestGaps {
 		record.Issues = append(record.Issues, ledger.Issue{Algorithm: Algorithm, Rule: "test_gap", LogicalAt: gap, At: gap, FactKey: "survived", Level: "hint", Status: "open", Selected: true, Facts: []string{"有效变异未被已运行的用例发现"}, Advice: "核对该变异所代表的行为是否应被验收覆盖"})

@@ -44,6 +44,7 @@ type indexedSnapshot struct {
 
 func (x *repositoryIndex) overlay(tree string) *repositoryIndex {
 	y := newIndex(x.ctx, x.s, x.w)
+	y.base = x
 	y.id = x.id
 	y.variant = x.variant
 	if err := json.Unmarshal([]byte(encode(x.meta)), &y.meta); err != nil {
@@ -59,11 +60,14 @@ func (x *repositoryIndex) apply(paths []string, files map[string]units.File, tre
 		var syn units.Syntax
 		x.get("syntax", path.Ext(p), &syn)
 		base.Syntax[path.Ext(p)] = syn
-		for _, t := range f.Tokens {
-			if t.Kind == "identifier" {
+		for _, u := range f.Units {
+			if u.Parent >= 0 {
+				continue
+			}
+			for feature := range repostats.TestFeatures(p, u) {
 				var v float64
-				x.get("test_model", t.Text, &v)
-				base.Tests.Weights[t.Text] = v
+				x.get("test_model", feature, &v)
+				base.Tests.Weights[feature] = v
 			}
 		}
 	}

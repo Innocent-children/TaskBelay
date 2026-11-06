@@ -139,29 +139,34 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 			}
 			members := shape.Members
 			if shape.Abstract && len(members) > 0 {
-				cooccurrences := map[string]map[string]bool{}
+				var common map[string]bool
+				memberSet := map[string]bool{}
+				unitKey := repostats.UnitKey(p, u)
 				for _, m := range members {
-					for _, v := range headsFor(m) {
+					memberSet[m] = true
+					matches := headsFor(m)
+					present := map[string]bool{}
+					for _, v := range matches {
 						if err := ctx.Err(); err != nil {
 							return out, gaps, err
 						}
-						if v.id == repostats.UnitKey(p, u) || v.name == u.Name {
+						if v.id == unitKey || v.name == u.Name || common != nil && len(common) == 0 {
 							continue
 						}
 						for word := range v.words {
-							if cooccurrences[word] == nil {
-								cooccurrences[word] = map[string]bool{}
+							if common == nil || common[word] {
+								present[word] = true
 							}
-							cooccurrences[word][m] = true
 						}
 					}
+					common = present
 				}
 				implementations := map[string]bool{}
-				for word, present := range cooccurrences {
+				for word := range common {
 					if word == u.Name || ignored[word] || slices.Contains(members, word) {
 						continue
 					}
-					if len(present) == len(members) && definedName(word) {
+					if len(memberSet) == len(members) && definedName(word) {
 						implementations[word] = true
 					}
 				}
@@ -174,9 +179,12 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 						params = append(params, w)
 					}
 				}
-				if shape.BodyCalls == 1 && slices.Equal(body[1:], params) {
+				if shape.Callable && shape.BodyCalls == 1 && slices.Equal(body[1:], params) {
 					out = append(out, indirection{p, u, "forwarding", 1, body[0]})
 				}
+			}
+			if !shape.Callable {
+				continue
 			}
 			if repo.SyntaxFor(p).CallRatio <= CallPrecision {
 				gaps = append(gaps, "实参未知："+location(p, u))
@@ -187,6 +195,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 				continue
 			}
 			positions := map[int]map[string]bool{}
+			unknown := map[int]bool{}
 			for _, site := range sites {
 				for i, arg := range site.args {
 					if site.path == p && arg.Start <= u.HeaderEnd && arg.End >= u.Start {
@@ -196,10 +205,22 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 						positions[i] = map[string]bool{}
 					}
 					positions[i][arg.Text] = true
+					value, err := units.Analyze(ctx, units.Source{Data: []byte(arg.Text)}, repo.SyntaxFor(site.path))
+					if err != nil {
+						return out, gaps, err
+					}
+					tokens := units.Significant(value.Tokens)
+					if len(tokens) == 2 && tokens[0].Text == "-" && tokens[1].Kind == "number" {
+						tokens = tokens[1:]
+					}
+					unknown[i] = unknown[i] || len(tokens) != 1 || (tokens[0].Kind != "number" && tokens[0].Kind != "string" && tokens[0].Kind != "key")
 				}
 			}
 			for i := 0; i < len(positions); i++ {
 				values := positions[i]
+				if unknown[i] {
+					continue
+				}
 				if len(values) > 0 {
 					out = append(out, indirection{p, u, "parameter", len(values), fmt.Sprintf("参数 %d = %s", i+1, strings.Join(keys(values), ", "))})
 				}
@@ -248,12 +269,33 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 			continue
 		}
 		kind := v.kind
+		if kind == "parameter" {
+			unchanged := false
+			for _, old := range in.Before.Files[v.path].Units {
+				if old.Name == v.unit.Name && slices.Equal(Structure(in.Before.Files[v.path], old).Header, Structure(in.After.Files[v.path], v.unit).Header) {
+					unchanged = true
+					break
+				}
+			}
+			if unchanged {
+				continue
+			}
+		}
 		facts := []string{fmt.Sprintf("变化数 %d；%s", v.count, v.replacement)}
+		facts = append(facts, "仅统计当前仓库可见结构；变化数为 1 不证明该间接层多余")
+		advice := "先核对入口约定；若只需原样转发，把 " + location(v.path, v.unit) + " 的调用改用 " + v.replacement + "，再删除转发单元"
+		switch kind {
+		case "abstraction":
+			advice = "先核对该抽象隔离的实际依赖或变化；若无需隔离，可将 " + location(v.path, v.unit) + " 的使用处改为 " + v.replacement + "，再删除抽象定义"
+		case "parameter":
+			advice = "先核对所有调用方及实参求值的副作用；若该位置确实恒定，可在 " + location(v.path, v.unit) + " 内使用 " + v.replacement + "，同步删除形参和各调用处对应的实参"
+		}
 		if kind == "forwarding" && in.Before.FrequencyOf(v.unit.Name) > 0 {
 			kind = "old_name"
 			facts = append(facts, fmt.Sprintf("起点引用单元数 %d；外部调用方需核对发布约定", in.Before.FrequencyOf(v.unit.Name)))
+			advice = "先核对 " + location(v.path, v.unit) + " 的外部调用和兼容承诺；存在兼容要求时保留旧名，不能只凭转发结构建议删除"
 		}
-		out = append(out, Candidate{Kind: kind, Object: repostats.UnitKey(v.path, v.unit) + ":" + v.replacement, At: location(v.path, v.unit), Cluster: cluster, AgentOnly: agent, Facts: facts, Advice: "把 " + location(v.path, v.unit) + " 的调用改用 " + v.replacement + "，核对后删除该间接层", Features: map[string]float64{"variation": float64(v.count), "convention": prior[v.kind], "structure": in.After.Files[v.path].Confidence}, Benefit: float64(v.unit.EndLine - v.unit.Line + 1)})
+		out = append(out, Candidate{Kind: kind, Object: repostats.UnitKey(v.path, v.unit) + ":" + v.replacement, At: location(v.path, v.unit), Cluster: cluster, AgentOnly: agent, Facts: facts, Advice: advice, Features: map[string]float64{"variation": float64(v.count), "convention": prior[v.kind], "structure": in.After.Files[v.path].Confidence}, Benefit: float64(v.unit.EndLine - v.unit.Line + 1)})
 	}
 	return out, gaps, ctx.Err()
 }
@@ -263,7 +305,7 @@ func unused(in Input) []Candidate {
 	for _, p := range keys(in.After.Files) {
 		f := in.After.Files[p]
 		for _, u := range f.Units {
-			if u.Name == "" || in.Before.FrequencyOf(u.Name) > 0 || in.After.Entry(p, u) {
+			if !declaration(f, u) || in.Before.FrequencyOf(u.Name) > 0 || in.After.Entry(p, u) {
 				continue
 			}
 			cluster, agent := clusterFor(in, p, u.Line, u.EndLine)
