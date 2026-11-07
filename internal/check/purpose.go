@@ -186,11 +186,19 @@ func reviewPurposes(ctx context.Context, store *ledger.Store, w gitstate.Workspa
 	return ctx.Err()
 }
 
-func changedClusters(delta changes.Result, path string, subject quoteRange) []changes.Cluster {
+// 差异区间从 0 开始、右端不含；引用行从 1 开始、两端均含。
+// 删除位于两行之间，只有引用同时包含这两行才算相交。
+func (r quoteRange) overlaps(s changes.Span) bool {
+	return s.AfterStart < r.lastLine && r.line <= s.AfterEnd
+}
+
+func changedClusters(delta changes.Result, path string, subject quoteRange) ([]changes.Cluster, bool) {
 	touched := map[string]bool{}
+	changedLines := false
 	for _, h := range delta.Hunks {
-		if h.Path == path && h.Span.AfterStart < h.Span.AfterEnd && h.Span.AfterStart < subject.lastLine && subject.line <= h.Span.AfterEnd {
+		if h.Path == path && subject.overlaps(h.Span) {
 			touched[h.ID] = true
+			changedLines = changedLines || h.Span.AfterStart < h.Span.AfterEnd
 		}
 	}
 	var result []changes.Cluster
@@ -199,7 +207,25 @@ func changedClusters(delta changes.Result, path string, subject quoteRange) []ch
 			result = append(result, cluster)
 		}
 	}
-	return result
+	return result, changedLines
+}
+
+func preservedQuote(hunks []changes.Hunk, ref ledger.CodeQuote, current quoteRange, origin []byte) bool {
+	ref.Line = current.line
+	for _, h := range hunks {
+		if h.Path != ref.Path {
+			continue
+		}
+		s := h.Span
+		if current.overlaps(s) {
+			return false
+		}
+		if s.AfterEnd < current.line {
+			ref.Line += (s.BeforeEnd - s.BeforeStart) - (s.AfterEnd - s.AfterStart)
+		}
+	}
+	_, found := locateQuote(origin, ref)
+	return found
 }
 
 func currentContract(c ledger.Citation, source ledger.Source, req ledger.Requirement, plan *ledger.PlanRecord, files purposeFiles) bool {
@@ -302,8 +328,8 @@ func assessPurpose(note ledger.Note, req ledger.Requirement, sources map[string]
 		}
 		c.At = at
 	}
-	clusters := changedClusters(a.Changes, subject.Path, position)
-	if len(clusters) == 0 {
+	clusters, changedLines := changedClusters(a.Changes, subject.Path, position)
+	if !changedLines || len(clusters) == 0 {
 		return c, "片段没有触及本次改动"
 	}
 	agent := true
@@ -341,8 +367,7 @@ func assessPurpose(note ledger.Note, req ledger.Requirement, sources map[string]
 			return c, "依据与被核对片段重叠"
 		}
 		origin := files.origin[ref.Path]
-		_, found := locateQuote(files.contents[origin.Blob], ref)
-		existed := regular(origin) && found && len(changedClusters(a.Changes, ref.Path, where)) == 0
+		existed := regular(origin) && preservedQuote(a.Changes.Hunks, ref, where, files.contents[origin.Blob])
 		basis := "未确认是起点保留的原文"
 		if existed {
 			basis = "任务起点也有这段原文"
