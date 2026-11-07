@@ -9,6 +9,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/signals"
+	"slices"
 	"strings"
 	"time"
 )
@@ -25,6 +26,8 @@ type analysis struct {
 	Signals       signals.Result
 	Requirements  []changes.Requirement
 	Edits         []ledger.EditRecord
+	Purposes      []signals.Candidate
+	PurposeGaps   []ledger.CheckGap
 }
 
 func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor ledger.Actor, view ledger.TaskView, observation ledger.Observation, options RunInput) (result ledger.CheckRecord, failure error) {
@@ -40,6 +43,9 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 	input, err := store.CheckInput(ctx, w.ID, view.Task.ID, actor, Algorithm)
 	if err != nil {
 		return ledger.CheckRecord{}, err
+	}
+	if input.Tree != observation.Tree || input.EditRevision != view.Task.RecordRevision || input.RequirementRevision != view.Task.RequirementRevision || input.PlanRevision != view.Task.PlanRevision || input.AuthorizationRevision != view.Task.AuthorizationRevision || !slices.Equal(input.PurposeNotes, ledger.PurposeNoteIDs(view.Notes)) {
+		return ledger.CheckRecord{}, ledger.ErrCheckInputChanged
 	}
 	if !options.Refresh {
 		previous, err := store.LatestCheck(ctx, view.Task.ID, options.Depth, input.Version())
@@ -96,6 +102,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 		for _, gap := range data.Signals.Gaps {
 			r.Missing = append(r.Missing, ledger.CheckGap{Operation: "signals", Kind: "unknown", Reason: gap})
 		}
+		r.Missing = append(r.Missing, data.PurposeGaps...)
 		for _, region := range data.Regions {
 			r.Report.ChangesByRequirement[region.Requirement] = region.Clusters
 		}
@@ -112,7 +119,8 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 		if err = store.SaveWeights(work, w.ProjectID, weights); err != nil {
 			return r, err
 		}
-		chosen, err := selectFeedback(work, data.Signals.Candidates, weights)
+		candidates := append(slices.Clone(data.Signals.Candidates), data.Purposes...)
+		chosen, err := selectFeedback(work, candidates, weights)
 		if err != nil {
 			return r, err
 		}
@@ -120,11 +128,14 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 		for _, c := range chosen {
 			selected[c.ID] = true
 		}
-		for _, c := range data.Signals.Candidates {
+		for _, c := range candidates {
 			issue := ledger.Issue{Algorithm: Algorithm, Rule: c.Kind, At: c.At, LogicalAt: c.Object, FactKey: c.Kind, Level: "hint", Status: "open", Facts: c.Facts, Advice: c.Advice, Confidence: probability(weights, c.Features), Signals: c.Features, Selected: selected[c.ID]}
-			issue.ContentSignature, err = objectSignature(work, data, c)
-			if err != nil {
-				return r, err
+			issue.ReviewOnly = c.ReviewOnly
+			if !c.ReviewOnly {
+				issue.ContentSignature, err = objectSignature(work, data, c)
+				if err != nil {
+					return r, err
+				}
 			}
 			if c.BlockFact == "external" {
 				issue.BlockOnDelivery = true
@@ -133,7 +144,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 			r.Issues = append(r.Issues, issue)
 		}
 		r.Issues = append(r.Issues, planIssues(w, view, data)...)
-		for _, kind := range []string{"external", "unrelated", "noise", "abstraction", "forwarding", "old_name", "parameter", "duplicate", "unused", "test_equivalence", "test_budget", "assertion", "mock_only", "S1", "S2"} {
+		for _, kind := range []string{"external", "unrelated", "noise", "abstraction", "forwarding", "old_name", "parameter", "duplicate", "unused", "test_equivalence", "test_budget", "assertion", "mock_only", "recovery", "purpose", "S1", "S2"} {
 			r.Evaluated = append(r.Evaluated, ledger.CheckScope(kind, "*"))
 		}
 		for _, h := range data.Changes.Hunks {
@@ -234,6 +245,9 @@ func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view le
 	if err != nil {
 		return a, err
 	}
+	if err := reviewPurposes(ctx, s, w, view, &a); err != nil {
+		return a, err
+	}
 	return a, a.Index.err()
 }
 
@@ -243,6 +257,7 @@ func analyzeSignals(ctx context.Context, view ledger.TaskView, input signals.Inp
 		return result, err
 	}
 	locations := map[[2]string][]string{}
+	declared := map[string][]string{}
 	for _, requirement := range view.Requirements {
 		if requirement.Status == "revoked" {
 			continue
@@ -256,7 +271,12 @@ func analyzeSignals(ctx context.Context, view ledger.TaskView, input signals.Inp
 			if location.Citation != nil {
 				citation = "引用 " + location.Citation.SourceID + "：" + location.Citation.Quote
 			}
-			locations[[2]string{requirement.ID, location.At}] = []string{"需求 " + requirement.ID + "：" + requirement.Content, "登记位置：" + location.At, "用途：" + purpose, citation}
+			recorded := []string{"需求 " + requirement.ID + "：" + requirement.Content, "登记位置：" + location.At, "用途：" + purpose, citation}
+			locations[[2]string{requirement.ID, location.At}] = recorded
+			if !input.EditPreview && location.Pending == "" && location.Purpose != "" && (location.Kind == "code" || location.Kind == "test") {
+				at := strings.TrimPrefix(location.At, "test:")
+				declared[at] = append(declared[at], recorded...)
+			}
 		}
 	}
 	facts := map[string][]string{}
@@ -269,6 +289,9 @@ func analyzeSignals(ctx context.Context, view ledger.TaskView, input signals.Inp
 		candidate := &result.Candidates[i]
 		if candidate.Kind == "external" {
 			candidate.Facts = append(candidate.Facts, facts[candidate.Object]...)
+		} else if evidence := declared[candidate.At]; len(evidence) > 0 {
+			candidate.Facts = append(candidate.Facts, evidence...)
+			candidate.Facts = append(candidate.Facts, "以上是 Agent 在该位置登记的用途，仍需核对实际行为")
 		}
 	}
 	return result, nil

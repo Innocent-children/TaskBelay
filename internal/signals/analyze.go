@@ -28,6 +28,7 @@ type Candidate struct {
 	Features                      map[string]float64
 	Benefit                       float64
 	AgentOnly, Defensive          bool
+	ReviewOnly                    bool
 	BlockFact                     string
 }
 type External struct {
@@ -42,6 +43,8 @@ type Case struct {
 	Targets                                     []string
 	Inputs                                      []string
 	Boundary                                    []string
+	checks                                      []string
+	checksUnknown                               bool
 }
 type Result struct {
 	Candidates []Candidate
@@ -135,9 +138,25 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		if item.Anchor == "none" && item.Reliable && item.AgentOnly {
 			c.BlockFact = "external"
 		}
+		if item.Kind == "config" {
+			if item.Value != "" {
+				c.Facts = append(c.Facts, "配置键后识别到的取值片段："+item.Value)
+			}
+			c.Advice += "；核对当前使用者何时需要切换取值，以及沿用固定行为会失去什么功能"
+		}
 		r.Candidates = append(r.Candidates, c)
 	}
 	if !in.EditPreview {
+		recovery, err := recoveries(ctx, in)
+		if err != nil {
+			return r, err
+		}
+		r.Candidates = append(r.Candidates, recovery...)
+		for _, c := range recovery {
+			if !slices.Contains(r.Defensive, c.Cluster) {
+				r.Defensive = append(r.Defensive, c.Cluster)
+			}
+		}
 		indirect, gaps, err := indirections(ctx, in)
 		if err != nil {
 			return r, err
@@ -179,7 +198,7 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 			c.Defensive = c.Defensive || c.Cluster == id
 		}
 		if c.Defensive {
-			c.Facts = append(c.Facts, "涉及按结构识别的防御性短分支，不参加撤回试验；结构不能证明失败不可能发生")
+			c.Facts = append(c.Facts, "该变更簇包含受撤回保护的分支，结构不能证明失败不可能发生")
 			if c.Kind == "unrelated" || c.Kind == "noise" {
 				c.Advice = "先保留必要的错误传递和资源处理；核对失败条件、需求或调用约定及负责处理的层次，无法确认时不删除、不因此补测试"
 			} else {

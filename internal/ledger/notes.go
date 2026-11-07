@@ -89,7 +89,23 @@ func (s *Store) AddNote(ctx context.Context, call Call, current string, observat
 		if err != nil {
 			return err
 		}
-		result = Note{TaskID: current, Kind: input.Kind, Text: input.Text, Target: input.Target, Citation: proof, Author: call.Actor, At: time.Now().UTC(), ObservationID: observationID, InputRevision: task.RecordRevision, RequirementRevision: task.RequirementRevision, PlanRevision: task.PlanRevision, SettingsRevision: task.SettingsRevision}
+		if review := input.Review; review != nil {
+			if input.Kind != "decision" || input.Target == nil || input.Target.Kind != "requirement" || input.Target.Effect != "" || input.Target.Scope != "" {
+				return fmt.Errorf("用途说明须指向当前需求，不能同时指定授权作用")
+			}
+			if at := input.Target.At; at != "" && (!strings.HasPrefix(at, review.Subject.Path+":") || at == review.Subject.Path+":") {
+				return fmt.Errorf("用途位置须为对象文件中的声明或行号")
+			}
+			if review.Kind != "design" && review.Kind != "test" && review.Kind != "defense" || review.Assessment != "keep" && review.Assessment != "simplify" && review.Assessment != "unknown" {
+				return fmt.Errorf("用途类别或判断不在支持范围内")
+			}
+			for _, ref := range append([]CodeQuote{review.Subject}, review.Evidence...) {
+				if path.Clean(ref.Path) != ref.Path || ref.Path == "" || ref.Path == "." || ref.Path == ".." || strings.HasPrefix(ref.Path, "../") || path.IsAbs(ref.Path) || strings.ContainsAny(ref.Path, ":\\\x00") || strings.TrimSpace(ref.Quote) == "" || ref.Line < 0 {
+					return fmt.Errorf("代码引用须指定仓库相对文件名、非空原文及有效行号")
+				}
+			}
+		}
+		result = Note{TaskID: current, Kind: input.Kind, Text: input.Text, Target: input.Target, Review: input.Review, Citation: proof, Author: call.Actor, At: time.Now().UTC(), ObservationID: observationID, InputRevision: task.RecordRevision, RequirementRevision: task.RequirementRevision, PlanRevision: task.PlanRevision, SettingsRevision: task.SettingsRevision}
 		if target := input.Target; target != nil {
 			if target.ID == "" {
 				return fmt.Errorf("决定目标缺少编号")
@@ -104,8 +120,11 @@ func (s *Store) AddNote(ctx context.Context, call Call, current string, observat
 				if err != nil {
 					return fmt.Errorf("需求目标不存在: %w", err)
 				}
-				if requirement.Status == "revoked" && target.Effect == "retain" {
+				if requirement.Status == "revoked" && (target.Effect == "retain" || input.Review != nil) {
 					return fmt.Errorf("需求已撤销，须先核对新的有效需求")
+				}
+				if input.Review != nil {
+					result.ReviewedRevision = requirement.Revision
 				}
 			case "verification":
 				var count int
@@ -249,6 +268,8 @@ func (s *Store) AddNote(ctx context.Context, call Call, current string, observat
 		}
 		if changedDecision {
 			task.AuthorizationRevision++
+		}
+		if changedDecision || result.Review != nil {
 			touchTask(&task)
 		} else {
 			task.Revision++

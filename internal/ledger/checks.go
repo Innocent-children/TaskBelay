@@ -56,6 +56,7 @@ func checkInput(ctx context.Context, q queryer, workspace, id string, actor Acto
 		return CheckInput{}, err
 	}
 	input := NewCheckInput(task, observation.Tree, settings, effectiveDecisions(notes, task, settings, actor), algorithm)
+	input.PurposeNotes = PurposeNoteIDs(notes)
 	for _, note := range notes {
 		if note.Kind == "decision" && note.Target != nil && note.Target.Kind == "issue" {
 			raw, err := json.Marshal(struct {
@@ -85,6 +86,17 @@ func checkInput(ctx context.Context, q queryer, workspace, id string, actor Acto
 	}
 	input.Verifications = fmt.Sprintf("%x", hash.Sum(nil))
 	return input, rows.Err()
+}
+
+// 用途笔记不可变；编号把内容、引用和记录时的观察点一起绑定到检查输入。
+func PurposeNoteIDs(notes []Note) []string {
+	var ids []string
+	for _, note := range notes {
+		if note.Review != nil {
+			ids = append(ids, note.ID)
+		}
+	}
+	return ids
 }
 
 func (s *Store) CheckInput(ctx context.Context, workspace, id string, actor Actor, algorithm string) (CheckInput, error) {

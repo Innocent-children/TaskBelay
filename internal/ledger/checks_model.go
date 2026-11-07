@@ -36,7 +36,11 @@ CREATE TABLE check_feedback (
 PRAGMA user_version=7;
 `
 
+// 改变候选或判断规则时更新。纯展示调整沿用独立的反馈格式版本。
+const checkRulesVersion = 3
+
 type CheckInput struct {
+	RulesVersion          int               `json:"rules_version,omitempty"`
 	TaskID                string            `json:"task_id"`
 	OriginTree            string            `json:"origin_tree"`
 	Tree                  string            `json:"tree"`
@@ -46,6 +50,7 @@ type CheckInput struct {
 	AuthorizationRevision int64             `json:"authorization_revision"`
 	Verifications         string            `json:"verifications,omitempty"`
 	Feedback              []string          `json:"feedback,omitempty"`
+	PurposeNotes          []string          `json:"purpose_notes,omitempty"`
 	Decisions             []string          `json:"decisions"`
 	AnalysisSettings      map[string]string `json:"analysis_settings"`
 	Algorithm             string            `json:"algorithm"`
@@ -61,7 +66,7 @@ func (input CheckInput) Version() string {
  * 决定按生效目标及引用去重，避免重复记录同一决定导致分析输入版本变化。
  */
 func NewCheckInput(task TaskRecord, tree string, settings EffectiveSettings, decisions []Note, algorithm string) CheckInput {
-	input := CheckInput{TaskID: task.ID, OriginTree: task.OriginTree, Tree: tree,
+	input := CheckInput{RulesVersion: checkRulesVersion, TaskID: task.ID, OriginTree: task.OriginTree, Tree: tree,
 		RequirementRevision: task.RequirementRevision, PlanRevision: task.PlanRevision,
 		EditRevision: task.RecordRevision, AuthorizationRevision: task.AuthorizationRevision,
 		AnalysisSettings: map[string]string{}, Decisions: []string{}, Algorithm: algorithm}
@@ -150,6 +155,7 @@ type Issue struct {
 	Confidence        float64            `json:"confidence"`
 	Signals           map[string]float64 `json:"signals,omitempty"`
 	BlockOnDelivery   bool               `json:"block_on_delivery,omitempty"`
+	ReviewOnly        bool               `json:"review_only,omitempty"`
 	ID                string             `json:"id"`
 	Identity          string             `json:"identity"`
 	Occurrence        int                `json:"occurrence"`

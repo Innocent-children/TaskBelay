@@ -274,7 +274,7 @@ func (r *runner) eligible() []string {
 		defensive[id] = true
 	}
 	for _, c := range r.input.Signals.Candidates {
-		if c.AgentOnly && c.Cluster != "" {
+		if c.AgentOnly && !c.ReviewOnly && c.Cluster != "" {
 			scores[c.Cluster] = max(scores[c.Cluster], c.Benefit)
 		}
 		defensive[c.Cluster] = defensive[c.Cluster] || c.Defensive
