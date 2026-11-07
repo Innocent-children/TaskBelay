@@ -222,12 +222,27 @@ type DecisionTarget struct {
 	Scope  string `json:"scope,omitempty"`
 }
 
+type CodeQuote struct {
+	Path  string `json:"path" jsonschema:"仓库相对文件名"`
+	Quote string `json:"quote" jsonschema:"代码原文"`
+	Line  int    `json:"line,omitempty" jsonschema:"起始行号（从 1 开始）；原文重复时指定"`
+}
+
+type PurposeReview struct {
+	Kind       string      `json:"kind" jsonschema:"design、test 或 defense"`
+	Assessment string      `json:"assessment" jsonschema:"Agent 的判断：keep、simplify 或 unknown"`
+	Subject    CodeQuote   `json:"subject" jsonschema:"本次改动中需要核对的片段"`
+	Evidence   []CodeQuote `json:"evidence,omitempty" jsonschema:"支持说明的调用、保证、断言或更直接的实现"`
+}
+
 type Note struct {
 	ID                  string          `json:"id"`
 	TaskID              string          `json:"task_id"`
 	Kind                string          `json:"kind"`
 	Text                string          `json:"text"`
 	Target              *DecisionTarget `json:"target,omitempty"`
+	Review              *PurposeReview  `json:"review,omitempty"`
+	ReviewedRevision    int64           `json:"reviewed_revision,omitempty"`
 	Citation            *Citation       `json:"citation,omitempty"`
 	Author              Actor           `json:"author"`
 	At                  time.Time       `json:"at"`
@@ -263,6 +278,7 @@ type NoteInput struct {
 	Kind     string          `json:"kind"`
 	Text     string          `json:"text"`
 	Target   *DecisionTarget `json:"target,omitempty"`
+	Review   *PurposeReview  `json:"review,omitempty"`
 	Quote    string          `json:"quote,omitempty"`
 	SourceID string          `json:"source_id,omitempty"`
 }

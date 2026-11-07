@@ -186,7 +186,7 @@ func (s *Store) SaveRequirement(ctx context.Context, call Call, current string, 
 			return err
 		}
 		// 进度变化不撤回范围授权；目标、验收或来源改变时，旧目标授权不能沿用。
-		if old.ID != "" && (result.Status == "revoked" || old.Content != result.Content || old.Acceptance != result.Acceptance || !sameCitation(old.Citation, result.Citation)) {
+		if old.ID != "" && (result.Status == "revoked" || !old.SameScope(result)) {
 			changed, err := invalidateNotes(ctx, tx, task.ID, fmt.Sprintf("%s@%d", result.ID, result.Revision), func(note Note) bool {
 				return note.Target != nil && note.Target.Kind == "requirement" && note.Target.ID == result.ID
 			})
@@ -214,8 +214,12 @@ func sameCitation(a, b *Citation) bool {
 	return a.SourceID == b.SourceID && a.Start == b.Start && a.End == b.End
 }
 
+func (r Requirement) SameScope(other Requirement) bool {
+	return r.Content == other.Content && r.Acceptance == other.Acceptance && sameCitation(r.Citation, other.Citation)
+}
+
 func sameRequirement(a, b Requirement) bool {
-	if a.Content != b.Content || a.Acceptance != b.Acceptance || a.Status != b.Status || a.Kind != b.Kind || !sameCitation(a.Citation, b.Citation) || len(a.ImplementedBy) != len(b.ImplementedBy) {
+	if !a.SameScope(b) || a.Status != b.Status || a.Kind != b.Kind || len(a.ImplementedBy) != len(b.ImplementedBy) {
 		return false
 	}
 	for i, left := range a.ImplementedBy {

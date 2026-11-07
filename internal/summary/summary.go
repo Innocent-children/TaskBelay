@@ -123,7 +123,7 @@ func Guidance(settings ledger.EffectiveSettings) string {
 	if settings.Values["analysis.tests"].Value == "on" {
 		tests = "开启"
 	}
-	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新状态；用 note_add 记录决定和待办事项。工作区发生变化不代表用户授权了新工作，不恢复旧代码覆盖当前修改。"+enforcement+"需要可核对的编辑记录时使用编辑工具；shell 写入按实际取得的信息记录。动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
+	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新状态；用 note_add 记录决定和待办事项。对少量可疑设计、测试或防御，可用 note_add.review 引用具体代码说明用途。工作区发生变化不代表用户授权了新工作，不恢复旧代码覆盖当前修改。"+enforcement+"需要可核对的编辑记录时使用编辑工具；shell 写入按实际取得的信息记录。动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
 }
 
 func GuidanceVersion(settings ledger.EffectiveSettings) string {

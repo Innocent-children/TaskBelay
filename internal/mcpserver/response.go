@@ -136,7 +136,9 @@ func requirementResponse(record ledger.Requirement) map[string]any {
 
 func noteResponse(note ledger.Note) map[string]any {
 	reason := "笔记已保存；仅记录说明，不改变现有检查规则。"
-	if note.Active {
+	if note.Review != nil {
+		reason = "用途说明已保存，下次检查会核对代码和出处。"
+	} else if note.Active {
 		reason = "决定已生效，适用对象和范围以记录为准。"
 	} else if note.InvalidatedBy != "" {
 		reason = "决定已失效：" + note.InvalidatedBy
@@ -179,7 +181,11 @@ func requirementsSummary(records []ledger.Requirement) []any {
 func checkResponse(record ledger.CheckRecord, execution bool) map[string]any {
 	issues := append([]ledger.Issue(nil), record.Issues...)
 	sort.SliceStable(issues, func(i, j int) bool {
-		return (issues[i].Level == "block" || issues[i].BlockOnDelivery) && !(issues[j].Level == "block" || issues[j].BlockOnDelivery)
+		blockI, blockJ := issues[i].Level == "block" || issues[i].BlockOnDelivery, issues[j].Level == "block" || issues[j].BlockOnDelivery
+		if blockI != blockJ {
+			return blockI
+		}
+		return issues[i].Selected && !issues[j].Selected
 	})
 	var items, gaps []any
 	for _, issue := range issues[:min(20, len(issues))] {

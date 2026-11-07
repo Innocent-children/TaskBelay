@@ -103,7 +103,7 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		}
 		return requirementResponse(result), nil
 	})
-	register(server, "note_add", "保存 decision 或 next_step。用 target 的 kind、id、at、effect 和 scope 指明决定针对的对象、准确位置、作用和有效范围。retain 的 scope 为 task；pause_checks 为 round 或 task；rerun_once 指向 verification，scope 为 once。allow_edit 须依据用户消息，仅允许编辑当前 task 中指定的草稿文件或目录，scope 为 task。revoke 撤回对同一对象的决定；撤回 plan 时，省略 at 表示撤回整版，也可准确列出范围、入口或 dep:模块名。普通说明不改变检查规则。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.NoteInput) (any, error) {
+	register(server, "note_add", "保存 decision 或 next_step。对少量可疑实现，可用 decision 指向有效 requirement，以 review 给出对象、判断及代码出处，用 text 说明实际变化、断言或失败条件，必要时引用原话。用途核对只作提示。用户决定使用 target 的 kind、id、at、effect 和 scope。retain 的 scope 为 task；pause_checks 为 round 或 task；rerun_once 指向 verification，scope 为 once。allow_edit 须依据用户消息，仅允许编辑当前 task 中指定的草稿文件或目录，scope 为 task。revoke 撤回同一对象的决定；撤回 plan 时可省略 at 撤回整版，也可准确列出范围、入口或 dep:模块名。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.NoteInput) (any, error) {
 		result, err := service.AddNote(ctx, actor, input)
 		if err != nil {
 			return nil, err

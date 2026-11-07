@@ -121,6 +121,20 @@ func declaration(f units.File, u units.Unit) bool {
 	return true
 }
 
+// EnclosingDeclaration 返回包含整段引用的声明；类型声明可用自己的首行标识。
+func EnclosingDeclaration(f units.File, start, end int) units.Unit {
+	var best units.Unit
+	for _, u := range f.Units {
+		if u.Name == "" || u.Start > start || u.End < end || best.Name != "" && u.End-u.Start >= best.End-best.Start {
+			continue
+		}
+		if declaration(f, u) || u.Parent < 0 && start < u.HeaderEnd && hasBody(u) {
+			best = u
+		}
+	}
+	return best
+}
+
 /**
  * 保留间接层计算需要的顺序和结构；学习约定变化后重新过滤词汇。
  */

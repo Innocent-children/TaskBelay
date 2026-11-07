@@ -6,7 +6,7 @@
 
 TaskBelay 用语言无关的词法、版面树和仓库统计分析内容，再计算变更簇、需求相关区，以及过度设计和过度测试的分析信号。静态信号用于给候选问题排序。动态检查根据副本中的撤回试验、逐个变异和整组确认结果，判断哪些改动或测试可以精简。TaskBelay 按可核对的事实决定是否拦截；信息不足、执行出错和检查未完成分别记录。
 
-Agent 通过 `requirement_save.acceptance` 保存验收标准，通过 `note_add` 记录如何处理反馈、决定保留哪些内容以及重跑理由，通过 `implemented_by` 登记实现需求的文件、入口和依赖。数据记录见 [任务账本](requirements-ledger.md#算法的逻辑记录)，模块关系见 [系统架构](product-architecture.md)。
+Agent 通过 `requirement_save.acceptance` 保存验收标准，通过 `implemented_by` 登记实现需求的文件、入口和依赖。处理少量可疑设计、测试或防御时，可用 `note_add.review` 引用具体代码并说明用途。TaskBelay 核对引用、当前需求和编辑来源，给出有条件的建议。保留决定和重跑理由也通过 `note_add` 记录。数据记录见 [任务账本](requirements-ledger.md#算法的逻辑记录)，模块关系见 [系统架构](product-architecture.md)。
 
 ## 文档的层次
 

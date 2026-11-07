@@ -113,7 +113,7 @@ func feedbackSubjects(ctx context.Context, s *ledger.Store, w gitstate.Workspace
 	}
 	currentFeedback := feedback[:0]
 	for _, item := range feedback {
-		if item.Issue.Algorithm == Algorithm {
+		if item.Issue.Algorithm == Algorithm && !item.Issue.ReviewOnly {
 			currentFeedback = append(currentFeedback, item)
 		}
 	}
