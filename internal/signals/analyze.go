@@ -44,6 +44,7 @@ type Case struct {
 	Inputs                                      []string
 	Boundary                                    []string
 	checks                                      []string
+	checksUnknown                               bool
 }
 type Result struct {
 	Candidates []Candidate

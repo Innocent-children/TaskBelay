@@ -29,7 +29,7 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 	compare := func(c Case, identity string, row bool, benefit int) {
 		key := identity + "\x00" + units.Hash(c.checks...)
 		prior, ok := seenExact[key]
-		if !ok {
+		if !ok || c.checksUnknown {
 			prior, ok = seen[identity]
 		}
 		if ok && c.Added && c.AgentOnly && !c.Retained {
@@ -38,11 +38,12 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 			advice := "比较两处的输入、输出约定、副作用、权限、时序和共享状态，仅在没有独特检查时合并"
 			object := "测试侧调用"
 			if row {
-				object = "表格行内容"
+				object = "表格行内容和用例的测试侧调用"
 			}
 			switch {
-			case len(c.checks) == 0 && len(prior.checks) == 0:
-				facts = append(facts, "尚未定位可比较的测试侧调用，断言是否重复未知")
+			case c.checksUnknown || prior.checksUnknown || len(c.checks) == 0 || len(prior.checks) == 0:
+				facts = append(facts, "未能完整定位两处的测试侧调用，断言是否重复未知")
+				advice = "保留两处检查，先核对实际断言及其副作用"
 			case slices.Equal(prior.checks, c.checks):
 				facts = append(facts, object+"相同："+strings.Join(c.checks, "、"))
 			default:
@@ -54,13 +55,13 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 				features["structure"] = in.After.Files[c.Path].Confidence
 			}
 			// 新找到的后置参照和不同断言只供核对，不能增加撤回试验或据删除动作校准。
-			reviewOnly := len(c.checks) == 0 || !slices.Equal(c.checks, prior.checks) || prior.Path > c.Path || prior.Path == c.Path && prior.Start >= c.Start
+			reviewOnly := c.checksUnknown || prior.checksUnknown || len(c.checks) == 0 || !slices.Equal(c.checks, prior.checks) || prior.Path > c.Path || prior.Path == c.Path && prior.Start >= c.Start
 			out = append(out, Candidate{Kind: "test_equivalence", Object: c.ID, At: c.Path + ":" + c.Name, Cluster: c.Cluster, AgentOnly: true, ReviewOnly: reviewOnly, Facts: facts, Advice: advice, Features: features, Benefit: float64(benefit)})
 		}
 		if _, exists := seen[identity]; !exists {
 			seen[identity] = c
 		}
-		if _, exists := seenExact[key]; !exists {
+		if _, exists := seenExact[key]; !exists && !c.checksUnknown && len(c.checks) > 0 {
 			seenExact[key] = c
 		}
 	}
@@ -202,45 +203,21 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 				}
 				budget[key] = len(boundaryPoints) + len(stringsSet) + classes
 			}
-			asserted, mockExample := false, ""
 			var body []units.Token
 			for _, t := range u.Tokens {
 				if t.Start >= u.HeaderEnd {
 					body = append(body, t)
 				}
 			}
-			calls := units.Calls(body)
-			for _, name := range keys(calls) {
-				if in.After.TestWord(name, false) <= 0 || name == u.Name {
-					continue
-				}
-				asserted = true
-				for _, args := range calls[name] {
-					onlyTest := len(args) > 0
-					seenWord := false
-					var expressions []string
-					for _, arg := range args {
-						expressions = append(expressions, arg.Text)
-						for _, word := range units.Words(arg.Text) {
-							found := in.After.TestWord(word, true) > 0
-							onlyTest = onlyTest && found
-							seenWord = true
-						}
-					}
-					expression := name + "(" + strings.Join(expressions, ", ") + ")"
-					c.checks = append(c.checks, expression)
-					if onlyTest && seenWord && mockExample == "" {
-						mockExample = expression
-					}
-				}
-			}
+			var mockExample string
+			c.checks, mockExample, c.checksUnknown = assertionExpressions(in.After, u.Name, body)
 			if len(constants) > 0 || len(stringsSet) > 0 {
 				comparisons = append(comparisons, comparison{c, key + "\x00" + c.Class + "\x00" + c.Shape, false, u.EndLine - u.Line + 1})
 			}
 			if mockExample != "" && c.Added {
 				out = append(out, Candidate{Kind: "mock_only", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"测试侧调用的参数只包含从测试中学到的词：" + mockExample}, Advice: "核对 " + c.Name + " 中的这处调用检查了什么，以及删去用例会漏掉哪种错误；若次数或顺序属于需求，应保留对应检查", Features: map[string]float64{"mock_only": 1}, Benefit: 1})
 			}
-			if !asserted && c.Added {
+			if len(c.checks) == 0 && !c.checksUnknown && c.Added {
 				out = append(out, Candidate{Kind: "assertion", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"用例中未出现从仓库识别出的断言词"}, Advice: "核对 " + c.Name + " 是否检查了行为结果", Features: map[string]float64{"assertion_missing": 1}, Benefit: 1})
 			}
 			all = append(all, c)
@@ -269,7 +246,8 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 					child.Added = !existed
 					child.Retained = c.Retained || existed || !child.AgentOnly
 					child.Shape = strings.Join(units.Sequence(row.Tokens, true), " ")
-					child.checks = []string{strings.Join(units.Sequence(row.Tokens, false), " ")}
+					child.checks = append([]string{strings.Join(units.Sequence(row.Tokens, false), " ")}, c.checks...)
+					child.checksUnknown = c.checksUnknown || len(c.checks) == 0
 					child.Inputs = inputValues(row.Tokens)
 					child.Class, child.Boundary = equivalence(child.Inputs, constants, stringsSet)
 					identity := strings.Join(child.Targets, "|") + "\x00" + child.Class + "\x00" + child.Shape
@@ -312,6 +290,61 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 		}
 	}
 	return all, budget, out, gaps, ctx.Err()
+}
+
+// 断言比较需要完整的调用文本。大小比较保留在实参中，不用尖括号截断表达式。
+func assertionExpressions(repo repostats.Repository, caseName string, body []units.Token) (checks []string, mock string, unknown bool) {
+	ts := units.Significant(body)
+	ends := make([]int, len(ts))
+	var stack []int
+	for i, t := range ts {
+		switch t.Text {
+		case "(", "[", "{":
+			stack = append(stack, i)
+		case ")", "]", "}":
+			if len(stack) == 0 {
+				continue
+			}
+			open := stack[len(stack)-1]
+			switch ts[open].Text + t.Text {
+			case "()", "[]", "{}":
+				ends[open] = i
+				stack = stack[:len(stack)-1]
+			default:
+				stack = stack[:0]
+			}
+		}
+	}
+	covered := -1
+	for i, t := range ts {
+		if t.Kind != "identifier" || t.Text == caseName || i+1 >= len(ts) {
+			continue
+		}
+		open := ts[i+1].Text
+		if (open != "(" && open != "[" && open != "<") || repo.TestWord(t.Text, false) <= 0 {
+			continue
+		}
+		end := ends[i+1]
+		for end > 0 && end+1 < len(ts) && (ts[end+1].Text == "(" || ts[end+1].Text == "[") {
+			end = ends[end+1]
+		}
+		if end == 0 {
+			// 已核对的外层调用包含这段文本；内部的比较不构成另一处未读全的断言。
+			unknown = unknown || i > covered
+			continue
+		}
+		covered = max(covered, end)
+		args := strings.Join(units.Sequence(ts[i+2:end], false), " ")
+		expression := t.Text + open + args + ts[end].Text
+		checks = append(checks, expression)
+		if mock == "" {
+			words := units.Words(args)
+			if len(words) > 0 && !slices.ContainsFunc(words, func(w string) bool { return repo.TestWord(w, true) <= 0 }) {
+				mock = expression
+			}
+		}
+	}
+	return checks, mock, unknown
 }
 
 func equivalence(inputs []string, constants []float64, stringsSet map[string]bool) (string, []string) {
