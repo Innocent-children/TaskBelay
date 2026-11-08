@@ -44,14 +44,12 @@ func (s *Store) SaveIndexRows(ctx context.Context, id string, rows []IndexRow) e
 	if len(rows) == 0 {
 		return ctx.Err()
 	}
-	args := make([]any, 0, 5*len(rows))
-	for _, r := range rows {
-		args = append(args, id, r.Kind, r.Key, r.Member, r.Data)
-	}
-	query := "INSERT INTO analysis_index_rows_v12 VALUES " + strings.TrimSuffix(strings.Repeat("(?,?,?,?,?),", len(rows)), ",") + " ON CONFLICT(index_id,kind,key,member) DO NOTHING"
-	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, query, args...)
+	pages, err := prepareIndexPages(ctx, rows)
+	if err != nil {
 		return err
+	}
+	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		return saveIndexPages(ctx, tx, id, pages, false)
 	})
 }
 func (s *Store) PublishIndex(ctx context.Context, r AnalysisIndex) error {
@@ -66,27 +64,66 @@ const indexLineage = `WITH RECURSIVE lineage(id,depth) AS (
 ) `
 
 func (s *Store) IndexRows(ctx context.Context, id, kind, key string) ([]IndexRow, error) {
-	var out []IndexRow
+	type match struct {
+		member, data, page string
+		emptyMembers       bool
+	}
+	var matches []match
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		args := []any{id, kind, key}
-		query := indexLineage + `SELECT kind,key,member,data FROM (
- SELECT r.*,row_number() OVER(PARTITION BY r.key,r.member ORDER BY l.depth) AS rank
- FROM lineage l CROSS JOIN analysis_index_rows_v12 r WHERE r.index_id=l.id AND r.kind=? AND r.key=?) WHERE rank=1 AND data<>'' ORDER BY key,member`
-		rows, err := q.QueryContext(ctx, query, args...)
+		query := indexLineage + `SELECT member,data,page,empty_members FROM (
+ SELECT l.depth,0 AS priority,0 AS seq,r.member,r.data,'' AS page,0 AS empty_members FROM lineage l CROSS JOIN analysis_index_rows_v12 r
+ WHERE r.index_id=l.id AND r.kind=?2 AND r.key=?3
+ UNION ALL
+ SELECT l.depth,2-p.legacy,p.seq,'','',p.sha256,p.empty_members FROM lineage l CROSS JOIN analysis_index_pages_v13 p
+ WHERE p.index_id=l.id AND p.kind=?2 AND p.last_key>=?3 AND p.first_key<=?3)
+ ORDER BY depth,priority,seq`
+		rows, err := q.QueryContext(ctx, query, id, kind, key)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var r IndexRow
-			if err := rows.Scan(&r.Kind, &r.Key, &r.Member, &r.Data); err != nil {
+			var m match
+			if err := rows.Scan(&m.member, &m.data, &m.page, &m.emptyMembers); err != nil {
 				return err
 			}
-			out = append(out, r)
+			matches = append(matches, m)
 		}
 		return rows.Err()
 	})
-	return out, err
+	if err != nil {
+		return nil, err
+	}
+	var out []IndexRow
+	seen := map[string]bool{}
+	add := func(member, data string) {
+		if !seen[member] && data != "" {
+			out = append(out, IndexRow{kind, key, member, data})
+		}
+		seen[member] = true
+	}
+	for _, m := range matches {
+		if m.page == "" {
+			add(m.member, m.data)
+			continue
+		}
+		if m.emptyMembers && seen[""] {
+			continue
+		}
+		rows, err := s.indexPageRows(ctx, m.page)
+		if err != nil {
+			return nil, err
+		}
+		start := sort.Search(len(rows), func(i int) bool { return rows[i].Key >= key })
+		for _, row := range rows[start:] {
+			if row.Key != key {
+				break
+			}
+			add(row.Member, row.Data)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Member < out[j].Member })
+	return out, ctx.Err()
 }
 
 /**
@@ -115,6 +152,13 @@ func (s *Store) IndexPrefixRows(ctx context.Context, id, kind, prefix string, pa
 	}
 	var out []IndexRow
 	seen := map[[2]string]bool{}
+	add := func(row IndexRow) {
+		key := [2]string{row.Key, row.Member}
+		if !seen[key] && row.Data != "" {
+			out = append(out, row)
+		}
+		seen[key] = true
+	}
 	for _, layer := range lineage {
 		var last *IndexRow
 		for {
@@ -158,11 +202,48 @@ func (s *Store) IndexPrefixRows(ctx context.Context, id, kind, prefix string, pa
 			}
 			last = &batch[len(batch)-1]
 			for _, row := range batch {
-				key := [2]string{row.Key, row.Member}
-				if !seen[key] && row.Data != "" {
-					out = append(out, row)
+				add(row)
+			}
+		}
+		// 迁移只从旧表移入不可变页。先读旧行、再取页目录，跨批迁移也不会漏读。
+		type pageRef struct {
+			hash      string
+			singleKey sql.NullString
+		}
+		var pages []pageRef
+		end := prefix + "\U0010ffff"
+		err = s.read(ctx, func(ctx context.Context, q queryer) error {
+			rows, err := q.QueryContext(ctx, `SELECT sha256,CASE WHEN empty_members AND first_key=last_key THEN first_key END FROM analysis_index_pages_v13 WHERE index_id=? AND kind=?
+ AND last_key>=? AND first_key<? ORDER BY legacy DESC,seq`, layer, kind, prefix, end)
+			if err != nil {
+				return err
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var page pageRef
+				if err := rows.Scan(&page.hash, &page.singleKey); err != nil {
+					return err
 				}
-				seen[key] = true
+				pages = append(pages, page)
+			}
+			return rows.Err()
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, page := range pages {
+			if page.singleKey.Valid && seen[[2]string{page.singleKey.String, ""}] {
+				continue
+			}
+			rows, err := s.indexPageRows(ctx, page.hash)
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				if row.Key >= prefix && row.Key < end {
+					row.Kind = kind
+					add(row)
+				}
 			}
 		}
 	}

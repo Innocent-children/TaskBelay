@@ -625,6 +625,13 @@ func (x *repositoryIndex) publish(id, parent string) error {
 	}
 	for _, key := range keys(x.writes) {
 		row := x.writes[key]
+		// 已读取的父层成员可直接继承。只在发布时省略，约定和匹配器仍使用完整的本次改动。
+		if x.base != nil {
+			k := rowKey(row.Kind, row.Key)
+			if x.base.loaded[k] && x.base.rows[k][row.Member] == row.Data {
+				continue
+			}
+		}
 		size := len(row.Kind) + len(row.Key) + len(row.Member) + len(row.Data)
 		if len(batch) == IndexBatch || bytes+size > IndexBatchBytes {
 			if err := flush(); err != nil {

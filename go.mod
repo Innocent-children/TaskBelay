@@ -3,6 +3,7 @@ module github.com/Innocent-children/taskbelay
 go 1.26.0
 
 require (
+	github.com/klauspost/compress v1.20.3
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	golang.org/x/mod v0.42.0
 	golang.org/x/sys v0.49.0

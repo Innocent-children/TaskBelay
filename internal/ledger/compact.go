@@ -110,5 +110,14 @@ func (s *Store) Compact(ctx context.Context, workspace string) error {
 			}
 		}
 	}
+	for ctx.Err() == nil {
+		if deadline, ok := ctx.Deadline(); ok && time.Until(deadline) <= FastWait {
+			break
+		}
+		more, err := s.compactIndexBatch(ctx)
+		if err != nil || !more {
+			return err
+		}
+	}
 	return ctx.Err()
 }

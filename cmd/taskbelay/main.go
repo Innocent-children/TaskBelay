@@ -29,6 +29,7 @@ const usage = `TaskBelay：记录需求、改动和验证结果，帮助 Agent �
   taskbelay hook <claude|codex> <事件>
   taskbelay mcp
   taskbelay status
+  taskbelay compact
   taskbelay hits --since 14d
   taskbelay check [--tests] [--refresh]
   taskbelay config get <设置项>
@@ -96,6 +97,17 @@ func run(ctx context.Context, args []string, env platform.Env, dir string, outpu
 				return runDoctor(ctx, env, output)
 			case "update":
 				return runUpdate(ctx, env, output)
+			case "compact":
+				store, err := ledger.Open(ctx, env.DataDir, ledger.NormalWait)
+				if err != nil {
+					return err
+				}
+				defer store.Close()
+				if err := store.ReclaimSpace(ctx); err != nil {
+					return err
+				}
+				_, err = fmt.Fprintln(output, "已整理分析索引并归还数据库空闲页。")
+				return err
 			}
 		}
 		if len(args) >= 2 && args[0] == "uninstall" && args[1] == "--all" {

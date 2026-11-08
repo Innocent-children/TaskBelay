@@ -65,10 +65,10 @@ func (s *Store) SaveAnalysisCache(ctx context.Context, kind, key string, value a
 }
 
 func (s *Store) AnalysisRecord(ctx context.Context, task, version, kind string, target any) (bool, error) {
-	var raw string
+	var body storedBody
 	found := false
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		err := q.QueryRowContext(ctx, "SELECT data FROM analysis_records_v12 WHERE task_id=? AND input_version=? AND kind=?", task, version, kind).Scan(&raw)
+		err := q.QueryRowContext(ctx, "SELECT data,encoding,raw_bytes,sha256 FROM analysis_records_v12 WHERE task_id=? AND input_version=? AND kind=?", task, version, kind).Scan(&body.Body, &body.Encoding, &body.RawBytes, &body.SHA256)
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil
 		}
@@ -78,7 +78,14 @@ func (s *Store) AnalysisRecord(ctx context.Context, task, version, kind string, 
 	if err != nil || !found {
 		return found, err
 	}
-	return true, json.Unmarshal([]byte(raw), target)
+	raw := body.Body
+	if body.Encoding != "" {
+		raw, err = body.decode(ctx)
+		if err != nil {
+			return false, err
+		}
+	}
+	return true, json.Unmarshal(raw, target)
 }
 
 func (s *Store) SaveAnalysisRecord(ctx context.Context, task, version, kind, state string, value any) error {
@@ -86,8 +93,14 @@ func (s *Store) SaveAnalysisRecord(ctx context.Context, task, version, kind, sta
 	if err != nil {
 		return err
 	}
+	body, err := prepareBody(ctx, raw)
+	if err != nil {
+		return err
+	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO analysis_records_v12 VALUES(?,?,?,?,?) ON CONFLICT(task_id,input_version,kind) DO UPDATE SET state=excluded.state,data=excluded.data`, task, version, kind, state, string(raw))
+		_, err := tx.ExecContext(ctx, `INSERT INTO analysis_records_v12(task_id,input_version,kind,state,data,encoding,raw_bytes,sha256)
+ VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(task_id,input_version,kind) DO UPDATE SET state=excluded.state,data=excluded.data,
+ encoding=excluded.encoding,raw_bytes=excluded.raw_bytes,sha256=excluded.sha256`, task, version, kind, state, body.Body, body.Encoding, body.RawBytes, body.SHA256)
 		return err
 	})
 }

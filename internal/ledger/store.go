@@ -21,9 +21,10 @@ const (
 )
 
 type Store struct {
-	db        *sql.DB
-	waitLimit time.Duration
-	dataDir   string
+	db         *sql.DB
+	waitLimit  time.Duration
+	dataDir    string
+	indexPages indexPageCache
 }
 
 func (s *Store) DataDir() string { return s.dataDir }
@@ -235,7 +236,12 @@ PRAGMA user_version=1;
 			return err
 		}
 	}
-	if err := migrateV12(ctx, tx); err != nil {
+	if version < 12 {
+		if err := migrateV12(ctx, tx); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, indexPageSchema); err != nil {
 		return err
 	}
 	return tx.Commit()

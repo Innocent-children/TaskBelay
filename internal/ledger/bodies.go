@@ -9,8 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
+	"github.com/klauspost/compress/zstd"
 )
 
 type storedBody struct {
@@ -20,19 +22,30 @@ type storedBody struct {
 	Body     []byte
 }
 
+var bodyWriters = sync.Pool{New: func() any {
+	writer, _ := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1))
+	return writer
+}}
+
+var bodyReaders = sync.Pool{New: func() any {
+	reader, _ := zstd.NewReader(nil, zstd.WithDecoderConcurrency(1))
+	return reader
+}}
+
 func prepareBody(ctx context.Context, raw []byte) (storedBody, error) {
 	body := storedBody{Encoding: "json", RawBytes: int64(len(raw)), SHA256: fmt.Sprintf("%x", sha256.Sum256(raw)), Body: raw}
 	if err := ctx.Err(); err != nil {
 		return body, err
 	}
 	var compressed bytes.Buffer
-	writer, err := gzip.NewWriterLevel(&compressed, gzip.BestSpeed)
-	if err != nil {
-		return body, err
-	}
+	writer := bodyWriters.Get().(*zstd.Encoder)
+	writer.Reset(&compressed)
+	defer func() {
+		writer.Reset(io.Discard)
+		bodyWriters.Put(writer)
+	}()
 	for offset := 0; offset < len(raw); offset += 32 * 1024 {
 		if err := ctx.Err(); err != nil {
-			writer.Close()
 			return body, err
 		}
 		if _, err := writer.Write(raw[offset:min(len(raw), offset+32*1024)]); err != nil {
@@ -46,7 +59,7 @@ func prepareBody(ctx context.Context, raw []byte) (storedBody, error) {
 		return body, err
 	}
 	if compressed.Len() < len(raw) {
-		body.Encoding, body.Body = "gzip", compressed.Bytes()
+		body.Encoding, body.Body = "zstd", compressed.Bytes()
 	}
 	return body, nil
 }
@@ -59,14 +72,27 @@ func (body storedBody) decode(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 	raw := body.Body
+	var reader io.Reader
 	switch body.Encoding {
-	case "json":
+	case "json", "raw":
 	case "gzip":
-		reader, err := gzip.NewReader(bytes.NewReader(body.Body))
+		stream, err := gzip.NewReader(bytes.NewReader(body.Body))
 		if err != nil {
 			return nil, err
 		}
-		defer reader.Close()
+		defer stream.Close()
+		reader = stream
+	case "zstd":
+		stream := bodyReaders.Get().(*zstd.Decoder)
+		defer func() { stream.Reset(nil); bodyReaders.Put(stream) }()
+		if err := stream.Reset(bytes.NewReader(body.Body)); err != nil {
+			return nil, err
+		}
+		reader = stream
+	default:
+		return nil, fmt.Errorf("未知正文编码 %q", body.Encoding)
+	}
+	if reader != nil {
 		var out bytes.Buffer
 		buffer := make([]byte, 32*1024)
 		limited := io.LimitReader(reader, body.RawBytes+1)
@@ -84,8 +110,6 @@ func (body storedBody) decode(ctx context.Context) ([]byte, error) {
 			}
 		}
 		raw = out.Bytes()
-	default:
-		return nil, fmt.Errorf("未知正文编码 %q", body.Encoding)
 	}
 	if int64(len(raw)) != body.RawBytes || fmt.Sprintf("%x", sha256.Sum256(raw)) != body.SHA256 {
 		return nil, fmt.Errorf("正文长度或摘要不一致")
