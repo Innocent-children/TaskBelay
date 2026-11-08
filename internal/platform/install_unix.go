@@ -9,6 +9,8 @@ import (
 
 func UserBinDir(env Env) string { return filepath.Join(env.HomeDir, ".local", "bin") }
 
+func ExecutableFileInfo(path string) (os.FileInfo, error) { return os.Stat(path) }
+
 func ReplaceExecutable(staged, target string) (string, error) {
 	return "", os.Rename(staged, target)
 }

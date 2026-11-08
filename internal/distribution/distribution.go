@@ -126,7 +126,7 @@ func update(ctx context.Context, env platform.Env, executable, current, baseURL 
 	if err != nil {
 		return "", fmt.Errorf("替换程序失败: %w", err)
 	}
-	return "已更新程序；请重新运行 taskbelay，并重启使用旧版的 Agent session。\n" + retiredMessage(leftover), nil
+	return "已更新程序。Agent 下次连接 MCP 时会加载新版；如连接已断开，可重连 MCP 或重新打开会话。\n" + retiredMessage(leftover), nil
 }
 
 func download(ctx context.Context, client *http.Client, url string, output io.Writer, limit int64) error {
@@ -193,5 +193,5 @@ func retiredMessage(path string) string {
 	if path == "" {
 		return ""
 	}
-	return "旧程序仍被占用；关闭使用旧版的 Agent 后可删除此文件：" + path + "\n"
+	return "旧程序仍被占用；使用它的进程退出后可删除此文件：" + path + "\n"
 }

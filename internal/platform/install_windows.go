@@ -16,6 +16,26 @@ func UserBinDir(env Env) string {
 	return filepath.Join(dir, "Programs", "TaskBelay")
 }
 
+/**
+ * 从句柄立即取得卷与文件编号，允许安装器同时重命名或移除目录项。
+ * 仅保存路径的 FileInfo 可能在稍后的 SameFile 比较中才去读取编号。
+ */
+func ExecutableFileInfo(path string) (os.FileInfo, error) {
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, err
+	}
+	handle, err := windows.CreateFile(name, windows.FILE_READ_ATTRIBUTES,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if err != nil {
+		return nil, err
+	}
+	file := os.NewFile(uintptr(handle), path)
+	defer file.Close()
+	return file.Stat()
+}
+
 func retireExecutable(target string) (string, error) {
 	f, err := os.CreateTemp(filepath.Dir(target), ".taskbelay-retired-*.exe")
 	if err != nil {

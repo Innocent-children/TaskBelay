@@ -106,7 +106,7 @@ try {
     [IO.File]::WriteAllText($marker, $markerText, [Text.Encoding]::ASCII)
     if ($retired) {
         try { Remove-Item -LiteralPath $retired -Force }
-        catch { Write-Warning "Old executable is still in use. Close older Agent sessions, then remove: $retired" }
+        catch { Write-Warning "Old executable is still in use. After its processes exit, you can remove $retired" }
     }
     [string]$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
     if (($userPath -split ';') -notcontains $installDir) {
