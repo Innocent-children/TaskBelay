@@ -202,17 +202,17 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		}
 		r.Candidates = append(r.Candidates, c)
 	}
+	recovery, err := recoveries(ctx, in)
+	if err != nil {
+		return r, err
+	}
+	r.Candidates = append(r.Candidates, recovery...)
+	for _, c := range recovery {
+		if !slices.Contains(r.Defensive, c.Cluster) {
+			r.Defensive = append(r.Defensive, c.Cluster)
+		}
+	}
 	if !in.EditPreview {
-		recovery, err := recoveries(ctx, in)
-		if err != nil {
-			return r, err
-		}
-		r.Candidates = append(r.Candidates, recovery...)
-		for _, c := range recovery {
-			if !slices.Contains(r.Defensive, c.Cluster) {
-				r.Defensive = append(r.Defensive, c.Cluster)
-			}
-		}
 		indirect, gaps, err := indirections(ctx, in)
 		if err != nil {
 			return r, err
@@ -273,6 +273,9 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		}
 		if in.EditPreview {
 			c.ReviewOnly, c.BlockFact = true, ""
+			if c.Kind == "recovery" {
+				c.Facts = append(c.Facts, "该结构不能确认这是错误路径，也不能证明恢复操作多余；保留必要的错误传递和资源处理")
+			}
 			c.Advice += "；仅核对本次拟编辑内容，不据此覆盖或撤回已有用户修改"
 		}
 		c.ID = units.Hash(c.Kind, c.Object)
