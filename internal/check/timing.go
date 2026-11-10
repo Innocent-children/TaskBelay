@@ -170,6 +170,8 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		suffix := "本次仅完成上述测试用途核对，其余编辑前核对未完成。"
 		if scope == "targets" {
 			suffix = "本次已完成目标内容的设计与测试用途核对，测试比较未完成。"
+		} else if scope == "target_purposes" {
+			suffix = "本次已完成目标内容的独立设计与测试用途核对，重复实现与测试比较未完成。"
 		}
 		text, selected := editAdvice(completed, suffix)
 		details["displayed"] = selected
@@ -185,6 +187,17 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		return partial(err)
 	}
 	design = requirementFacts(view, input, design)
+	completed = append(slices.Clone(design.Candidates), purposes.Candidates...)
+	scope = "target_purposes"
+	details["target_design_candidates"] = len(design.Candidates)
+	advance("similarities")
+	design, err = signals.SimilarityPreview(ctx, input, design)
+	if err != nil {
+		return partial(err)
+	}
+	if err := snapshot.err(); err != nil {
+		return partial(err)
+	}
 	completed = append(slices.Clone(design.Candidates), purposes.Candidates...)
 	scope = "targets"
 	details["design_candidates"] = len(design.Candidates)

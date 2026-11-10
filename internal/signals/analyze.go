@@ -109,7 +109,7 @@ func mentionsFile(text, name string) bool {
 	return false
 }
 
-func analyzeDesign(ctx context.Context, in Input) (Result, error) {
+func analyzeTargetDesign(ctx context.Context, in Input) (Result, error) {
 	r := Result{TestBudget: map[string]int{}}
 	if len(in.Changes.Hunks) == 0 {
 		return r, ctx.Err()
@@ -258,6 +258,14 @@ func analyzeDesign(ctx context.Context, in Input) (Result, error) {
 	}
 	r.Candidates = append(r.Candidates, indirect...)
 	r.Gaps = append(r.Gaps, gaps...)
+	return r, ctx.Err()
+}
+
+func analyzeDesign(ctx context.Context, in Input) (Result, error) {
+	r, err := analyzeTargetDesign(ctx, in)
+	if err != nil || len(in.Changes.Hunks) == 0 {
+		return r, err
+	}
 	duplicate, err := similarities(ctx, in)
 	if err != nil {
 		return r, err
@@ -290,16 +298,35 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 }
 
 /**
- * DesignPreview 在测试比较参照准备前完成目标内容的设计核对。
- * 与完整检查共用规则，测试比较不会扩大这一步的分析范围。
+ * DesignPreview 完成不依赖相似参照的目标设计核对，与完整检查共用规则。
+ * 先保存这一步，避免后续参照读取失败时丢失独立提醒。
  */
 func DesignPreview(ctx context.Context, in Input) (Result, error) {
 	in.EditPreview = true
-	r, err := analyzeDesign(ctx, in)
+	r, err := analyzeTargetDesign(ctx, in)
 	if err != nil {
 		return r, err
 	}
 	return finishCandidates(ctx, in, r)
+}
+
+/**
+ * SimilarityPreview 核对重复实现并合并已完成的目标设计，不重复计算或处理原候选。
+ * 失败时由调用方保留此前结果，不采用本步的不完整候选。
+ */
+func SimilarityPreview(ctx context.Context, in Input, design Result) (Result, error) {
+	in.EditPreview = true
+	duplicate, err := similarities(ctx, in)
+	if err != nil {
+		return Result{}, err
+	}
+	r, err := finishCandidates(ctx, in, Result{Candidates: duplicate, Defensive: design.Defensive})
+	if err != nil {
+		return Result{}, err
+	}
+	design.Candidates = append(slices.Clone(design.Candidates), r.Candidates...)
+	sort.Slice(design.Candidates, func(i, j int) bool { return design.Candidates[i].ID < design.Candidates[j].ID })
+	return design, nil
 }
 
 /**
