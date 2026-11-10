@@ -168,7 +168,12 @@ func unitStructure(f units.File, u units.Unit) UnitStructure {
 	return s
 }
 
-func addMember(s *UnitStructure, v units.Unit) {
+func addMember(s *UnitStructure, parent, v units.Unit) {
+	// 括号树的参数和类型节点会沿用声明开头，不能当作外层的独立成员。
+	if v.Start < parent.HeaderEnd {
+		s.Abstract = false
+		return
+	}
 	declared := false
 	for _, t := range v.Tokens {
 		if t.End > v.HeaderEnd {
@@ -206,7 +211,7 @@ func Structure(f units.File, u units.Unit) UnitStructure {
 		if v.Parent < 0 || f.Units[v.Parent].ID != u.ID || j == u.Parent {
 			continue
 		}
-		addMember(&s, v)
+		addMember(&s, u, v)
 	}
 	return s
 }
@@ -219,7 +224,7 @@ func FileStructures(f units.File) []UnitStructure {
 	}
 	for j, child := range f.Units {
 		if p := child.Parent; p >= 0 && j != f.Units[p].Parent {
-			addMember(&out[p], child)
+			addMember(&out[p], f.Units[p], child)
 		}
 	}
 	return out

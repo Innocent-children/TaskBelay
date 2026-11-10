@@ -4,7 +4,7 @@ package check
 import "time"
 
 const (
-	Algorithm               = "content-14"           // 计算格式版本；见 algorithm.md 一、八节。
+	Algorithm               = "content-15"           // 计算格式版本；见 algorithm.md 一、八节。
 	FeedbackVersion         = 5                      // 反馈格式版本；见 requirements-ledger.md MCP 工具。
 	PruneBatch              = 200                    // 每批删除的无引用索引页数；每批都在普通写入的等待时限内提交。
 	GapExamples             = 2                      // 反馈里列出的无法判断项示例数；完整清单在检查记录中。
