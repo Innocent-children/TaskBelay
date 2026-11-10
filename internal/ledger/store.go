@@ -100,6 +100,33 @@ func (s *Store) connection(ctx context.Context) (*sql.Conn, context.Context, fun
 	return conn, ctx, release, nil
 }
 
+/**
+ * beginWrite 避免递增忙等待在短预算内错过并发写锁的释放。
+ * 只重试尚未开始的事务；连接等待、重试和业务写入共用调用方的截止时间。
+ */
+func beginWrite(ctx context.Context, conn *sql.Conn) (*sql.Tx, error) {
+	if _, err := conn.ExecContext(ctx, "PRAGMA busy_timeout = 0"); err != nil {
+		return nil, err
+	}
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		tx, err := conn.BeginTx(ctx, nil)
+		var sqliteErr *sqlite.Error
+		if !errors.As(err, &sqliteErr) || sqliteErr.Code()&0xff != sqlite3.SQLITE_BUSY {
+			return tx, err
+		}
+		timer := time.NewTimer(time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+}
+
 func (s *Store) initialize(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, s.waitLimit)
 	defer cancel()
@@ -149,7 +176,7 @@ func (s *Store) initializeOnce(ctx context.Context) error {
 	if version == schemaVersion {
 		return nil
 	}
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := beginWrite(ctx, conn)
 	if err != nil {
 		return fmt.Errorf("开始账本迁移: %w", err)
 	}

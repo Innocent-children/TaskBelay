@@ -212,7 +212,7 @@ func (s *Store) RegisterGitWorkspace(ctx context.Context, w gitstate.Workspace) 
 	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
 		return err
 	}
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := beginWrite(ctx, conn)
 	if err != nil {
 		return err
 	}
@@ -313,7 +313,7 @@ func (s *Store) SaveObservation(ctx context.Context, view ObservationView, obser
 		return err
 	}
 	defer release()
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := beginWrite(ctx, conn)
 	if err != nil {
 		return err
 	}

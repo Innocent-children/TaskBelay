@@ -83,7 +83,7 @@ func (s *Store) SetSetting(ctx context.Context, workspaceID string, scope Scope,
 		return err
 	}
 	defer release()
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := beginWrite(ctx, conn)
 	if err != nil {
 		return err
 	}

@@ -312,7 +312,7 @@ func (s *Store) write(ctx context.Context, f func(context.Context, *sql.Tx) erro
 		return err
 	}
 	defer release()
-	tx, err := conn.BeginTx(ctx, nil)
+	tx, err := beginWrite(ctx, conn)
 	if err != nil {
 		return err
 	}
