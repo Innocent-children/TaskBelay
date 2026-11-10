@@ -200,6 +200,21 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 			}
 			c.Advice += "；核对当前使用者何时需要切换取值，以及沿用固定行为会失去什么功能"
 		}
+		if in.EditPreview {
+			switch item.Kind {
+			case "flag", "env", "route", "entry":
+				if item.Value != "" {
+					c.Facts = append(c.Facts, "识别到的取值片段："+item.Value)
+				}
+				c.Facts = append(c.Facts, "代码形状不能确认它确为对外入口，也不能证明它有必要；注册式调用也可能是内部日志，字面量也可能是内部数据")
+				c.Advice = "先核对它是否确为对外入口、谁需要这个入口、它承担什么当前需求、复用现有入口或保持既有行为会失去什么功能，以及新增入口的使用和维护成本；确认多余后再省去，无法确认时保留必要入口，不因此补测试"
+				if item.Anchor == "agent" {
+					c.Advice += "；沿用已有登记，无需重复登记"
+				} else {
+					c.Advice += "；确需保留时用 implemented_by 登记对应需求和用途"
+				}
+			}
+		}
 		if in.EditPreview && item.Kind == "dep" {
 			c.Facts = append(c.Facts, "清单中识别到的版本片段："+item.Value, "清单声明不能证明依赖有必要，也不能证明已有实现无法满足需求")
 			c.Advice = "先核对该依赖承担的当前需求、标准库或已有实现能否满足，以及省下的工作是否足以抵消引入、运行和维护成本；确认多余后再省去该依赖，无法确认时保留必要依赖，不因此补测试"
