@@ -170,9 +170,15 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		details["displayed"] = selected
 		return text, nil
 	}
-	advance("references")
-	if err := snapshot.editCaseNeighbourhood(ctx, w, beforeFiles, files); err != nil {
-		return partial(err)
+	comparisons := slices.ContainsFunc(purposes.Cases, func(c signals.Case) bool {
+		return c.Added && c.AgentOnly && !c.Retained
+	})
+	details["test_references_needed"] = comparisons
+	if comparisons {
+		advance("references")
+		if err := snapshot.editCaseNeighbourhood(ctx, w, beforeFiles, files); err != nil {
+			return partial(err)
+		}
 	}
 	advance("signals")
 	result, err := analyzeSignals(ctx, view, signals.Input{EditPreview: true, Queries: snapshot.editQueries(ctx, w, beforeFiles, files), Before: snapshot.Before, After: snapshot.After, Changes: delta, Requirements: requirements(view)})
