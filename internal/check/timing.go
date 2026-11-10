@@ -10,6 +10,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/signals"
 	"github.com/Innocent-children/taskbelay/internal/units"
 	"path"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -107,7 +108,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 	if err := snapshot.editCaseNeighbourhood(ctx, w, beforeFiles, files); err != nil {
 		return "", err
 	}
-	result, err := analyzeSignals(ctx, view, signals.Input{EditPreview: true, Queries: snapshot.queries(), Before: snapshot.Before, After: snapshot.After, Changes: delta, Requirements: requirements(view)})
+	result, err := analyzeSignals(ctx, view, signals.Input{EditPreview: true, Queries: snapshot.editQueries(ctx, w, beforeFiles, files), Before: snapshot.Before, After: snapshot.After, Changes: delta, Requirements: requirements(view)})
 	if err != nil {
 		return "", err
 	}
@@ -134,6 +135,72 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		}
 	}
 	return LimitFeedback(strings.Join(advice, "\n")), snapshot.err()
+}
+
+/**
+ * 起点索引只用于找相似候选；预览不能把已变化的实现当作当前可复用的参照。
+ * 同批目标直接核对两份内容，其余文件按路径复用本次读取结果。
+ */
+func (s indexedSnapshot) editQueries(ctx context.Context, w gitstate.Workspace, current, proposed map[string]units.File) *signals.Queries {
+	q := s.queries()
+	similar := q.Similar
+	checked := map[string]bool{}
+	q.Similar = func(signature []uint64) []signals.SimilarUnit {
+		var out []signals.SimilarUnit
+		for _, candidate := range similar(signature) {
+			if err := ctx.Err(); err != nil {
+				s.Origin.err = err
+				return nil
+			}
+			if !candidate.Callable {
+				continue
+			}
+			p := candidate.Path
+			if f, editing := proposed[p]; editing {
+				// 索引单元省略了词流，从已有文件分析中取回，不能拿空词流比较。
+				for _, u := range s.Origin.load(p).Units {
+					if u.ID == candidate.Unit.ID && u.Start == candidate.Unit.Start {
+						if samePreviewDeclaration(current[p], u) && samePreviewDeclaration(f, u) {
+							out = append(out, candidate)
+						}
+						break
+					}
+				}
+				continue
+			}
+			valid, known := checked[p]
+			if !known {
+				f := s.Origin.fileInfo(p)
+				indexed := gitstate.File{Blob: f.Blob, Mode: f.Mode}
+				observed, _, err := w.ReadObservedFile(ctx, p, indexed)
+				if err != nil {
+					s.Origin.err = err
+					return nil
+				}
+				valid = indexed.Blob != "" && observed == indexed
+				checked[p] = valid
+			}
+			if valid {
+				out = append(out, candidate)
+			}
+		}
+		return out
+	}
+	return q
+}
+
+/**
+ * 位置和完整词流都要保留，避免用相似度规整后相同的字面量或旧位置确认参照。
+ */
+func samePreviewDeclaration(f units.File, indexed units.Unit) bool {
+	for _, u := range f.Units {
+		if u.ID == indexed.ID && u.Start == indexed.Start && u.End == indexed.End &&
+			u.HeaderEnd == indexed.HeaderEnd && u.Line == indexed.Line && u.EndLine == indexed.EndLine &&
+			slices.Equal(u.Tokens, indexed.Tokens) && signals.Structure(f, u).Callable {
+			return true
+		}
+	}
+	return false
 }
 
 /**
