@@ -200,6 +200,15 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 			}
 			c.Advice += "；核对当前使用者何时需要切换取值，以及沿用固定行为会失去什么功能"
 		}
+		if in.EditPreview && item.Kind == "dep" {
+			c.Facts = append(c.Facts, "清单中识别到的版本片段："+item.Value, "清单声明不能证明依赖有必要，也不能证明已有实现无法满足需求")
+			c.Advice = "先核对该依赖承担的当前需求、标准库或已有实现能否满足，以及省下的工作是否足以抵消引入、运行和维护成本；确认多余后再省去该依赖，无法确认时保留必要依赖，不因此补测试"
+			if item.Anchor == "agent" {
+				c.Advice += "；沿用已有登记，无需重复登记"
+			} else {
+				c.Advice += "；确需保留时用 implemented_by 登记对应需求和用途"
+			}
+		}
 		r.Candidates = append(r.Candidates, c)
 	}
 	recovery, err := recoveries(ctx, in)
