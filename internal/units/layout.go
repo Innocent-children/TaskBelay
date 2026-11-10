@@ -78,9 +78,18 @@ func indentLayout(ctx context.Context, f File, tokens []Token, failed int) ([]Un
 	var nodes []Unit
 	var stack []int
 	offset := 0
+	word := 0
 	for line, text := range f.Lines {
 		if err := ctx.Err(); err != nil {
 			return nil, "", 0, err
+		}
+		for word < len(tokens) && tokens[word].End <= offset {
+			word++
+		}
+		// 跨行词内部的排版属于词的内容，不能弹出外层代码节点。
+		if word < len(tokens) && tokens[word].Start < offset {
+			offset += len(text)
+			continue
 		}
 		trim := strings.TrimSpace(text)
 		if trim == "" {
@@ -140,7 +149,7 @@ func assignNames(ctx context.Context, f *File, syntax Syntax, buildIDs bool) err
 		keywords[k] = true
 	}
 	lastSeen := map[string]int{}
-	for i, u := range f.Units {
+	for _, u := range f.Units {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -148,9 +157,9 @@ func assignNames(ctx context.Context, f *File, syntax Syntax, buildIDs bool) err
 			if t.End > u.HeaderEnd {
 				break
 			}
-			if t.Kind == "identifier" && lastSeen[t.Text] != i+1 {
+			if t.Kind == "identifier" && lastSeen[t.Text] != u.Line {
 				freq[t.Text]++
-				lastSeen[t.Text] = i + 1
+				lastSeen[t.Text] = u.Line
 			}
 		}
 	}
@@ -179,14 +188,24 @@ func assignNames(ctx context.Context, f *File, syntax Syntax, buildIDs bool) err
 				}
 			}
 		}
+		callName := ""
+		depth := 0
 		for j, t := range u.Tokens {
 			if t.End > u.HeaderEnd {
 				break
 			}
-			if t.Kind == "identifier" && j+1 < len(u.Tokens) && u.Tokens[j+1].Text == "(" {
-				u.Name = t.Text
-				break
+			if depth == 0 && t.Kind == "identifier" && j+1 < len(u.Tokens) && u.Tokens[j+1].Text == "(" && (callName == "" || freq[t.Text] < freq[callName]) {
+				callName = t.Text
 			}
+			switch t.Text {
+			case "(", "[", "{":
+				depth++
+			case ")", "]", "}":
+				depth--
+			}
+		}
+		if callName != "" {
+			u.Name = callName
 		}
 		if !buildIDs {
 			continue

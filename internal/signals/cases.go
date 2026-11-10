@@ -85,7 +85,27 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			return all, budget, out, gaps, err
 		}
 		f := in.After.Files[p]
-		for _, u := range repostats.CaseUnits(in.After, p) {
+		caseUnits := repostats.CaseUnits(in.After, p)
+		callers := map[string]map[string]bool{}
+		for _, u := range caseUnits {
+			if err := ctx.Err(); err != nil {
+				return all, budget, out, gaps, err
+			}
+			if !declaration(f, u) {
+				continue
+			}
+			body := 0
+			for body < len(u.Tokens) && u.Tokens[body].Start < u.HeaderEnd {
+				body++
+			}
+			for name := range units.Calls(u.Tokens[body:]) {
+				if callers[name] == nil {
+					callers[name] = map[string]bool{}
+				}
+				callers[name][u.ID] = true
+			}
+		}
+		for _, u := range caseUnits {
 			if !in.After.TestUnits[repostats.UnitKey(p, u)] {
 				continue
 			}
@@ -103,6 +123,10 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 				}
 			}
 			if contained {
+				continue
+			}
+			// 测试内容也包含构造和执行辅助逻辑；其他声明直接调用它不证明它是独立用例。
+			if len(callers[u.Name]) > 1 || len(callers[u.Name]) == 1 && !callers[u.Name][u.ID] {
 				continue
 			}
 			cluster, agent := clusterFor(in, p, u.Line, u.EndLine)
