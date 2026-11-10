@@ -298,7 +298,12 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 		limit, known := budget[key]
 		used[key]++
 		if known && used[key] > limit && c.AgentOnly && !c.Retained {
-			out = append(out, Candidate{Kind: "test_budget", Object: c.ID, At: c.Path + ":" + c.Name, Cluster: c.Cluster, AgentOnly: true, Facts: []string{fmt.Sprintf("新增用例数超过按等价类和边界点计算的建议数量 %d；等价类 %s", limit, c.Class)}, Advice: "核对 " + c.Name + " 是否增加了不同的行为检查；建议数量只用于提示", Features: map[string]float64{"budget_excess": float64(used[key] - limit)}, Benefit: 1})
+			candidate := Candidate{Kind: "test_budget", Object: c.ID, At: c.Path + ":" + c.Name, Cluster: c.Cluster, AgentOnly: true, Facts: []string{fmt.Sprintf("新增用例数超过按等价类和边界点计算的建议数量 %d；等价类 %s", limit, c.Class)}, Advice: "核对 " + c.Name + " 是否增加了不同的行为检查；建议数量只用于提示", Features: map[string]float64{"budget_excess": float64(used[key] - limit)}, Benefit: 1}
+			if in.EditPreview {
+				candidate.Facts = append(candidate.Facts, "被测单元："+strings.Join(c.Targets, "|"), "建议数量不是上限，超过不证明用例多余或断言重复")
+				candidate.Advice = "先核对 " + c.Name + " 承担的当前需求、不同输入、期望结果或副作用，以及省去会失去的独特检查；确认没有独特检查后才考虑省去本次拟新增用例或表格行，依据不足时保留必要检查，不因此追加断言、辅助设施或验证"
+			}
+			out = append(out, candidate)
 		}
 	}
 	return all, budget, out, gaps, ctx.Err()
