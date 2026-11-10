@@ -244,15 +244,9 @@ func analyze(ctx context.Context, s *ledger.Store, w gitstate.Workspace, view le
 	if err != nil {
 		return a, err
 	}
-	var retained []string
-	for _, note := range view.EffectiveDecisions {
-		if note.Target != nil && note.Target.Effect == "retain" {
-			retained = append(retained, note.Target.At)
-		}
-	}
 	a.Index.caseNeighbourhood()
 	a.Before, a.After = a.Index.Before, a.Index.After
-	a.Signals, err = analyzeSignals(ctx, view, signals.Input{Queries: a.Index.queries(), Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Retained: retained})
+	a.Signals, err = analyzeSignals(ctx, view, signals.Input{Queries: a.Index.queries(), Before: a.Before, After: a.After, Changes: a.Changes, Regions: a.Regions, Requirements: a.Requirements, Retained: retainedObjects(view)})
 	if err != nil {
 		return a, err
 	}
@@ -310,6 +304,16 @@ func requirementFacts(view ledger.TaskView, input signals.Input, result signals.
 		}
 	}
 	return result
+}
+
+func retainedObjects(view ledger.TaskView) []string {
+	var retained []string
+	for _, note := range view.EffectiveDecisions {
+		if note.Target != nil && note.Target.Effect == "retain" {
+			retained = append(retained, note.Target.At)
+		}
+	}
+	return retained
 }
 
 func requirements(view ledger.TaskView) []changes.Requirement {

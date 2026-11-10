@@ -32,7 +32,7 @@ func (s *Store) CommandContext(ctx context.Context, workspace string) (TaskRecor
 }
 
 /**
- * 有有效需求时只读取匹配所需的记录；没有有效需求时沿用完整任务视图，
+ * 有有效需求时只读取匹配所需的记录和有效保留决定；没有有效需求时沿用完整任务视图，
  * 使原话回退包含历史引用展开的消息，避免另写一套来源递归规则。
  */
 func (s *Store) EditAnalysisContext(ctx context.Context, workspace string) (TaskView, error) {
@@ -84,7 +84,27 @@ ON r.task_id=? AND r.id=latest.id AND r.revision=latest.revision ORDER BY latest
 			}
 			hasRequirement = hasRequirement || view.Requirements[i].Status != "revoked"
 		}
-		return nil
+		if !hasRequirement {
+			return nil
+		}
+		rows, err = q.QueryContext(ctx, `SELECT data FROM notes_v12
+WHERE task_id=? AND active=1 AND consumed=0 AND json_extract(data,'$.target.effect')='retain' ORDER BY seq`, task.ID)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var raw string
+			var note Note
+			if err := rows.Scan(&raw); err != nil {
+				return err
+			}
+			if err := json.Unmarshal([]byte(raw), &note); err != nil {
+				return err
+			}
+			view.EffectiveDecisions = append(view.EffectiveDecisions, note)
+		}
+		return rows.Err()
 	})
 	if err != nil || view.Task == nil || hasRequirement {
 		return view, err

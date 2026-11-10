@@ -154,7 +154,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 	}
 	snapshot := indexedSnapshot{Origin: base, Current: base, Before: before, After: after, Paths: paths}
 	advance("test_purposes")
-	input := signals.Input{EditPreview: true, Before: before, After: after, Changes: delta, Requirements: requirements(view)}
+	input := signals.Input{EditPreview: true, Before: before, After: after, Changes: delta, Requirements: requirements(view), Retained: retainedObjects(view)}
 	purposes, err := signals.TestPurposePreview(ctx, input)
 	if err != nil {
 		return "", err
