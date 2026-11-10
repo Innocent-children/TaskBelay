@@ -25,10 +25,10 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 		return nil, fmt.Errorf("char_offset 不能为负；char_limit 为 1 至 12000，默认 2000")
 	}
 	if input.RecordID == "" && (input.CharOffset != 0 || input.CharLimit != 0 || input.Revision != 0) {
-		return nil, fmt.Errorf("正文偏移和修订必须与 record_id 一起使用")
+		return nil, fmt.Errorf("revision、char_offset、char_limit 仅用于指定 record_id 的正文读取；列表只用 category、after_seq、limit。请移除正文参数查询列表，再按 records[].read 读取单条正文")
 	}
 	if input.RecordID != "" && (input.AfterSeq != 0 || input.Limit != 0) {
-		return nil, fmt.Errorf("单条正文读取不能同时指定列表游标或条数")
+		return nil, fmt.Errorf("指定 record_id 读取单条正文时不能传 after_seq 或 limit；请移除列表参数，需要限制正文长度时用 char_limit")
 	}
 	page, err := service.Store.TaskRecords(ctx, service.Workspace.ID, actor, ledger.RecordQuery{TaskID: input.TaskID, Category: input.Category, ID: input.RecordID, Revision: input.Revision, AfterSeq: input.AfterSeq, Limit: input.Limit, CharOffset: input.CharOffset, CharLimit: input.CharLimit})
 	if err != nil {

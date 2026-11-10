@@ -154,6 +154,14 @@ session 保存 Agent、session 编号、工作区、开始及最近活动时间�
 
 单条读取的 `record_id` 和需求、方案的 `revision` 从记录列表或写入返回的 `read` 入口取得。方案的正文修订号与提交版本、任务方案修订分别返回，确认不会改写原提交正文。`body` 是完整记录正文的 JSON 文本片段；按 `next_offset` 续读，拼接全部片段后解析 JSON。字符范围按 Unicode 字符计数，默认每次 2,000 个，最多请求 12,000 个；协议预算可进一步缩短，`char_offset`、`char_end`、`char_total` 与 `next_offset` 始终反映实际范围。
 
+工具说明及输入字段说明须直接写明参数的适用条件，让新会话不必先调用失败才知道用法：
+
+- `task_get` 的列表不含正文，只使用 `category`、`after_seq` 和 `limit`；`revision`、`char_offset` 和 `char_limit` 仅用于已指定 `record_id` 的正文读取，不能与列表游标或条数混用。例如先用 `{"category":"messages","limit":5}` 取得列表，再按其中的 `records[].read` 读取正文，需要时增加 `char_limit`，按 `next_offset` 续读。
+- `requirement_save`、`note_add` 及 `implemented_by` 中的原话引用 `quote` 与 `source_id` 必须成对提供。来源编号使用 `messages` 或 `sources` 列表中的 `id`，例如消息编号 `m12`；需求编号 `R1` 不是来源编号。没有原话依据的推断需求、实现判断笔记或不引用原话的位置可以同时省略这两项，省略引用不构成用户授权。笔记关联需求使用 `target={kind:"requirement",id:"R1"}`。
+- `task_start.workflow` 只接受 `auto`（全自动）或 `semi`（半自动），省略时沿用有效设置。工具说明和字段说明均列出这两个值。
+
+列表与正文参数混用、引用缺少配对字段时，错误须指出相关字段并说明如何重新读取或补齐；不自动忽略参数、猜测来源或补写原话。
+
 历史正文与查询时的 `state` 分开返回。查询结果另外说明笔记是否生效、方案是否确认及撤回数量、验证的执行状态与退出码，以及检查的档位和有效性。检查正文保留完整报告、需求位置、已取得的测试情况和问题依据；交付时显示的状态与后续验证信息单独保存。内部读取时将这些内容合并为完整交付信息，不重写原执行报告。
 
 检查列表的 `validity` 为 `not_checked`。读取单条检查时，程序才核对当前输入；无法核对时保持 `unknown`，不能据此声称历史结果仍有效。原文及确认依据可按来源编号读取。

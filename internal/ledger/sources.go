@@ -71,7 +71,7 @@ func citation(ctx context.Context, q queryer, workspace, task, sourceID, quote s
 		return nil, nil
 	}
 	if sourceID == "" || quote == "" {
-		return nil, fmt.Errorf("原话引用和来源编号须同时提供")
+		return nil, fmt.Errorf(`原话引用 quote 和来源编号 source_id 须同时提供；source_id 从 task_get 的 messages 或 sources 列表取得（如 m12），不能使用需求编号 R1。requirement_save 或 note_add 不引用原话时两项同时省略；关联需求用 note_add.target={kind:"requirement",id:"R1"}`)
 	}
 	source, err := loadSource(ctx, q, workspace, sourceID)
 	if err != nil {

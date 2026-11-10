@@ -260,7 +260,7 @@ type StartTaskInput struct {
 	Title          string `json:"title,omitempty"`
 	TaskID         string `json:"task_id,omitempty"`
 	StartMessageID string `json:"start_message_id,omitempty"`
-	Workflow       string `json:"workflow,omitempty"`
+	Workflow       string `json:"workflow,omitempty" jsonschema:"只接受 auto（全自动）或 semi（半自动）；省略时沿用有效设置"`
 }
 
 type RequirementInput struct {
@@ -277,10 +277,10 @@ type RequirementInput struct {
 type NoteInput struct {
 	Kind     string          `json:"kind"`
 	Text     string          `json:"text"`
-	Target   *DecisionTarget `json:"target,omitempty"`
+	Target   *DecisionTarget `json:"target,omitempty" jsonschema:"关联需求用 {kind:requirement,id:R1}，不能将需求编号填入 source_id；用户决定另须指定 effect 和 scope"`
 	Review   *PurposeReview  `json:"review,omitempty"`
-	Quote    string          `json:"quote,omitempty"`
-	SourceID string          `json:"source_id,omitempty"`
+	Quote    string          `json:"quote,omitempty" jsonschema:"来源中的原话，必须与 source_id 同时提供；实现判断笔记不引用原话时两项同时省略"`
+	SourceID string          `json:"source_id,omitempty" jsonschema:"quote 的来源编号，取 task_get 的 messages 或 sources 列表的 id，如 m12；不能使用需求编号 R1；必须与 quote 同时提供"`
 }
 
 type TaskConflict struct {

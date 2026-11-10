@@ -37,29 +37,29 @@ func MetadataContext(_ context.Context, request *mcp.CallToolRequest) (ledger.Ac
 
 type getInput struct {
 	TaskID     string `json:"task_id,omitempty" jsonschema:"省略时读取当前工作区任务"`
-	Category   string `json:"category,omitempty" jsonschema:"省略返回概要；messages、sources、requirements、notes、plans、checks、verifications、workspace_updates 或 task_updates"`
-	AfterSeq   int64  `json:"after_seq,omitempty" jsonschema:"列表游标，返回序号更大的记录"`
-	Limit      int    `json:"limit,omitempty" jsonschema:"列表条数，默认 20，最多 100"`
+	Category   string `json:"category,omitempty" jsonschema:"省略返回概要；messages、sources、requirements、notes、plans、checks、verifications、workspace_updates 或 task_updates；指定后默认只列编号和状态，不含正文"`
+	AfterSeq   int64  `json:"after_seq,omitempty" jsonschema:"仅列表使用，返回序号更大的记录；不能与 record_id 混用"`
+	Limit      int    `json:"limit,omitempty" jsonschema:"仅列表使用，默认 20，最多 100；不能与 record_id 混用"`
 	RecordID   string `json:"record_id,omitempty" jsonschema:"单条正文编号，从列表或写入结果取得"`
-	Revision   int64  `json:"revision,omitempty" jsonschema:"需求和方案正文必须指定列表给出的修订号"`
-	CharOffset int    `json:"char_offset,omitempty" jsonschema:"正文的 Unicode 字符偏移，默认 0"`
-	CharLimit  int    `json:"char_limit,omitempty" jsonschema:"正文字符数，默认 2000，最多 12000；受响应长度上限限制，实际返回内容可能更短"`
+	Revision   int64  `json:"revision,omitempty" jsonschema:"仅指定 record_id 时使用；需求和方案正文必须指定列表给出的修订号"`
+	CharOffset int    `json:"char_offset,omitempty" jsonschema:"仅指定 record_id 时使用，不能用于列表；正文的 Unicode 字符偏移，默认 0，续读用 next_offset"`
+	CharLimit  int    `json:"char_limit,omitempty" jsonschema:"仅指定 record_id 时使用，不能用于列表；正文字符数默认 2000，最多 12000；受响应长度上限限制，实际返回内容可能更短"`
 }
 type finishInput struct {
 	Outcome string `json:"outcome,omitempty" jsonschema:"complete 表示请求交付；仅用户明确放弃时用 cancel，并保存本轮用户消息作为中止原因"`
 }
 type locationInput struct {
 	At       string `json:"at" jsonschema:"文档规定的文件、声明、test、flag、cmd、env、route、config 或 dep 位置"`
-	Quote    string `json:"quote,omitempty"`
-	SourceID string `json:"source_id,omitempty"`
+	Quote    string `json:"quote,omitempty" jsonschema:"来源中的原话，必须与 source_id 同时提供；不引用原话时两项同时省略"`
+	SourceID string `json:"source_id,omitempty" jsonschema:"quote 的来源编号，取 messages 或 sources 列表的 id，如 m12；不能使用需求编号 R1；必须与 quote 同时提供"`
 	Purpose  string `json:"purpose,omitempty"`
 	Change   string `json:"change,omitempty" jsonschema:"add、modify、delete、move 或 rename"`
 }
 type requirementInput struct {
 	ID            string           `json:"id,omitempty"`
 	Content       string           `json:"content"`
-	Quote         string           `json:"quote,omitempty"`
-	SourceID      string           `json:"source_id,omitempty"`
+	Quote         string           `json:"quote,omitempty" jsonschema:"来源中的原话，必须与 source_id 同时提供；无原话依据时两项同时省略，保存为推断需求"`
+	SourceID      string           `json:"source_id,omitempty" jsonschema:"quote 的来源编号，先用 task_get 查询 messages 或 sources 列表的 id，如 m12；不能使用需求编号 R1；必须与 quote 同时提供"`
 	Acceptance    string           `json:"acceptance"`
 	Status        string           `json:"status,omitempty" jsonschema:"pending、in_progress、completed 或 revoked"`
 	ImplementedBy *[]locationInput `json:"implemented_by,omitempty" jsonschema:"提供则替换位置列表；省略则保留；空列表清除"`
@@ -71,10 +71,10 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		resolver = MetadataContext
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "taskbelay", Version: "0.1.0"}, nil)
-	register(server, "task_get", "默认返回简要信息与记录总数。指定 category 后，按 after_seq 分页读取；指定 record_id 可读取完整 JSON 正文，需求和方案还须指定 revision。按 next_offset 续读，拼接完整后再解析。state 表示查询时的状态，已保存的正文不随状态变化而改写。", false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input getInput) (any, error) {
+	register(server, "task_get", `默认返回简要信息与记录总数。列表只返回编号和状态，不含正文，例如 {"category":"messages","limit":5}；只用 category、after_seq、limit，不传 revision、char_offset、char_limit。再按 records[].read 的 category、record_id 读取单条 JSON 正文，需求和方案还须指定 revision；此时才可用 char_offset、char_limit，不传 after_seq、limit。按 next_offset 续读，拼接完整后再解析。state 表示查询时的状态，已保存的正文不随状态变化而改写。`, false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input getInput) (any, error) {
 		return getTask(ctx, service, actor, input)
 	})
-	register(server, "task_start", "开始、恢复或重新打开任务；保留原始起点，并记录此时的工作区状态。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.StartTaskInput) (any, error) {
+	register(server, "task_start", "开始、恢复或重新打开任务；保留原始起点，并记录此时的工作区状态。workflow 只接受 auto（全自动）或 semi（半自动），省略时沿用有效设置。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.StartTaskInput) (any, error) {
 		result, err := service.Start(ctx, actor, input)
 		if err != nil {
 			return nil, err
@@ -87,7 +87,7 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		response["details"] = map[string]any{"summary": text}
 		return response, nil
 	})
-	register(server, "requirement_save", "保存需求的新修订；引用须能在完整来源中找到。发生修订冲突时返回最新版本，供合并后重试。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input requirementInput) (any, error) {
+	register(server, "requirement_save", "保存需求的新修订。quote 与 source_id 必须成对提供，引用须能在完整来源中找到；先用 task_get 查询 messages 或 sources 列表，再按 read 读取原文。source_id 使用来源 id（如 m12），不能使用需求编号 R1；无原话依据时两项同时省略，保存为推断需求，不构成用户授权。implemented_by 中的引用同样成对提供。发生修订冲突时返回最新版本，供合并后重试。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input requirementInput) (any, error) {
 		request := ledger.RequirementInput{ID: input.ID, Content: input.Content, Quote: input.Quote, SourceID: input.SourceID, Acceptance: input.Acceptance, Status: input.Status, BaseRevision: input.BaseRevision}
 		if input.ImplementedBy != nil {
 			locations := make([]ledger.Location, len(*input.ImplementedBy))
@@ -102,7 +102,7 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		}
 		return requirementResponse(result), nil
 	})
-	register(server, "note_add", "保存 decision 或 next_step。对少量可疑实现，可用 decision 指向有效 requirement，以 review 给出对象、判断及代码出处，用 text 说明实际变化、断言或失败条件，必要时引用原话。用途核对只作提示。用户决定使用 target 的 kind、id、at、effect 和 scope。retain 的 scope 为 task；pause_checks 为 round 或 task；rerun_once 指向 verification，scope 为 once。allow_edit 须依据用户消息，仅允许编辑当前 task 中指定的草稿文件或目录，scope 为 task。revoke 撤回同一对象的决定；撤回 plan 时可省略 at 撤回整版，也可准确列出范围、入口或 dep:模块名。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.NoteInput) (any, error) {
+	register(server, "note_add", `保存 decision 或 next_step。关联需求用 target={kind:"requirement",id:"R1"}，不能把 R1 填入 source_id。实现判断笔记可同时省略 quote 和 source_id；引用原话时两项必须成对提供，source_id 从 task_get 的 messages 或 sources 列表取得（如 m12），按 read 读取原文。对少量可疑实现，可用 decision 指向有效 requirement，以 review 给出对象、判断及代码出处，用 text 说明实际变化、断言或失败条件。用途核对只作提示。用户决定使用 target 的 kind、id、at、effect 和 scope。retain 的 scope 为 task；pause_checks 为 round 或 task；rerun_once 指向 verification，scope 为 once。allow_edit 须依据用户消息，仅允许编辑当前 task 中指定的草稿文件或目录，scope 为 task。revoke 撤回同一对象的决定；撤回 plan 时可省略 at 撤回整版，也可准确列出范围、入口或 dep:模块名。`, true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.NoteInput) (any, error) {
 		result, err := service.AddNote(ctx, actor, input)
 		if err != nil {
 			return nil, err
