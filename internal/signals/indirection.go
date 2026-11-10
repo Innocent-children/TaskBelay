@@ -110,6 +110,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 	for _, p := range keys(repo.Files) {
 		currentPath = p
 		f := repo.Files[p]
+		role := repo.Roles[p]
 		ignored := map[string]bool{}
 		for _, w := range append(append([]string(nil), repo.SyntaxFor(p).Keywords...), repo.SyntaxFor(p).Returns...) {
 			ignored[w] = true
@@ -125,7 +126,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 				continue
 			}
 			var shape UnitStructure
-			// 预览的索引尚未包含拟写入结构；转发只需目标内容，不查询跨文件证据。
+			// 预览的索引尚未包含拟写入结构；抽象和转发只需目标内容，不查询跨文件证据。
 			if query != nil && query.Structure != nil && !preview {
 				shape = query.Structure(repostats.UnitKey(p, u))
 			} else {
@@ -133,7 +134,12 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 			}
 			members := shape.Members
 			// 条件、循环和异常处理的首行词是关键字，不是可以被实现的抽象。
-			if !preview && shape.Abstract && len(members) > 0 && !ignored[u.Name] && outsideCallable(f, u) {
+			abstract := shape.Abstract && len(members) > 0 && !ignored[u.Name] && outsideCallable(f, u)
+			// 函数内的短调用也形成无主体子节点，预览不能把函数本身当作抽象。
+			if preview && abstract && !shape.Callable && !role.Document && !role.Config && !role.Manifest && !role.Test && !repo.TestUnits[repostats.UnitKey(p, u)] {
+				out = append(out, indirection{path: p, unit: u, kind: "abstraction", replacement: strings.Join(members, ", ")})
+			}
+			if !preview && abstract {
 				memberSet := map[string]bool{}
 				unitKey := repostats.UnitKey(p, u)
 				var groups []*headWords
@@ -298,7 +304,8 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 	var out []Candidate
 	for _, v := range after {
 		cluster, agent := clusterFor(in, v.path, v.unit.Line, v.unit.EndLine)
-		if cluster == "" || v.count != 1 {
+		abstractPreview := in.EditPreview && v.kind == "abstraction"
+		if cluster == "" || !abstractPreview && v.count != 1 {
 			continue
 		}
 		kind := v.kind
@@ -319,8 +326,13 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 		var advice string
 		switch kind {
 		case "abstraction":
-			facts = append(facts, "按成员名与首行共现识别出一个实现候选："+v.replacement+"；未确认类型关系或隔离用途")
-			advice = "核对 " + at + " 是否承担当前需求中的依赖隔离或替换约定；确认不需要、且调用方可直接使用 " + v.replacement + " 后，再调整引用并删除该抽象"
+			if abstractPreview {
+				facts = append(facts, "成员仅有首行或简短主体，符合抽象形状；成员名字为 "+v.replacement+"；未统计实现数量，也未确认类型关系或隔离用途")
+				advice = "核对 " + at + " 隔离的实际依赖或变化、类型和调用约定，以及直接使用具体实现会失去什么行为；确认无需这一层且这些行为可保留时，才考虑省去本次拟编辑的抽象；依据不足时保留必要抽象，不因此补测试"
+			} else {
+				facts = append(facts, "按成员名与首行共现识别出一个实现候选："+v.replacement+"；未确认类型关系或隔离用途")
+				advice = "核对 " + at + " 是否承担当前需求中的依赖隔离或替换约定；确认不需要、且调用方可直接使用 " + v.replacement + " 后，再调整引用并删除该抽象"
+			}
 		case "parameter":
 			facts = append(facts, "按同名调用形状统计，该位置只有一种实参写法："+v.replacement+"；相同写法不代表运行值固定", fmt.Sprintf("调用形状共记录 %d 处位置；位置示例：%s", len(v.sites), v.sites[0]))
 			advice = "核对 " + at + " 的" + v.replacement + " 是否需要由调用方提供；确认调用属于该声明、取值固定、求值行为不变且调用范围完整后，才将值移入实现并删除对应形参和各调用实参，保留函数及其他参数"
@@ -328,7 +340,7 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 			facts = append(facts, "主体标识符序列符合转发形状，目标名字为 "+v.replacement+"；未核对运算符、字面量或调用语义")
 			advice = "核对 " + at + " 的独立职责、返回结果和副作用；确认直接调用 " + v.replacement + " 行为等价且无需保留该层后，再修改调用并删除此包装"
 		}
-		if in.EditPreview {
+		if in.EditPreview && kind == "forwarding" {
 			advice = "核对 " + at + " 的独立职责、入口和兼容约定，以及运算符、字面量、求值过程、返回结果和副作用；只有无需保留该层且直接调用 " + v.replacement + " 保持这些行为时，才考虑省去本次拟编辑的包装"
 		} else if kind == "forwarding" && in.Before.FrequencyOf(v.unit.Name) > 0 {
 			kind = "old_name"
@@ -361,7 +373,11 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 		if !agent && !in.EditPreview {
 			advice = "该变更簇不能全部核对为 Agent 编辑，保留当前内容；仅结合以上结构信号核对实际用途"
 		}
-		out = append(out, Candidate{Kind: kind, Object: repostats.UnitKey(v.path, v.unit) + ":" + v.replacement, At: at, Cluster: cluster, AgentOnly: agent, Facts: facts, Advice: advice, Features: map[string]float64{"variation": float64(v.count), "convention": prior[v.kind], "structure": in.After.Files[v.path].Confidence}, Benefit: float64(v.unit.EndLine - v.unit.Line + 1)})
+		features := map[string]float64{"structure": in.After.Files[v.path].Confidence}
+		if !abstractPreview {
+			features["variation"], features["convention"] = float64(v.count), prior[v.kind]
+		}
+		out = append(out, Candidate{Kind: kind, Object: repostats.UnitKey(v.path, v.unit) + ":" + v.replacement, At: at, Cluster: cluster, AgentOnly: agent, Facts: facts, Advice: advice, Features: features, Benefit: float64(v.unit.EndLine - v.unit.Line + 1)})
 	}
 	return out, gaps, ctx.Err()
 }
