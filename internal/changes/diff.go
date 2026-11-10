@@ -12,9 +12,15 @@ import (
 type Span struct{ BeforeStart, BeforeEnd, AfterStart, AfterEnd int }
 
 func Diff(ctx context.Context, a, b []string) ([]Span, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	n, m := len(a), len(b)
 	if n == 0 && m == 0 {
 		return nil, nil
+	}
+	if n == 0 || m == 0 {
+		return []Span{{BeforeEnd: n, AfterEnd: m}}, nil
 	}
 	v := map[int]int{1: 0}
 	var trace []map[int]int
