@@ -30,7 +30,7 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 	if input.RecordID != "" && (input.AfterSeq != 0 || input.Limit != 0) {
 		return nil, fmt.Errorf("单条正文读取不能同时指定列表游标或条数")
 	}
-	page, err := service.Store.TaskRecords(ctx, service.Workspace.ID, actor, ledger.RecordQuery{TaskID: input.TaskID, Category: input.Category, ID: input.RecordID, Revision: input.Revision, AfterSeq: input.AfterSeq, Limit: input.Limit})
+	page, err := service.Store.TaskRecords(ctx, service.Workspace.ID, actor, ledger.RecordQuery{TaskID: input.TaskID, Category: input.Category, ID: input.RecordID, Revision: input.Revision, AfterSeq: input.AfterSeq, Limit: input.Limit, CharOffset: input.CharOffset, CharLimit: input.CharLimit})
 	if err != nil {
 		return nil, err
 	}
@@ -40,21 +40,12 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 			return nil, fmt.Errorf("指定记录或修订不存在于该任务：%s", input.RecordID)
 		}
 		record := page.Records[0]
-		body := []rune(string(record.Data))
-		if input.CharOffset > len(body) {
-			return nil, fmt.Errorf("char_offset 超过正文字符数 %d", len(body))
-		}
-		limit := input.CharLimit
-		if limit == 0 {
-			limit = 2000
-		}
-		end := input.CharOffset + min(limit, len(body)-input.CharOffset)
 		value["record_id"], value["revision"], value["seq"] = record.ID, record.Revision, record.Seq
 		value["state"], value["encoding"] = record.State, "json"
-		value["body"], value["char_offset"], value["char_end"], value["char_total"] = string(body[input.CharOffset:end]), input.CharOffset, end, len(body)
+		value["body"], value["char_offset"], value["char_end"], value["char_total"] = record.Body, input.CharOffset, record.CharEnd, record.CharTotal
 		value["read"] = readLink(page.TaskID, input.Category, record.ID, record.Revision)
-		if end < len(body) {
-			value["next_offset"] = end
+		if record.CharEnd < record.CharTotal {
+			value["next_offset"] = record.CharEnd
 		} else {
 			value["next_offset"] = nil
 		}

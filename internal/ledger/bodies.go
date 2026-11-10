@@ -37,13 +37,18 @@ func prepareBody(ctx context.Context, raw []byte) (storedBody, error) {
 	if err := ctx.Err(); err != nil {
 		return body, err
 	}
-	var compressed bytes.Buffer
 	writer := bodyWriters.Get().(*zstd.Encoder)
+	defer bodyWriters.Put(writer)
+	// 单页在一次有界调用内压完，大正文仍分段检查取消。
+	if len(raw) <= indexPageBytes {
+		if compressed := writer.EncodeAll(raw, nil); len(compressed) < len(raw) {
+			body.Encoding, body.Body = "zstd", compressed
+		}
+		return body, ctx.Err()
+	}
+	var compressed bytes.Buffer
 	writer.Reset(&compressed)
-	defer func() {
-		writer.Reset(io.Discard)
-		bodyWriters.Put(writer)
-	}()
+	defer writer.Reset(io.Discard)
 	for offset := 0; offset < len(raw); offset += 32 * 1024 {
 		if err := ctx.Err(); err != nil {
 			return body, err
@@ -93,23 +98,41 @@ func (body storedBody) decode(ctx context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("未知正文编码 %q", body.Encoding)
 	}
 	if reader != nil {
-		var out bytes.Buffer
-		buffer := make([]byte, 32*1024)
-		limited := io.LimitReader(reader, body.RawBytes+1)
-		for {
-			if err := ctx.Err(); err != nil {
-				return nil, err
+		// 页的原长已有上限，直接读入目标切片；额外一字节同时核对结尾和长度。
+		if body.RawBytes <= indexPageBytes {
+			buf := make([]byte, body.RawBytes+1)
+			n := 0
+			for n < len(buf) {
+				count, err := reader.Read(buf[n:])
+				n += count
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return nil, err
+				}
 			}
-			n, err := limited.Read(buffer)
-			out.Write(buffer[:n])
-			if err == io.EOF {
-				break
+			raw = buf[:n]
+		} else {
+			var out bytes.Buffer
+			out.Grow(int(min(body.RawBytes, indexPageCacheBytes)))
+			buffer := make([]byte, 32*1024)
+			limited := io.LimitReader(reader, body.RawBytes+1)
+			for {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				n, err := limited.Read(buffer)
+				out.Write(buffer[:n])
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return nil, err
+				}
 			}
-			if err != nil {
-				return nil, err
-			}
+			raw = out.Bytes()
 		}
-		raw = out.Bytes()
 	}
 	if int64(len(raw)) != body.RawBytes || fmt.Sprintf("%x", sha256.Sum256(raw)) != body.SHA256 {
 		return nil, fmt.Errorf("正文长度或摘要不一致")
@@ -206,10 +229,18 @@ func checkMetadata(record CheckRecord) ([]byte, error) {
 	}{CheckRecord: &record})
 }
 
-func restoreCheckBody(ctx context.Context, q queryer, id int64, data string) (string, error) {
+func readCheckReport(ctx context.Context, q queryer, id int64) (storedBody, error) {
 	var body storedBody
 	if err := q.QueryRowContext(ctx, `SELECT report_encoding,report_raw_bytes,report_sha256,report_body FROM checks_v12 WHERE seq=?`, id).Scan(&body.Encoding, &body.RawBytes, &body.SHA256, &body.Body); err != nil {
-		return "", fmt.Errorf("检查 %d: %w", id, err)
+		return body, fmt.Errorf("检查 %d: %w", id, err)
+	}
+	return body, nil
+}
+
+func restoreCheckBody(ctx context.Context, q queryer, id int64, data string) (string, error) {
+	body, err := readCheckReport(ctx, q, id)
+	if err != nil {
+		return "", err
 	}
 	if body.Encoding == "" {
 		var fields map[string]json.RawMessage

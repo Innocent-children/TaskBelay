@@ -8,12 +8,13 @@ import (
 )
 
 type RecordQuery struct {
-	TaskID   string
-	Category string
-	AfterSeq int64
-	Limit    int
-	ID       string
-	Revision int64
+	TaskID                string
+	Category              string
+	AfterSeq              int64
+	Limit                 int
+	ID                    string
+	Revision              int64
+	CharOffset, CharLimit int
 }
 
 type TaskRecordPage struct {
@@ -24,11 +25,12 @@ type TaskRecordPage struct {
 }
 
 type TaskRecordBody struct {
-	Seq      int64
-	ID       string
-	Revision int64
-	Data     json.RawMessage
-	State    map[string]any
+	Seq                int64
+	ID                 string
+	Revision           int64
+	Body               string
+	CharEnd, CharTotal int
+	State              map[string]any
 }
 
 var RecordCategories = []string{"messages", "sources", "requirements", "notes", "plans", "checks", "verifications", "workspace_updates", "task_updates"}
@@ -39,6 +41,17 @@ var RecordCategories = []string{"messages", "sources", "requirements", "notes", 
  */
 func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, input RecordQuery) (TaskRecordPage, error) {
 	var result TaskRecordPage
+	type payload struct {
+		data   string
+		report storedBody
+	}
+	var payloads []payload
+	if input.CharOffset < 0 || input.CharLimit < 0 || input.CharLimit > 12000 {
+		return result, fmt.Errorf("正文分页范围无效")
+	}
+	if input.CharLimit == 0 {
+		input.CharLimit = 2000
+	}
 	if input.AfterSeq < 0 || input.Revision < 0 || input.Limit < 0 || input.Limit > 100 {
 		return result, fmt.Errorf("after_seq、revision 不能为负；limit 为 1 至 100，默认 20")
 	}
@@ -109,37 +122,58 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 				result.Records = append(result.Records, record)
 				continue
 			}
+			var report storedBody
 			if input.Category == "checks" {
-				data, err = restoreCheckBody(ctx, q, record.Seq, data)
+				report, err = readCheckReport(ctx, q, record.Seq)
 				if err != nil {
 					return err
 				}
-				var check CheckRecord
+				var check struct {
+					Input struct {
+						Algorithm string `json:"algorithm"`
+					} `json:"input"`
+					InputVersion string `json:"input_version"`
+				}
 				if err := json.Unmarshal([]byte(data), &check); err != nil {
 					return err
 				}
-				current, err := checkInput(ctx, q, workspace, task.ID, actor, check.Input.Algorithm)
 				record.State["validity"] = "unknown"
 				if record.State["status"] == string(CheckExpired) {
 					record.State["validity"] = "expired"
 				} else if check.Input.Algorithm == "" {
 					record.State["validity"] = "historical"
-				} else if err == nil {
+				} else if current, err := checkInput(ctx, q, workspace, task.ID, actor, check.Input.Algorithm); err == nil {
 					record.State["validity"] = "current"
 					if current.Version() != check.InputVersion {
 						record.State["status"], record.State["level"], record.State["validity"] = "expired", "hint", "expired"
 					}
 				}
 			}
-			record.Data, err = recordBody(input.Category, record.Seq, data)
-			if err != nil {
-				return fmt.Errorf("读取 %s %s: %w", input.Category, record.ID, err)
-			}
+			payloads = append(payloads, payload{data, report})
 			result.Records = append(result.Records, record)
 		}
 		return rows.Err()
 	})
-	return result, err
+	if err != nil {
+		return result, err
+	}
+	for i, payload := range payloads {
+		r := &result.Records[i]
+		if input.Category == "checks" {
+			r.Body, r.CharEnd, r.CharTotal, err = s.checkPages.page(ctx, r.Seq, payload.data, payload.report, input.CharOffset, input.CharLimit)
+		} else {
+			var raw []byte
+			raw, err = recordBody(input.Category, r.Seq, payload.data)
+			if err != nil {
+				return result, fmt.Errorf("读取 %s %s: %w", input.Category, r.ID, err)
+			}
+			r.Body, r.CharEnd, r.CharTotal, err = textPage(raw, input.CharOffset, input.CharLimit)
+		}
+		if err != nil {
+			return result, err
+		}
+	}
+	return result, nil
 }
 
 func recordQuery(task TaskRecord, category string) (string, []any, error) {
@@ -196,6 +230,10 @@ func recordBody(category string, seq int64, data string) (json.RawMessage, error
 	if err := json.Unmarshal([]byte(data), &fields); err != nil {
 		return nil, err
 	}
+	return marshalRecordFields(category, seq, fields)
+}
+
+func marshalRecordFields(category string, seq int64, fields map[string]json.RawMessage) (json.RawMessage, error) {
 	var mutable []string
 	switch category {
 	case "notes":

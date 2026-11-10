@@ -148,12 +148,12 @@ func EnclosingDeclaration(f units.File, start, end int) units.Unit {
 /**
  * 保留间接层计算需要的顺序和结构；学习约定变化后重新过滤词汇。
  */
-func Structure(f units.File, u units.Unit) UnitStructure {
+func unitStructure(f units.File, u units.Unit) UnitStructure {
 	s := UnitStructure{Abstract: true, Callable: declaration(f, u)}
-	var bodyTokens []units.Token
-	for _, t := range u.Tokens {
-		if t.Start >= u.HeaderEnd {
-			bodyTokens = append(bodyTokens, t)
+	bodyStart := len(u.Tokens)
+	for i, t := range u.Tokens {
+		if bodyStart == len(u.Tokens) && t.Start >= u.HeaderEnd {
+			bodyStart = i
 		}
 		if t.Kind != "identifier" {
 			continue
@@ -164,23 +164,51 @@ func Structure(f units.File, u units.Unit) UnitStructure {
 			s.Body = append(s.Body, t.Text)
 		}
 	}
-	s.BodyCalls = len(units.Calls(bodyTokens))
-	for j, v := range f.Units {
-		if v.Parent < 0 || f.Units[v.Parent].ID != u.ID || j == u.Parent {
-			continue
-		}
-		if v.Name != "" {
-			s.Members = append(s.Members, v.Name)
-		}
+	s.BodyCalls = units.CallNameCount(u.Tokens[bodyStart:])
+	return s
+}
+
+func addMember(s *UnitStructure, v units.Unit) {
+	if v.Name != "" {
+		s.Members = append(s.Members, v.Name)
+	}
+	if s.Abstract {
 		count := 0
 		for _, t := range v.Tokens {
 			if t.Start >= v.HeaderEnd && t.Kind == "identifier" {
 				count++
+				if count > 1 {
+					s.Abstract = false
+					break
+				}
 			}
 		}
-		s.Abstract = s.Abstract && count <= 1
+	}
+}
+
+func Structure(f units.File, u units.Unit) UnitStructure {
+	s := unitStructure(f, u)
+	for j, v := range f.Units {
+		if v.Parent < 0 || f.Units[v.Parent].ID != u.ID || j == u.Parent {
+			continue
+		}
+		addMember(&s, v)
 	}
 	return s
+}
+
+// 初建和重算整个文件时，沿已知的父子关系归集成员。
+func FileStructures(f units.File) []UnitStructure {
+	out := make([]UnitStructure, len(f.Units))
+	for i, u := range f.Units {
+		out[i] = unitStructure(f, u)
+	}
+	for j, child := range f.Units {
+		if p := child.Parent; p >= 0 && j != f.Units[p].Parent {
+			addMember(&out[p], child)
+		}
+	}
+	return out
 }
 
 type Variation struct {

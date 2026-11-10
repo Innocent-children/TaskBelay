@@ -8,9 +8,9 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
+	"maps"
 	"path"
 	"sort"
-	"strings"
 )
 
 func sources(ctx context.Context, w gitstate.Workspace, tree string) ([]units.Source, error) {
@@ -40,6 +40,35 @@ type indexedSnapshot struct {
 	Origin, Current, Graph *repositoryIndex
 	Before, After          repostats.Repository
 	Paths                  []string
+}
+
+const fileSpanCache = Algorithm + ":file-spans-v1"
+
+func cachedFile(ctx context.Context, s *ledger.Store, key string) (units.File, bool, error) {
+	var packed units.PackedFile
+	found, err := s.AnalysisCache(ctx, fileSpanCache, key, &packed)
+	if err != nil {
+		return units.File{}, false, err
+	}
+	if found {
+		f, err := packed.Expand(ctx)
+		return f, true, err
+	}
+	var f units.File
+	found, err = s.AnalysisCache(ctx, "file", key, &f)
+	return f, found, err
+}
+
+func saveCachedFile(ctx context.Context, s *ledger.Store, key string, f units.File) error {
+	found, err := s.HasAnalysisCache(ctx, key, fileSpanCache, "file")
+	if err != nil || found {
+		return err
+	}
+	packed, err := units.PackFile(ctx, f)
+	if err != nil {
+		return err
+	}
+	return s.SaveAnalysisCache(ctx, fileSpanCache, key, packed)
 }
 
 func (x *repositoryIndex) overlay(tree string) *repositoryIndex {
@@ -125,8 +154,7 @@ func snapshots(ctx context.Context, s *ledger.Store, w gitstate.Workspace, origi
 		var syn units.Syntax
 		base.get("syntax", path.Ext(p), &syn)
 		key := units.Hash(Algorithm, e.Blob, syn.Key())
-		var f units.File
-		found, err := s.AnalysisCache(ctx, "file", key, &f)
+		f, found, err := cachedFile(ctx, s, key)
 		if err != nil {
 			return out, err
 		}
@@ -172,19 +200,12 @@ func snapshots(ctx context.Context, s *ledger.Store, w gitstate.Workspace, origi
 
 func (x *repositoryIndex) copyOverlay() *repositoryIndex {
 	y := x.overlay(x.meta.Tree)
-	for k, r := range x.rows {
-		copy := map[string]string{}
-		for m, v := range r {
-			copy[m] = v
+	for kind, rows := range x.rows {
+		for key, members := range rows {
+			y.setMembers(kind, key, maps.Clone(members))
 		}
-		y.rows[k] = copy
-		y.loaded[k] = x.loaded[k]
-		kind, key, _ := strings.Cut(k, "\x00")
-		if y.rowKinds[kind] == nil {
-			y.rowKinds[kind] = map[string]bool{}
-		}
-		y.rowKinds[kind][key] = true
 	}
+	y.loaded = maps.Clone(x.loaded)
 	for p, f := range x.files {
 		y.files[p] = f
 	}

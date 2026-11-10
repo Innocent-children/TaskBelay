@@ -3,12 +3,17 @@ package ledger
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"math/bits"
 	"slices"
 	"sort"
 	"sync"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // 页正文与目录同时提交，重试相同批次可以复用已有记录。
@@ -45,6 +50,29 @@ type indexPageCache struct {
 	bytes int64
 }
 
+type pageBuffers struct {
+	raw, compressed []byte
+	encoder         *zstd.Encoder
+}
+
+var pageBufferPool = sync.Pool{New: func() any {
+	encoder, _ := zstd.NewWriter(nil, zstd.WithEncoderConcurrency(1), zstd.WithWindowSize(indexPageBytes), zstd.WithEncoderLevel(zstd.SpeedFastest))
+	return &pageBuffers{raw: make([]byte, indexPageBytes), encoder: encoder}
+}}
+
+// 小页共用原文和压缩工作区，批次只持有最终需要写入的字节。
+func (b *pageBuffers) body(raw []byte) storedBody {
+	hash := sha256.Sum256(raw)
+	body := storedBody{RawBytes: int64(len(raw)), SHA256: hex.EncodeToString(hash[:]), Encoding: "raw"}
+	b.compressed = b.encoder.EncodeAll(raw, b.compressed[:0])
+	if len(b.compressed) < len(raw) {
+		body.Encoding = "zstd"
+		raw = b.compressed
+	}
+	body.Body = bytes.Clone(raw)
+	return body
+}
+
 func rowLess(a, b IndexRow) bool {
 	if a.Kind != b.Kind {
 		return a.Kind < b.Kind
@@ -59,28 +87,50 @@ func rowLess(a, b IndexRow) bool {
  * 字段按字节长度分隔，保留路径、键和正文里的原始字节，包括 NUL。
  */
 func prepareIndexPages(ctx context.Context, rows []IndexRow) ([]indexPage, error) {
+	b := pageBufferPool.Get().(*pageBuffers)
+	defer pageBufferPool.Put(b)
 	if !sort.SliceIsSorted(rows, func(i, j int) bool { return rowLess(rows[i], rows[j]) }) {
 		rows = slices.Clone(rows)
 		sort.SliceStable(rows, func(i, j int) bool { return rowLess(rows[i], rows[j]) })
 	}
 	var pages []indexPage
 	for len(rows) > 0 {
-		raw := make([]byte, 0, min(indexPageBytes, len(rows[0].Data)+1024))
-		n := 0
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		n, size := 0, 0
 		emptyMembers := true
 		for n < len(rows) && rows[n].Kind == rows[0].Kind && n < indexPageRows {
 			row := rows[n]
-			if n > 0 && len(raw)+len(row.Key)+len(row.Member)+len(row.Data) > indexPageBytes {
+			if n > 0 && size+len(row.Key)+len(row.Member)+len(row.Data) > indexPageBytes {
 				break
 			}
 			for _, field := range [...]string{row.Key, row.Member, row.Data} {
-				raw = binary.AppendUvarint(raw, uint64(len(field)))
-				raw = append(raw, field...)
+				size += len(field) + max(1, (bits.Len(uint(len(field)))+6)/7)
 			}
 			emptyMembers = emptyMembers && row.Member == ""
 			n++
 		}
 		page := indexPage{kind: rows[0].Kind, first: rows[0].Key, last: rows[n-1].Key, emptyMembers: emptyMembers}
+		// 预留格式字节，普通页可直接压缩，不再扩容或复制整页。
+		var raw []byte
+		if size < len(b.raw) {
+			raw = b.raw[:1]
+		} else {
+			raw = make([]byte, 1, 1+size)
+		}
+		for _, row := range rows[:n] {
+			for _, field := range [...]string{row.Key, row.Member, row.Data} {
+				raw = binary.AppendUvarint(raw, uint64(len(field)))
+				raw = append(raw, field...)
+			}
+		}
+		if len(raw) <= len(b.raw) {
+			page.body = b.body(raw)
+			pages = append(pages, page)
+			rows = rows[n:]
+			continue
+		}
 		raw, part, err := splitIndexPage(ctx, page.kind, raw, n)
 		if err != nil {
 			return nil, err
@@ -104,7 +154,8 @@ func prepareIndexPages(ctx context.Context, rows []IndexRow) ([]indexPage, error
  * 大文件的归属清单和学习摘要常随分类结果重复保存。将两个边界之间的原始字节
  * 和插入位置分别编码，字段缺失或格式改变时仍可直接保存整页。
  */
-func splitIndexPage(ctx context.Context, kind string, raw []byte, n int) ([]byte, *storedBody, error) {
+func splitIndexPage(ctx context.Context, kind string, page []byte, n int) ([]byte, *storedBody, error) {
+	raw := page[1:]
 	var start, end int
 	if n == 1 && len(raw) > indexPageBytes {
 		switch kind {
@@ -117,7 +168,7 @@ func splitIndexPage(ctx context.Context, kind string, raw []byte, n int) ([]byte
 		}
 	}
 	if start < 0 || end-start < indexPageBytes {
-		return append([]byte{0}, raw...), nil, nil
+		return page, nil, nil
 	}
 	part, err := prepareBody(ctx, raw[start:end])
 	if err != nil {

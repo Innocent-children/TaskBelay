@@ -19,10 +19,10 @@ func (x *repositoryIndex) adjustVariation(items []signals.Variation, sign int) {
 		x.meta.VariationCounts[v.Kind] = n
 	}
 }
-func (x *repositoryIndex) refreshStatistics(before *repositoryIndex, changed []string) error {
-	paths := map[string]bool{}
-	for _, p := range changed {
-		paths[p] = true
+func (x *repositoryIndex) refreshStatistics(before *repositoryIndex, changed map[string]bool, sketches []repostats.FileSketch) error {
+	members := map[string][]string{}
+	for p := range changed {
+		members[p] = nil
 	}
 	for _, row := range x.writes {
 		if row.Kind == "syntax" {
@@ -35,7 +35,7 @@ func (x *repositoryIndex) refreshStatistics(before *repositoryIndex, changed []s
 		}
 		if row.Kind == "head" || row.Kind == "name" || row.Kind == "calls" || row.Kind == "syntax" {
 			for p := range before.read("signal_dep", rowKey(row.Kind, row.Key)) {
-				paths[p] = true
+				members[p] = nil
 			}
 		}
 		if row.Kind == "unit" && row.Data != "" {
@@ -43,40 +43,58 @@ func (x *repositoryIndex) refreshStatistics(before *repositoryIndex, changed []s
 			if err := json.Unmarshal([]byte(row.Data), &u); err != nil {
 				return err
 			}
-			paths[u.Path] = true
+			members[u.Path] = nil
 		}
 	}
-	sketches := x.sketches()
+	var order []string
 	for _, sketch := range sketches {
 		var old, next units.Syntax
 		before.get("syntax", path.Ext(sketch.Path), &old)
 		x.get("syntax", path.Ext(sketch.Path), &next)
 		if !reflect.DeepEqual(old.Keywords, next.Keywords) || !reflect.DeepEqual(old.Returns, next.Returns) || (old.CallRatio <= signals.CallPrecision) != (next.CallRatio <= signals.CallPrecision) {
-			paths[sketch.Path] = true
+			members[sketch.Path] = nil
+		}
+		_, affected := members[sketch.Path]
+		for _, u := range sketch.Units {
+			if affected {
+				members[sketch.Path] = append(members[sketch.Path], repostats.UnitKey(sketch.Path, u.Unit))
+			}
+			if u.Callable {
+				order = append(order, repostats.UnitKey(sketch.Path, u.Unit))
+			}
 		}
 	}
-	delete(paths, "")
-	for _, p := range keys(paths) {
-		for _, key := range before.fileInfo(p).Units {
+	delete(members, "")
+	for _, p := range keys(members) {
+		// 未改文件的单元编号已在学习摘要中，无需为它们解压整份文件归属清单。
+		unitKeys := members[p]
+		if changed[p] {
+			unitKeys = before.fileInfo(p).Units
+		}
+		// 两个统计步骤都会遍历该文件的单元。按文件读父层，连同没有旧统计的单元一起标记，
+		// 避免每个名字都向 SQLite 重复查询同一批页。当前层的新增和删除仍优先。
+		if len(unitKeys) > 0 {
+			for _, kind := range []string{"unit", "indirection"} {
+				before.preload(kind, p+":")
+				if before.err != nil {
+					return before.err
+				}
+				for _, key := range unitKeys {
+					before.loaded[rowKey(kind, key)] = true
+				}
+			}
+		}
+		for _, key := range unitKeys {
 			var old []signals.Variation
 			before.get("indirection", key, &old)
 			x.adjustVariation(old, -1)
 			x.put("indirection", key, "", nil)
 		}
 	}
-	if err := x.saveFacts(keys(paths)); err != nil {
+	if err := x.saveFacts(members); err != nil {
 		return err
 	}
 	x.updatePrior()
-	var order []string
-	for _, s := range sketches {
-		for _, u := range s.Units {
-			key := repostats.UnitKey(s.Path, u.Unit)
-			if u.Callable {
-				order = append(order, key)
-			}
-		}
-	}
 	var distribution []float64
 	for i := 0; i < len(order) && len(distribution) < signals.SimilaritySamples; i++ {
 		j := (i + len(order)/2) % max(1, len(order))
@@ -113,7 +131,8 @@ func (x *repositoryIndex) updatePrior() {
 /**
  * 结构摘要和实际查询的依赖足以重算间接层先验，不需要未改文件的完整词流。
  */
-func (x *repositoryIndex) saveFacts(paths []string) error {
+func (x *repositoryIndex) saveFacts(members map[string][]string) error {
+	paths := keys(members)
 	r := repostats.Repository{Files: map[string]units.File{}, Syntax: map[string]units.Syntax{}}
 	dependencies := map[string]map[string]bool{}
 	for _, p := range paths {
@@ -123,7 +142,7 @@ func (x *repositoryIndex) saveFacts(paths []string) error {
 			x.put("signal_dep", key, p, nil)
 		}
 		f := units.File{Path: p}
-		for _, key := range x.fileInfo(p).Units {
+		for _, key := range members[p] {
 			f.Units = append(f.Units, x.unit(key).Unit)
 		}
 		r.Files[p] = f

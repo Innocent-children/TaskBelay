@@ -25,6 +25,7 @@ type Store struct {
 	waitLimit  time.Duration
 	dataDir    string
 	indexPages indexPageCache
+	checkPages checkPageCache
 }
 
 func (s *Store) DataDir() string { return s.dataDir }

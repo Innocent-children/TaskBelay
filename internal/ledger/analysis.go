@@ -64,6 +64,15 @@ func (s *Store) SaveAnalysisCache(ctx context.Context, kind, key string, value a
 	})
 }
 
+// 两种文件缓存按相同内容键互为替代；命中任一种就可以省去整份文件的编码。
+func (s *Store) HasAnalysisCache(ctx context.Context, key, kind, alternate string) (bool, error) {
+	var found bool
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		return q.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM analysis_cache_v12 WHERE cache_key=? AND kind IN (?,?))", key, kind, alternate).Scan(&found)
+	})
+	return found, err
+}
+
 func (s *Store) AnalysisRecord(ctx context.Context, task, version, kind string, target any) (bool, error) {
 	var body storedBody
 	found := false
@@ -166,11 +175,17 @@ func (s *Store) UpdateVerificationInput(ctx context.Context, id string, scope Ve
 
 func (r *DeliveryReport) UnmarshalJSON(data []byte) error {
 	type plain DeliveryReport
-	var p plain
+	var p struct {
+		plain
+		TestRisk json.RawMessage `json:"test_risk"`
+	}
 	if err := json.Unmarshal(data, &p); err != nil {
 		return err
 	}
-	*r = DeliveryReport(p)
+	*r = DeliveryReport(p.plain)
+	if len(p.TestRisk) == 0 {
+		return nil
+	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err

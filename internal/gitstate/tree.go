@@ -1,11 +1,9 @@
 package gitstate
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 )
@@ -93,31 +91,28 @@ func (w Workspace) ReadBlobs(ctx context.Context, ids []string) (map[string][]by
 	if err != nil {
 		return nil, err
 	}
-	reader := bufio.NewReader(bytes.NewReader(out))
 	for _, id := range unique {
 		if err := ctx.Err(); err != nil {
 			return result, err
 		}
-		header, err := reader.ReadString('\n')
-		if err != nil {
-			return result, err
+		header, data, ok := bytes.Cut(out, []byte{'\n'})
+		if !ok {
+			return result, fmt.Errorf("固定 blob 缺少对象头: %s", id)
 		}
-		fields := strings.Fields(header)
+		fields := strings.Fields(string(header))
 		if len(fields) != 3 || fields[0] != id || fields[1] != "blob" {
 			return result, fmt.Errorf("固定 tree 对象不是可读取的 blob: %s", id)
 		}
 		size, err := strconv.Atoi(fields[2])
-		if err != nil || size < 0 || size > len(out) {
+		if err != nil || size < 0 || size > len(data) {
 			return result, fmt.Errorf("固定 blob 长度无效")
 		}
-		data := make([]byte, size)
-		if _, err := io.ReadFull(reader, data); err != nil {
-			return result, err
-		}
-		if end, err := reader.ReadByte(); err != nil || end != '\n' {
+		if size == len(data) || data[size] != '\n' {
 			return result, fmt.Errorf("固定 blob 结束标记无效")
 		}
-		result[id] = data
+		// 共享这一批的输出，限制容量以免追加内容时覆盖下一个 blob。
+		result[id] = data[:size:size]
+		out = data[size+1:]
 	}
 	return result, nil
 }

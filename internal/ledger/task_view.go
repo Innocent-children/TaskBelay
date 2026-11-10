@@ -51,6 +51,15 @@ func taskList(ctx context.Context, q queryer, workspace string) ([]TaskRecord, e
 }
 
 func (s *Store) TaskView(ctx context.Context, workspace, id string, actor Actor) (TaskView, error) {
+	return s.taskView(ctx, workspace, id, actor, false)
+}
+
+// TaskOverview 为 MCP 概要读取同一事务中的当前状态；消息、来源和验证正文由分页工具读取。
+func (s *Store) TaskOverview(ctx context.Context, workspace, id string, actor Actor) (TaskView, error) {
+	return s.taskView(ctx, workspace, id, actor, true)
+}
+
+func (s *Store) taskView(ctx context.Context, workspace, id string, actor Actor, overview bool) (TaskView, error) {
 	view := TaskView{LatestCheck: "not_checked", Requirements: []Requirement{}, History: []Requirement{}, Messages: []Message{}, Sources: []Source{}, Notes: []Note{}, EffectiveDecisions: []Note{}, WorkspaceUpdates: []FileChange{}, PendingLocations: []Location{}}
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		var err error
@@ -67,17 +76,21 @@ func (s *Store) TaskView(ctx context.Context, workspace, id string, actor Actor)
 				return err
 			}
 		}
-		view.Candidates, err = taskList(ctx, q, workspace)
-		if err != nil {
-			return err
+		if !overview || id == "" {
+			view.Candidates, err = taskList(ctx, q, workspace)
+			if err != nil {
+				return err
+			}
 		}
 		view.Settings, err = effectiveSettings(ctx, q, workspace, id, false)
 		if err != nil {
 			return err
 		}
-		view.Verifications, err = readVerifications(ctx, q, workspace, id)
-		if err != nil {
-			return err
+		if !overview {
+			view.Verifications, err = readVerifications(ctx, q, workspace, id)
+			if err != nil {
+				return err
+			}
 		}
 		var startMessage string
 		if id != "" {
@@ -108,7 +121,9 @@ func (s *Store) TaskView(ctx context.Context, workspace, id string, actor Actor)
 					rows.Close()
 					return err
 				}
-				view.History = append(view.History, requirement)
+				if !overview {
+					view.History = append(view.History, requirement)
+				}
 				if i, ok := indices[requirement.ID]; ok {
 					view.Requirements[i] = requirement
 				} else {
@@ -184,6 +199,9 @@ func (s *Store) TaskView(ctx context.Context, workspace, id string, actor Actor)
 				return err
 			}
 			rows.Close()
+		}
+		if overview {
+			return nil
 		}
 		rows, err := q.QueryContext(ctx, `SELECT data FROM messages_v12 WHERE workspace_id=? AND seq>=COALESCE((SELECT seq FROM messages_v12 WHERE id=?),0) ORDER BY seq`, workspace, startMessage)
 		if err != nil {

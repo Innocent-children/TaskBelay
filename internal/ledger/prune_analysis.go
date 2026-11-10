@@ -255,7 +255,8 @@ func (s *Store) PurgeCacheBatch(ctx context.Context, algorithm string) (done boo
 				rows.Close()
 				return err
 			}
-			if kind != "meta" && kind != indexPageKind {
+			// 当前格式的词流可能在第一次维护前已经建好，随后检查还要复用。
+			if kind != "meta" && kind != indexPageKind && !strings.HasPrefix(kind, algorithm+":") {
 				kinds = append(kinds, kind)
 			}
 		}

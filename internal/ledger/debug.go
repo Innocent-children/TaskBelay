@@ -134,8 +134,7 @@ func (t *DebugTrace) Finish(ctx context.Context, result any, failure error) {
 	defer cancel()
 	if t.task != "" {
 		// 不修改业务 Store 的快速事件预算；诊断读取使用自己的短预算。
-		diagnostic := *t.store
-		diagnostic.waitLimit = NormalWait
+		diagnostic := Store{db: t.store.db, dataDir: t.store.dataDir, waitLimit: NormalWait}
 		view, err := diagnostic.TaskView(WithCheckReports(read), t.workspace, t.task, t.actor)
 		if err != nil {
 			t.record("task.snapshot_failed", map[string]any{"error": err.Error()})

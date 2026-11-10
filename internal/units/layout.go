@@ -70,7 +70,7 @@ func IndentedUnits(ctx context.Context, f File, syntax Syntax) ([]Unit, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = assignNames(ctx, &f, syntax)
+	err = assignNames(ctx, &f, syntax, true)
 	return f.Units, err
 }
 
@@ -107,15 +107,19 @@ func indentLayout(ctx context.Context, f File, tokens []Token, failed int) ([]Un
 		nodes[idx].EndLine = len(f.Lines)
 	}
 	for i := range nodes {
-		start := sort.Search(len(tokens), func(j int) bool { return tokens[j].Start >= nodes[i].Start })
-		end := sort.Search(len(tokens), func(j int) bool { return tokens[j].Start >= nodes[i].End })
-		// 跨行词只能归入完整包含它的单元，不能把半个字符串当作单元内容。
-		if end > start && tokens[end-1].End > nodes[i].End {
-			end--
-		}
-		nodes[i].Tokens = tokens[start:end]
+		nodes[i].Tokens = tokensInRange(tokens, nodes[i].Start, nodes[i].End)
 	}
 	return nodes, "indent", float64(len(nodes)) / float64(max(1, len(nodes)+failed)), ctx.Err()
+}
+
+func tokensInRange(tokens []Token, from, to int) []Token {
+	start := sort.Search(len(tokens), func(j int) bool { return tokens[j].Start >= from })
+	end := sort.Search(len(tokens), func(j int) bool { return tokens[j].Start >= to })
+	// 跨行词只能归入完整包含它的单元。
+	if end > start && tokens[end-1].End > to {
+		end--
+	}
+	return tokens[start:end:end]
 }
 
 func indent(line string) int {
@@ -129,27 +133,31 @@ func indent(line string) int {
 	return n
 }
 
-func assignNames(ctx context.Context, f *File, syntax Syntax) error {
+func assignNames(ctx context.Context, f *File, syntax Syntax, buildIDs bool) error {
 	freq := map[string]int{}
 	keywords := map[string]bool{}
 	for _, k := range syntax.Keywords {
 		keywords[k] = true
 	}
-	for _, u := range f.Units {
+	lastSeen := map[string]int{}
+	for i, u := range f.Units {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		seen := map[string]bool{}
 		for _, t := range u.Tokens {
-			if t.End <= u.HeaderEnd && t.Kind == "identifier" {
-				seen[t.Text] = true
+			if t.End > u.HeaderEnd {
+				break
+			}
+			if t.Kind == "identifier" && lastSeen[t.Text] != i+1 {
+				freq[t.Text]++
+				lastSeen[t.Text] = i + 1
 			}
 		}
-		for w := range seen {
-			freq[w]++
-		}
 	}
-	contexts := make([]string, len(f.Units))
+	var contexts []string
+	if buildIDs {
+		contexts = make([]string, len(f.Units))
+	}
 	occurrences := map[string]int{}
 	for i := range f.Units {
 		if err := ctx.Err(); err != nil {
@@ -157,15 +165,19 @@ func assignNames(ctx context.Context, f *File, syntax Syntax) error {
 		}
 		u := &f.Units[i]
 		u.Name = ""
-		var names []string
+		hasName := false
+		headerEnd := 0
 		for _, t := range u.Tokens {
-			if t.End <= u.HeaderEnd && (t.Kind == "identifier" || t.Kind == "key") && !keywords[Literal(t)] {
-				names = append(names, Literal(t))
+			if t.End > u.HeaderEnd {
+				break
 			}
-		}
-		sort.SliceStable(names, func(i, j int) bool { return freq[names[i]] < freq[names[j]] })
-		if len(names) > 0 {
-			u.Name = names[0]
+			headerEnd++
+			if t.Kind == "identifier" || t.Kind == "key" {
+				word := Literal(t)
+				if !keywords[word] && (!hasName || freq[word] < freq[u.Name]) {
+					u.Name, hasName = word, true
+				}
+			}
 		}
 		for j, t := range u.Tokens {
 			if t.End > u.HeaderEnd {
@@ -176,12 +188,10 @@ func assignNames(ctx context.Context, f *File, syntax Syntax) error {
 				break
 			}
 		}
-		var header []Token
-		for _, token := range u.Tokens {
-			if token.End <= u.HeaderEnd {
-				header = append(header, token)
-			}
+		if !buildIDs {
+			continue
 		}
+		header := u.Tokens[:headerEnd]
 		parent := ""
 		if u.Parent >= 0 {
 			parent = contexts[u.Parent]
@@ -195,38 +205,62 @@ func assignNames(ctx context.Context, f *File, syntax Syntax) error {
 	return ctx.Err()
 }
 
+// 调用形状按括号深度识别；沿用原规则，闭合符不要求与起始符同类。
+func visitClosedTokens(ts []Token, visit func(int, int)) {
+	var stack []int
+	for i, t := range ts {
+		switch t.Text {
+		case "(", "[", "{", "<":
+			stack = append(stack, i)
+		case ")", "]", "}", ">":
+			if n := len(stack); n > 0 {
+				visit(stack[n-1], i)
+				stack = stack[:n-1]
+			}
+		}
+	}
+}
+
+func callStart(ts []Token, open int) bool {
+	return open > 0 && ts[open-1].Kind == "identifier" && ts[open].Text != "{"
+}
+
+func CallNameCount(tokens []Token) int {
+	ts := Significant(tokens)
+	names := map[string]struct{}{}
+	visitClosedTokens(ts, func(open, end int) {
+		if callStart(ts, open) {
+			names[ts[open-1].Text] = struct{}{}
+		}
+	})
+	return len(names)
+}
+
 func Calls(tokens []Token) map[string][][]Token {
 	result := map[string][][]Token{}
 	ts := Significant(tokens)
+	ends := make([]int, len(ts))
+	visitClosedTokens(ts, func(open, end int) { ends[open] = end })
 	for i, t := range ts {
-		if t.Kind != "identifier" || i+1 >= len(ts) || !strings.Contains("([<", ts[i+1].Text) || len(ts[i+1].Text) != 1 {
+		if i+1 >= len(ts) || ends[i+1] == 0 || !callStart(ts, i+1) {
 			continue
 		}
-		depth := 0
-		start := i + 2
+		start, end := i+2, ends[i+1]
 		var args []Token
-		for j := i + 1; j < len(ts); j++ {
-			v := ts[j].Text
-			if len(v) == 1 && strings.Contains("([{<", v) {
-				depth++
+		for j := start; j <= end; j++ {
+			if ends[j] > j {
+				j = ends[j]
+				continue
 			}
-			if len(v) == 1 && strings.Contains(")]}>", v) {
-				depth--
+			if j != end && ts[j].Text != "," {
+				continue
 			}
-			if depth == 0 {
-				if j > start {
-					args = append(args, Token{Kind: "argument", Text: strings.Join(Sequence(ts[start:j], false), " "), Start: ts[start].Start, End: ts[j-1].End, Line: ts[start].Line})
-				}
-				result[t.Text] = append(result[t.Text], args)
-				break
+			if j > start {
+				args = append(args, Token{Kind: "argument", Text: strings.Join(Sequence(ts[start:j], false), " "), Start: ts[start].Start, End: ts[j-1].End, Line: ts[start].Line})
 			}
-			if depth == 1 && v == "," {
-				if j > start {
-					args = append(args, Token{Kind: "argument", Text: strings.Join(Sequence(ts[start:j], false), " "), Start: ts[start].Start, End: ts[j-1].End, Line: ts[start].Line})
-				}
-				start = j + 1
-			}
+			start = j + 1
 		}
+		result[t.Text] = append(result[t.Text], args)
 	}
 	return result
 }

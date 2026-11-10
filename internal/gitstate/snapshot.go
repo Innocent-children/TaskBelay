@@ -2,6 +2,7 @@ package gitstate
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +30,35 @@ type Snapshot struct {
 
 func (s Snapshot) Complete() bool { return s.Tree != "" && len(s.Incomplete) == 0 }
 
+// 普通 v2 索引可直接作为私有副本，由 Git 校验并重查工作区。特殊索引由 Git
+// 导出条目重建；不解析扩展或修改二进制索引字段。
+func plainIndex(data []byte, hashBytes int) bool {
+	if len(data) < 12+hashBytes || string(data[:4]) != "DIRC" || binary.BigEndian.Uint32(data[4:8]) != 2 {
+		return false
+	}
+	entries := binary.BigEndian.Uint32(data[8:12])
+	data = data[12 : len(data)-hashBytes]
+	const statBytes = 40
+	flagsAt := statBytes + hashBytes
+	for range entries {
+		if len(data) < flagsAt+2 {
+			return false
+		}
+		flags := int(binary.BigEndian.Uint16(data[flagsAt:]))
+		// 长名称、特殊标记或早于 racy 检查起点的 mtime 交给 Git 处理。
+		if flags >= 0xfff || binary.BigEndian.Uint32(data[8:12]) == 0 {
+			return false
+		}
+		pathEnd := flagsAt + 2 + flags
+		size := (pathEnd + 1 + 7) &^ 7
+		if size > len(data) || data[pathEnd] != 0 {
+			return false
+		}
+		data = data[size:]
+	}
+	return len(data) == 0 || len(data) >= 8 && string(data[:4]) == "TREE" && uint64(binary.BigEndian.Uint32(data[4:8])) == uint64(len(data)-8)
+}
+
 /**
  * CaptureTree 让 Git 在独立目录中读取原始字节；原索引只读，所有暂存都在临时索引中。
  * 目录清单和内容检查由 Git 完成，调用方随后只取两个 tree 的差异。
@@ -43,46 +73,36 @@ func (w Workspace) CaptureTree(ctx context.Context) (snapshot Snapshot, err erro
 		return snapshot, err
 	}
 	defer os.RemoveAll(temp)
-	empty, err := w.command(ctx, nil, nil, "hash-object", "-t", "tree", "-w", "--stdin")
-	if err != nil {
-		return snapshot, err
+	objectID := snapshot.Context.HEAD
+	if objectID == "" {
+		empty, err := w.command(ctx, nil, nil, "hash-object", "-t", "tree", "-w", "--stdin")
+		if err != nil {
+			return snapshot, err
+		}
+		objectID = strings.TrimSpace(string(empty))
 	}
 	copyPath := filepath.Join(temp, "index")
+	sourcePath := filepath.Join(temp, "source-index")
 	env := []string{"GIT_INDEX_FILE=" + copyPath}
-	// 直接复制索引文件，不经过会占用仓库 index.lock 的 Git 命令。Git 以改名方式
-	// 替换索引，读到的总是某一次完整写入的内容。
-	source, err := w.command(ctx, nil, nil, "rev-parse", "--git-path", "index")
-	if err != nil {
-		return snapshot, err
-	}
-	sourcePath := strings.TrimSuffix(string(source), "\n")
-	if !filepath.IsAbs(sourcePath) {
-		sourcePath = filepath.Join(w.Root, sourcePath)
-	}
-	index, err := os.ReadFile(sourcePath)
+	data, err := os.ReadFile(filepath.Join(w.GitDir, "index"))
+	plain := false
 	if errors.Is(err, os.ErrNotExist) {
-		// 尚无索引的仓库从空索引开始；锁只落在临时索引上。
 		_, err = w.command(ctx, nil, env, "read-tree", "--empty")
+		plain = true
 	} else if err == nil {
-		err = os.WriteFile(copyPath, index, 0600)
+		plain = plainIndex(data, len(objectID)/2)
+		destination := copyPath
+		if !plain {
+			destination = sourcePath
+		}
+		err = os.WriteFile(destination, data, 0600)
 	}
 	if err != nil {
 		return snapshot, err
-	}
-	if _, err = w.command(ctx, nil, env, "update-index", "--no-split-index"); err != nil {
-		return snapshot, err
-	}
-	objects, err := w.command(ctx, nil, nil, "rev-parse", "--git-path", "objects")
-	if err != nil {
-		return snapshot, err
-	}
-	objectPath := strings.TrimSpace(string(objects))
-	if !filepath.IsAbs(objectPath) {
-		objectPath = filepath.Join(w.Root, objectPath)
 	}
 	metadata := filepath.Join(temp, "repo")
 	args := []string{"init", "--bare", "--template="}
-	if len(strings.TrimSpace(string(empty))) == 64 {
+	if len(objectID) == 64 {
 		args = append(args, "--object-format=sha256")
 	}
 	args = append(args, metadata)
@@ -95,7 +115,7 @@ func (w Workspace) CaptureTree(ctx context.Context) (snapshot Snapshot, err erro
 	if err = os.WriteFile(filepath.Join(metadata, "info", "attributes"), []byte("* -text -eol -filter -ident -working-tree-encoding\n"), 0600); err != nil {
 		return snapshot, err
 	}
-	env = append(env, "GIT_DIR="+metadata, "GIT_WORK_TREE="+w.Root, "GIT_OBJECT_DIRECTORY="+objectPath)
+	env = append(env, "GIT_DIR="+metadata, "GIT_WORK_TREE="+w.Root, "GIT_OBJECT_DIRECTORY="+filepath.Join(w.CommonDir, "objects"))
 	config := []string{"-c", "include.path=" + filepath.Join(w.CommonDir, "config")}
 	if _, statErr := os.Stat(filepath.Join(w.GitDir, "config.worktree")); statErr == nil {
 		config = append(config, "-c", "include.path="+filepath.Join(w.GitDir, "config.worktree"))
@@ -107,25 +127,29 @@ func (w Workspace) CaptureTree(ctx context.Context) (snapshot Snapshot, err erro
 		return snapshot, err
 	}
 	defer paths.Close()
-	if _, err = w.commandTo(ctx, nil, paths, env, append(append([]string{}, config...), "ls-files", "-z")...); err != nil {
-		return snapshot, err
+	if !plain {
+		sourceEnv := []string{"GIT_INDEX_FILE=" + sourcePath}
+		conflicts, err := w.command(ctx, nil, sourceEnv, "ls-files", "--unmerged", "-z")
+		if err != nil {
+			return snapshot, err
+		}
+		if len(conflicts) != 0 {
+			return snapshot, fmt.Errorf("索引包含尚未解决的合并冲突")
+		}
+		if _, err = w.commandTo(ctx, nil, paths, sourceEnv, "ls-files", "--stage", "-z"); err != nil {
+			return snapshot, err
+		}
+		if _, err = paths.Seek(0, io.SeekStart); err != nil {
+			return snapshot, err
+		}
+		if _, err = w.command(ctx, paths, env, append(append([]string{}, config...), "update-index", "-z", "--index-info")...); err != nil {
+			return snapshot, err
+		}
 	}
-	if _, err = paths.Seek(0, io.SeekStart); err != nil {
-		return snapshot, err
-	}
-	if _, err = w.command(ctx, paths, env, append(append([]string{}, config...), "update-index", "--no-assume-unchanged", "-z", "--stdin")...); err != nil {
-		return snapshot, err
-	}
-	// 所有标记只在临时索引中清除。缺失的稀疏条目随后保留；普通删除由原索引给出。
-	if _, err = paths.Seek(0, io.SeekStart); err != nil {
-		return snapshot, err
-	}
-	if _, err = w.command(ctx, paths, env, append(append([]string{}, config...), "update-index", "--no-skip-worktree", "-z", "--stdin")...); err != nil {
-		return snapshot, err
-	}
-	// 零时间让 Git 把每个 stat 命中视为可能的快速编辑，按原始字节重新核对。
-	epoch := time.Unix(0, 0)
-	if err = os.Chtimes(copyPath, epoch, epoch); err != nil {
+	// Git 以非零索引时间启用 racy-stat 核对。即使真实索引的 stat 与文件一致，
+	// 也要区分原始字节与 clean filter 或行尾转换后的 blob。
+	early := time.Unix(1, 0)
+	if err = os.Chtimes(copyPath, early, early); err != nil {
 		return snapshot, err
 	}
 	if _, err = w.command(ctx, nil, env, append(append([]string{}, config...), "add", "-A", "--ignore-removal", "--", ".")...); err != nil {
@@ -140,11 +164,17 @@ func (w Workspace) CaptureTree(ctx context.Context) (snapshot Snapshot, err erro
 	if _, err = w.commandTo(ctx, nil, paths, nil, "ls-files", "--deleted", "-z"); err != nil {
 		return snapshot, err
 	}
-	if _, err = paths.Seek(0, io.SeekStart); err != nil {
+	deleted, err := paths.Stat()
+	if err != nil {
 		return snapshot, err
 	}
-	if _, err = w.command(ctx, paths, env, "update-index", "--force-remove", "-z", "--stdin"); err != nil {
-		return snapshot, err
+	if deleted.Size() > 0 {
+		if _, err = paths.Seek(0, io.SeekStart); err != nil {
+			return snapshot, err
+		}
+		if _, err = w.command(ctx, paths, env, "update-index", "--force-remove", "-z", "--stdin"); err != nil {
+			return snapshot, err
+		}
 	}
 	out, err := w.command(ctx, nil, env, "write-tree")
 	if err != nil {
@@ -161,6 +191,9 @@ func (w Workspace) Capture(ctx context.Context, previous ...string) (snapshot Sn
 	}
 	snapshot.Files = map[string]File{}
 	if len(previous) > 0 && previous[0] != "" {
+		if previous[0] == snapshot.Tree {
+			return snapshot, ctx.Err()
+		}
 		diff, err := w.Diff(ctx, previous[0], snapshot.Tree)
 		if err != nil {
 			return snapshot, err

@@ -58,19 +58,23 @@ func (w Workspace) commandTo(ctx context.Context, input io.Reader, target *os.Fi
 	defer stderr.Close()
 	// 调用方提供的文件或管道直接交给子进程，并仍由调用方关闭，避免预读阻塞并耗尽共用的运行时限。
 	stdin, streaming := input.(*os.File)
-	if !streaming {
+	if input == nil {
+		stdin, err = os.Open(os.DevNull)
+		if err != nil {
+			return nil, err
+		}
+		defer stdin.Close()
+	} else if !streaming {
 		stdin, err = os.Create(filepath.Join(dir, "stdin"))
 		if err != nil {
 			return nil, err
 		}
 		defer stdin.Close()
-		if input != nil {
-			if _, err := io.Copy(stdin, contextReader{ctx, input}); err != nil {
-				return nil, err
-			}
-			if _, err := stdin.Seek(0, io.SeekStart); err != nil {
-				return nil, err
-			}
+		if _, err := io.Copy(stdin, contextReader{ctx, input}); err != nil {
+			return nil, err
+		}
+		if _, err := stdin.Seek(0, io.SeekStart); err != nil {
+			return nil, err
 		}
 	}
 	arguments := append([]string{"-C", w.Root, "-c", "core.fsmonitor=false", "-c", "core.splitIndex=false", "-c", "gc.auto=0"}, args...)

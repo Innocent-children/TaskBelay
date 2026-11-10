@@ -92,6 +92,33 @@ func Analyze(ctx context.Context, source Source, syntax Syntax) (File, error) {
 	if len(f.Lines) > 0 && f.Lines[len(f.Lines)-1] == "" {
 		f.Lines = f.Lines[:len(f.Lines)-1]
 	}
+	var err error
+	f.Tokens, err = lex(ctx, text, syntax)
+	if err != nil {
+		return f, err
+	}
+	f.Units, f.Layout, f.Consistency, err = layout(ctx, f)
+	if err != nil {
+		return f, err
+	}
+	var prose, total int
+	for _, t := range f.Tokens {
+		if t.Kind == "space" {
+			continue
+		}
+		total++
+		if t.Kind == "comment" || t.Kind == "string" {
+			prose += len(Words(t.Text))
+		}
+	}
+	if total > 0 {
+		f.Natural = float64(prose) / float64(total+prose)
+	}
+	return Reclassify(ctx, f, syntax)
+}
+
+func lex(ctx context.Context, text string, syntax Syntax) ([]Token, error) {
+	var tokens []Token
 	comments := append([]string(nil), syntax.Comments...)
 	sort.Slice(comments, func(i, j int) bool {
 		if len(comments[i]) == len(comments[j]) {
@@ -103,7 +130,7 @@ func Analyze(ctx context.Context, source Source, syntax Syntax) (File, error) {
 	for i := 0; i < len(text); {
 		if i >= nextPoll {
 			if err := ctx.Err(); err != nil {
-				return f, err
+				return tokens, err
 			}
 			nextPoll = i + PollBytes
 		}
@@ -191,33 +218,36 @@ func Analyze(ctx context.Context, source Source, syntax Syntax) (File, error) {
 			}
 		}
 		line += strings.Count(text[start:i], "\n")
-		f.Tokens = append(f.Tokens, Token{Kind: kind, Text: text[start:i], Start: start, End: i, Line: at})
+		tokens = append(tokens, Token{Kind: kind, Text: text[start:i], Start: start, End: i, Line: at})
 	}
-	var err error
-	f.Units, f.Layout, f.Consistency, err = layout(ctx, f)
-	if err != nil {
-		return f, err
+	return tokens, ctx.Err()
+}
+
+// LiteralArgument 沿用文件的词法约定，判断一个实参是否为单个字面量（含负数）。
+func LiteralArgument(ctx context.Context, text string, syntax Syntax) (bool, error) {
+	if strings.IndexByte(text, 0) >= 0 || !utf8.ValidString(text) {
+		return false, ctx.Err()
 	}
-	var prose, total int
-	for _, t := range f.Tokens {
-		if t.Kind == "space" {
-			continue
-		}
-		total++
-		if t.Kind == "comment" || t.Kind == "string" {
-			prose += len(Words(t.Text))
-		}
+	tokens, err := lex(ctx, text, syntax)
+	tokens = Significant(tokens)
+	if len(tokens) == 2 && tokens[0].Text == "-" && tokens[1].Kind == "number" {
+		tokens = tokens[1:]
 	}
-	if total > 0 {
-		f.Natural = float64(prose) / float64(total+prose)
-	}
-	return Reclassify(ctx, f, syntax)
+	return len(tokens) == 1 && (tokens[0].Kind == "number" || tokens[0].Kind == "string" || tokens[0].Kind == "key"), err
 }
 
 // Reclassify 在词法约定不变时复用词流与版面，只更新名字和结构置信度。
 func Reclassify(ctx context.Context, f File, syntax Syntax) (File, error) {
 	f.Units = append([]Unit(nil), f.Units...)
-	if err := assignNames(ctx, &f, syntax); err != nil {
+	// 单元编号只依赖原词流、父级与同层次序，重新学习关键字不会改变编号。
+	buildIDs := false
+	for _, u := range f.Units {
+		if u.ID == "" {
+			buildIDs = true
+			break
+		}
+	}
+	if err := assignNames(ctx, &f, syntax, buildIDs); err != nil {
 		return f, err
 	}
 	sample := float64(syntax.Samples) / (float64(syntax.Samples) + ConfidencePrior)
@@ -236,18 +266,35 @@ func isKey(s string) bool {
 	}
 	return true
 }
+
+// Significant 返回只读词流。已经滤过的词流可直接共享原切片。
 func Significant(tokens []Token) []Token {
-	out := make([]Token, 0, len(tokens))
-	for _, t := range tokens {
-		if t.Kind != "space" && t.Kind != "comment" {
-			out = append(out, t)
+	if tokens == nil {
+		return []Token{}
+	}
+	for i, t := range tokens {
+		if t.Kind == "space" || t.Kind == "comment" {
+			out := make([]Token, i, len(tokens)-1)
+			copy(out, tokens[:i])
+			for _, t := range tokens[i+1:] {
+				if t.Kind != "space" && t.Kind != "comment" {
+					out = append(out, t)
+				}
+			}
+			return out
 		}
 	}
-	return out
+	return tokens[:len(tokens):len(tokens)]
 }
 func Sequence(tokens []Token, normalize bool) []string {
 	var out []string
-	for _, t := range Significant(tokens) {
+	for _, t := range tokens {
+		if t.Kind == "space" || t.Kind == "comment" {
+			continue
+		}
+		if out == nil {
+			out = make([]string, 0, len(tokens))
+		}
 		if normalize && (t.Kind == "number" || t.Kind == "key" || t.Kind == "string") {
 			out = append(out, "@"+t.Kind)
 		} else {

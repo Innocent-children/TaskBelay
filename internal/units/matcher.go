@@ -131,48 +131,55 @@ func NewMatcher(ctx context.Context, patterns []string) (*Matcher, error) {
 }
 
 func (m *Matcher) Find(ctx context.Context, text string) ([]Match, error) {
-	return FindStates(ctx, text, func(i int) (MatcherState, error) { return m.nodes[i], nil })
+	var out []Match
+	err := ScanStates(ctx, text, func(i int) (MatcherState, error) { return m.nodes[i], nil }, func(m Match) { out = append(out, m) })
+	return out, err
 }
 
 func (m *Matcher) States() []MatcherState { return m.nodes }
 
 /**
- * FindStates 按文本触及的状态读取自动机，状态可来自内存或调用方的索引。
+ * ScanStates 按文本触及的状态读取自动机，边扫描边交付命中位置。
  */
-func FindStates(ctx context.Context, text string, read func(int) (MatcherState, error)) ([]Match, error) {
-	var out []Match
+func ScanStates(ctx context.Context, text string, read func(int) (MatcherState, error), visit func(Match)) error {
+	if len(text) == 0 {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s := 0
+	state, err := read(s)
+	if err != nil {
+		return err
+	}
 	for i := range len(text) {
 		if i%PollBytes == 0 {
 			if err := ctx.Err(); err != nil {
-				return out, err
+				return err
 			}
 		}
 		c := text[i]
-		state, err := read(s)
-		if err != nil {
-			return out, err
-		}
-		for s != 0 {
-			if _, ok := state.next(c); ok {
+		for {
+			next, ok := state.next(c)
+			if !ok && s == 0 {
 				break
 			}
-			s = state.Fail
-			state, err = read(s)
-			if err != nil {
-				return out, err
+			if !ok {
+				next = state.Fail
 			}
-		}
-		if n, ok := state.next(c); ok {
-			s = n
+			s = next
 			state, err = read(s)
 			if err != nil {
-				return out, err
+				return err
+			}
+			if ok {
+				break
 			}
 		}
 		for _, p := range state.Outputs {
-			out = append(out, Match{p, i + 1 - len(p), i + 1})
+			visit(Match{p, i + 1 - len(p), i + 1})
 		}
 	}
-	return out, nil
+	return nil
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/hook"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
-	"github.com/Innocent-children/taskbelay/internal/summary"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -205,15 +204,20 @@ func register[Input any](server *mcp.Server, name, description string, write boo
 		if !ok {
 			return toolFailure(fmt.Errorf("工具响应不是可分页的对象"))
 		}
-		toolResult = boundedResponse(name, value, false)
-		business, _ := json.Marshal(value)
-		wire, _ := json.Marshal(toolResult)
+		response := boundedResponse(name, value, false)
+		toolResult = response.result
 		if task, ok := value["task_id"].(string); ok && !toolResult.IsError {
-			if feedbackErr := service.Store.RecordFeedback(ctx, service.Workspace.ID, task, string(wire)); feedbackErr != nil && service.ReportError != nil {
+			if feedbackErr := service.Store.RecordFeedback(ctx, service.Workspace.ID, task, response.wire); feedbackErr != nil && service.ReportError != nil {
 				service.ReportError(feedbackErr)
 			}
 		}
-		ledger.DebugRecord(ctx, "mcp.output_size", map[string]any{"business_bytes": len(business), "protocol_bytes": len(wire), "estimated_tokens": summary.Tokens(string(wire)), "budget": outputBudget(name)})
+		if ledger.DebugEnabled(ctx) {
+			business, ok := toolResult.StructuredContent.(json.RawMessage)
+			if !ok || toolResult.IsError {
+				business, _ = json.Marshal(value)
+			}
+			ledger.DebugRecord(ctx, "mcp.output_size", map[string]any{"business_bytes": len(business), "protocol_bytes": len(response.wire), "estimated_tokens": response.tokens, "budget": outputBudget(name)})
+		}
 		failure = nil
 		service.Background.Schedule(actor)
 		return toolResult, nil, nil
@@ -240,5 +244,5 @@ func toolError(err error) (*mcp.CallToolResult, any, error) {
 	if errors.As(err, &taskConflict) {
 		result["current_task_id"] = taskConflict.CurrentTaskID
 	}
-	return boundedResponse("error", result, true), nil, nil
+	return boundedResponse("error", result, true).result, nil, nil
 }

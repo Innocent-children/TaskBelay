@@ -6,11 +6,15 @@ import (
 	"errors"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
+	"github.com/Innocent-children/taskbelay/internal/platform"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
+	"os"
 	"path"
+	"path/filepath"
 	"reflect"
 	"strings"
+	"time"
 )
 
 func (x *repositoryIndex) saveSketch(sketch repostats.FileSketch) {
@@ -97,7 +101,7 @@ func (x *repositoryIndex) conventions(sketches []repostats.FileSketch, r reposta
 			continue
 		}
 		info := x.fileInfo(p)
-		rows := map[string]ledger.IndexRow{}
+		rows := map[string]indexMember{}
 		for _, row := range info.Rows {
 			rows[rowKey(row.Kind, row.Key)+"\x00"+row.Member] = row
 		}
@@ -107,7 +111,7 @@ func (x *repositoryIndex) conventions(sketches []repostats.FileSketch, r reposta
 			if v == nil {
 				delete(rows, k)
 			} else {
-				rows[k] = ledger.IndexRow{Kind: kind, Key: key, Member: member}
+				rows[k] = indexMember{kind, key, member}
 			}
 		}
 		for i, u := range next.Units {
@@ -170,6 +174,44 @@ var ErrIndexPending = errors.New("分析索引尚未就绪")
 
 type publishedOnlyKey struct{}
 
+type backgroundIndexKey struct{}
+
+// 仅后台预热合并同一账本、项目、起点和变体的重建。前台检查保留自己的截止时间；
+// 锁不可用时仍可依靠账本的代次核对和原子发布。
+func findBuild(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree, variant string) (ledger.AnalysisIndex, bool, func(), error) {
+	saved, found, err := s.FindIndex(ctx, w.ProjectID, tree, variant)
+	if found || err != nil || ctx.Value(backgroundIndexKey{}) != true {
+		return saved, found, nil, err
+	}
+	dir := filepath.Join(s.DataDir(), "build-locks")
+	if os.MkdirAll(dir, 0700) != nil {
+		return saved, false, nil, nil
+	}
+	name := filepath.Join(dir, units.Hash(w.ProjectID, tree, variant))
+	for {
+		release, err := platform.TryBuildLock(name)
+		if err != nil {
+			return saved, false, nil, ctx.Err()
+		}
+		if release != nil {
+			// 等待期间，持有者可能已发布，也可能中途退出。重新查账本决定是否接手。
+			saved, found, err = s.FindIndex(ctx, w.ProjectID, tree, variant)
+			return saved, found, release, err
+		}
+		timer := time.NewTimer(BackgroundPoll)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return saved, false, nil, ctx.Err()
+		case <-timer.C:
+			saved, found, err = s.FindIndex(ctx, w.ProjectID, tree, variant)
+			if found || err != nil {
+				return saved, found, nil, err
+			}
+		}
+	}
+}
+
 // publishedOnly 用于 hook：只读取已发布的索引。建立起点索引、扫描新的运行输出和
 // 重新学习测试内容的耗时超过 hook 预算，由 MCP 后台和交付检查完成。
 func publishedOnly(ctx context.Context) context.Context {
@@ -207,7 +249,7 @@ func taskIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, task 
 	if err != nil {
 		return nil, err
 	}
-	records, err := s.Verifications(ctx, w.ID, task.ID)
+	records, err := s.IndexVerifications(ctx, w.ID, task.ID, Algorithm)
 	if err != nil {
 		return nil, err
 	}
@@ -262,18 +304,14 @@ func observedNames(base *repositoryIndex, runs []repostats.Run) (names []string,
 			return nil, false, err
 		}
 		if !found {
-			matches, err := base.matcher("graph", strings.ToLower(run.Output))
+			patterns, err := base.matchPatterns("graph", strings.ToLower(run.Output), false)
 			if err != nil {
 				return nil, false, err
 			}
 			// 同一个名字在一条输出里会命中很多次，整词核对只做一次。
-			own, patterns := map[string]bool{}, map[string]bool{}
-			for _, match := range matches {
-				if patterns[match.Pattern] {
-					continue
-				}
-				patterns[match.Pattern] = true
-				for _, raw := range base.read("fold_name", match.Pattern) {
+			own := map[string]bool{}
+			for pattern := range patterns {
+				for _, raw := range base.read("fold_name", pattern) {
 					var name string
 					if err := json.Unmarshal([]byte(raw), &name); err != nil {
 						return nil, false, err
@@ -418,7 +456,10 @@ func observedIndex(base *repositoryIndex, runs []repostats.Run) (*repositoryInde
 	}
 	variant := Algorithm + ":seeds:" + units.Hash(encode(names))
 	if known {
-		saved, found, err := base.s.FindIndex(base.ctx, base.w.ProjectID, base.meta.Tree, variant)
+		saved, found, release, err := findBuild(base.ctx, base.s, base.w, base.meta.Tree, variant)
+		if release != nil {
+			defer release()
+		}
 		if err != nil {
 			return base, err
 		}
@@ -446,7 +487,6 @@ func observedIndex(base *repositoryIndex, runs []repostats.Run) (*repositoryInde
 	if err = x.publish(build); err != nil {
 		return x, err
 	}
-	x.writes = map[string]ledger.IndexRow{}
 	return x, x.err
 }
 
@@ -578,12 +618,11 @@ func buildNextIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, 
 			}
 		}
 	}
-	if err = x.refreshStatistics(base, keys(changed)); err != nil {
+	if err = x.refreshStatistics(base, changed, sketches); err != nil {
 		return x, err
 	}
 	if err = x.publish(build); err != nil {
 		return x, err
 	}
-	x.writes = map[string]ledger.IndexRow{}
 	return x, x.err
 }

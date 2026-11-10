@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
-	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
 	"github.com/Innocent-children/taskbelay/internal/validation"
 	"path"
@@ -28,17 +27,17 @@ func (x *repositoryIndex) prefix(kind, prefix string) map[string]map[string]stri
 			out[r.Key][r.Member] = r.Data
 		}
 	}
-	for key := range x.rowKinds[kind] {
+	for key, members := range x.rows[kind] {
 		if strings.HasPrefix(key, prefix) {
 			k := rowKey(kind, key)
 			if x.loaded[k] || x.id == "" {
-				out[key] = x.rows[k]
+				out[key] = members
 				continue
 			}
 			if out[key] == nil {
 				out[key] = map[string]string{}
 			}
-			for member, raw := range x.rows[k] {
+			for member, raw := range members {
 				if raw == "" {
 					delete(out[key], member)
 				} else {
@@ -51,12 +50,12 @@ func (x *repositoryIndex) prefix(kind, prefix string) map[string]map[string]stri
 }
 func (x *repositoryIndex) refs(f units.File) []string {
 	set := map[string]bool{}
-	matches, err := x.matcher("doc", strings.Join(f.Lines, ""))
+	matches, err := x.matchPatterns("doc", strings.Join(f.Lines, ""), false)
 	if err != nil {
 		x.err = err
 	}
-	for _, m := range matches {
-		for p := range x.read("doc_pattern", m.Pattern) {
+	for m := range matches {
+		for p := range x.read("doc_pattern", m) {
 			set[p] = true
 		}
 	}
@@ -86,24 +85,6 @@ func (x *repositoryIndex) summaryFile(p string, sign int) {
 	}
 }
 
-func (x *repositoryIndex) buildValidation(build ledger.IndexBuild, r repostats.Repository) error {
-	for _, p := range keys(r.Files) {
-		f := x.fileInfo(p)
-		if !f.Role.Document {
-			f.References = x.refs(r.Files[p])
-			x.put("file", p, "", f)
-			x.adjustRefs(f, 1)
-			if err := x.saveText(build, r.Files[p]); err != nil {
-				return err
-			}
-		}
-	}
-	for _, p := range keys(r.Files) {
-		x.summaryFile(p, 1)
-	}
-	return x.err
-}
-
 /**
  * 新增文档按字面引用和 glob 反查现有代码；新代码按文档自动机查询。
  * 三字以下的引用使用短串倒排，避免全文索引退化为逐文件扫描。
@@ -111,17 +92,21 @@ func (x *repositoryIndex) buildValidation(build ledger.IndexBuild, r repostats.R
 func (x *repositoryIndex) saveText(build ledger.IndexBuild, f units.File) error {
 	text := strings.Join(f.Lines, "")
 	short := map[string]bool{}
-	runes := []rune(text)
-	for i := range runes {
-		short[string(runes[i:i+1])] = true
-		if i+1 < len(runes) {
-			short[string(runes[i:i+2])] = true
+	previous := -1
+	for i := 0; i < len(text); {
+		_, width := utf8.DecodeRuneInString(text[i:])
+		end := i + width
+		short[text[i:end]] = true
+		if previous >= 0 {
+			short[text[previous:end]] = true
 		}
+		previous = i
+		i = end
 	}
 	info := x.fileInfo(f.Path)
 	for _, key := range keys(short) {
 		x.put("text_short", key, f.Path, true)
-		info.Rows = append(info.Rows, ledgerRow("text_short", key, f.Path))
+		info.Rows = append(info.Rows, indexMember{"text_short", key, f.Path})
 	}
 	x.put("file", f.Path, "", info)
 	if err := x.s.SaveIndexText(x.ctx, build, f.Path, text); err != nil {
@@ -129,10 +114,6 @@ func (x *repositoryIndex) saveText(build ledger.IndexBuild, f units.File) error 
 	}
 	return nil
 }
-func ledgerRow(kind, key, member string) ledger.IndexRow {
-	return ledger.IndexRow{Kind: kind, Key: key, Member: member}
-}
-
 func (x *repositoryIndex) codeReferences(p string) []string {
 	set := map[string]bool{}
 	for _, pattern := range validation.DocumentPatterns(p) {

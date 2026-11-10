@@ -36,27 +36,38 @@ func readLink(task, category, id string, revision int64) map[string]any {
 	return link
 }
 
-func protocolResult(value map[string]any, isError bool) (*mcp.CallToolResult, []byte) {
+type encodedResponse struct {
+	result *mcp.CallToolResult
+	wire   string
+	tokens int
+}
+
+func encodeResponse(result *mcp.CallToolResult) encodedResponse {
+	data, _ := json.Marshal(result)
+	wire := string(data)
+	return encodedResponse{result, wire, summary.Tokens(wire)}
+}
+
+func protocolResult(value map[string]any, isError bool) encodedResponse {
 	data, err := json.Marshal(value)
 	if err != nil {
 		data = []byte(`{"error":"响应编码失败"}`)
 		isError = true
 	}
 	result := &mcp.CallToolResult{IsError: isError, StructuredContent: json.RawMessage(data), Content: []mcp.Content{&mcp.TextContent{Text: string(data)}}}
-	wire, _ := json.Marshal(result)
-	return result, wire
+	return encodeResponse(result)
 }
 
 /**
  * 响应长度限制包含文本与结构化结果序列化后的内容，并为 JSON-RPC 外层预留空间。
  * 编号、状态、总数和续读入口不裁剪；正文缩短后同步调整续读偏移。
  */
-func boundedResponse(name string, value map[string]any, isError bool) *mcp.CallToolResult {
+func boundedResponse(name string, value map[string]any, isError bool) encodedResponse {
 	budget := outputBudget(name) - 64
 	for {
-		result, wire := protocolResult(value, isError)
-		if summary.Tokens(string(wire)) <= budget {
-			return result
+		response := protocolResult(value, isError)
+		if response.tokens <= budget {
+			return response
 		}
 		value["truncated"] = true
 		if body, ok := value["body"].(string); ok && len([]rune(body)) > 1 {
@@ -67,9 +78,22 @@ func boundedResponse(name string, value map[string]any, isError bool) *mcp.CallT
 			continue
 		}
 		if records, ok := value["records"].([]any); ok && len(records) > 1 {
-			records = records[:len(records)-1]
-			value["records"], value["has_more"] = records, true
-			value["last_seq"] = records[len(records)-1].(map[string]any)["seq"]
+			// 记录按递增序号排列，前缀越长，响应只会越大。
+			setPrefix := func(n int) {
+				value["records"], value["has_more"] = records[:n], true
+				value["last_seq"] = records[n-1].(map[string]any)["seq"]
+			}
+			lo, hi := 1, len(records)-1
+			for lo < hi {
+				mid := lo + (hi-lo+1)/2
+				setPrefix(mid)
+				if protocolResult(value, isError).tokens <= budget {
+					lo = mid
+				} else {
+					hi = mid - 1
+				}
+			}
+			setPrefix(lo)
 			continue
 		}
 		if details, ok := value["details"]; ok {
@@ -85,7 +109,7 @@ func boundedResponse(name string, value map[string]any, isError bool) *mcp.CallT
 			continue
 		}
 		// 必须保留的元数据只含程序生成的短标识；响应无法再缩短时返回错误，不能直接截断。
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "响应元数据超过长度上限，请缩小查询范围。"}}}
+		return encodeResponse(&mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "响应元数据超过长度上限，请缩小查询范围。"}}})
 	}
 }
 

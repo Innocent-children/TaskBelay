@@ -151,15 +151,13 @@ func (t Tasks) observeWorkspace(ctx context.Context, e event.Event, command *led
 }
 
 func (t Tasks) Get(ctx context.Context, actor ledger.Actor, id string) (ledger.TaskView, error) {
-	view, observation, err := t.observeTask(ctx, actor)
+	observation, err := t.observeWorkspace(ctx, event.Event{Kind: event.SessionStart, Agent: actor.Agent, SessionID: actor.SessionID, RoundID: actor.RoundID}, nil)
+	if err != nil {
+		return ledger.TaskView{}, err
+	}
+	view, err := t.Store.TaskOverview(ctx, t.Workspace.ID, id, actor)
 	if err != nil {
 		return view, err
-	}
-	if id != "" && (view.Task == nil || id != view.Task.ID) {
-		view, err = t.Store.TaskView(ctx, t.Workspace.ID, id, actor)
-		if err != nil {
-			return view, err
-		}
 	}
 	return t.resolveView(ctx, view, observation)
 }

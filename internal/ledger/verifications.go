@@ -308,11 +308,17 @@ func scanVerifications(rows *sql.Rows) ([]VerificationRecord, error) {
 	return result, rows.Err()
 }
 
-func (s *Store) Verifications(ctx context.Context, workspace, task string) ([]VerificationRecord, error) {
+// IndexVerifications 只加载本版分析可能采用的运行。退出时间和只读命令仍由 runSamples 核对。
+func (s *Store) IndexVerifications(ctx context.Context, workspace, task, algorithm string) ([]VerificationRecord, error) {
 	var result []VerificationRecord
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		var err error
-		result, err = readVerifications(ctx, q, workspace, task)
+		rows, err := q.QueryContext(ctx, `SELECT data FROM verifications_v12
+WHERE workspace_id=? AND task_id=? AND executed=1 AND json_extract(data,'$.algorithm')=?
+ AND json_extract(data,'$.exit_code') IS NOT NULL ORDER BY seq`, workspace, task, algorithm)
+		if err != nil {
+			return err
+		}
+		result, err = scanVerifications(rows)
 		return err
 	})
 	return result, err

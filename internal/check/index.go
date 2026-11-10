@@ -11,7 +11,10 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/signals"
 	"github.com/Innocent-children/taskbelay/internal/units"
 	"github.com/Innocent-children/taskbelay/internal/validation"
+	"iter"
+	"maps"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -30,12 +33,16 @@ type indexMeta struct {
 	VariationCounts                    map[string][2]int
 	Validation                         validation.Summary
 }
+
+// 文件只引用它拥有的行，不需要在归属清单中重复保存 Data。
+type indexMember struct{ Kind, Key, Member string }
+
 type indexFile struct {
 	Blob, Mode, Cache string
 	Role              repostats.Role
 	Units             []string
 	Tests, Seeds      map[string]bool
-	Rows              []ledger.IndexRow
+	Rows              []indexMember
 	References        []string
 	Content, Semantic string
 }
@@ -59,9 +66,8 @@ type repositoryIndex struct {
 	id          string
 	variant     string
 	meta        indexMeta
-	rows        map[string]map[string]string
+	rows        map[string]map[string]map[string]string // kind → key → member
 	loaded      map[string]bool
-	rowKinds    map[string]map[string]bool
 	volumes     map[string]changes.VolumeNode
 	volumeDirty map[string]bool
 	fileCache   map[string]indexFile
@@ -77,27 +83,58 @@ type repositoryIndex struct {
 // 叠加当前改动时，这几类条目会被逐键读取数万次；整类一次读入，避免逐条查询账本。
 var preloadKinds = map[string]bool{"volume": true, "test_model": true, "stats": true}
 
-func (x *repositoryIndex) preload(kind string) {
-	x.preloaded[kind] = true
-	for key, members := range x.prefix(kind, "") {
+func (x *repositoryIndex) preload(kind, prefix string) {
+	rows, err := x.s.IndexPrefixRows(x.ctx, x.id, kind, prefix, IndexBatch, IndexBatchBytes)
+	if err != nil {
+		x.err = err
+		return
+	}
+	for len(rows) > 0 {
+		key := rows[0].Key
+		end := 1
+		for end < len(rows) && rows[end].Key == key {
+			end++
+		}
+		group := rows[:end]
+		rows = rows[end:]
 		k := rowKey(kind, key)
 		if x.loaded[k] {
 			continue
 		}
-		x.rows[k], x.loaded[k] = members, true
-		if x.rowKinds[kind] == nil {
-			x.rowKinds[kind] = map[string]bool{}
+		members := make(map[string]string, len(group))
+		for _, row := range group {
+			members[row.Member] = row.Data
 		}
-		x.rowKinds[kind][key] = true
+		x.setMembers(kind, key, members)
+		x.loaded[k] = true
 	}
 }
 
 func rowKey(kind, key string) string { return kind + "\x00" + key }
-func encode(v any) string            { b, _ := json.Marshal(v); return string(b) }
+func encode(v any) string {
+	// 倒排行里大部分值是标记和计数，直接得到同样的 JSON 标量。
+	switch v := v.(type) {
+	case bool:
+		return strconv.FormatBool(v)
+	case int:
+		return strconv.Itoa(v)
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+func (x *repositoryIndex) setMembers(kind, key string, members map[string]string) {
+	if x.rows[kind] == nil {
+		x.rows[kind] = make(map[string]map[string]string)
+	}
+	x.rows[kind][key] = members
+}
 func (x *repositoryIndex) read(kind, key string) map[string]string {
+	if x.id == "" {
+		return x.rows[kind][key]
+	}
 	k := rowKey(kind, key)
 	if x.loaded[k] {
-		return x.rows[k]
+		return x.rows[kind][key]
 	}
 	r := map[string]string{}
 	if x.base != nil && x.err == nil {
@@ -105,14 +142,15 @@ func (x *repositoryIndex) read(kind, key string) map[string]string {
 			r[member] = raw
 		}
 		x.err = x.base.err
-	} else if x.id != "" && x.err == nil && preloadKinds[kind] {
+	} else if x.err == nil && preloadKinds[kind] {
 		if !x.preloaded[kind] {
-			x.preload(kind)
+			x.preload(kind, "")
+			x.preloaded[kind] = true
 		}
 		if x.loaded[k] {
-			return x.rows[k]
+			return x.rows[kind][key]
 		}
-	} else if x.id != "" && x.err == nil {
+	} else if x.err == nil {
 		rows, err := x.s.IndexRows(x.ctx, x.id, kind, key)
 		if err != nil {
 			x.err = err
@@ -121,19 +159,15 @@ func (x *repositoryIndex) read(kind, key string) map[string]string {
 			r[v.Member] = v.Data
 		}
 	}
-	for member, raw := range x.rows[k] {
+	for member, raw := range x.rows[kind][key] {
 		if raw == "" {
 			delete(r, member)
 		} else {
 			r[member] = raw
 		}
 	}
-	x.rows[k] = r
+	x.setMembers(kind, key, r)
 	x.loaded[k] = true
-	if x.rowKinds[kind] == nil {
-		x.rowKinds[kind] = map[string]bool{}
-	}
-	x.rowKinds[kind][key] = true
 	return r
 }
 func (x *repositoryIndex) get(kind, key string, out any) bool {
@@ -148,32 +182,38 @@ func (x *repositoryIndex) get(kind, key string, out any) bool {
 	return true
 }
 func (x *repositoryIndex) put(kind, key, member string, v any) {
+	// 初建时文件归属清单还要补入引用和短串，只在发布最终版本时编码一次。
+	if kind == "file" && x.id == "" {
+		f, _ := v.(indexFile)
+		x.fileCache[key] = f
+		return
+	}
 	raw := ""
 	if v != nil {
 		raw = encode(v)
 	}
-	k := rowKey(kind, key)
-	r := x.rows[k]
-	if x.id == "" {
-		x.loaded[k] = true
+	var k string
+	complete := x.id == ""
+	if !complete {
+		k = rowKey(kind, key)
+		complete = x.loaded[k]
 	}
+	r := x.rows[kind][key]
 	if r == nil {
 		r = map[string]string{}
-		x.rows[k] = r
+		x.setMembers(kind, key, r)
 	}
-	if old, exists := r[member]; old == raw && (exists || x.loaded[k] || x.id == "") {
+	if old, exists := r[member]; old == raw && (exists || complete) {
 		return
 	}
-	if raw == "" && (x.loaded[k] || x.id == "") {
+	if raw == "" && complete {
 		delete(r, member)
 	} else {
 		r[member] = raw
 	}
-	if x.rowKinds[kind] == nil {
-		x.rowKinds[kind] = map[string]bool{}
+	if x.id != "" {
+		x.writes[k+"\x00"+member] = ledger.IndexRow{Kind: kind, Key: key, Member: member, Data: raw}
 	}
-	x.rowKinds[kind][key] = true
-	x.writes[rowKey(kind, key)+"\x00"+member] = ledger.IndexRow{Kind: kind, Key: key, Member: member, Data: raw}
 	switch kind {
 	case "file":
 		f, _ := v.(indexFile)
@@ -199,7 +239,7 @@ func (x *repositoryIndex) unit(key string) indexUnit {
 	if u, ok := x.unitCache[key]; ok {
 		return u
 	}
-	if _, local := x.rows[rowKey("unit", key)]; !local && x.base != nil && x.err == nil {
+	if _, local := x.rows["unit"][key]; !local && x.base != nil && x.err == nil {
 		u := x.base.unit(key)
 		x.err = x.base.err
 		x.unitCache[key] = u
@@ -233,17 +273,16 @@ func (x *repositoryIndex) volumeNode(key string) changes.VolumeNode {
 }
 func (x *repositoryIndex) setVolume(key string, v changes.VolumeNode) {
 	x.volumes[key] = v
-	x.volumeDirty[key] = true
+	if x.id != "" {
+		x.volumeDirty[key] = true
+	}
 }
 func (x *repositoryIndex) statDelta(word string, counts map[int]int, uses int) {
 	old := x.stats(word)
-	if len(counts) == 0 {
-		old.Uses += uses
-		x.put("stats", word, "", old)
-		return
-	}
-	for c, n := range old.Counts {
-		changes.AdjustVolume(old.DF, c, -n, x.volumeNode, x.setVolume)
+	if x.id != "" && len(counts) != 0 {
+		for c, n := range old.Counts {
+			changes.AdjustVolume(old.DF, c, -n, x.volumeNode, x.setVolume)
+		}
 	}
 	for c, n := range counts {
 		old.Counts[c] += n
@@ -253,10 +292,40 @@ func (x *repositoryIndex) statDelta(word string, counts map[int]int, uses int) {
 		}
 	}
 	old.Uses += uses
-	for c, n := range old.Counts {
-		changes.AdjustVolume(old.DF, c, n, x.volumeNode, x.setVolume)
+	if x.id == "" {
+		x.statCache[word] = old
+		return
+	}
+	if len(counts) != 0 {
+		for c, n := range old.Counts {
+			changes.AdjustVolume(old.DF, c, n, x.volumeNode, x.setVolume)
+		}
 	}
 	x.put("stats", word, "", old)
+}
+
+// 初建时只需最终词频。具有相同文档频率和单元词频的词对体积贡献相同，
+// 先按整数累计出现数，再一次性建立前缀统计，避免留下中间词频的空节点。
+func (x *repositoryIndex) buildVolume() {
+	groups := map[int]map[int]int{}
+	for _, stats := range x.statCache {
+		if len(stats.Counts) == 0 {
+			continue
+		}
+		group := groups[stats.DF]
+		if group == nil {
+			group = map[int]int{}
+			groups[stats.DF] = group
+		}
+		for count, n := range stats.Counts {
+			group[count] += n
+		}
+	}
+	for _, df := range slices.Sorted(maps.Keys(groups)) {
+		for _, c := range slices.Sorted(maps.Keys(groups[df])) {
+			changes.AdjustVolume(df, c, groups[df][c], x.volumeNode, x.setVolume)
+		}
+	}
 }
 func (x *repositoryIndex) load(p string) units.File {
 	if f, ok := x.files[p]; ok {
@@ -266,8 +335,7 @@ func (x *repositoryIndex) load(p string) units.File {
 	if info.Blob == "" {
 		return units.File{}
 	}
-	var f units.File
-	found, err := x.s.AnalysisCache(x.ctx, "file", info.Cache, &f)
+	f, found, err := cachedFile(x.ctx, x.s, info.Cache)
 	if err != nil {
 		x.err = err
 	} else if !found {
@@ -279,7 +347,7 @@ func (x *repositoryIndex) load(p string) units.File {
 			f, readErr = units.Analyze(x.ctx, units.Source{Path: p, Blob: info.Blob, Mode: info.Mode, Data: data}, syn)
 		}
 		if readErr == nil {
-			readErr = x.s.SaveAnalysisCache(x.ctx, "file", info.Cache, f)
+			readErr = saveCachedFile(x.ctx, x.s, info.Cache, f)
 		}
 		if readErr != nil {
 			x.err = fmt.Errorf("索引文件分析缺失：%s: %w", p, readErr)
@@ -359,43 +427,51 @@ func entryKeys(p string, u units.Unit) []string {
 	return keys
 }
 
-func (x *repositoryIndex) matcher(kind, text string) ([]units.Match, error) {
-	var out []units.Match
+func (x *repositoryIndex) matchPatterns(kind, text string, whole bool) (map[string]bool, error) {
+	out := map[string]bool{}
 	for _, root := range x.meta.Matchers[kind] {
-		matches, err := units.FindStates(x.ctx, text, func(i int) (units.MatcherState, error) {
+		lastPage := -1
+		var states []units.MatcherState
+		err := units.ScanStates(x.ctx, text, func(i int) (units.MatcherState, error) {
 			page, offset := i/MatcherPageSize, i%MatcherPageSize
-			key := root + ":" + strconv.Itoa(page)
-			states, ok := x.pages[key]
-			if !ok {
-				x.get("matcher", key, &states)
-				// 读取失败的页不缓存，也不当作缺页。
-				if x.err != nil {
-					return units.MatcherState{}, x.err
+			if page != lastPage {
+				key := root + ":" + strconv.Itoa(page)
+				var ok bool
+				states, ok = x.pages[key]
+				if !ok {
+					x.get("matcher", key, &states)
+					// 读取失败的页不缓存，也不当作缺页。
+					if x.err != nil {
+						return units.MatcherState{}, x.err
+					}
+					x.pages[key] = states
 				}
-				x.pages[key] = states
+				lastPage = page
 			}
 			if offset >= len(states) {
 				return units.MatcherState{}, fmt.Errorf("自动机索引页缺失：%s/%d", root, page)
 			}
 			return states[offset], x.err
+		}, func(m units.Match) {
+			if !out[m.Pattern] && (!whole || units.WholeWord(text, m)) {
+				out[m.Pattern] = true
+			}
 		})
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, matches...)
 	}
 	return out, x.err
 }
 
 func (x *repositoryIndex) namesIn(text string) []string {
-	set := map[string]bool{}
-	matches, err := x.matcher("case", text)
+	set, err := x.matchPatterns("case", text, true)
 	if err != nil {
 		x.err = err
 	}
-	for _, m := range matches {
-		if units.WholeWord(text, m) && len(x.read("case_name", m.Pattern)) > 0 {
-			set[m.Pattern] = true
+	for p := range set {
+		if len(x.read("case_name", p)) == 0 {
+			delete(set, p)
 		}
 	}
 	return keys(set)
@@ -481,12 +557,17 @@ func (x *repositoryIndex) graph() changes.Graph {
 	}
 	g.Match = func(ctx context.Context, text string) (map[string][]string, error) {
 		out := map[string][]string{}
-		ms, err := x.matcher("graph", text)
+		patterns, err := x.matchPatterns("graph", text, true)
 		if err != nil {
 			return nil, err
 		}
-		for _, m := range ms {
-			for _, raw := range x.read("match", m.Pattern) {
+		for pattern := range patterns {
+			seen := map[string]bool{}
+			for _, raw := range x.read("match", pattern) {
+				if seen[raw] {
+					continue
+				}
+				seen[raw] = true
 				var node string
 				if err := json.Unmarshal([]byte(raw), &node); err != nil {
 					return nil, err
@@ -506,7 +587,7 @@ func (x *repositoryIndex) graph() changes.Graph {
 						continue
 					}
 				}
-				out[m.Pattern] = append(out[m.Pattern], node)
+				out[pattern] = append(out[pattern], node)
 			}
 		}
 		return out, x.err
@@ -523,18 +604,25 @@ func (x *repositoryIndex) changeFile(p string, f units.File, r repostats.Reposit
 		x.put("file", p, "", nil)
 	}
 	info := indexFile{Blob: f.Blob, Mode: f.Mode, Cache: units.Hash(Algorithm, f.Blob, r.SyntaxFor(p).Key()), Role: r.Roles[p], Tests: map[string]bool{}, Seeds: map[string]bool{}}
-	owned := map[string]bool{}
+	owned := map[indexMember]bool{}
 	put := func(kind, key, member string, v any) {
 		if sign < 0 {
 			return
 		}
-		row := rowKey(kind, key) + "\x00" + member
-		if owned[row] {
-			return
+		row := indexMember{kind, key, member}
+		if x.id == "" && kind != "doc_pattern" {
+			// 初建时成员带有所属文件或单元，行目录本身即可判重。
+			if _, ok := x.rows[kind][key][member]; ok {
+				return
+			}
+		} else {
+			if owned[row] {
+				return
+			}
+			owned[row] = true
 		}
-		owned[row] = true
 		x.put(kind, key, member, v)
-		info.Rows = append(info.Rows, ledger.IndexRow{Kind: kind, Key: key, Member: member})
+		info.Rows = append(info.Rows, row)
 	}
 	x.meta.Units += sign * len(f.Units)
 	words := map[string]map[int]int{}
@@ -554,29 +642,54 @@ func (x *repositoryIndex) changeFile(p string, f units.File, r repostats.Reposit
 			put("glob", validation.GlobPrefix(pattern), p+"\x00"+pattern, globReference{p, pattern})
 		}
 	}
-	for _, u := range f.Units {
+	type lexeme struct {
+		id, node string
+		matches  []string
+	}
+	lexemes := make(map[string]lexeme)
+	var shapes []signals.UnitStructure
+	if sign > 0 {
+		shapes = signals.FileStructures(f)
+	}
+	for i, u := range f.Units {
+		counts := map[string]int{}
+		for _, t := range u.Tokens {
+			if t.Kind == "identifier" || t.Kind == "key" {
+				counts[units.Literal(t)]++
+			}
+		}
+		for word, n := range counts {
+			if words[word] == nil {
+				words[word] = map[int]int{}
+			}
+			words[word][n] += sign
+		}
+		// 旧索引的归属行已经逐条撤回，只需扣除词频和体积。
+		if sign < 0 {
+			continue
+		}
 		key := repostats.UnitKey(p, u)
 		info.Units = append(info.Units, key)
 		info.Tests[key] = r.TestUnits[key]
 		info.Seeds[key] = r.TestSeeds[key]
-		v := indexUnit{Path: p, Unit: u, Words: map[string]int{}, Head: map[string]bool{}, Structure: signals.Structure(f, u)}
+		v := indexUnit{Path: p, Unit: u, Words: counts, Head: map[string]bool{}, Structure: shapes[i]}
 		v.Unit.Tokens = nil
 		for _, t := range u.Tokens {
-			if t.Kind == "identifier" || t.Kind == "key" {
-				v.Words[units.Literal(t)]++
+			if t.End > u.HeaderEnd {
+				break
 			}
-			if t.End <= u.HeaderEnd {
-				v.Head[t.Text] = true
-			}
+			v.Head[t.Text] = true
 		}
 		if u.Parent >= 0 {
 			for _, t := range f.Units[u.Parent].Tokens {
-				if t.End <= f.Units[u.Parent].HeaderEnd {
-					v.Head[t.Text] = true
+				if t.End > f.Units[u.Parent].HeaderEnd {
+					break
 				}
+				v.Head[t.Text] = true
 			}
 		}
-		for word := range v.Head {
+		// 归属清单按内容共享，固定 map 的遍历顺序使相同文件重建后仍命中同一份正文。
+		for _, word := range keys(v.Head) {
 			put("head", word, key, true)
 		}
 		if u.Name != "" {
@@ -590,18 +703,18 @@ func (x *repositoryIndex) changeFile(p string, f units.File, r repostats.Reposit
 		if u.Name != "" {
 			put("match", strings.ToLower(p+":"+u.Name), key, "u:"+key)
 		}
-		for w, n := range v.Words {
-			put("word", w, key, n)
-			if words[w] == nil {
-				words[w] = map[int]int{}
+		for _, w := range keys(v.Words) {
+			put("word", w, key, v.Words[w])
+			entry, ok := lexemes[w]
+			if !ok {
+				id := units.Hash(w)
+				entry = lexeme{id, "lexeme:" + id, append([]string{strings.ToLower(w)}, units.Words(w)...)}
+				lexemes[w] = entry
+				x.put("lexeme", id, "", w)
 			}
-			words[w][n] += sign
-			wordID := units.Hash(w)
-			if sign > 0 {
-				x.put("lexeme", wordID, "", w)
-			}
-			for _, match := range append([]string{strings.ToLower(w)}, units.Words(w)...) {
-				put("match", match, key+":"+wordID, "lexeme:"+wordID)
+			member := key + ":" + entry.id
+			for _, match := range entry.matches {
+				put("match", match, member, entry.node)
 			}
 		}
 		if v.Structure.Callable {
@@ -622,8 +735,11 @@ func (x *repositoryIndex) changeFile(p string, f units.File, r repostats.Reposit
 		}
 		put("unit", key, "", v)
 	}
-	for name, calls := range units.Calls(f.Tokens) {
-		put("calls", name, p, calls)
+	if sign > 0 {
+		calls := units.Calls(f.Tokens)
+		for _, name := range keys(calls) {
+			put("calls", name, p, calls[name])
+		}
 	}
 	all := map[string]bool{}
 	for w := range words {
@@ -636,7 +752,7 @@ func (x *repositoryIndex) changeFile(p string, f units.File, r repostats.Reposit
 		x.statDelta(w, words[w], uses[w])
 	}
 	if sign > 0 {
-		if err := x.s.SaveAnalysisCache(x.ctx, "file", info.Cache, f); err != nil {
+		if err := saveCachedFile(x.ctx, x.s, info.Cache, f); err != nil {
 			x.err = fmt.Errorf("保存文件分析 %s: %w", p, err)
 			return
 		}
@@ -648,13 +764,39 @@ func (x *repositoryIndex) changeFile(p string, f units.File, r repostats.Reposit
 	}
 }
 
-func (x *repositoryIndex) publish(build ledger.IndexBuild) error {
-	for key := range x.volumeDirty {
-		x.put("volume", key, "", x.volumes[key])
+// 初建时所有行都是新行，直接遍历分类目录；增量版本只发布写集（含删除标记）。
+func (x *repositoryIndex) changedRows(yield func(ledger.IndexRow) bool) {
+	if x.id != "" {
+		for _, key := range keys(x.writes) {
+			if !yield(x.writes[key]) {
+				return
+			}
+		}
+		return
 	}
-	if x.err != nil {
-		return x.err
+	for _, word := range keys(x.statCache) {
+		if !yield(ledger.IndexRow{Kind: "stats", Key: word, Data: encode(x.statCache[word])}) {
+			return
+		}
 	}
+	for _, key := range keys(x.volumes) {
+		if !yield(ledger.IndexRow{Kind: "volume", Key: key, Data: encode(x.volumes[key])}) {
+			return
+		}
+	}
+	for _, kind := range keys(x.rows) {
+		for _, key := range keys(x.rows[kind]) {
+			members := x.rows[kind][key]
+			for _, member := range keys(members) {
+				if !yield(ledger.IndexRow{Kind: kind, Key: key, Member: member, Data: members[member]}) {
+					return
+				}
+			}
+		}
+	}
+}
+
+func (x *repositoryIndex) writeRows(build ledger.IndexBuild, rows iter.Seq[ledger.IndexRow]) error {
 	var batch []ledger.IndexRow
 	bytes := 0
 	flush := func() error {
@@ -664,15 +806,15 @@ func (x *repositoryIndex) publish(build ledger.IndexBuild) error {
 		if err := x.s.SaveIndexRows(x.ctx, build, batch); err != nil {
 			return fmt.Errorf("保存索引批次 %s/%s: %w", batch[0].Kind, batch[0].Key, err)
 		}
-		batch, bytes = nil, 0
+		clear(batch)
+		batch, bytes = batch[:0], 0
 		return nil
 	}
-	for _, key := range keys(x.writes) {
-		row := x.writes[key]
+	for row := range rows {
 		// 已读取的父层成员可直接继承。只在发布时省略，约定和匹配器仍使用完整的本次改动。
 		if x.base != nil {
 			k := rowKey(row.Kind, row.Key)
-			if x.base.loaded[k] && x.base.rows[k][row.Member] == row.Data {
+			if x.base.loaded[k] && x.base.rows[row.Kind][row.Key][row.Member] == row.Data {
 				continue
 			}
 		}
@@ -685,7 +827,20 @@ func (x *repositoryIndex) publish(build ledger.IndexBuild) error {
 		batch = append(batch, row)
 		bytes += size
 	}
-	if err := flush(); err != nil {
+	if x.err != nil {
+		return x.err
+	}
+	return flush()
+}
+
+func (x *repositoryIndex) publish(build ledger.IndexBuild) error {
+	for key := range x.volumeDirty {
+		x.put("volume", key, "", x.volumes[key])
+	}
+	if x.err != nil {
+		return x.err
+	}
+	if err := x.writeRows(build, x.changedRows); err != nil {
 		return err
 	}
 	x.meta.Generation = build.Generation
@@ -703,17 +858,13 @@ func (x *repositoryIndex) publish(build ledger.IndexBuild) error {
 	if !found {
 		return fmt.Errorf("起点索引未发布：%s", x.meta.Tree)
 	}
-	if saved.ID != build.ID {
-		// 并行构建可能从不同父版本出发，只采用最先发布的完整版本。
-		next := newIndex(x.ctx, x.s, x.w)
-		next.id, next.variant = saved.ID, x.variant
-		if err := json.Unmarshal(saved.Data, &next.meta); err != nil {
-			return err
-		}
-		*x = *next
-	} else {
-		x.id = build.ID
+	// 只使用实际发布的版本，同时释放构建时的词流、写集和父层缓存。
+	next := newIndex(x.ctx, x.s, x.w)
+	next.id, next.variant = saved.ID, saved.Variant
+	if err := json.Unmarshal(saved.Data, &next.meta); err != nil {
+		return err
 	}
+	*x = *next
 	return nil
 }
 
@@ -729,12 +880,15 @@ func (x *repositoryIndex) readResult() error {
 }
 
 func newIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace) *repositoryIndex {
-	return &repositoryIndex{ctx: ctx, s: s, w: w, variant: Algorithm, rows: map[string]map[string]string{}, loaded: map[string]bool{}, rowKinds: map[string]map[string]bool{}, volumes: map[string]changes.VolumeNode{}, volumeDirty: map[string]bool{}, fileCache: map[string]indexFile{}, unitCache: map[string]indexUnit{}, statCache: map[string]wordStats{}, writes: map[string]ledger.IndexRow{}, files: map[string]units.File{}, pages: map[string][]units.MatcherState{}, preloaded: map[string]bool{}, meta: indexMeta{Matchers: map[string][]string{}}}
+	return &repositoryIndex{ctx: ctx, s: s, w: w, variant: Algorithm, rows: map[string]map[string]map[string]string{}, loaded: map[string]bool{}, volumes: map[string]changes.VolumeNode{}, volumeDirty: map[string]bool{}, fileCache: map[string]indexFile{}, unitCache: map[string]indexUnit{}, statCache: map[string]wordStats{}, writes: map[string]ledger.IndexRow{}, files: map[string]units.File{}, pages: map[string][]units.MatcherState{}, preloaded: map[string]bool{}, meta: indexMeta{Matchers: map[string][]string{}}}
 }
 
 func openIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree string) (*repositoryIndex, error) {
 	x := newIndex(ctx, s, w)
-	r, found, err := s.FindIndex(ctx, w.ProjectID, tree, Algorithm)
+	r, found, release, err := findBuild(ctx, s, w, tree, Algorithm)
+	if release != nil {
+		defer release()
+	}
 	if err != nil {
 		return x, err
 	}
@@ -782,60 +936,105 @@ func openIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree 
 	for _, e := range raw.Entries {
 		x.put("entry", e.Kind+"\x00"+e.Value, "", e)
 	}
-	for _, p := range keys(raw.Files) {
-		x.changeFile(p, raw.Files[p], raw, 1)
-		if x.err != nil {
-			return x, x.err
-		}
-	}
-	for _, source := range src {
-		sketch, err := repostats.Sketch(ctx, raw.Files[source.Path], source.Data)
-		if err != nil {
-			return x, err
-		}
-		sketch.Classified = raw.Roles[source.Path]
-		info := x.fileInfo(source.Path)
-		sketch.Tests, sketch.Seeds = info.Tests, info.Seeds
-		x.saveSketch(sketch)
-	}
 	mean, variance, err := signals.SimilarityStatistics(ctx, raw)
 	if err != nil {
 		return x, err
 	}
 	x.meta.SimilarityMean, x.meta.SimilarityVariance = mean, variance
-	x.meta.VariationCounts = map[string][2]int{}
-	if err := x.saveFacts(keys(raw.Files)); err != nil {
-		return x, err
-	}
-	x.updatePrior()
-	x.buildMatchers()
 	build, err := s.BeginIndexBuild(ctx, units.Hash(Algorithm, w.ProjectID, tree))
 	if err != nil {
 		return x, err
 	}
-	if err := x.buildValidation(build, raw); err != nil {
+	paths := keys(raw.Files)
+	for _, p := range paths {
+		if raw.Roles[p].Document {
+			for _, pattern := range validation.DocumentPatterns(p) {
+				x.put("doc_pattern", pattern, p, true)
+			}
+		}
+	}
+	x.addMatcher("doc", keys(x.rows["doc_pattern"]))
+	if err := x.writeRows(build, func(yield func(ledger.IndexRow) bool) {
+		for _, source := range src {
+			p := source.Path
+			f := raw.Files[p]
+			x.changeFile(p, f, raw, 1)
+			if x.err != nil {
+				return
+			}
+			sketch, err := repostats.Sketch(ctx, f, source.Data)
+			if err != nil {
+				x.err = err
+				return
+			}
+			info := x.fileInfo(p)
+			sketch.Classified = info.Role
+			sketch.Tests, sketch.Seeds = info.Tests, info.Seeds
+			x.saveSketch(sketch)
+			if !info.Role.Document {
+				info.References = x.refs(f)
+				x.put("file", p, "", info)
+				x.adjustRefs(info, 1)
+				if err := x.saveText(build, f); err != nil {
+					x.err = err
+					return
+				}
+				info = x.fileInfo(p)
+			}
+			// 文件归属和单元正文在此已经确定。批次写入未发布的代次；
+			// 后续跨文件统计只需要单元首行、结构和文件摘要。
+			if !yield(ledger.IndexRow{Kind: "file", Key: p, Data: encode(info)}) ||
+				!yield(ledger.IndexRow{Kind: "learning", Key: p, Data: x.rows["learning"][p][""]}) {
+				return
+			}
+			delete(x.rows["learning"], p)
+			info.Rows = nil
+			x.fileCache[p] = info
+			unitKeys := slices.Clone(info.Units)
+			slices.Sort(unitKeys)
+			for _, key := range unitKeys {
+				if !yield(ledger.IndexRow{Kind: "unit", Key: key, Data: x.rows["unit"][key][""]}) {
+					return
+				}
+				delete(x.rows["unit"], key)
+				u := x.unitCache[key]
+				u.Words, u.Grams, u.Signature = nil, nil, nil
+				x.unitCache[key] = u
+			}
+			delete(raw.Files, p)
+			delete(x.files, p)
+		}
+	}); err != nil {
 		return x, err
 	}
+	members := make(map[string][]string, len(paths))
+	for _, p := range paths {
+		x.summaryFile(p, 1)
+		members[p] = x.fileCache[p].Units
+	}
+	x.meta.VariationCounts = map[string][2]int{}
+	x.buildVolume()
+	if err := x.saveFacts(members); err != nil {
+		return x, err
+	}
+	x.updatePrior()
+	x.addMatcher("case", keys(x.rows["case_name"]))
+	x.addMatcher("graph", keys(x.rows["match"]))
 	if err := x.publish(build); err != nil {
 		return x, err
 	}
-	x.writes = map[string]ledger.IndexRow{}
 	return x, x.err
 }
 
 func (x *repositoryIndex) buildMatchers() {
 	patterns := map[string][]string{}
+	kinds := map[string]string{"match": "graph", "case_name": "case", "doc_pattern": "doc"}
 	for _, r := range x.writes {
 		if r.Data == "" {
 			continue
 		}
-		switch r.Kind {
-		case "match":
-			patterns["graph"] = append(patterns["graph"], r.Key)
-		case "case_name":
-			patterns["case"] = append(patterns["case"], r.Key)
-		case "doc_pattern":
-			patterns["doc"] = append(patterns["doc"], r.Key)
+		if matcher, ok := kinds[r.Kind]; ok {
+			patterns[matcher] = append(patterns[matcher], r.Key)
 		}
 	}
 	for _, kind := range keys(patterns) {

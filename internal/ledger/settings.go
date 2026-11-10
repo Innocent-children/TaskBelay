@@ -127,6 +127,28 @@ func (s *Store) Settings(ctx context.Context, workspaceID string) (EffectiveSett
 	return result, err
 }
 
+const applicableSettings = ` FROM settings_v12
+WHERE (scope='user'
+   OR (scope='project' AND scope_id=(SELECT project_id FROM workspaces_v12 WHERE id=?))
+   OR (scope='task' AND scope_id=CASE WHEN ? THEN (SELECT current_task_id FROM workspaces_v12 WHERE id=?) ELSE ? END))`
+
+const scopePriority = "CASE scope WHEN 'user' THEN 0 WHEN 'project' THEN 1 ELSE 2 END"
+
+func (s *Store) DynamicTestsEnabled(ctx context.Context, workspace string) (bool, error) {
+	var value string
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		err := q.QueryRowContext(ctx, "SELECT value"+applicableSettings+" AND name='analysis.tests' ORDER BY "+scopePriority+" DESC LIMIT 1", workspace, true, workspace, "").Scan(&value)
+		if errors.Is(err, sql.ErrNoRows) {
+			value, err = DefaultValue("analysis.tests")
+		}
+		if err != nil {
+			return err
+		}
+		return ValidateSetting("analysis.tests", value)
+	})
+	return value == "on", err
+}
+
 func effectiveSettings(ctx context.Context, q queryer, workspaceID, taskID string, current bool) (EffectiveSettings, error) {
 	values := make(map[string]Setting)
 	names := []string{"workflow", "enforcement", "analysis.tests", "analysis.parallel", "debug"}
@@ -135,11 +157,7 @@ func effectiveSettings(ctx context.Context, q queryer, workspaceID, taskID strin
 		values[name] = Setting{Value: value, Source: Default}
 	}
 	// 用一个读语句同时读取当前任务和设置，避免任务切换时混合两套上下文。
-	rows, err := q.QueryContext(ctx, `SELECT scope, scope_id, name, value, revision FROM settings_v12
-WHERE scope='user'
-   OR (scope='project' AND scope_id=(SELECT project_id FROM workspaces_v12 WHERE id=?))
-   OR (scope='task' AND scope_id=CASE WHEN ? THEN (SELECT current_task_id FROM workspaces_v12 WHERE id=?) ELSE ? END)
-ORDER BY CASE scope WHEN 'user' THEN 0 WHEN 'project' THEN 1 ELSE 2 END, name`, workspaceID, current, workspaceID, taskID)
+	rows, err := q.QueryContext(ctx, "SELECT scope, scope_id, name, value, revision"+applicableSettings+" ORDER BY "+scopePriority+", name", workspaceID, current, workspaceID, taskID)
 	if err != nil {
 		return EffectiveSettings{}, err
 	}

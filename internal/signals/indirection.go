@@ -21,19 +21,27 @@ type indirection struct {
 	sites       []string
 }
 
+// 每个词只记录它在哪些匹配首行出现。排除当前单元和同名声明时，
+// 仍能找到其他出处，不会把同名声明自己的首行算作实现证据。
+type headWords struct {
+	heads   []Head
+	sources map[string][]int
+}
+
+func (h headWords) hasOther(word, id, name string) bool {
+	for _, i := range h.sources[word] {
+		if h.heads[i].ID != id && h.heads[i].Name != name {
+			return true
+		}
+	}
+	return false
+}
+
 func measure(ctx context.Context, repo repostats.Repository, affected map[string]bool, query *Queries) ([]indirection, []string, error) {
 	var out []indirection
 	var gaps []string
-	type callSite struct {
-		path string
-		args []units.Token
-	}
-	allCalls := map[string][]callSite{}
-	type head struct {
-		id, name string
-		words    map[string]bool
-	}
-	var heads []head
+	allCalls := map[string][]CallSite{}
+	var heads []Head
 	byWord := map[string][]int{}
 	defined := map[string]bool{}
 	currentPath := ""
@@ -49,7 +57,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 			}
 			for name, sites := range units.Calls(repo.Files[p].Tokens) {
 				for _, args := range sites {
-					allCalls[name] = append(allCalls[name], callSite{p, args})
+					allCalls[name] = append(allCalls[name], CallSite{p, args})
 				}
 			}
 			f := repo.Files[p]
@@ -70,35 +78,28 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 				for word := range words {
 					byWord[word] = append(byWord[word], len(heads))
 				}
-				heads = append(heads, head{repostats.UnitKey(p, u), u.Name, words})
+				heads = append(heads, Head{repostats.UnitKey(p, u), u.Name, words})
 			}
 		}
 	}
-	callsFor := func(name string) []callSite {
+	callsFor := func(name string) []CallSite {
 		depend("calls", name)
 		if query == nil {
 			return allCalls[name]
 		}
-		var out []callSite
-		for _, s := range query.Calls(name) {
-			out = append(out, callSite{s.Path, s.Args})
+		return query.Calls(name)
+	}
+	headsFor := func(word string) []Head {
+		if query != nil {
+			return query.Heads(word)
+		}
+		var out []Head
+		for _, i := range byWord[word] {
+			out = append(out, heads[i])
 		}
 		return out
 	}
-	headsFor := func(word string) []head {
-		depend("head", word)
-		var out []head
-		if query == nil {
-			for _, i := range byWord[word] {
-				out = append(out, heads[i])
-			}
-		} else {
-			for _, h := range query.Heads(word) {
-				out = append(out, head{h.ID, h.Name, h.Words})
-			}
-		}
-		return out
-	}
+	membersByWord := map[string]*headWords{}
 	definedName := func(name string) bool {
 		depend("name", name)
 		if query != nil {
@@ -129,61 +130,77 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 			} else {
 				shape = Structure(f, u)
 			}
-			var body, header []string
-			for _, word := range shape.Header {
-				if !ignored[word] {
-					header = append(header, word)
-				}
-			}
-			for _, word := range shape.Body {
-				if !ignored[word] {
-					body = append(body, word)
-				}
-			}
 			members := shape.Members
 			// 条件、循环和异常处理的首行词是关键字，不是可以被实现的抽象。
 			if shape.Abstract && len(members) > 0 && !ignored[u.Name] && outsideCallable(f, u) {
-				var common map[string]bool
 				memberSet := map[string]bool{}
 				unitKey := repostats.UnitKey(p, u)
+				var groups []*headWords
+				var smallest *headWords
 				for _, m := range members {
+					if memberSet[m] {
+						continue
+					}
 					memberSet[m] = true
-					matches := headsFor(m)
-					present := map[string]bool{}
-					for _, v := range matches {
+					depend("head", m)
+					group := membersByWord[m]
+					if group == nil {
+						group = &headWords{heads: headsFor(m), sources: make(map[string][]int)}
+						for i, h := range group.heads {
+							if err := ctx.Err(); err != nil {
+								return out, gaps, err
+							}
+							for word := range h.Words {
+								group.sources[word] = append(group.sources[word], i)
+							}
+						}
+						membersByWord[m] = group
+					}
+					groups = append(groups, group)
+					if smallest == nil || len(group.sources) < len(smallest.sources) {
+						smallest = group
+					}
+				}
+				var implementations []string
+				count := 0
+				if len(memberSet) == len(members) {
+				candidates:
+					for word := range smallest.sources {
 						if err := ctx.Err(); err != nil {
 							return out, gaps, err
 						}
-						if v.id == unitKey || v.name == u.Name || common != nil && len(common) == 0 {
+						if word == u.Name || ignored[word] || memberSet[word] {
 							continue
 						}
-						for word := range v.words {
-							if common == nil || common[word] {
-								present[word] = true
+						for _, group := range groups {
+							if !group.hasOther(word, unitKey, u.Name) {
+								continue candidates
+							}
+						}
+						if definedName(word) && strings.ContainsFunc(word, unicode.IsLetter) {
+							count++
+							if affected != nil {
+								implementations = append(implementations, word)
 							}
 						}
 					}
-					common = present
 				}
-				implementations := map[string]bool{}
-				for word := range common {
-					if word == u.Name || ignored[word] || slices.Contains(members, word) {
-						continue
-					}
-					if len(memberSet) == len(members) && definedName(word) && strings.ContainsFunc(word, unicode.IsLetter) {
-						implementations[word] = true
-					}
-				}
-				out = append(out, indirection{path: p, unit: u, kind: "abstraction", count: len(implementations), replacement: strings.Join(keys(implementations), ", ")})
+				slices.Sort(implementations)
+				out = append(out, indirection{path: p, unit: u, kind: "abstraction", count: count, replacement: strings.Join(implementations, ", ")})
 			}
-			if len(body) > 0 {
-				var params []string
-				for _, w := range header {
-					if w != u.Name {
+			if shape.Callable && shape.BodyCalls == 1 {
+				var body, params []string
+				for _, w := range shape.Body {
+					if !ignored[w] {
+						body = append(body, w)
+					}
+				}
+				for _, w := range shape.Header {
+					if !ignored[w] && w != u.Name {
 						params = append(params, w)
 					}
 				}
-				if shape.Callable && shape.BodyCalls == 1 && slices.Equal(body[1:], params) {
+				if len(body) > 0 && slices.Equal(body[1:], params) {
 					out = append(out, indirection{path: p, unit: u, kind: "forwarding", count: 1, replacement: body[0]})
 				}
 			}
@@ -202,31 +219,32 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 			unknown := map[int]bool{}
 			locations := map[int]map[string]bool{}
 			for _, site := range sites {
-				syntax := repo.SyntaxFor(site.path)
-				if query != nil && query.Syntax != nil {
-					depend("syntax", path.Ext(site.path))
-					syntax = query.Syntax(site.path)
+				if err := ctx.Err(); err != nil {
+					return out, gaps, err
 				}
-				for i, arg := range site.args {
-					if site.path == p && arg.Start <= u.HeaderEnd && arg.End >= u.Start {
+				syntax := repo.SyntaxFor(site.Path)
+				if query != nil && query.Syntax != nil {
+					depend("syntax", path.Ext(site.Path))
+					syntax = query.Syntax(site.Path)
+				}
+				for i, arg := range site.Args {
+					if unknown[i] || site.Path == p && arg.Start <= u.HeaderEnd && arg.End >= u.Start {
 						continue
 					}
 					if positions[i] == nil {
 						positions[i] = map[string]bool{}
-						locations[i] = map[string]bool{}
+						if affected != nil {
+							locations[i] = map[string]bool{}
+						}
 					}
 					positions[i][arg.Text] = true
-					value, err := units.Analyze(ctx, units.Source{Data: []byte(arg.Text)}, syntax)
+					literal, err := units.LiteralArgument(ctx, arg.Text, syntax)
 					if err != nil {
 						return out, gaps, err
 					}
-					tokens := units.Significant(value.Tokens)
-					if len(tokens) == 2 && tokens[0].Text == "-" && tokens[1].Kind == "number" {
-						tokens = tokens[1:]
-					}
-					unknown[i] = unknown[i] || len(tokens) != 1 || (tokens[0].Kind != "number" && tokens[0].Kind != "string" && tokens[0].Kind != "key")
+					unknown[i] = !literal
 					if affected != nil {
-						locations[i][fmt.Sprintf("%s:%d", site.path, arg.Line)] = true
+						locations[i][fmt.Sprintf("%s:%d", site.Path, arg.Line)] = true
 					}
 				}
 			}
