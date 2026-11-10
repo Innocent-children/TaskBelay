@@ -113,7 +113,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		return "", err
 	}
 	var advice []string
-	for _, kind := range []string{"test_equivalence", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
+	for _, kind := range []string{"test_equivalence", "mock_only", "assertion", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
 		for _, c := range result.Candidates {
 			if c.Kind != kind || len(advice) >= CategoryLimit {
 				continue
@@ -121,6 +121,8 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 			text := c.At + "："
 			if c.Kind == "test_equivalence" {
 				text = "拟新增相近测试 " + text
+			} else if c.Kind == "mock_only" || c.Kind == "assertion" {
+				text = "拟新增测试用途 " + text
 			} else if c.Kind == "recovery" {
 				text = "拟编辑分支调用 " + text
 			} else if c.Kind == "forwarding" {
