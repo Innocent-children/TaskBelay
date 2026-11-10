@@ -225,19 +225,19 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		return r, err
 	}
 	r.Candidates = append(r.Candidates, duplicate...)
-	if !in.EditPreview {
+	if !in.EditPreview && in.Before.Converged && in.After.Converged {
+		r.Candidates = append(r.Candidates, unused(in)...)
+	}
+	if in.Before.Converged && in.After.Converged {
 		var gaps []string
-		if in.Before.Converged && in.After.Converged {
-			r.Candidates = append(r.Candidates, unused(in)...)
-			r.Cases, r.TestBudget, duplicate, gaps, err = cases(ctx, in)
-			if err != nil {
-				return r, err
-			}
-			r.Candidates = append(r.Candidates, duplicate...)
-			r.Gaps = append(r.Gaps, gaps...)
-		} else {
-			r.Gaps = append(r.Gaps, "按词汇识别测试内容的分类结果尚未稳定，未生成依赖该分类的建议")
+		r.Cases, r.TestBudget, duplicate, gaps, err = cases(ctx, in)
+		if err != nil {
+			return r, err
 		}
+		r.Candidates = append(r.Candidates, duplicate...)
+		r.Gaps = append(r.Gaps, gaps...)
+	} else if !in.EditPreview {
+		r.Gaps = append(r.Gaps, "按词汇识别测试内容的分类结果尚未稳定，未生成依赖该分类的建议")
 	}
 	commandClusters := map[string]bool{}
 	for _, c := range in.Changes.Clusters {
@@ -272,6 +272,7 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 			c.Advice = "保留当前内容，不据此撤回、内联或合并用户修改"
 		}
 		if in.EditPreview {
+			c.ReviewOnly, c.BlockFact = true, ""
 			c.Advice += "；仅核对本次拟编辑内容，不据此覆盖或撤回已有用户修改"
 		}
 		c.ID = units.Hash(c.Kind, c.Object)

@@ -106,6 +106,8 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 				continue
 			}
 			cluster, agent := clusterFor(in, p, u.Line, u.EndLine)
+			// 预览差异只包含已核对请求的拟写入内容，不代表编辑已经发生。
+			agent = agent || in.EditPreview && cluster != ""
 			old := false
 			for _, v := range in.Before.Files[p].Units {
 				old = old || v.Name == u.Name

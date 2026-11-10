@@ -3,6 +3,7 @@ package signals
 import (
 	"context"
 	"fmt"
+	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
 	"math"
 )
@@ -14,6 +15,9 @@ func similarities(ctx context.Context, in Input) ([]Candidate, error) {
 	var out []Candidate
 	for _, p := range keys(in.After.Files) {
 		for _, u := range in.After.Files[p].Units {
+			if in.EditPreview && in.After.TestUnits[repostats.UnitKey(p, u)] {
+				continue
+			}
 			if !declaration(in.After.Files[p], u) {
 				continue
 			}

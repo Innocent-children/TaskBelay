@@ -260,6 +260,7 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 	record := ledger.EditRecord{WorkspaceID: o.Workspace.ID, Agent: e.Agent, SessionID: e.SessionID, ToolCallID: e.ToolCallID, Request: e.Edits}
 	contents := make(map[string]string)
 	planContents := make(map[string]string)
+	currentContents := make(map[string][]byte)
 	expectedContents := make(map[string][]byte)
 	for _, path := range paths {
 		before, known := view.Files[path]
@@ -304,6 +305,9 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		}
 		prepared := ledger.PreparedFile{Path: path, Requests: requests, Before: current, Verifiable: verifiable, Reason: reason}
 		if verifiable && !edit.Delete {
+			if current.Blob != "" {
+				currentContents[path] = content
+			}
 			expectedContents[path] = []byte(expected)
 			prepared.Expected = gitstate.File{Mode: current.Mode}
 			if prepared.Expected.Mode == "" {
@@ -400,8 +404,11 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 	}
 	record.Decision.Records = editRecords(task, record)
 	// 设计提示排在证据和冲突决定保存之后，来不及生成时只略过这次提示。
-	if advice, analysisErr := check.EditAdvice(ctx, o.Store, o.Workspace, expectedContents); analysisErr == nil {
-		record.Decision.AdditionalContext = strings.TrimSpace(record.Decision.AdditionalContext + "\n" + advice)
+	// 整份请求可预览时才分析，避免引用同批将删除或无法核对的文件。
+	if len(expectedContents) == len(e.Edits) {
+		if advice, analysisErr := check.EditAdvice(ctx, o.Store, o.Workspace, currentContents, expectedContents); analysisErr == nil {
+			record.Decision.AdditionalContext = strings.TrimSpace(record.Decision.AdditionalContext + "\n" + advice)
+		}
 	}
 	return record.Decision, nil
 }
