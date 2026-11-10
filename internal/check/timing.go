@@ -238,7 +238,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 func editAdvice(candidates []signals.Candidate, suffix string) (string, int) {
 	var advice []string
 	characters := utf8.RuneCountInString(suffix)
-	for _, kind := range []string{"test_equivalence", "test_budget", "mock_only", "assertion", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
+	for _, kind := range []string{"test_equivalence", "test_budget", "assertion", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
 		for _, c := range candidates {
 			if c.Kind != kind || len(advice) >= CategoryLimit {
 				continue
@@ -248,7 +248,7 @@ func editAdvice(candidates []signals.Candidate, suffix string) (string, int) {
 				text = "拟新增相近测试 " + text
 			} else if c.Kind == "test_budget" {
 				text = "拟新增测试数量 " + text
-			} else if c.Kind == "mock_only" || c.Kind == "assertion" {
+			} else if c.Kind == "assertion" {
 				text = "拟新增测试用途 " + text
 			} else if c.Kind == "recovery" {
 				text = "拟编辑分支调用 " + text

@@ -145,6 +145,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 			r.Issues = append(r.Issues, issue)
 		}
 		r.Issues = append(r.Issues, planIssues(w, view, data)...)
+		// mock_only 已停止生成候选；保留完成范围以结清旧版遗留的问题。
 		for _, kind := range []string{"external", "unrelated", "noise", "abstraction", "forwarding", "old_name", "parameter", "duplicate", "unused", "test_equivalence", "test_budget", "assertion", "mock_only", "recovery", "purpose", "S1", "S2"} {
 			r.Evaluated = append(r.Evaluated, ledger.CheckScope(kind, "*"))
 		}

@@ -235,18 +235,9 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 					body = append(body, t)
 				}
 			}
-			var mockExample string
-			c.checks, mockExample, c.checksUnknown = assertionExpressions(in.After, u.Name, body)
+			c.checks, c.checksUnknown = assertionExpressions(in.After, u.Name, body)
 			if len(constants) > 0 || len(stringsSet) > 0 {
 				comparisons = append(comparisons, comparison{c, key + "\x00" + c.Class + "\x00" + c.Shape, false, u.EndLine - u.Line + 1})
-			}
-			if mockExample != "" && c.Added && (!in.EditPreview || !c.Retained) {
-				candidate := Candidate{Kind: "mock_only", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"测试侧调用的参数只包含从测试中学到的词：" + mockExample}, Advice: "核对 " + c.Name + " 中的这处调用检查了什么，以及删去用例会漏掉哪种错误；若次数或顺序属于需求，应保留对应检查", Features: map[string]float64{"mock_only": 1}, Benefit: 1}
-				if in.EditPreview {
-					candidate.Facts = append(candidate.Facts, "词汇匹配不能确认这是 mock，也不能证明用例只检查内部实现或没有独特作用")
-					candidate.Advice = "先核对 " + c.Name + " 承担的当前需求、实际输入、期望结果或副作用，以及删去会漏掉哪种错误；调用次数或顺序属于约定时保留；确认没有独特检查后才考虑省去本次拟新增用例，依据不足时保留必要检查，不因此追加断言、辅助设施或验证"
-				}
-				out = append(out, candidate)
 			}
 			if len(c.checks) == 0 && !c.checksUnknown && c.Added && (!in.EditPreview || !c.Retained) {
 				candidate := Candidate{Kind: "assertion", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"用例中未出现从仓库识别出的断言词"}, Advice: "核对 " + c.Name + " 是否检查了行为结果", Features: map[string]float64{"assertion_missing": 1}, Benefit: 1}
@@ -337,7 +328,7 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 }
 
 // 断言比较需要完整的调用文本。大小比较保留在实参中，不用尖括号截断表达式。
-func assertionExpressions(repo repostats.Repository, caseName string, body []units.Token) (checks []string, mock string, unknown bool) {
+func assertionExpressions(repo repostats.Repository, caseName string, body []units.Token) (checks []string, unknown bool) {
 	ts := units.Significant(body)
 	ends := make([]int, len(ts))
 	var stack []int
@@ -381,14 +372,8 @@ func assertionExpressions(repo repostats.Repository, caseName string, body []uni
 		args := strings.Join(units.Sequence(ts[i+2:end], false), " ")
 		expression := t.Text + open + args + ts[end].Text
 		checks = append(checks, expression)
-		if mock == "" {
-			words := units.Words(args)
-			if len(words) > 0 && !slices.ContainsFunc(words, func(w string) bool { return repo.TestWord(w, true) <= 0 }) {
-				mock = expression
-			}
-		}
 	}
-	return checks, mock, unknown
+	return checks, unknown
 }
 
 func equivalence(inputs []string, constants []float64, stringsSet map[string]bool) (string, []string) {
