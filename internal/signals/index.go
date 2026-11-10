@@ -217,7 +217,7 @@ type Variation struct {
 }
 
 func OriginFacts(ctx context.Context, r repostats.Repository, q *Queries) (map[string][]Variation, error) {
-	items, _, err := measure(ctx, r, nil, q)
+	items, _, err := measure(ctx, r, nil, q, false)
 	out := map[string][]Variation{}
 	for _, v := range items {
 		key := repostats.UnitKey(v.path, v.unit)

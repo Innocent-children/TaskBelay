@@ -212,14 +212,12 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 			r.Defensive = append(r.Defensive, c.Cluster)
 		}
 	}
-	if !in.EditPreview {
-		indirect, gaps, err := indirections(ctx, in)
-		if err != nil {
-			return r, err
-		}
-		r.Candidates = append(r.Candidates, indirect...)
-		r.Gaps = append(r.Gaps, gaps...)
+	indirect, gaps, err := indirections(ctx, in)
+	if err != nil {
+		return r, err
 	}
+	r.Candidates = append(r.Candidates, indirect...)
+	r.Gaps = append(r.Gaps, gaps...)
 	duplicate, err := similarities(ctx, in)
 	if err != nil {
 		return r, err

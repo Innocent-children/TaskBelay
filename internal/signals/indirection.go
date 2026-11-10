@@ -37,7 +37,7 @@ func (h headWords) hasOther(word, id, name string) bool {
 	return false
 }
 
-func measure(ctx context.Context, repo repostats.Repository, affected map[string]bool, query *Queries) ([]indirection, []string, error) {
+func measure(ctx context.Context, repo repostats.Repository, affected map[string]bool, query *Queries, preview bool) ([]indirection, []string, error) {
 	var out []indirection
 	var gaps []string
 	allCalls := map[string][]CallSite{}
@@ -50,7 +50,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 			query.Depend(currentPath, kind, word)
 		}
 	}
-	if query == nil {
+	if query == nil && !preview {
 		for _, p := range keys(repo.Files) {
 			if err := ctx.Err(); err != nil {
 				return nil, nil, err
@@ -125,14 +125,15 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 				continue
 			}
 			var shape UnitStructure
-			if query != nil && query.Structure != nil {
+			// 预览的索引尚未包含拟写入结构；转发只需目标内容，不查询跨文件证据。
+			if query != nil && query.Structure != nil && !preview {
 				shape = query.Structure(repostats.UnitKey(p, u))
 			} else {
 				shape = Structure(f, u)
 			}
 			members := shape.Members
 			// 条件、循环和异常处理的首行词是关键字，不是可以被实现的抽象。
-			if shape.Abstract && len(members) > 0 && !ignored[u.Name] && outsideCallable(f, u) {
+			if !preview && shape.Abstract && len(members) > 0 && !ignored[u.Name] && outsideCallable(f, u) {
 				memberSet := map[string]bool{}
 				unitKey := repostats.UnitKey(p, u)
 				var groups []*headWords
@@ -204,7 +205,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 					out = append(out, indirection{path: p, unit: u, kind: "forwarding", count: 1, replacement: body[0]})
 				}
 			}
-			if !shape.Callable {
+			if preview || !shape.Callable {
 				continue
 			}
 			if repo.SyntaxFor(p).CallRatio <= CallPrecision {
@@ -266,8 +267,8 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 	prior := map[string]float64{}
 	if in.Queries != nil {
 		prior = in.Queries.Prior
-	} else {
-		before, _, err := measure(ctx, in.Before, nil, nil)
+	} else if !in.EditPreview {
+		before, _, err := measure(ctx, in.Before, nil, nil, false)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -290,7 +291,7 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 			}
 		}
 	}
-	after, gaps, err := measure(ctx, in.After, affected, in.Queries)
+	after, gaps, err := measure(ctx, in.After, affected, in.Queries, in.EditPreview)
 	if err != nil {
 		return nil, gaps, err
 	}
@@ -327,7 +328,9 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 			facts = append(facts, "主体标识符序列符合转发形状，目标名字为 "+v.replacement+"；未核对运算符、字面量或调用语义")
 			advice = "核对 " + at + " 的独立职责、返回结果和副作用；确认直接调用 " + v.replacement + " 行为等价且无需保留该层后，再修改调用并删除此包装"
 		}
-		if kind == "forwarding" && in.Before.FrequencyOf(v.unit.Name) > 0 {
+		if in.EditPreview {
+			advice = "核对 " + at + " 的独立职责、入口和兼容约定，以及运算符、字面量、求值过程、返回结果和副作用；只有无需保留该层且直接调用 " + v.replacement + " 保持这些行为时，才考虑省去本次拟编辑的包装"
+		} else if kind == "forwarding" && in.Before.FrequencyOf(v.unit.Name) > 0 {
 			kind = "old_name"
 			facts = append(facts, fmt.Sprintf("该名字在起点出现于 %d 个单元；外部调用与兼容承诺尚未确认", in.Before.FrequencyOf(v.unit.Name)))
 			advice = "先核对 " + at + " 的仓库内引用、外部调用方和发布兼容约定；仍需兼容时保留旧名，确认无需兼容且行为等价后，才将调用迁移到 " + v.replacement + " 并删除旧名包装"
@@ -355,7 +358,7 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 			facts = append(facts, "未取得需求相关区，实际用途待核对")
 		}
 		facts = append(facts, "以上仅为静态结构信号，尚未确认可以精简")
-		if !agent {
+		if !agent && !in.EditPreview {
 			advice = "该变更簇不能全部核对为 Agent 编辑，保留当前内容；仅结合以上结构信号核对实际用途"
 		}
 		out = append(out, Candidate{Kind: kind, Object: repostats.UnitKey(v.path, v.unit) + ":" + v.replacement, At: at, Cluster: cluster, AgentOnly: agent, Facts: facts, Advice: advice, Features: map[string]float64{"variation": float64(v.count), "convention": prior[v.kind], "structure": in.After.Files[v.path].Confidence}, Benefit: float64(v.unit.EndLine - v.unit.Line + 1)})
