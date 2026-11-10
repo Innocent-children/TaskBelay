@@ -60,8 +60,23 @@ func layout(ctx context.Context, f File) ([]Unit, string, float64, error) {
 	if failed == 0 && matched > 0 && aligned == matched {
 		return nodes, "brackets", consistency, nil
 	}
-	nodes = nil
-	stack = nil
+	return indentLayout(ctx, f, tokens, failed)
+}
+
+// IndentedUnits 供需要核对缩进分支的分析使用。调用括号可以配对，但未必界定分支正文。
+func IndentedUnits(ctx context.Context, f File, syntax Syntax) ([]Unit, error) {
+	var err error
+	f.Units, _, _, err = indentLayout(ctx, f, Significant(f.Tokens), 0)
+	if err != nil {
+		return nil, err
+	}
+	err = assignNames(ctx, &f, syntax)
+	return f.Units, err
+}
+
+func indentLayout(ctx context.Context, f File, tokens []Token, failed int) ([]Unit, string, float64, error) {
+	var nodes []Unit
+	var stack []int
 	offset := 0
 	for line, text := range f.Lines {
 		if err := ctx.Err(); err != nil {

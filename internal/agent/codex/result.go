@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/Innocent-children/taskbelay/internal/agent/hookjson"
 	"github.com/Innocent-children/taskbelay/internal/event"
@@ -129,7 +130,7 @@ func transcriptExitCode(in hookjson.Input, output string) *int {
 			continue
 		}
 		item := p.Item
-		if item.ExitCode == nil || item.Output == nil || *item.Output != output || (*item.ExitCode == 0 && item.Status != "completed") || (*item.ExitCode != 0 && item.Status != "failed") {
+		if item.ExitCode == nil || item.Output == nil || !sameOutput(*item.Output, output) || (*item.ExitCode == 0 && item.Status != "completed") || (*item.ExitCode != 0 && item.Status != "failed") {
 			return nil
 		}
 		if code != nil && *code != *item.ExitCode {
@@ -138,4 +139,19 @@ func transcriptExitCode(in hookjson.Input, output string) *int {
 		code = item.ExitCode
 	}
 	return code
+}
+
+/**
+ * hook 收到的输出可能只是让出控制权之后的部分，或被宿主截去中段。
+ * 调用身份已经唯一对应完成事件，这里只要求 hook 输出的结尾与完整输出的结尾一致。
+ */
+func sameOutput(complete, hooked string) bool {
+	if complete == hooked {
+		return true
+	}
+	const tail = 512
+	if len(hooked) > tail {
+		hooked = hooked[len(hooked)-tail:]
+	}
+	return hooked != "" && strings.HasSuffix(complete, hooked)
 }

@@ -6,6 +6,7 @@ import (
 	"path"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
@@ -140,7 +141,8 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 				}
 			}
 			members := shape.Members
-			if shape.Abstract && len(members) > 0 {
+			// 条件、循环和异常处理的首行词是关键字，不是可以被实现的抽象。
+			if shape.Abstract && len(members) > 0 && !ignored[u.Name] && outsideCallable(f, u) {
 				var common map[string]bool
 				memberSet := map[string]bool{}
 				unitKey := repostats.UnitKey(p, u)
@@ -168,7 +170,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 					if word == u.Name || ignored[word] || slices.Contains(members, word) {
 						continue
 					}
-					if len(memberSet) == len(members) && definedName(word) {
+					if len(memberSet) == len(members) && definedName(word) && strings.ContainsFunc(word, unicode.IsLetter) {
 						implementations[word] = true
 					}
 				}

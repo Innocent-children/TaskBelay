@@ -43,6 +43,7 @@ type VerificationRecord struct {
 	Command           shell.Script      `json:"command"`
 	CommandKey        string            `json:"command_key"`
 	Tree              string            `json:"tree"`
+	BeforeObservation int64             `json:"before_observation,omitempty"`
 	InputRevision     int64             `json:"input_revision"`
 	EnvironmentID     string            `json:"environment_id"`
 	Scope             VerificationInput `json:"scope"`

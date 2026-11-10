@@ -138,6 +138,17 @@ func (s *Store) CheckReusable(ctx context.Context, workspace string, actor Actor
 	return reusable, err
 }
 
+type withoutReportsKey struct{}
+type withReportsKey struct{}
+
+/**
+ * WithCheckReports 让任务视图里的检查记录带上完整的报告正文。报告正文可达数兆字节，
+ * 普通任务视图不解压正文，status 的检查详情和 debug 快照使用完整报告。
+ */
+func WithCheckReports(ctx context.Context) context.Context {
+	return context.WithValue(ctx, withReportsKey{}, true)
+}
+
 func latestCheck(ctx context.Context, q queryer, task, depth, version string, excludeExpired bool) (*CheckRecord, error) {
 	query := "SELECT seq,status,data FROM checks_v12 WHERE task_id=? AND depth=?"
 	args := []any{task, depth}
@@ -163,9 +174,12 @@ func latestCheck(ctx context.Context, q queryer, task, depth, version string, ex
 	if err != nil {
 		return nil, err
 	}
-	data, err = restoreCheckBody(ctx, q, id, data)
-	if err != nil {
-		return nil, err
+	// 任务视图只用到检查的状态和提示，不解压单独保存的报告正文。
+	if lean, _ := ctx.Value(withoutReportsKey{}).(bool); !lean {
+		data, err = restoreCheckBody(ctx, q, id, data)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := json.Unmarshal([]byte(data), &saved); err != nil {
 		return nil, err
@@ -217,8 +231,12 @@ func (s *Store) PreviousCheck(ctx context.Context, task, depth string) (*CheckRe
 
 func viewChecks(ctx context.Context, q queryer, view *TaskView, actor Actor) error {
 	var labels []string
+	lean := ctx
+	if full, _ := ctx.Value(withReportsKey{}).(bool); !full {
+		lean = context.WithValue(ctx, withoutReportsKey{}, true)
+	}
 	for _, depth := range []string{"static", "tests"} {
-		record, err := latestCheck(ctx, q, view.Task.ID, depth, "", false)
+		record, err := latestCheck(lean, q, view.Task.ID, depth, "", false)
 		if err != nil {
 			return err
 		}

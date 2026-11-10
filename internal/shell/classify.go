@@ -98,9 +98,30 @@ func Classify(s Segment) (Kind, string) {
 			return ReadOnly, ""
 		}
 	case "sed":
-		for _, arg := range a[1:] {
-			if strings.HasPrefix(arg, "-i") || strings.HasPrefix(arg, "--in-place") || strings.ContainsAny(arg, "we") {
+		// 只有脚本里的 w、e 命令会写文件或执行程序；后面的文件名不参与判断。
+		script := false
+		for i := 1; i < len(a); i++ {
+			arg := a[i]
+			if arg == "-e" || arg == "--expression" {
+				i++
+				if i == len(a) || strings.ContainsAny(a[i], "we") {
+					return Other, ""
+				}
+				script = true
+				continue
+			}
+			if strings.HasPrefix(arg, "--in-place") || strings.HasPrefix(arg, "--file") || strings.HasPrefix(arg, "--expression=") ||
+				strings.HasPrefix(arg, "-") && !strings.HasPrefix(arg, "--") && strings.ContainsAny(arg[1:], "efi") {
 				return Other, ""
+			}
+			if strings.HasPrefix(arg, "-") {
+				continue
+			}
+			if !script {
+				script = true
+				if strings.ContainsAny(arg, "we") {
+					return Other, ""
+				}
 			}
 		}
 		return ReadOnly, ""

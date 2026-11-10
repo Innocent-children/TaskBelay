@@ -2,9 +2,12 @@ package signals
 
 import (
 	"context"
+	"path"
 	"slices"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
@@ -55,6 +58,57 @@ type Result struct {
 	TestBudget map[string]int
 }
 
+// methodName 返回对外新增项识别方式的说明文字。
+func methodName(method string) string {
+	switch method {
+	case "new_file":
+		return "新文件"
+	case "literal":
+		return "入口形状的字面量"
+	case "registration":
+		return "注册式调用"
+	case "config_key":
+		return "新增配置键"
+	case "manifest":
+		return "新增依赖"
+	case "probe":
+		return "接口清单中的新增项"
+	}
+	return method
+}
+
+// namesFile 判断需求文字是否点名了某个文件：完整路径，或带扩展名的文件名。
+func namesFile(req changes.Requirement, p string) bool {
+	text := req.Quote + "\n" + req.Content
+	base := path.Base(p)
+	return mentionsFile(text, p) || base != p && strings.Contains(base, ".") && mentionsFile(text, base)
+}
+
+// 文件名边界还包括点、连字符和目录分隔符，不能把 x.go.bak 或其他目录的同名文件算作点名。
+func mentionsFile(text, name string) bool {
+	part := func(r rune) bool {
+		return unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("_-./\\", r)
+	}
+	for offset := 0; name != "" && offset < len(text); {
+		at := strings.Index(text[offset:], name)
+		if at < 0 {
+			break
+		}
+		at += offset
+		end := at + len(name)
+		left, _ := utf8.DecodeLastRuneInString(strings.TrimSuffix(text[:at], "./"))
+		right, size := utf8.DecodeRuneInString(text[end:])
+		if right == '.' {
+			right, _ = utf8.DecodeRuneInString(text[end+size:])
+		}
+		if !part(left) && !part(right) {
+			return true
+		}
+		offset = end
+	}
+	return false
+}
+
 func Analyze(ctx context.Context, in Input) (Result, error) {
 	r := Result{TestBudget: map[string]int{}}
 	if len(in.Changes.Hunks) == 0 {
@@ -87,17 +141,19 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		if related {
 			continue
 		}
-		registered := true
+		registered, named := true, false
 		for _, h := range clusterHunks(in, c.ID) {
-			found := false
+			found := in.After.Files[h.Path].Binary
 			for _, req := range in.Requirements {
 				for _, at := range req.Locations {
 					found = found || at == h.Path
 				}
+				// 需求原话或内容里点名的文件，其改动直接对应这条需求。
+				named = named || namesFile(req, h.Path)
 			}
 			registered = registered && found
 		}
-		if registered {
+		if registered || named {
 			continue
 		}
 		kind := "unrelated"
@@ -118,14 +174,14 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		if cosmetic {
 			kind = "noise"
 		}
-		r.Candidates = append(r.Candidates, Candidate{Kind: kind, Object: c.ID, Cluster: c.ID, At: clusterPath(in, c.ID), Facts: facts, Advice: advice, Features: map[string]float64{"unrelated": boolFloat(known), "agent": boolFloat(c.Origin == "agent")}, Benefit: benefit, AgentOnly: c.Origin == "agent", Defensive: defensive})
+		r.Candidates = append(r.Candidates, Candidate{Kind: kind, Object: c.ID, Cluster: c.ID, At: clusterPath(in, c.ID), Facts: facts, Advice: advice, Features: map[string]float64{"unrelated": boolFloat(known), "agent": boolFloat(changes.ByAgent(c.Origin))}, Benefit: benefit, AgentOnly: changes.ByAgent(c.Origin), Defensive: defensive})
 	}
 	r.External = external(in)
 	for _, item := range r.External {
 		if item.Anchor == "quote" {
 			continue
 		}
-		c := Candidate{Kind: "external", Object: item.Object(), At: item.At, Cluster: item.Cluster, AgentOnly: item.AgentOnly, Features: map[string]float64{"unanchored": boolFloat(item.Anchor == "none"), "reliable": boolFloat(item.Reliable), "agent": boolFloat(item.AgentOnly)}, Benefit: 1, Facts: []string{item.Method + "：" + item.Name, "需求对应关系：没有对应说明"}, Advice: "撤回该新增项，或用 implemented_by 登记它对应的需求和用途"}
+		c := Candidate{Kind: "external", Object: item.Object(), At: item.At, Cluster: item.Cluster, AgentOnly: item.AgentOnly, Features: map[string]float64{"unanchored": boolFloat(item.Anchor == "none"), "reliable": boolFloat(item.Reliable), "agent": boolFloat(item.AgentOnly)}, Benefit: 1, Facts: []string{methodName(item.Method) + "：" + item.Name, "需求对应关系：没有对应说明"}, Advice: "撤回该新增项，或用 implemented_by 登记它对应的需求和用途"}
 		if !item.Reliable {
 			c.Facts = append(c.Facts, "仅按代码形状识别，尚未由探针确认是否为对外新增项")
 			c.Advice = "先核对它是否确为对外新增项；确有新增时再核对需求，撤回多余内容或用 implemented_by 登记必要用途"
@@ -183,6 +239,10 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 			r.Gaps = append(r.Gaps, "按词汇识别测试内容的分类结果尚未稳定，未生成依赖该分类的建议")
 		}
 	}
+	commandClusters := map[string]bool{}
+	for _, c := range in.Changes.Clusters {
+		commandClusters[c.ID] = c.Origin == "command"
+	}
 	var kept []Candidate
 	for _, c := range r.Candidates {
 		retain := false
@@ -197,13 +257,15 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		for _, id := range r.Defensive {
 			c.Defensive = c.Defensive || c.Cluster == id
 		}
-		if c.Defensive {
+		// 撤回保护只和整簇的撤回建议有关；针对单个函数、参数或新增项的建议不重复这句提醒。
+		if c.Defensive && (c.Kind == "unrelated" || c.Kind == "noise") {
 			c.Facts = append(c.Facts, "该变更簇包含受撤回保护的分支，结构不能证明失败不可能发生")
-			if c.Kind == "unrelated" || c.Kind == "noise" {
-				c.Advice = "先保留必要的错误传递和资源处理；核对失败条件、需求或调用约定及负责处理的层次，无法确认时不删除、不因此补测试"
-			} else {
-				c.Advice += "；涉及的错误分支先保留，另行核对失败条件和处理职责"
-			}
+			c.Advice = "先保留必要的错误传递和资源处理；核对失败条件、需求或调用约定及负责处理的层次，无法确认时不删除、不因此补测试"
+		}
+		if c.AgentOnly && commandClusters[c.Cluster] {
+			// 命令写入没有逐行核对过编辑请求：可以据此精简，不作为拦截依据。
+			c.BlockFact = ""
+			c.Facts = append(c.Facts, "这部分改动含 Agent 运行命令时写入的内容")
 		}
 		if !c.AgentOnly && !in.EditPreview {
 			c.Facts = append(c.Facts, "含工作区更新或无法核对为全部由 Agent 编辑，只报告现状")
@@ -297,7 +359,7 @@ func clusterFor(in Input, p string, start, end int) (string, bool) {
 					agent = false
 				}
 				found = c.ID
-				agent = agent && c.Origin == "agent"
+				agent = agent && changes.ByAgent(c.Origin)
 			}
 		}
 	}

@@ -121,6 +121,16 @@ func declaration(f units.File, u units.Unit) bool {
 	return true
 }
 
+// outsideCallable 判断单元是否不在任何函数形状的单元内部。
+func outsideCallable(f units.File, u units.Unit) bool {
+	for parent := u.Parent; parent >= 0; parent = f.Units[parent].Parent {
+		if callable(f.Units[parent]) {
+			return false
+		}
+	}
+	return true
+}
+
 // EnclosingDeclaration 返回包含整段引用的声明；类型声明可用自己的首行标识。
 func EnclosingDeclaration(f units.File, start, end int) units.Unit {
 	var best units.Unit

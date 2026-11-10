@@ -30,16 +30,21 @@ type Segment struct {
 	Known            bool              `json:"known"`
 	SideEffect       bool              `json:"side_effect"`
 	Background       bool              `json:"background"`
-	Kind             Kind              `json:"kind"`
-	Language         string            `json:"language,omitempty"`
-	EnvironmentID    string            `json:"environment_id"`
+	Piped            bool              `json:"piped,omitempty"`
+	// Input 是标准输入内容的摘要，例如 here-document 中的脚本。
+	Input         string `json:"input,omitempty"`
+	Kind          Kind   `json:"kind"`
+	Language      string `json:"language,omitempty"`
+	EnvironmentID string `json:"environment_id"`
 }
 
 type Script struct {
 	Display  string    `json:"display"`
 	Segments []Segment `json:"segments"`
 	Complex  bool      `json:"complex"`
-	Missing  []string  `json:"missing,omitempty"`
+	// Sequential 表示有多条用分号或换行连接的命令，最终退出状态只反映最后一条。
+	Sequential bool     `json:"sequential,omitempty"`
+	Missing    []string `json:"missing,omitempty"`
 }
 
 type Parser interface{ Parse(text, dir string) Script }
@@ -125,12 +130,20 @@ func parse(text, dir string, style event.Shell, parsers map[event.Shell]Parser, 
 				nested.Known = nested.Known && segment.Known
 				nested.SideEffect = nested.SideEffect || segment.SideEffect
 				nested.Background = nested.Background || segment.Background
+				nested.Piped = nested.Piped || segment.Piped
 				segments = append(segments, nested)
 			}
+			result.Sequential = result.Sequential || child.Sequential
 			continue
 		}
 		segment.Kind, segment.Language = Classify(segment)
 		segments = append(segments, segment)
+	}
+	for _, segment := range segments {
+		// 输出交给管道的命令段不是只读查看时，它的失败不会体现在退出状态里。
+		if segment.Piped && segment.Kind != ReadOnly {
+			result.Complex = true
+		}
 	}
 	result.Segments = segments
 	return result

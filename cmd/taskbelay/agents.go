@@ -12,7 +12,6 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/agent"
 	"github.com/Innocent-children/taskbelay/internal/agent/claude"
 	"github.com/Innocent-children/taskbelay/internal/agent/codex"
-	"github.com/Innocent-children/taskbelay/internal/check"
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/hook"
@@ -116,17 +115,12 @@ func runHook(ctx context.Context, args []string, env platform.Env, input io.Read
 		if workspace, err = store.ResolveWorkspace(ctx, workspace); err != nil {
 			return event.Decision{}, fmt.Errorf("核对工作区标识: %w", err)
 		}
-		if e.Kind == event.CommandUse {
-			known, lookupErr := check.KnownValidation(ctx, store, workspace.ID, ledger.VerificationRecord{Command: hook.CommandScript(e)})
-			if lookupErr != nil {
-				return event.Decision{}, lookupErr
-			}
-			if known {
-				cancel()
-				budget = event.MessageBudget
-				ctx, cancel = context.WithDeadline(parent, started.Add(budget))
-				defer cancel()
-			}
+		if e.Kind == event.CommandUse && !hook.CommandScript(e).ReadOnly() {
+			// 可能是验证的命令要核对验证输入；只读命令沿用最短的预算。
+			cancel()
+			budget = event.MessageBudget
+			ctx, cancel = context.WithDeadline(parent, started.Add(budget))
+			defer cancel()
 		}
 		if err := store.RegisterGitWorkspace(ctx, workspace); err != nil {
 			return event.Decision{}, fmt.Errorf("登记工作区: %w", err)

@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
@@ -65,7 +66,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 		publish, cancel := context.WithTimeout(context.WithoutCancel(ctx), PublishReserve)
 		defer cancel()
 		kind := "error"
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || errors.Is(failure, ledger.ErrIndexRetired) {
 			kind = "incomplete"
 		}
 		r.Status = ledger.CheckPartial
@@ -88,7 +89,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 	data, err := analyze(work, store, w, view, observation)
 	if err != nil {
 		kind := "error"
-		if work.Err() != nil {
+		if work.Err() != nil || errors.Is(err, ledger.ErrIndexRetired) {
 			kind = "incomplete"
 		}
 		r.Missing = append(r.Missing, ledger.CheckGap{Operation: "static", Kind: kind, Reason: err.Error()})
@@ -169,7 +170,7 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 			r.Report.Unfinished = append(r.Report.Unfinished, requirement)
 		}
 	}
-	if options.Depth == "tests" && data.After.Tree != "" {
+	if options.Depth == "tests" && err == nil && data.After.Tree != "" {
 		if err := runDynamic(work, store, w, actor, view, data, &r, options.Refresh); err != nil {
 			kind := "error"
 			if work.Err() != nil {
@@ -197,6 +198,16 @@ func Run(ctx context.Context, store *ledger.Store, w gitstate.Workspace, actor l
 		}
 	}
 	current, captureErr := w.CaptureTree(ctx)
+	if data.Index.Origin != nil && err == nil {
+		if indexErr := store.CheckPublishedIndex(ctx, data.Index.Origin.publishedBuild()); indexErr != nil {
+			// 撤下期间读到的缺项不能作为事实或用于关闭上次的问题。
+			r.Issues, r.Evaluated, r.Locations, r.Relocations = nil, nil, nil, nil
+			r.Report.Analysis, r.Report.ChangesByRequirement, r.Report.Dynamic = nil, nil, nil
+			r.Status = ledger.CheckPartial
+			r.Missing = append(r.Missing, ledger.CheckGap{Operation: options.Depth, Kind: "incomplete", Reason: indexErr.Error()})
+			r.Report.Counts = r.GapCounts()
+		}
+	}
 	tree := ""
 	if captureErr == nil && current.Complete() {
 		tree = current.Tree

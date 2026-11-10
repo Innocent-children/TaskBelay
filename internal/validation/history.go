@@ -13,7 +13,9 @@ type Run struct {
 	Before, After, State, Output                 string
 	Cases                                        []string
 	Started, Executed, EnvironmentChanged, Rerun bool
-	At                                           time.Time
+	// ReadOnly 表示只查看内容的命令；Validation 表示已按运行事实归为验证。
+	ReadOnly, Validation bool
+	At                   time.Time
 }
 type Decision struct {
 	Kind, PreviousID, Output, Reason                string
@@ -41,7 +43,7 @@ func IsValidation(ctx context.Context, current Run, history []Run) (bool, error)
 	return observed && len(trees) > 1, nil
 }
 
-func Evaluate(ctx context.Context, current Run, history []Run) (Decision, error) {
+func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, relatedHistory func() ([]Run, error)) (Decision, error) {
 	d := Decision{}
 	is, err := IsValidation(ctx, current, history)
 	if err != nil {
@@ -60,7 +62,9 @@ func Evaluate(ctx context.Context, current Run, history []Run) (Decision, error)
 			return d, err
 		}
 		r := history[i]
-		if r.EnvironmentChanged {
+		// 其间运行过别的命令时，服务、数据库等工作区之外的状态可能已经变化。
+		// 只查看内容的命令和输出里有用例名的验证除外。
+		if r.EnvironmentChanged || r.Executed && !r.ReadOnly && !(r.Validation && !r.Command.Mixed && len(r.Cases) > 0) && CommandKey(r.Command) != key {
 			envChanged = true
 		}
 		if CommandKey(r.Command) != key {
@@ -81,14 +85,23 @@ func Evaluate(ctx context.Context, current Run, history []Run) (Decision, error)
 		return d, nil
 	}
 	d.PreviousID, d.Output = previous.ID, previous.Output
-	if current.Rerun || current.Command.Mixed || current.Command.Writes || current.Command.Unknown || previous.Before != previous.After || previous.Command.Writes || previous.State != "passed" || !current.Input.Complete || !previous.Input.Complete || d.Unstable {
+	if current.Rerun || current.Command.Writes || current.Command.Unknown || previous.Before != previous.After || previous.Command.Writes || previous.State != "passed" || !current.Input.Complete || !previous.Input.Complete || d.Unstable {
 		d.Reason = "已有重跑决定、输入信息不全、命令会写入或包含多项操作、结果不稳定，或上次未通过，因此本次照常运行"
 		return d, nil
 	}
 	if current.Input.Hash == previous.Input.Hash {
 		d.Kind = "repeat"
-		d.Block = !envChanged && !current.EnvironmentChanged
-		d.Reason = "验证输入与上次通过时相同；环境变量或外部服务变化时，用 note_add 指向上次验证写明重跑理由"
+		switch {
+		case current.Command.Mixed:
+			d.Reason = "验证输入与上次通过时相同，组合命令可能还要执行其他操作，这里只作提示"
+		case truncated:
+			d.Reason = "验证输入与上次通过时相同，两次验证之间的操作记录未读全，这里只作提示"
+		case envChanged || current.EnvironmentChanged:
+			d.Reason = "验证输入与上次通过时相同，但其间运行过其他命令或调整过环境变量，这里只作提示"
+		default:
+			d.Block = true
+			d.Reason = "验证输入与上次通过时相同；环境变量或外部服务变化时，用 note_add 指向上次验证写明重跑理由"
+		}
 		return d, nil
 	}
 	var last *Run
@@ -112,7 +125,14 @@ func Evaluate(ctx context.Context, current Run, history []Run) (Decision, error)
 		d.Reason = "从历史结果看，仅修改注释后重跑该命令很少提供新信息"
 		return d, nil
 	}
+	history, err = relatedHistory()
+	if err != nil {
+		return d, err
+	}
 	for i := len(history) - 1; i >= 0; i-- {
+		if err := ctx.Err(); err != nil {
+			return d, err
+		}
 		r := history[i]
 		if r.State != "passed" || !r.Executed || r.Before != r.After || r.Input.Content != current.Input.Content || current.Input.Environment != r.Input.Environment || current.Command.Directory != r.Command.Directory || current.Command.Shell != r.Command.Shell {
 			continue

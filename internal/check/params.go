@@ -4,8 +4,12 @@ package check
 import "time"
 
 const (
-	Algorithm               = "content-10"           // 计算格式版本；见 algorithm.md 一、八节。
+	Algorithm               = "content-12"           // 计算格式版本；见 algorithm.md 一、八节。
 	FeedbackVersion         = 5                      // 反馈格式版本；见 requirements-ledger.md MCP 工具。
+	PruneBatch              = 200                    // 每批删除的无引用索引页数；每批都在普通写入的等待时限内提交。
+	GapExamples             = 2                      // 反馈里列出的无法判断项示例数；完整清单在检查记录中。
+	OutputHead              = 600                    // 验证反馈中上次输出保留的开头字符数；与结尾合计不超过反馈预算。
+	OutputTail              = 3000                   // 验证反馈中上次输出保留的结尾字符数；测试汇总通常在结尾。
 	FeedbackBudget          = 6000                   // 交付反馈字符预算；见 product-architecture.md 性能预算。
 	FeedbackUnit            = 20                     // 背包容量的字符换算单位；见 algorithm.md 六节。
 	CategoryLimit           = 3                      // 每类建议的反馈上限；见 algorithm.md 六节。

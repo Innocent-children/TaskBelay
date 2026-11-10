@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -45,12 +46,17 @@ func (b *Background) loop() {
 	defer close(b.done)
 	timer := time.NewTicker(BackgroundPoll)
 	defer timer.Stop()
+	pruned := false
 	for {
 		select {
 		case <-b.ctx.Done():
 			return
 		case <-b.wake:
 			b.warm()
+			if !pruned {
+				pruned = true
+				b.prune()
+			}
 		case <-timer.C:
 		}
 		b.mu.Lock()
@@ -78,6 +84,17 @@ func (b *Background) warm() {
 	}
 	if err != nil && b.ctx.Err() == nil && b.report != nil {
 		b.report(err)
+	}
+}
+
+/**
+ * prune 在每个 MCP 进程第一次空闲时清理一次分析数据。清理和收缩账本文件不占用 hook 的时间。
+ */
+func (b *Background) prune() {
+	ctx, cancel := context.WithTimeout(b.ctx, event.StaticBudget+event.TestsBudget)
+	defer cancel()
+	if err := Prune(ctx, b.store); err != nil && b.ctx.Err() == nil && b.report != nil {
+		b.report(fmt.Errorf("分析数据清理未完成: %w", err))
 	}
 }
 

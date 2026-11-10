@@ -80,11 +80,13 @@ func (x *repositoryIndex) apply(paths []string, files map[string]units.File, tre
 
 func snapshots(ctx context.Context, s *ledger.Store, w gitstate.Workspace, origin, tree string, runs []repostats.Run) (indexedSnapshot, error) {
 	var out indexedSnapshot
-	base, err := openIndex(ctx, s, w, origin)
-	if err != nil {
-		return out, err
+	var base *repositoryIndex
+	var err error
+	if usesPublishedOnly(ctx) {
+		base, err = publishedIndex(ctx, s, w, origin)
+	} else if base, err = openIndex(ctx, s, w, origin); err == nil {
+		base, err = observedIndex(base, runs)
 	}
-	base, err = observedIndex(base, runs)
 	if err != nil {
 		return out, err
 	}
@@ -202,6 +204,9 @@ func (s indexedSnapshot) err() error {
 		if x != nil && x.err != nil {
 			return x.err
 		}
+	}
+	if s.Origin != nil {
+		return s.Origin.readResult()
 	}
 	return nil
 }

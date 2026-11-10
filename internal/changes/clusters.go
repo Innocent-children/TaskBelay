@@ -14,8 +14,10 @@ import (
 type Edit struct {
 	Path, BeforePath, Before, After, Call string
 	AgentOnly                             bool
-	Exact                                 bool
-	Span                                  Span
+	// Command 表示这段改动含有 Agent 命令写入的内容，证据弱于逐行核对过的编辑。
+	Command bool
+	Exact   bool
+	Span    Span
 }
 type Input struct {
 	Before, After repostats.Repository
@@ -165,6 +167,9 @@ func Compare(ctx context.Context, in Input) (Result, error) {
 				}
 				if matches && edit.AgentOnly {
 					h.Origin = "agent"
+					if edit.Command {
+						h.Origin = "command"
+					}
 					h.Call = edit.Call
 					break
 				}
@@ -248,12 +253,10 @@ func Compare(ctx context.Context, in Input) (Result, error) {
 		for _, j := range group {
 			h := r.Hunks[j]
 			c.Hunks = append(c.Hunks, h.ID)
-			if h.Origin != c.Origin {
-				if len(c.Hunks) == 1 {
-					c.Origin = h.Origin
-				} else {
-					c.Origin = "mixed"
-				}
+			if len(c.Hunks) == 1 {
+				c.Origin = h.Origin
+			} else {
+				c.Origin = joinOrigin(c.Origin, h.Origin)
 			}
 			for _, w := range h.NewWords {
 				words[w] = true
@@ -360,6 +363,23 @@ func Closure(ctx context.Context, clusters []Cluster, selected []string) ([]stri
 	return sortedKeys(set), nil
 }
 
+/**
+ * joinOrigin 合并两部分改动的来源。编辑与命令写入都出自 Agent，合并后按证据较弱的
+ * 命令写入对待；任何一部分含工作区更新，整体就是混合来源。
+ */
+func joinOrigin(a, b string) string {
+	if a == b {
+		return a
+	}
+	if ByAgent(a) && ByAgent(b) {
+		return "command"
+	}
+	return "mixed"
+}
+
+// ByAgent 判断来源是否全部出自 Agent：逐行核对过的编辑，或 Agent 命令的写入。
+func ByAgent(origin string) bool { return origin == "agent" || origin == "command" }
+
 func Merge(ctx context.Context, clusters []Cluster, ids []string, reason string) ([]Cluster, error) {
 	set := map[string]bool{}
 	for _, id := range ids {
@@ -378,9 +398,7 @@ func Merge(ctx context.Context, clusters []Cluster, ids []string, reason string)
 		}
 		merged.Hunks = append(merged.Hunks, c.Hunks...)
 		merged.NewWords = append(merged.NewWords, c.NewWords...)
-		if c.Origin != "agent" {
-			merged.Origin = "mixed"
-		}
+		merged.Origin = joinOrigin(merged.Origin, c.Origin)
 		for _, d := range c.Depends {
 			if !set[d] {
 				deps[d] = true

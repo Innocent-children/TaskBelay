@@ -1,6 +1,8 @@
 package posix
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -32,13 +34,7 @@ func (Parser) Parse(text, dir string) shell.Script {
 	}
 	r := reader{text: text, result: shell.Script{Display: text}}
 	s := state{dir: dir, environment: map[string]string{}, known: true}
-	for _, stmt := range file.Stmts {
-		before := s.dir
-		r.statement(stmt, &s, true)
-		if s.dir != before {
-			s.known = false
-		}
-	}
+	r.statements(file.Stmts, &s, true)
 	sort.Slice(r.redactions, func(i, j int) bool { return r.redactions[i].from > r.redactions[j].from })
 	last := len(text)
 	for _, redaction := range r.redactions {
@@ -51,30 +47,50 @@ func (Parser) Parse(text, dir string) shell.Script {
 	return r.result
 }
 
+// 每层语句列表都可能用分号或换行吞掉前一条命令的失败状态。
+func (r *reader) statements(stmts []*syntax.Stmt, s *state, known bool) {
+	r.result.Sequential = r.result.Sequential || len(stmts) > 1
+	for _, stmt := range stmts {
+		dir := s.dir
+		r.statement(stmt, s, known)
+		if s.dir != dir {
+			s.known = false
+		}
+	}
+}
+
 func (r *reader) statement(stmt *syntax.Stmt, s *state, known bool) {
 	if stmt == nil {
 		return
 	}
 	known = known && !stmt.Negated && !stmt.Coprocess && !stmt.Disown
-	sideEffect := len(stmt.Redirs) > 0
+	sideEffect := writes(stmt.Redirs)
 	if stmt.Background {
 		r.result.Complex = true
 	}
 	switch command := stmt.Cmd.(type) {
 	case *syntax.BinaryCmd:
 		op := command.Op.String()
-		if op != "&&" {
+		// 管道的退出状态只来自最后一段；前面各段是否只读要等分类后才知道。
+		piped := op == "|" && len(stmt.Redirs) == 0
+		if op != "&&" && !piped {
 			r.result.Complex = true
 		}
 		left := *s
 		left.environment = shell.CopyEnvironment(s.environment)
-		r.statement(command.X, &left, known && op == "&&")
+		count := len(r.result.Segments)
+		r.statement(command.X, &left, known && (op == "&&" || piped))
+		if piped {
+			for i := count; i < len(r.result.Segments); i++ {
+				r.result.Segments[i].Piped = true
+			}
+		}
 		if op == "&&" {
 			*s = left
 		}
-		r.statement(command.Y, s, known && op == "&&")
+		r.statement(command.Y, s, known && (op == "&&" || piped))
 	case *syntax.CallExpr:
-		segment := shell.Segment{Dir: s.dir, Environment: shell.CopyEnvironment(s.environment), Known: known && s.known, SideEffect: sideEffect, Background: stmt.Background}
+		segment := shell.Segment{Dir: s.dir, Environment: shell.CopyEnvironment(s.environment), Known: known && s.known, SideEffect: sideEffect, Background: stmt.Background, Input: r.input(stmt.Redirs)}
 		for _, assignment := range command.Assigns {
 			if assignment.Name == nil || assignment.Array != nil || assignment.Append || assignment.Index != nil {
 				segment.Known = false
@@ -119,22 +135,68 @@ func (r *reader) statement(stmt *syntax.Stmt, s *state, known bool) {
 	case *syntax.Subshell:
 		local := *s
 		local.environment = shell.CopyEnvironment(s.environment)
-		for _, child := range command.Stmts {
-			r.statement(child, &local, known && !sideEffect)
-		}
+		r.statements(command.Stmts, &local, known && !sideEffect)
 		if sideEffect {
 			r.result.Complex = true
 		}
 	case *syntax.Block:
-		for _, child := range command.Stmts {
-			r.statement(child, s, known && !sideEffect)
-		}
+		r.statements(command.Stmts, s, known && !sideEffect)
 	default:
 		r.result.Complex = true
 		r.result.Missing = append(r.result.Missing, "条件、循环、函数或其他 shell 结构未核对执行范围")
 		r.result.Segments = append(r.result.Segments, shell.Segment{Dir: s.dir, Kind: shell.Other})
 		r.mask(stmt, "[未解析结构]")
 	}
+}
+
+/**
+ * 只有写入文件的重定向算副作用。合并输出流、丢弃输出和读取输入不改变工作区。
+ */
+func writes(redirs []*syntax.Redirect) bool {
+	for _, redir := range redirs {
+		switch redir.Op {
+		case syntax.RdrIn, syntax.DplIn, syntax.DplOut, syntax.Hdoc, syntax.DashHdoc, syntax.WordHdoc:
+			continue
+		}
+		if target, ok := literal(redir.Word); ok && target == "/dev/null" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+/**
+ * input 返回从标准输入交给程序的内容摘要。here-document 里的脚本和输入文件名
+ * 决定程序实际做什么，参数相同而输入不同的两次调用不是同一条命令。
+ */
+func (r *reader) input(redirs []*syntax.Redirect) string {
+	var parts []string
+	for _, redir := range redirs {
+		var node syntax.Node
+		switch redir.Op {
+		case syntax.Hdoc, syntax.DashHdoc:
+			if redir.Hdoc != nil {
+				node = redir.Hdoc
+			}
+		case syntax.RdrIn, syntax.WordHdoc:
+			if redir.Word != nil {
+				node = redir.Word
+			}
+		}
+		if node == nil {
+			continue
+		}
+		from, to := int(node.Pos().Offset()), int(node.End().Offset())
+		if from < 0 || to > len(r.text) || from > to {
+			continue
+		}
+		parts = append(parts, redir.Op.String(), r.text[from:to])
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(parts, "\x00"))))
 }
 
 func (r *reader) mask(node syntax.Node, text string) {

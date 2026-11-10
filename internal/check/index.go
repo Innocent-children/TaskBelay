@@ -17,6 +17,7 @@ import (
 )
 
 type indexMeta struct {
+	Generation                         int64
 	Tree                               string
 	Units                              int
 	Converged                          bool
@@ -270,7 +271,19 @@ func (x *repositoryIndex) load(p string) units.File {
 	if err != nil {
 		x.err = err
 	} else if !found {
-		x.err = fmt.Errorf("索引文件分析缺失：%s", p)
+		// 文件分析是可以重算的缓存：被清理后按索引记录的内容重新分析并保存。
+		var syn units.Syntax
+		x.get("syntax", path.Ext(p), &syn)
+		data, readErr := x.w.ReadBlob(x.ctx, info.Blob)
+		if readErr == nil {
+			f, readErr = units.Analyze(x.ctx, units.Source{Path: p, Blob: info.Blob, Mode: info.Mode, Data: data}, syn)
+		}
+		if readErr == nil {
+			readErr = x.s.SaveAnalysisCache(x.ctx, "file", info.Cache, f)
+		}
+		if readErr != nil {
+			x.err = fmt.Errorf("索引文件分析缺失：%s: %w", p, readErr)
+		}
 	}
 	f.Path, f.Blob, f.Mode = p, info.Blob, info.Mode
 	var syn units.Syntax
@@ -635,7 +648,7 @@ func (x *repositoryIndex) changeFile(p string, f units.File, r repostats.Reposit
 	}
 }
 
-func (x *repositoryIndex) publish(id, parent string) error {
+func (x *repositoryIndex) publish(build ledger.IndexBuild) error {
 	for key := range x.volumeDirty {
 		x.put("volume", key, "", x.volumes[key])
 	}
@@ -648,7 +661,7 @@ func (x *repositoryIndex) publish(id, parent string) error {
 		if len(batch) == 0 {
 			return nil
 		}
-		if err := x.s.SaveIndexRows(x.ctx, id, batch); err != nil {
+		if err := x.s.SaveIndexRows(x.ctx, build, batch); err != nil {
 			return fmt.Errorf("保存索引批次 %s/%s: %w", batch[0].Kind, batch[0].Key, err)
 		}
 		batch, bytes = nil, 0
@@ -675,7 +688,12 @@ func (x *repositoryIndex) publish(id, parent string) error {
 	if err := flush(); err != nil {
 		return err
 	}
-	if err := x.s.PublishIndex(x.ctx, ledger.AnalysisIndex{ID: id, ProjectID: x.w.ProjectID, Tree: x.meta.Tree, Variant: x.variant, ParentID: parent, Data: json.RawMessage(encode(x.meta))}); err != nil {
+	x.meta.Generation = build.Generation
+	parent := ledger.IndexBuild{}
+	if x.base != nil {
+		parent = x.base.publishedBuild()
+	}
+	if err := x.s.PublishIndex(x.ctx, ledger.AnalysisIndex{ID: build.ID, ProjectID: x.w.ProjectID, Tree: x.meta.Tree, Variant: x.variant, ParentID: parent.ID, Data: json.RawMessage(encode(x.meta))}, build.Generation, parent.Generation); err != nil {
 		return err
 	}
 	saved, found, err := x.s.FindIndex(x.ctx, x.w.ProjectID, x.meta.Tree, x.variant)
@@ -685,7 +703,7 @@ func (x *repositoryIndex) publish(id, parent string) error {
 	if !found {
 		return fmt.Errorf("起点索引未发布：%s", x.meta.Tree)
 	}
-	if saved.ID != id {
+	if saved.ID != build.ID {
 		// 并行构建可能从不同父版本出发，只采用最先发布的完整版本。
 		next := newIndex(x.ctx, x.s, x.w)
 		next.id, next.variant = saved.ID, x.variant
@@ -694,9 +712,20 @@ func (x *repositoryIndex) publish(id, parent string) error {
 		}
 		*x = *next
 	} else {
-		x.id = id
+		x.id = build.ID
 	}
 	return nil
+}
+
+func (x *repositoryIndex) publishedBuild() ledger.IndexBuild {
+	return ledger.IndexBuild{ID: x.id, Generation: x.meta.Generation}
+}
+
+func (x *repositoryIndex) readResult() error {
+	if x.err != nil {
+		return x.err
+	}
+	return x.s.CheckPublishedIndex(x.ctx, x.publishedBuild())
 }
 
 func newIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace) *repositoryIndex {
@@ -780,11 +809,14 @@ func openIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree 
 	}
 	x.updatePrior()
 	x.buildMatchers()
-	if err := x.buildValidation(raw); err != nil {
+	build, err := s.BeginIndexBuild(ctx, units.Hash(Algorithm, w.ProjectID, tree))
+	if err != nil {
 		return x, err
 	}
-	id := units.Hash(Algorithm, w.ProjectID, tree)
-	if err := x.publish(id, ""); err != nil {
+	if err := x.buildValidation(build, raw); err != nil {
+		return x, err
+	}
+	if err := x.publish(build); err != nil {
 		return x, err
 	}
 	x.writes = map[string]ledger.IndexRow{}

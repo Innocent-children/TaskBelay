@@ -12,6 +12,9 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/event"
 )
 
+// recentVerifications 是判断两次相同验证之间有无其他操作时回看的记录数上限。
+const recentVerifications = 256
+
 var ErrVerificationChanged = errors.New("验证输入或上一条验证已变化，请按当前状态运行")
 
 func verificationByCall(ctx context.Context, q queryer, workspace string, actor Actor) (*VerificationRecord, error) {
@@ -285,6 +288,10 @@ func readVerifications(ctx context.Context, q queryer, workspace, task string) (
 	if err != nil {
 		return nil, err
 	}
+	return scanVerifications(rows)
+}
+
+func scanVerifications(rows *sql.Rows) ([]VerificationRecord, error) {
 	defer rows.Close()
 	var result []VerificationRecord
 	for rows.Next() {
@@ -309,4 +316,54 @@ func (s *Store) Verifications(ctx context.Context, workspace, task string) ([]Ve
 		return err
 	})
 	return result, err
+}
+
+/**
+ * VerificationHistory 返回判断一条命令是否重复所需的记录：同一命令的全部运行，
+ * 以及最近一次同命令运行之后的近期操作。多取一条判定间隔是否读全，输出在选中记录后再取。
+ */
+func (s *Store) VerificationHistory(ctx context.Context, workspace, key string) ([]VerificationRecord, bool, error) {
+	var result []VerificationRecord
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		rows, err := q.QueryContext(ctx, `SELECT json_remove(data,'$.output','$.issue') FROM (
+ SELECT seq,data FROM verifications_v12 WHERE workspace_id=?1 AND command_key=?2
+ UNION ALL
+ SELECT seq,data FROM (SELECT seq,data FROM verifications_v12 WHERE workspace_id=?1 AND command_key<>?2 AND seq>COALESCE((SELECT MAX(seq) FROM verifications_v12 WHERE workspace_id=?1 AND command_key=?2 AND executed=1),0) ORDER BY seq DESC LIMIT ?3)
+) ORDER BY seq`, workspace, key, recentVerifications+1)
+		if err != nil {
+			return err
+		}
+		result, err = scanVerifications(rows)
+		return err
+	})
+	other := 0
+	for _, r := range result {
+		if r.CommandKey != key {
+			other++
+		}
+	}
+	return result, other > recentVerifications, err
+}
+
+// VerificationOutcomes 提供跨命令分析需要的历史输入和结果，不加载输出及提示中附带的上次输出。
+func (s *Store) VerificationOutcomes(ctx context.Context, workspace, algorithm string) ([]VerificationRecord, error) {
+	var result []VerificationRecord
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		rows, err := q.QueryContext(ctx, `SELECT json_remove(data,'$.output','$.issue') FROM verifications_v12
+WHERE workspace_id=? AND executed=1 AND json_extract(data,'$.algorithm')=? ORDER BY seq`, workspace, algorithm)
+		if err != nil {
+			return err
+		}
+		result, err = scanVerifications(rows)
+		return err
+	})
+	return result, err
+}
+
+func (s *Store) VerificationOutput(ctx context.Context, id string) (string, error) {
+	var output sql.NullString
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		return q.QueryRowContext(ctx, "SELECT json_extract(data,'$.output') FROM verifications_v12 WHERE id=?", id).Scan(&output)
+	})
+	return output.String, err
 }

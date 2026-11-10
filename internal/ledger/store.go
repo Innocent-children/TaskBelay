@@ -241,7 +241,12 @@ PRAGMA user_version=1;
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, indexPageSchema); err != nil {
+	if version < 13 {
+		if _, err := tx.ExecContext(ctx, indexPageSchema); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, indexPruneSchema); err != nil {
 		return err
 	}
 	return tx.Commit()

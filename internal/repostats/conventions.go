@@ -32,6 +32,17 @@ func TestFeatures(p string, u units.Unit) map[string]int {
 	}
 	return counts
 }
+
+// pathSeed 判断路径里是否含 test、spec 一类词；这样的文件是测试内容的初始样本。
+func pathSeed(p string) bool {
+	for _, w := range units.Words(strings.TrimSuffix(p, path.Ext(p))) {
+		if w == "test" || w == "tests" || w == "spec" || w == "specs" {
+			return true
+		}
+	}
+	return false
+}
+
 func (m TestModel) TestCounts(counts map[string]int, previous bool) bool {
 	score := m.LogPrior
 	for _, w := range sortedKeys(counts) {
@@ -39,7 +50,21 @@ func (m TestModel) TestCounts(counts map[string]int, previous bool) bool {
 			score += m.Weights[w]
 		}
 	}
-	return score > 0 || score == 0 && previous
+	return (score > 0 || score == 0 && previous) && m.fileEvidence(counts)
+}
+
+/**
+ * fileEvidence 要求文件名里至少有一个词在测试样本中更常见。
+ * 首行里的 import、function 一类词在测试和产品代码中都大量出现，只凭它们扩展样本，
+ * 划分会逐轮扩大到整个仓库；文件名层面的证据把扩展限制在与样本同类的文件内。
+ */
+func (m TestModel) fileEvidence(counts map[string]int) bool {
+	for w, n := range counts {
+		if n > 0 && strings.HasPrefix(w, "file:") && m.Weights[w] > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func testCounts(r *Repository, p string, u units.Unit) map[string]int {
@@ -76,12 +101,7 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 	seeds := map[string]bool{}
 	extensions := map[string]bool{}
 	for _, p := range sortedKeys(r.Files) {
-		seed := false
-		for _, w := range units.Words(strings.TrimSuffix(p, path.Ext(p))) {
-			if w == "test" || w == "tests" || w == "spec" || w == "specs" {
-				seed = true
-			}
-		}
+		seed := pathSeed(p)
 		f := r.Files[p]
 		matched := map[string]bool{}
 		for _, u := range f.Units {
@@ -108,7 +128,7 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			counts := TestFeatures(p, u)
 			words := sortedKeys(counts)
 			samples = append(samples, sample{key, path.Ext(p), counts, testCounts(r, p, u), words})
-			if matched[key] || len(runs) == 0 && seed {
+			if matched[key] || seed {
 				seeds[key] = true
 				r.TestUnits[key] = true
 				extensions[path.Ext(p)] = true
@@ -157,6 +177,11 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			xAbsent, yAbsent := float64(ca-a[w])+Prior, float64(cb-b[w])+Prior
 			model.LogPrior += math.Log(xAbsent/(x+xAbsent)) - math.Log(yAbsent/(y+yAbsent))
 			delta := math.Log(x/xAbsent) - math.Log(y/yAbsent)
+			// 两类样本数量悬殊时，平滑项会让从未在测试样本中出现的词也得到正权重。
+			// 文件名词只有确实在测试样本中出现得更频繁，才作为正向证据。
+			if strings.HasPrefix(w, "file:") && delta > 0 && !(a[w] > 0 && a[w]*cb > b[w]*ca) {
+				delta = 0
+			}
 			model.Weights[w] = delta
 		}
 		next := map[string]bool{}
@@ -169,7 +194,7 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 			for _, w := range s.words {
 				score += model.Weights[w]
 			}
-			if seeds[s.key] || score > 0 || score == 0 && r.TestUnits[s.key] {
+			if seeds[s.key] || (score > 0 || score == 0 && r.TestUnits[s.key]) && model.fileEvidence(s.counts) {
 				next[s.key] = true
 			}
 			changed = changed || next[s.key] != r.TestUnits[s.key]

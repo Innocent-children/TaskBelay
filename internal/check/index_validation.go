@@ -86,15 +86,14 @@ func (x *repositoryIndex) summaryFile(p string, sign int) {
 	}
 }
 
-func (x *repositoryIndex) buildValidation(r repostats.Repository) error {
-	id := units.Hash(Algorithm, x.w.ProjectID, x.meta.Tree)
+func (x *repositoryIndex) buildValidation(build ledger.IndexBuild, r repostats.Repository) error {
 	for _, p := range keys(r.Files) {
 		f := x.fileInfo(p)
 		if !f.Role.Document {
 			f.References = x.refs(r.Files[p])
 			x.put("file", p, "", f)
 			x.adjustRefs(f, 1)
-			if err := x.saveText(id, r.Files[p]); err != nil {
+			if err := x.saveText(build, r.Files[p]); err != nil {
 				return err
 			}
 		}
@@ -109,7 +108,7 @@ func (x *repositoryIndex) buildValidation(r repostats.Repository) error {
  * 新增文档按字面引用和 glob 反查现有代码；新代码按文档自动机查询。
  * 三字以下的引用使用短串倒排，避免全文索引退化为逐文件扫描。
  */
-func (x *repositoryIndex) saveText(id string, f units.File) error {
+func (x *repositoryIndex) saveText(build ledger.IndexBuild, f units.File) error {
 	text := strings.Join(f.Lines, "")
 	short := map[string]bool{}
 	runes := []rune(text)
@@ -125,7 +124,7 @@ func (x *repositoryIndex) saveText(id string, f units.File) error {
 		info.Rows = append(info.Rows, ledgerRow("text_short", key, f.Path))
 	}
 	x.put("file", f.Path, "", info)
-	if err := x.s.SaveIndexText(x.ctx, id, f.Path, text); err != nil {
+	if err := x.s.SaveIndexText(x.ctx, build, f.Path, text); err != nil {
 		return fmt.Errorf("保存引用索引 %s: %w", f.Path, err)
 	}
 	return nil

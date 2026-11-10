@@ -41,6 +41,36 @@ func (w Workspace) TreeFiles(ctx context.Context, tree string, paths ...string) 
 	return files, nil
 }
 
+/**
+ * TreeContains 返回 patterns 中哪些文本原样出现在 tree 的文件里。
+ * 所有文本交给一次 git grep 做固定字符串匹配，不逐个文件读取。
+ */
+func (w Workspace) TreeContains(ctx context.Context, tree string, patterns []string) (map[string]bool, error) {
+	found := map[string]bool{}
+	var input strings.Builder
+	for _, pattern := range patterns {
+		if pattern != "" && !strings.ContainsAny(pattern, "\n\r\x00") {
+			input.WriteString(pattern + "\n")
+		}
+	}
+	if input.Len() == 0 {
+		return found, nil
+	}
+	out, err := w.command(ctx, strings.NewReader(input.String()), nil, "grep", "-I", "-h", "-F", "-f", "-", tree)
+	if err != nil && !isExit(err, 1) {
+		return nil, err
+	}
+	// 同一行可能同时包含多段文本，逐行核对，不依赖 grep 只报告第一处匹配。
+	for _, line := range strings.Split(string(out), "\n") {
+		for _, pattern := range patterns {
+			if !found[pattern] && pattern != "" && strings.Contains(line, pattern) {
+				found[pattern] = true
+			}
+		}
+	}
+	return found, nil
+}
+
 func (w Workspace) ReadBlobs(ctx context.Context, ids []string) (map[string][]byte, error) {
 	result := make(map[string][]byte)
 	var request strings.Builder

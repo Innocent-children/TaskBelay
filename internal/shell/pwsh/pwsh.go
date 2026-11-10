@@ -26,6 +26,8 @@ func (Parser) Parse(text, dir string) shell.Script {
 	var tokens []token
 	var masks []token
 	sideEffect := false
+	// 分号或换行之后又出现命令时，最终退出状态不反映前面命令的失败。
+	ran, separated := false, false
 	flush := func() {
 		if len(tokens) == 0 {
 			return
@@ -92,12 +94,19 @@ func (Parser) Parse(text, dir string) shell.Script {
 			}
 		}
 		result.Segments = append(result.Segments, segment)
+		if segment.Kind != shell.Context && len(segment.Args) > 0 {
+			if ran && separated {
+				result.Sequential = true
+			}
+			ran, separated = true, false
+		}
 		tokens, sideEffect = nil, false
 	}
 	for i := 0; i < len(text); {
 		r := rune(text[i])
 		if text[i] == '\n' || text[i] == ';' {
 			flush()
+			separated = true
 			i++
 			continue
 		}

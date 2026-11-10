@@ -181,7 +181,28 @@ func usesPublishedOnly(ctx context.Context) bool {
 	return only
 }
 
+/**
+ * publishedIndex 返回某个起点上最近发布的索引，不读取运行记录，也不建立新版本。
+ * 起点索引还没有任何带测试识别结果的版本时，使用起点索引本身。
+ */
+func publishedIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, origin string) (*repositoryIndex, error) {
+	base, err := openIndex(publishedOnly(ctx), s, w, origin)
+	if err != nil {
+		return nil, err
+	}
+	saved, found, err := s.LatestDerivedIndex(base.ctx, w.ProjectID, base.id)
+	if err != nil || !found {
+		return base, err
+	}
+	x := newIndex(base.ctx, s, w)
+	x.id, x.variant = saved.ID, saved.Variant
+	return x, json.Unmarshal(saved.Data, &x.meta)
+}
+
 func taskIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, task ledger.TaskRecord) (*repositoryIndex, error) {
+	if usesPublishedOnly(ctx) {
+		return publishedIndex(ctx, s, w, task.OriginTree)
+	}
 	base, err := openIndex(ctx, s, w, task.OriginTree)
 	if err != nil {
 		return nil, err
@@ -216,7 +237,7 @@ func observedNames(base *repositoryIndex, runs []repostats.Run) (names []string,
 		return units.Hash(parts...)
 	}
 	found, err := base.s.AnalysisCache(base.ctx, "observed", history(len(eligible)), &names)
-	if err != nil || found || usesPublishedOnly(base.ctx) {
+	if err != nil || found {
 		return names, found, err
 	}
 	done := 0
@@ -265,11 +286,17 @@ func observedNames(base *repositoryIndex, runs []repostats.Run) (names []string,
 			if base.err != nil {
 				return nil, false, base.err
 			}
-			matched = []string{}
+			var present []string
 			for _, name := range keys(own) {
 				if own[name] {
-					matched = append(matched, name)
+					present = append(present, name)
 				}
+			}
+			if matched, err = executed(base, run.Output, present); err != nil {
+				return nil, false, err
+			}
+			if err := base.readResult(); err != nil {
+				return nil, false, err
 			}
 			if err := base.s.SaveAnalysisCache(base.ctx, "run-names", key, matched); err != nil {
 				return nil, false, err
@@ -281,6 +308,96 @@ func observedNames(base *repositoryIndex, runs []repostats.Run) (names []string,
 	}
 	names = keys(seeds)
 	return names, true, base.s.SaveAnalysisCache(base.ctx, "observed", history(len(eligible)), names)
+}
+
+// EvidenceContext 是判断输出片段是否照抄源码时，名字两侧各取的字符数。
+const EvidenceContext = 16
+
+/**
+ * executed 从输出里出现的名字中，留下能说明代码确实被执行过的那些。
+ * 查看文件、搜索文本的命令也会输出名字，但名字连同旁边的文字是从源码照抄的；
+ * 测试运行器输出的是名字加上自己的状态文字。名字每次出现时，取同一行内它左侧和右侧
+ * 的相邻文字各组成一段；任何一段能在起点内容中原样找到，这次出现就不算运行证据。
+ * 这样不依赖命令写法，经容器或脚本转发的读文件命令也不会被当成测试运行。
+ */
+func executed(base *repositoryIndex, output string, names []string) ([]string, error) {
+	type occurrence struct {
+		contexts []string
+		shape    string
+	}
+	byName := map[string][]occurrence{}
+	var patterns []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimRight(line, "\r")
+		for _, name := range names {
+			if len(byName[name]) >= 3 || !units.HasWord(line, name) {
+				continue
+			}
+			at := strings.Index(line, name)
+			left, right := []rune(line[:at]), []rune(line[at+len(name):])
+			if len(left) > EvidenceContext {
+				left = left[len(left)-EvidenceContext:]
+			}
+			if len(right) > EvidenceContext {
+				right = right[:EvidenceContext]
+			}
+			o := occurrence{shape: reportShape(line, at, len(name))}
+			for _, context := range []string{string(left) + name, name + string(right)} {
+				// 相邻文字太短时无法区分照抄和运行输出，这一段不参与判断。
+				if len([]rune(strings.TrimSpace(strings.Replace(context, name, "", 1)))) >= 3 {
+					o.contexts = append(o.contexts, context)
+					patterns = append(patterns, context)
+				}
+			}
+			byName[name] = append(byName[name], o)
+		}
+	}
+	shown, err := base.w.TreeContains(base.ctx, base.meta.Tree, patterns)
+	if err != nil {
+		return nil, err
+	}
+	// 运行器用同一种格式逐条报告用例；日志或报错里偶然提到的函数名没有这种成组的格式。
+	shapes := map[string]map[string]bool{}
+	for _, name := range names {
+		for _, o := range byName[name] {
+			copied := len(o.contexts) == 0
+			for _, context := range o.contexts {
+				copied = copied || shown[context]
+			}
+			if !copied {
+				if shapes[o.shape] == nil {
+					shapes[o.shape] = map[string]bool{}
+				}
+				shapes[o.shape][name] = true
+			}
+		}
+	}
+	reported := map[string]bool{}
+	for _, group := range shapes {
+		if len(group) > 1 {
+			for name := range group {
+				reported[name] = true
+			}
+		}
+	}
+	return keys(reported), nil
+}
+
+// reportShape 把一行输出里的名字换成占位符、数字换成 0，得到这一行的报告格式。
+func reportShape(line string, at, size int) string {
+	var b strings.Builder
+	for i, r := range line {
+		switch {
+		case i == at:
+			b.WriteByte(0)
+		case i > at && i < at+size:
+		case r >= '0' && r <= '9':
+			b.WriteByte('0')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func observedIndex(base *repositoryIndex, runs []repostats.Run) (*repositoryIndex, error) {
@@ -309,17 +426,6 @@ func observedIndex(base *repositoryIndex, runs []repostats.Run) (*repositoryInde
 			return open(saved)
 		}
 	}
-	if usesPublishedOnly(base.ctx) {
-		// 最新的运行记录尚未并入时，沿用这个起点上最近一次发布的识别结果。
-		saved, found, err := base.s.LatestDerivedIndex(base.ctx, base.w.ProjectID, base.id)
-		if err != nil {
-			return base, err
-		}
-		if !found {
-			return base, ErrIndexPending
-		}
-		return open(saved)
-	}
 	x := base.overlay(base.meta.Tree)
 	x.variant = variant
 	sketches := x.sketches()
@@ -333,8 +439,11 @@ func observedIndex(base *repositoryIndex, runs []repostats.Run) (*repositoryInde
 	}
 	x.conventions(sketches, r)
 	x.buildMatchers()
-	id := units.Hash(variant, x.w.ProjectID, x.meta.Tree)
-	if err = x.publish(id, base.id); err != nil {
+	build, err := x.s.BeginIndexBuild(x.ctx, units.Hash(variant, x.w.ProjectID, x.meta.Tree))
+	if err != nil {
+		return x, err
+	}
+	if err = x.publish(build); err != nil {
 		return x, err
 	}
 	x.writes = map[string]ledger.IndexRow{}
@@ -458,10 +567,13 @@ func buildNextIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, 
 	if err = x.updateValidation(base, keys(changed)); err != nil {
 		return x, err
 	}
-	id := units.Hash(Algorithm, w.ProjectID, tree, base.id)
+	build, err := s.BeginIndexBuild(ctx, units.Hash(Algorithm, w.ProjectID, tree, base.id))
+	if err != nil {
+		return x, err
+	}
 	for _, p := range keys(changed) {
 		if info := x.fileInfo(p); info.Blob != "" && !info.Role.Document {
-			if err = x.saveText(id, x.load(p)); err != nil {
+			if err = x.saveText(build, x.load(p)); err != nil {
 				return x, err
 			}
 		}
@@ -469,7 +581,7 @@ func buildNextIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, 
 	if err = x.refreshStatistics(base, keys(changed)); err != nil {
 		return x, err
 	}
-	if err = x.publish(id, base.id); err != nil {
+	if err = x.publish(build); err != nil {
 		return x, err
 	}
 	x.writes = map[string]ledger.IndexRow{}

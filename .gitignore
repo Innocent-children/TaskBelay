@@ -1,6 +1,7 @@
 # Local IDE and macOS files.
 /.idea/
 .DS_Store
+/temp_doc/
 
 # Locally built executables.
 /taskbelay

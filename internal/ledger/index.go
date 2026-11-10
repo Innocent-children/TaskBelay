@@ -55,7 +55,7 @@ func (s *Store) LatestDerivedIndex(ctx context.Context, project, parent string) 
 /**
  * 行按内容版本不可变；空正文遮蔽父索引条目。根记录最后发布，未完成的构建不会被读取。
  */
-func (s *Store) SaveIndexRows(ctx context.Context, id string, rows []IndexRow) error {
+func (s *Store) SaveIndexRows(ctx context.Context, build IndexBuild, rows []IndexRow) error {
 	if len(rows) == 0 {
 		return ctx.Err()
 	}
@@ -64,12 +64,28 @@ func (s *Store) SaveIndexRows(ctx context.Context, id string, rows []IndexRow) e
 		return err
 	}
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		return saveIndexPages(ctx, tx, id, pages, false)
+		if err := checkIndexGeneration(ctx, tx, build, false); err != nil {
+			return err
+		}
+		return saveIndexPages(ctx, tx, build.ID, pages, false)
 	})
 }
-func (s *Store) PublishIndex(ctx context.Context, r AnalysisIndex) error {
+func (s *Store) PublishIndex(ctx context.Context, r AnalysisIndex, generation, parentGeneration int64) error {
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		if err := checkIndexGeneration(ctx, tx, IndexBuild{r.ID, generation}, false); err != nil {
+			return err
+		}
+		if r.ParentID != "" {
+			if err := checkIndexGeneration(ctx, tx, IndexBuild{r.ParentID, parentGeneration}, true); err != nil {
+				return err
+			}
+		}
 		_, err := tx.ExecContext(ctx, "INSERT INTO analysis_indexes_v12 VALUES(?,?,?,?,?,?) ON CONFLICT DO NOTHING", r.ID, r.ProjectID, r.Tree, r.Variant, r.ParentID, string(r.Data))
+		if err == nil {
+			// 同一逻辑版本已由另一父层的构建先发布时，自己的批次已确定可以清理。
+			_, err = tx.ExecContext(ctx, `UPDATE analysis_index_lives_v14 SET deleting=1 WHERE index_id=?1
+AND NOT EXISTS(SELECT 1 FROM analysis_indexes_v12 WHERE id=?1)`, r.ID)
+		}
 		return err
 	})
 }
@@ -268,8 +284,12 @@ func (s *Store) IndexPrefixRows(ctx context.Context, id, kind, prefix string, pa
 	return out, nil
 }
 
-func (s *Store) SaveIndexText(ctx context.Context, id, path, body string) error {
+func (s *Store) SaveIndexText(ctx context.Context, build IndexBuild, path, body string) error {
 	return s.write(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		if err := checkIndexGeneration(ctx, tx, build, false); err != nil {
+			return err
+		}
+		id := build.ID
 		if _, err := tx.ExecContext(ctx, `INSERT INTO analysis_text_paths_v12(index_id,path) VALUES(?,?) ON CONFLICT DO NOTHING`, id, path); err != nil {
 			return err
 		}

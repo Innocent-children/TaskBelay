@@ -153,7 +153,9 @@ func saveIndexPages(ctx context.Context, tx *sql.Tx, id string, pages []indexPag
 			return err
 		}
 	}
-	return nil
+	// 最大目录序号在删除后可能被复用，清理用本事务的发布修订判断引用是否变化。
+	_, err := tx.ExecContext(ctx, "UPDATE analysis_page_state_v14 SET revision=revision+1")
+	return err
 }
 
 func unpackIndexPage(raw []byte) ([]IndexRow, error) {

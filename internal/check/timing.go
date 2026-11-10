@@ -19,11 +19,7 @@ func ReuseAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, act
 		return "", err
 	}
 	// 用户消息只使用已发布的索引；索引未就绪时不提示，把时间留给接续摘要。
-	ctx = publishedOnly(ctx)
-	x, err := openIndex(ctx, s, w, v.Task.OriginTree)
-	if err == nil {
-		x, err = observedIndex(x, runSamples(v.Verifications))
-	}
+	x, err := publishedIndex(ctx, s, w, v.Task.OriginTree)
 	if errors.Is(err, ErrIndexPending) {
 		return "", nil
 	}
@@ -59,10 +55,10 @@ func ReuseAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, act
 	for _, c := range choices[:min(ReuseHints, len(choices))] {
 		out = append(out, c.at)
 	}
-	if len(out) == 0 {
-		return "", x.err
+	if err := x.readResult(); err != nil || len(out) == 0 {
+		return "", err
 	}
-	return "可先核对已有实现：" + strings.Join(out, "、"), x.err
+	return "可先核对已有实现：" + strings.Join(out, "、"), nil
 }
 
 func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, contents map[string][]byte) (string, error) {

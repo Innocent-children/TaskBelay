@@ -60,10 +60,17 @@ func environmentChange(script shell.Script) bool {
 	return false
 }
 
-func toolIdentity(ctx context.Context, script shell.Script) string {
+/**
+ * toolIdentity 用程序文件的内容摘要标识工具。摘要按路径、大小和修改时间保存，
+ * 文件没有变化时不重新读取整个程序。
+ */
+func (t Tasks) toolIdentity(ctx context.Context, script shell.Script) string {
 	var parts []string
 	for _, s := range script.Segments {
 		if len(s.Args) == 0 {
+			if s.Kind == shell.Context {
+				continue
+			}
 			return ""
 		}
 		program := s.Args[0]
@@ -86,11 +93,28 @@ func toolIdentity(ctx context.Context, script shell.Script) string {
 		if err != nil {
 			return ""
 		}
-		identity, err := platform.ExecutableDigest(ctx, resolved)
+		info, err := os.Stat(resolved)
 		if err != nil {
 			return ""
 		}
+		key := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d\x00%d", resolved, info.Size(), info.ModTime().UnixNano()))))
+		var identity string
+		found, err := t.Store.AnalysisCache(ctx, "tool-digest", key, &identity)
+		if err != nil {
+			return ""
+		}
+		if !found {
+			if identity, err = platform.ExecutableDigest(ctx, resolved); err != nil {
+				return ""
+			}
+			if err = t.Store.SaveAnalysisCache(ctx, "tool-digest", key, identity); err != nil {
+				return ""
+			}
+		}
 		parts = append(parts, identity)
+	}
+	if len(parts) == 0 {
+		return ""
 	}
 	if len(parts) == 1 {
 		return parts[0]
@@ -114,9 +138,26 @@ func (t Tasks) BeforeCommand(ctx context.Context, e event.Event) (event.Decision
 		}
 		return verificationDecision(*existing), nil
 	}
+	readOnly := record.Command.ReadOnly()
+	var observed ledger.Observation
+	if !readOnly {
+		observed, err = t.observeWorkspace(ctx, e, nil)
+		if err != nil {
+			return event.Decision{}, err
+		}
+	}
 	task, observation, err := t.Store.CommandContext(ctx, t.Workspace.ID)
 	if err != nil {
 		return event.Decision{}, err
+	}
+	if !readOnly {
+		if observed.Complete && task.ID != "" && observed.ID != task.LastObservationID {
+			return event.Decision{}, ledger.ErrVerificationChanged
+		}
+		observation = observed
+		if observed.Complete && observed.Tree != "" {
+			record.BeforeObservation = observed.ID
+		}
 	}
 	record.TaskID, record.InputRevision, record.Tree = task.ID, task.RecordRevision, observation.Tree
 	previous, err := t.Store.PreviousVerification(ctx, t.Workspace.ID, record.Actor, record.CommandKey)
@@ -126,29 +167,25 @@ func (t Tasks) BeforeCommand(ctx context.Context, e event.Event) (event.Decision
 	if previous != nil {
 		record.PreviousID = previous.ID
 	}
-	known, err := check.KnownValidation(ctx, t.Store, t.Workspace.ID, record)
-	if err != nil {
-		return event.Decision{}, err
-	}
-	if known && task.ID != "" {
-		view, observed, err := t.observeEvent(ctx, e)
-		if err != nil {
-			return event.Decision{}, err
-		}
-		if view.Task == nil {
-			return event.Decision{}, fmt.Errorf("当前任务已变化")
-		}
-		task = *view.Task
-		record.InputRevision, record.Tree = task.RecordRevision, observed.Tree
-		record.Scope.Tool = toolIdentity(ctx, record.Command)
+	// 只读命令不是验证。其余命令从第一次运行起就记录验证输入，
+	// 这样它被归为验证之后，此前的运行立刻可以用来比较。
+	if task.ID != "" && record.BeforeObservation != 0 {
+		record.Scope.Tool = t.toolIdentity(ctx, record.Command)
 		if err = check.Verification(ctx, t.Store, t.Workspace, task, &record); err != nil {
+			if ctx.Err() != nil {
+				return event.Decision{}, err
+			}
 			record.Scope.Complete = false
 			record.Scope.Reason = check.CommandResultReason(err)
-		}
-		current, err := t.Workspace.CaptureTree(ctx)
-		if err != nil || !current.Complete() || current.Tree != record.Tree {
-			record.Scope.Complete = false
 			record.Issue = nil
+		}
+		if record.Issue != nil && record.Issue.Level == "block" {
+			// 拦截前确认工作区确实停在记录的状态上；其间有未观察到的修改就照常运行。
+			current, err := t.Workspace.CaptureTree(ctx)
+			if err != nil || !current.Complete() || current.Tree != record.Tree {
+				record.Scope.Complete = false
+				record.Issue = nil
+			}
 		}
 	}
 	record, err = t.Store.BeginVerification(ctx, record)
@@ -230,14 +267,19 @@ func (t Tasks) AfterCommand(ctx context.Context, e event.Event) (event.Decision,
 		t.recordSession(request.Actor, verificationRecord(result.Record))
 		return event.Decision{}, nil
 	}
-	view, observed, err := t.observeEvent(ctx, e)
+	observed, err := t.observeWorkspace(ctx, e, &result.Record)
 	if err != nil {
 		return event.Decision{}, err
 	}
-	if view.Task != nil {
-		if err = check.CompleteVerification(ctx, t.Store, t.Workspace, *view.Task, result.Record, observed.Tree, output); err != nil {
-			return event.Decision{}, err
-		}
+	task, _, err := t.Store.CommandContext(ctx, t.Workspace.ID)
+	if err != nil {
+		return event.Decision{}, err
+	}
+	if task.ID != result.Record.TaskID {
+		task = ledger.TaskRecord{}
+	}
+	if err = check.CompleteVerification(ctx, t.Store, t.Workspace, task, result.Record, observed.Tree, output); err != nil {
+		return event.Decision{}, err
 	}
 	t.recordSession(request.Actor, verificationRecord(result.Record))
 	return event.Decision{}, nil

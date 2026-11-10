@@ -34,14 +34,18 @@ func (o Observer) observation(e event.Event, task, trigger string, view ledger.O
  * 导致完整观察与目标文件核对之间产生虚假的工作区更新。
  */
 func (o Observer) Observe(ctx context.Context, e event.Event, task string) (ledger.Observation, error) {
-	observation, err := o.observe(ctx, e, task)
+	return o.observeChanges(ctx, e, task, nil)
+}
+
+func (o Observer) observeChanges(ctx context.Context, e event.Event, task string, command *ledger.VerificationRecord) (ledger.Observation, error) {
+	observation, err := o.observe(ctx, e, task, command)
 	if errors.Is(err, ledger.ErrObservationConflict) && ctx.Err() == nil {
-		return o.observe(ctx, e, task)
+		return o.observe(ctx, e, task, command)
 	}
 	return observation, err
 }
 
-func (o Observer) observe(ctx context.Context, e event.Event, task string) (ledger.Observation, error) {
+func (o Observer) observe(ctx context.Context, e event.Event, task string, command *ledger.VerificationRecord) (ledger.Observation, error) {
 	view, err := o.Store.ObservationState(ctx, o.Workspace.ID, []string{})
 	if err != nil {
 		return ledger.Observation{}, err
@@ -91,6 +95,20 @@ func (o Observer) observe(ctx context.Context, e event.Event, task string) (ledg
 	if err != nil {
 		return observation, err
 	}
+	// 只认同一任务和 Git 上下文内的前后观察。分支恢复时累计的变化仍是工作区更新。
+	if len(changes) > 0 && observation.Complete && command != nil && command.TaskID == task && command.BeforeObservation != 0 {
+		start, err := o.Store.ObservationMetadata(ctx, command.BeforeObservation)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return observation, err
+		}
+		if start.Full && start.Complete && start.WorkspaceID == observation.WorkspaceID && start.Tree == command.Tree &&
+			start.Context == view.Context && start.Context == observation.Context {
+			for i := range changes {
+				changes[i].Kind, changes[i].ToolCallID = "agent_command", command.Actor.CallID
+				changes[i].CommandObservation = start.ID
+			}
+		}
+	}
 	ledger.DebugRecord(ctx, "observation.retain.start", nil)
 	if err := o.retain(ctx, &observation, view, nil, nil); err != nil {
 		return observation, err
@@ -113,7 +131,8 @@ func (o Observer) workspaceChanges(ctx context.Context, view ledger.ObservationV
 		if err != nil {
 			return nil, err
 		}
-		changes = append(changes, ledger.FileChange{Path: path, BeforeObservation: before.ObservationID, Kind: "workspace_update", Before: before.File, After: after, Fragments: fragments})
+		change := ledger.FileChange{Path: path, BeforeObservation: before.ObservationID, Kind: "workspace_update", Before: before.File, After: after, Fragments: fragments}
+		changes = append(changes, change)
 	}
 	return changes, nil
 }

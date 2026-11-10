@@ -115,24 +115,39 @@ func (t Tasks) observeTask(ctx context.Context, actor ledger.Actor) (ledger.Task
 }
 
 func (t Tasks) observeEvent(ctx context.Context, e event.Event) (ledger.TaskView, ledger.Observation, error) {
-	actor := ledger.Actor{Agent: e.Agent, SessionID: e.SessionID, RoundID: e.RoundID}
-	view, err := t.Store.TaskView(ctx, t.Workspace.ID, "", actor)
+	observation, err := t.observeWorkspace(ctx, e, nil)
 	if err != nil {
-		return view, ledger.Observation{}, err
+		return ledger.TaskView{}, observation, err
 	}
-	before, err := t.Store.ObservationState(ctx, t.Workspace.ID, []string{})
-	if err != nil {
-		return view, ledger.Observation{}, err
-	}
-	observation, err := t.Observe(ctx, e, view.CurrentTaskID)
-	if err != nil {
-		return view, observation, err
-	}
-	if err := t.reconcile(ctx, view, before.Context.Branch, observation); err != nil {
-		return view, observation, err
-	}
-	view, err = t.Store.TaskView(ctx, t.Workspace.ID, "", actor)
+	view, err := t.Store.TaskView(ctx, t.Workspace.ID, "", ledger.Actor{Agent: e.Agent, SessionID: e.SessionID, RoundID: e.RoundID})
 	return view, observation, err
+}
+
+/**
+ * 命令前后只需任务和观察。仅在切换分支、需要选择恢复任务时加载候选任务。
+ */
+func (t Tasks) observeWorkspace(ctx context.Context, e event.Event, command *ledger.VerificationRecord) (ledger.Observation, error) {
+	task, _, err := t.Store.CommandContext(ctx, t.Workspace.ID)
+	if err != nil {
+		return ledger.Observation{}, err
+	}
+	branch := task.Context.Branch
+	if task.ID == "" {
+		before, err := t.Store.ObservationState(ctx, t.Workspace.ID, []string{})
+		if err != nil {
+			return ledger.Observation{}, err
+		}
+		branch = before.Context.Branch
+	}
+	observation, err := t.observeChanges(ctx, e, task.ID, command)
+	if err != nil || branch == observation.Context.Branch {
+		return observation, err
+	}
+	view, err := t.Store.TaskView(ctx, t.Workspace.ID, "", ledger.Actor{Agent: e.Agent, SessionID: e.SessionID, RoundID: e.RoundID})
+	if err != nil {
+		return observation, err
+	}
+	return observation, t.reconcile(ctx, view, branch, observation)
 }
 
 func (t Tasks) Get(ctx context.Context, actor ledger.Actor, id string) (ledger.TaskView, error) {

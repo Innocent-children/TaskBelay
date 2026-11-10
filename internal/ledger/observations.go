@@ -91,16 +91,17 @@ type Observation struct {
 }
 
 type FileChange struct {
-	Path              string
-	BeforeObservation int64
-	AfterObservation  int64
-	At                time.Time
-	Kind              string
-	ToolCallID        string
-	Before            gitstate.File
-	Trigger           string
-	After             gitstate.File
-	Fragments         []gitstate.Fragment
+	Path               string
+	BeforeObservation  int64
+	CommandObservation int64 `json:",omitempty"`
+	AfterObservation   int64
+	At                 time.Time
+	Kind               string
+	ToolCallID         string
+	Before             gitstate.File
+	Trigger            string
+	After              gitstate.File
+	Fragments          []gitstate.Fragment
 }
 
 type PreparedFile struct {
@@ -360,7 +361,7 @@ func (s *Store) SaveObservation(ctx context.Context, view ObservationView, obser
 	updated := make(map[string]bool)
 	for i := range changes {
 		change := changes[i]
-		if change.Kind != "agent_edit" && change.Kind != "workspace_update" {
+		if change.Kind != "agent_edit" && change.Kind != "agent_command" && change.Kind != "workspace_update" {
 			return fmt.Errorf("未知的变化来源")
 		}
 		change.AfterObservation, change.At = id, observation.At

@@ -115,6 +115,8 @@ const (
 	EditBudget        = 300 * time.Millisecond
 	MessageBudget     = time.Second
 	ObservationBudget = 5 * time.Second
+	// MaintenanceBudget 是 session 开始后保留期清理的时间；输出已经交给 Agent，不影响提示送达。
+	MaintenanceBudget = 2 * time.Second
 	MCPBudget         = time.Second
 	StaticBudget      = 20 * time.Second
 	TestsBudget       = 120 * time.Second

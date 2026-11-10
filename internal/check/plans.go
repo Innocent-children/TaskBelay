@@ -45,7 +45,7 @@ func ClassifyTargets(ctx context.Context, s *ledger.Store, w gitstate.Workspace,
 	for p, role := range r.Roles {
 		out[p] = role.Test || role.Generated || role.Lock
 	}
-	return out, nil
+	return out, index.readResult()
 }
 
 func planIssues(w gitstate.Workspace, v ledger.TaskView, a analysis) []ledger.Issue {
@@ -89,6 +89,10 @@ func planIssues(w gitstate.Workspace, v ledger.TaskView, a analysis) []ledger.Is
 		}
 	}
 	if v.Settings.Values["workflow"].Value == "semi" {
+		verified := make(map[string]bool, len(a.Changes.Clusters))
+		for _, cluster := range a.Changes.Clusters {
+			verified[cluster.ID] = cluster.Origin == "agent"
+		}
 		for _, e := range a.Signals.External {
 			if e.Kind != "dep" || !e.Reliable || !e.AgentOnly {
 				continue
@@ -100,7 +104,7 @@ func planIssues(w gitstate.Workspace, v ledger.TaskView, a analysis) []ledger.Is
 				}
 			}
 			if !allowed {
-				out = append(out, ledger.Issue{Algorithm: Algorithm, Selected: true, Rule: "S2", At: e.At, LogicalAt: "dep:" + e.Name, FactKey: "dependency", Status: "open", Level: "hint", BlockOnDelivery: true, Facts: []string{"直接依赖未列入有效方案：" + e.Name}, Advice: "核对依赖必要性并更新方案"})
+				out = append(out, ledger.Issue{Algorithm: Algorithm, Selected: true, Rule: "S2", At: e.At, LogicalAt: "dep:" + e.Name, FactKey: "dependency", Status: "open", Level: "hint", BlockOnDelivery: verified[e.Cluster], Facts: []string{"直接依赖未列入有效方案：" + e.Name}, Advice: "核对依赖必要性并更新方案"})
 			}
 		}
 	}

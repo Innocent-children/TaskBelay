@@ -52,7 +52,7 @@ func Apply(ctx context.Context, origin Repository, tree string, files map[string
 				continue
 			}
 			key := UnitKey(p, u)
-			if origin.Converged && origin.Tests.Extensions[path.Ext(p)] && (origin.TestSeeds[key] || origin.Tests.TestCounts(TestFeatures(p, u), origin.TestUnits[key])) {
+			if origin.Converged && origin.Tests.Extensions[path.Ext(p)] && (origin.TestSeeds[key] || pathSeed(p) || origin.Tests.TestCounts(TestFeatures(p, u), origin.TestUnits[key])) {
 				r.TestUnits[UnitKey(p, u)] = true
 				role.Test = true
 			}

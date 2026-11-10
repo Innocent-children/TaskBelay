@@ -6,13 +6,16 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
+	"slices"
 	"strings"
 )
 
 type lineOrigin struct {
 	original int
 	agent    bool
-	call     string
+	// command 表示这一行来自 Agent 运行的命令，没有逐行核对过编辑请求。
+	command bool
+	call    string
 }
 
 func provenance(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v ledger.TaskView, o ledger.Observation, before, after repostats.Repository) ([]changes.Edit, error) {
@@ -25,7 +28,7 @@ func provenance(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v le
 	for _, h := range history {
 		_, beforeChanged := before.Files[h.Path]
 		_, afterChanged := after.Files[h.Path]
-		if (beforeChanged || afterChanged) && h.Kind == "agent_edit" {
+		if (beforeChanged || afterChanged) && (h.Kind == "agent_edit" || h.Kind == "agent_command" && h.CommandObservation != 0) {
 			agentPaths[h.Path] = true
 		}
 	}
@@ -78,6 +81,9 @@ func provenance(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v le
 			for _, span := range spans {
 				cause := lineOrigin{original: -1}
 				for _, h := range rows[start:end] {
+					if h.Kind == "agent_command" && h.CommandObservation != 0 && end-start == 1 {
+						cause.agent, cause.command, cause.call = true, true, h.ToolCallID
+					}
 					if h.Kind != "agent_edit" {
 						continue
 					}
@@ -96,6 +102,10 @@ func provenance(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v le
 					}
 				}
 				a, b := span.BeforeStart+offset, span.BeforeEnd+offset
+				// 格式化或重写已由用户新增的行，不会把这些行变成 Agent 的实现。
+				if cause.command && slices.ContainsFunc(tags[a:b], func(t lineOrigin) bool { return t.original < 0 && !t.agent }) {
+					cause = lineOrigin{original: -1}
+				}
 				for _, oldTag := range tags[a:b] {
 					if oldTag.original >= 0 {
 						deleted[oldTag.original] = cause
@@ -119,16 +129,18 @@ func provenance(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v le
 			return nil, err
 		}
 		for _, span := range spans {
-			agent, has := true, false
+			agent, has, command := true, false, false
 			calls := map[string]bool{}
 			for i := span.BeforeStart; i < span.BeforeEnd; i++ {
 				t := deleted[i]
 				agent = agent && t.agent
+				command = command || t.command
 				has = true
 				calls[t.call] = true
 			}
 			for _, t := range tags[span.AfterStart:span.AfterEnd] {
 				agent = agent && t.agent
+				command = command || t.command
 				has = true
 				calls[t.call] = true
 			}
@@ -136,7 +148,7 @@ func provenance(ctx context.Context, s *ledger.Store, w gitstate.Workspace, v le
 				continue
 			}
 			call := strings.Join(keys(calls), ",")
-			result = append(result, changes.Edit{Path: p, BeforePath: p, Before: strings.Join(base.Lines[span.BeforeStart:span.BeforeEnd], ""), After: strings.Join(current[span.AfterStart:span.AfterEnd], ""), Call: call, AgentOnly: true, Exact: true, Span: span})
+			result = append(result, changes.Edit{Path: p, BeforePath: p, Before: strings.Join(base.Lines[span.BeforeStart:span.BeforeEnd], ""), After: strings.Join(current[span.AfterStart:span.AfterEnd], ""), Call: call, AgentOnly: true, Command: command, Exact: true, Span: span})
 		}
 	}
 	return result, nil

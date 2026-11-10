@@ -334,7 +334,7 @@ func assessPurpose(note ledger.Note, req ledger.Requirement, sources map[string]
 	}
 	agent := true
 	for _, cluster := range clusters {
-		agent = agent && cluster.Origin == "agent"
+		agent = agent && changes.ByAgent(cluster.Origin)
 	}
 	if !agent {
 		c.Advice = "片段涉及工作区更新，只报告现状并保留当前内容"

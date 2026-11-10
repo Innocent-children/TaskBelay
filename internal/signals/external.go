@@ -1,6 +1,7 @@
 package signals
 
 import (
+	"path"
 	"strconv"
 	"strings"
 	"unicode"
@@ -8,20 +9,63 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/units"
 )
 
+/**
+ * referenced 判断新文件是否已接入本次改动的其他代码：其他文件用到了它声明的名字，
+ * 或者按文件名引用了它。新文件只可能被本次改动过的文件使用，所以只看改动过的文件。
+ */
+func referenced(in Input, p string) bool {
+	f := in.After.Files[p]
+	names := map[string]bool{}
+	for _, u := range f.Units {
+		if u.Name != "" && declaration(f, u) {
+			names[u.Name] = true
+		}
+	}
+	base := path.Base(p)
+	for _, other := range keys(in.After.Files) {
+		if other == p || in.After.Roles[other].Document || in.After.Roles[other].Test {
+			continue
+		}
+		g := in.After.Files[other]
+		for _, t := range g.Tokens {
+			if names[units.Literal(t)] {
+				return true
+			}
+		}
+		for _, line := range g.Lines {
+			if strings.Contains(line, base) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func external(in Input) []External {
 	var out []External
 	for _, p := range keys(in.After.Files) {
 		f := in.After.Files[p]
 		old, exists := in.Before.Files[p]
 		cluster, agent := clusterFor(in, p, 1, len(f.Lines))
-		if !exists {
+		role := in.After.Roles[p]
+		// 被本次改动的代码引用的新文件是实现的一部分；没有代码引用的文档、脚本、
+		// 示例和配置才是独立新增的内容。新文件只可能被本次改动过的文件引用。
+		if !exists && !f.Binary && !referenced(in, p) {
 			out = append(out, External{Kind: "file", Method: "new_file", Name: p, At: p, Cluster: cluster, Reliable: true, AgentOnly: agent})
+		}
+		// 文档里提到的名字是说明文字，测试里的字面量是测试数据，都不是新增的入口。
+		// 入口形状的字面量只在含函数声明的代码文件里识别；配置和清单另按键和依赖识别。
+		code := false
+		for _, u := range f.Units {
+			code = code || declaration(f, u)
+		}
+		if role.Document || role.Test || !code && !role.Config && !role.Manifest {
+			continue
 		}
 		oldTokens := map[string]bool{}
 		for _, t := range old.Tokens {
 			oldTokens[t.Kind+":"+units.Literal(t)] = true
 		}
-		role := in.After.Roles[p]
 		for i, t := range f.Tokens {
 			if oldTokens[t.Kind+":"+units.Literal(t)] {
 				continue
@@ -29,8 +73,11 @@ func external(in Input) []External {
 			name := units.Literal(t)
 			cl, ag := clusterFor(in, p, t.Line, t.Line)
 			item := External{Name: name, At: p, Cluster: cl, AgentOnly: ag}
+			if !code && !role.Config {
+				continue
+			}
 			switch {
-			case role.Config && (t.Kind == "key" || t.Kind == "identifier"):
+			case role.Config && !code && (t.Kind == "key" || t.Kind == "identifier"):
 				j := i + 1
 				for j < len(f.Tokens) && f.Tokens[j].Kind == "space" {
 					j++
