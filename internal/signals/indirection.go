@@ -211,7 +211,7 @@ func measure(ctx context.Context, repo repostats.Repository, affected map[string
 					out = append(out, indirection{path: p, unit: u, kind: "forwarding", count: 1, replacement: body[0]})
 				}
 			}
-			if preview || !shape.Callable {
+			if !shape.Callable || preview && (role.Document || role.Config || role.Manifest || role.Test || repo.TestUnits[repostats.UnitKey(p, u)]) {
 				continue
 			}
 			if repo.SyntaxFor(p).CallRatio <= CallPrecision {
@@ -336,6 +336,10 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 		case "parameter":
 			facts = append(facts, "按同名调用形状统计，该位置只有一种实参写法："+v.replacement+"；相同写法不代表运行值固定", fmt.Sprintf("调用形状共记录 %d 处位置；位置示例：%s", len(v.sites), v.sites[0]))
 			advice = "核对 " + at + " 的" + v.replacement + " 是否需要由调用方提供；确认调用属于该声明、取值固定、求值行为不变且调用范围完整后，才将值移入实现并删除对应形参和各调用实参，保留函数及其他参数"
+			if in.EditPreview {
+				facts = append(facts, "仅统计本批目标拟写入内容中的调用形状，未核对其他调用方；不能据此确认调用范围完整或同名调用属于该声明")
+				advice = "核对 " + at + " 的" + v.replacement + " 是否需要由调用方提供，以及入口和兼容约定、实际调用范围与求值行为；确认调用属于该声明、取值固定且这些行为可保留后，才考虑将值移入实现并省去本次拟编辑的形参和对应实参，保留函数及其他参数；依据不足时保留必要参数，不因此补测试"
+			}
 		case "forwarding":
 			facts = append(facts, "主体标识符序列符合转发形状，目标名字为 "+v.replacement+"；未核对运算符、字面量或调用语义")
 			advice = "核对 " + at + " 的独立职责、返回结果和副作用；确认直接调用 " + v.replacement + " 行为等价且无需保留该层后，再修改调用并删除此包装"

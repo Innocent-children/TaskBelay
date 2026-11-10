@@ -113,7 +113,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		return "", err
 	}
 	var advice []string
-	for _, kind := range []string{"test_equivalence", "recovery", "forwarding", "abstraction", "external", "duplicate"} {
+	for _, kind := range []string{"test_equivalence", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
 		for _, c := range result.Candidates {
 			if c.Kind != kind || len(advice) >= CategoryLimit {
 				continue
@@ -127,6 +127,8 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 				text = "拟编辑转发包装 " + text
 			} else if c.Kind == "abstraction" {
 				text = "拟编辑抽象 " + text
+			} else if c.Kind == "parameter" {
+				text = "拟编辑参数 " + text
 			}
 			if c.Kind != "duplicate" {
 				text += strings.Join(c.Facts, "；") + "；"
@@ -141,11 +143,26 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 }
 
 /**
+ * 参数只用本批目标中的调用形状核对，不沿用索引中的旧调用。
  * 起点索引只用于找相似候选；预览不能把已变化的实现当作当前可复用的参照。
  * 同批目标直接核对两份内容，其余文件按路径复用本次读取结果。
  */
 func (s indexedSnapshot) editQueries(ctx context.Context, w gitstate.Workspace, current, proposed map[string]units.File) *signals.Queries {
 	q := s.queries()
+	// 仅用原始目标收集调用，排除索引旧调用及为测试比较补齐的参照。
+	calls := map[string][]signals.CallSite{}
+	for _, p := range s.Paths {
+		if err := ctx.Err(); err != nil {
+			s.Origin.err = err
+			break
+		}
+		for name, sites := range units.Calls(proposed[p].Tokens) {
+			for _, args := range sites {
+				calls[name] = append(calls[name], signals.CallSite{Path: p, Args: args})
+			}
+		}
+	}
+	q.Calls = func(name string) []signals.CallSite { return calls[name] }
 	similar := q.Similar
 	checked := map[string]bool{}
 	q.Similar = func(signature []uint64) []signals.SimilarUnit {
