@@ -57,6 +57,36 @@ func bareResult(header []units.Token, value string) bool {
 		!slices.ContainsFunc(words, func(t units.Token) bool { return t.Kind != "identifier" })
 }
 
+/**
+ * 恢复候选需要实际的圆括号调用证据，不能沿用宽松搜索中的下标和类型参数形状。
+ */
+func recoveryCalls(tokens []units.Token) map[string]bool {
+	calls := map[string]bool{}
+	var stack []int
+	for i, t := range tokens {
+		switch t.Text {
+		case "(", "[", "{":
+			stack = append(stack, i)
+		case ")", "]", "}":
+			if len(stack) == 0 {
+				return nil
+			}
+			open := stack[len(stack)-1]
+			if tokens[open].Text+t.Text != "()" && tokens[open].Text+t.Text != "[]" && tokens[open].Text+t.Text != "{}" {
+				return nil
+			}
+			stack = stack[:len(stack)-1]
+			if len(stack) == 0 && tokens[open].Text == "(" && open > 0 && tokens[open-1].Kind == "identifier" {
+				calls[tokens[open-1].Text] = true
+			}
+		}
+	}
+	if len(stack) > 0 {
+		return nil
+	}
+	return calls
+}
+
 // 只描述相邻赋值、条件和调用的关系。名字和括号不能证明这是错误路径。
 func recoveries(ctx context.Context, in Input) ([]Candidate, error) {
 	clusters := map[string]changes.Cluster{}
@@ -101,12 +131,13 @@ func recoveries(ctx context.Context, in Input) ([]Candidate, error) {
 			var symbols strings.Builder
 			onlyAssigned := true
 			var value string
-			for _, t := range block.header {
+			for i, t := range block.header {
 				if t.Kind == "symbol" {
 					symbols.WriteString(t.Text)
 				}
 				if t.Kind == "identifier" {
-					if slices.ContainsFunc(prior[:assign], func(lhs units.Token) bool { return lhs.Kind == "identifier" && lhs.Text == t.Text }) {
+					member := i > 0 && block.header[i-1].Text == "." || i+1 < len(block.header) && (block.header[i+1].Text == "." || block.header[i+1].Text == "[")
+					if !member && slices.ContainsFunc(prior[:assign], func(lhs units.Token) bool { return lhs.Kind == "identifier" && lhs.Text == t.Text }) {
 						value = t.Text
 					} else if !slices.Contains(in.After.SyntaxFor(path).Keywords, t.Text) {
 						onlyAssigned = false
@@ -118,7 +149,7 @@ func recoveries(ctx context.Context, in Input) ([]Candidate, error) {
 			if value == "" || strings.Contains(header, ":=") || !(compares || onlyAssigned || bareResult(block.header, value)) {
 				continue
 			}
-			calls := units.Calls(prior[assign+1:])
+			calls := recoveryCalls(prior[assign+1:])
 			if len(calls) == 0 {
 				continue
 			}

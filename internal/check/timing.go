@@ -131,7 +131,10 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 			if c.Kind != "duplicate" {
 				text += strings.Join(c.Facts, "；") + "；"
 			}
-			advice = append(advice, text+c.Advice)
+			text += c.Advice
+			if !slices.Contains(advice, text) {
+				advice = append(advice, text)
+			}
 		}
 	}
 	return LimitFeedback(strings.Join(advice, "\n")), snapshot.err()

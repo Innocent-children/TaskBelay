@@ -169,9 +169,23 @@ func unitStructure(f units.File, u units.Unit) UnitStructure {
 }
 
 func addMember(s *UnitStructure, v units.Unit) {
-	if v.Name != "" {
-		s.Members = append(s.Members, v.Name)
+	declared := false
+	for _, t := range v.Tokens {
+		if t.End > v.HeaderEnd {
+			break
+		}
+		// 文字值与导入别名不提供成员声明的证据。
+		if t.Kind == "key" || t.Kind == "string" {
+			s.Abstract = false
+			return
+		}
+		declared = declared || t.Kind == "identifier" && t.Text == v.Name
 	}
+	if !declared {
+		s.Abstract = false
+		return
+	}
+	s.Members = append(s.Members, v.Name)
 	if s.Abstract {
 		count := 0
 		for _, t := range v.Tokens {
