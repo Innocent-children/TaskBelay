@@ -6,6 +6,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/signals"
 	"github.com/Innocent-children/taskbelay/internal/units"
 	"path"
+	"strings"
 )
 
 func (s indexedSnapshot) queries() *signals.Queries {
@@ -80,6 +81,23 @@ func (s indexedSnapshot) queries() *signals.Queries {
 func (s *indexedSnapshot) caseNeighbourhood() {
 	paths := map[string]bool{}
 	names := map[string]bool{}
+	// UnitKey 由路径、冒号和单元哈希组成；从末尾拆分，保留路径中的冒号。
+	unitPath := func(key string) string { return key[:strings.LastIndexByte(key, ':')] }
+	targetPaths := map[string][]string{}
+	targets := func(name string) []string {
+		if paths, found := targetPaths[name]; found {
+			return paths
+		}
+		paths := map[string]bool{}
+		for key := range s.Current.read("name", name) {
+			p := unitPath(key)
+			if !s.Current.fileInfo(p).Role.Test {
+				paths[p] = true
+			}
+		}
+		targetPaths[name] = keys(paths)
+		return targetPaths[name]
+	}
 	for _, p := range s.Paths {
 		paths[p] = true
 		for _, u := range s.After.Files[p].Units {
@@ -89,12 +107,9 @@ func (s *indexedSnapshot) caseNeighbourhood() {
 			if s.After.TestUnits[repostats.UnitKey(p, u)] {
 				for _, t := range u.Tokens {
 					if t.Kind == "identifier" {
-						for key := range s.Current.read("name", t.Text) {
-							target := s.Current.unit(key)
-							if !s.Current.fileInfo(target.Path).Role.Test {
-								names[t.Text] = true
-								paths[target.Path] = true
-							}
+						for _, target := range targets(t.Text) {
+							names[t.Text] = true
+							paths[target] = true
 						}
 					}
 				}
@@ -103,25 +118,22 @@ func (s *indexedSnapshot) caseNeighbourhood() {
 	}
 	for _, name := range keys(names) {
 		for key := range s.Current.read("word", name) {
-			u := s.Current.unit(key)
-			if s.Current.fileInfo(u.Path).Role.Test {
-				paths[u.Path] = true
+			p := unitPath(key)
+			if s.Current.fileInfo(p).Role.Test {
+				paths[p] = true
 			}
 		}
 	}
 	// 新纳入的既有用例可能还引用其他被测声明，边界与等价类必须用全部直接目标。
 	for _, p := range keys(paths) {
-		f := s.Current.load(p)
 		if !s.Current.fileInfo(p).Role.Test {
 			continue
 		}
+		f := s.Current.load(p)
 		for _, t := range f.Tokens {
 			if t.Kind == "identifier" {
-				for key := range s.Current.read("name", t.Text) {
-					u := s.Current.unit(key)
-					if !s.Current.fileInfo(u.Path).Role.Test {
-						paths[u.Path] = true
-					}
+				for _, target := range targets(t.Text) {
+					paths[target] = true
 				}
 			}
 		}
