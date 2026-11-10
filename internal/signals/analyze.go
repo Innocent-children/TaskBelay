@@ -210,6 +210,14 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 				} else {
 					c.Advice += "；确需保留时用 implemented_by 登记对应需求和用途"
 				}
+			case "config":
+				c.Facts = append(c.Facts, "内部常量也可能符合键值形状，不能据此确认它供使用者切换或有必要")
+				c.Advice = "先核对它是否确为可切换配置、谁需要它、它承担什么当前需求、何时需要切换取值、沿用固定行为会失去什么功能，以及新增配置的使用和维护成本；确认多余后再省去，无法确认时保留必要配置，不因此补测试"
+				if item.Anchor == "agent" {
+					c.Advice += "；沿用已有登记，无需重复登记"
+				} else {
+					c.Advice += "；确需保留时用 implemented_by 登记对应需求和用途"
+				}
 			case "flag", "env", "route", "entry":
 				if item.Value != "" {
 					c.Facts = append(c.Facts, "识别到的取值片段："+item.Value)
