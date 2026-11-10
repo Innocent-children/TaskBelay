@@ -79,6 +79,12 @@ func (s indexedSnapshot) queries() *signals.Queries {
  * 用例只补齐被改动声明及其被测对象的直接引用邻域；其余计算查询计数和首行汇总。
  */
 func (s *indexedSnapshot) caseNeighbourhood() {
+	paths := s.casePaths()
+	s.Before = s.Origin.view(paths)
+	s.After = s.Current.view(paths)
+}
+
+func (s indexedSnapshot) casePaths() []string {
 	paths := map[string]bool{}
 	names := map[string]bool{}
 	// UnitKey 由路径、冒号和单元哈希组成；从末尾拆分，保留路径中的冒号。
@@ -138,6 +144,5 @@ func (s *indexedSnapshot) caseNeighbourhood() {
 			}
 		}
 	}
-	s.Before = s.Origin.view(keys(paths))
-	s.After = s.Current.view(keys(paths))
+	return keys(paths)
 }

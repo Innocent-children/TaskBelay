@@ -7,8 +7,10 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
+	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/signals"
 	"github.com/Innocent-children/taskbelay/internal/units"
+	"maps"
 	"path"
 	"slices"
 	"sort"
@@ -207,7 +209,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 	details["test_references_needed"] = comparisons
 	if comparisons {
 		advance("references")
-		if err := snapshot.editCaseNeighbourhood(ctx, w, beforeFiles, files); err != nil {
+		if err := snapshot.editCaseNeighbourhood(ctx, w); err != nil {
 			return partial(err)
 		}
 	}
@@ -366,7 +368,7 @@ func samePreviewDeclaration(f units.File, indexed units.Unit) bool {
  * 预览只分析请求中的当前与预期内容。直接参照仍来自已发布索引，内容已变化时
  * 略过测试比较，避免把旧断言或旧分段点当作当前事实。
  */
-func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.Workspace, beforeFiles, files map[string]units.File) error {
+func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.Workspace) error {
 	if !s.Before.Converged || !s.After.Converged {
 		return nil
 	}
@@ -377,18 +379,19 @@ func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.
 	if !tests {
 		return nil
 	}
-	before, after := s.Before, s.After
-	s.caseNeighbourhood()
-	neighbours := s.After.Files
-	s.Before, s.After = before, after
+	paths := s.casePaths()
 	if err := s.err(); err != nil {
 		return err
 	}
-	for _, p := range keys(neighbours) {
-		if _, editing := files[p]; editing {
+	var references []string
+	for _, p := range paths {
+		if _, editing := s.After.Files[p]; editing {
 			continue
 		}
-		f := neighbours[p]
+		f := s.Origin.fileInfo(p)
+		if f.Blob == "" {
+			continue
+		}
 		indexed := gitstate.File{Blob: f.Blob, Mode: f.Mode}
 		current, _, err := w.ReadObservedFile(ctx, p, indexed)
 		if err != nil {
@@ -397,18 +400,23 @@ func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.
 		if current != indexed {
 			return fmt.Errorf("测试参照 %s 已变化，略过编辑前提示", p)
 		}
+		references = append(references, p)
 	}
-	for p, f := range neighbours {
-		if _, editing := files[p]; !editing {
-			beforeFiles[p], files[p] = f, f
-		}
-	}
-	paths := keys(files)
-	var err error
-	s.Before, err = s.Origin.apply(paths, beforeFiles, "current")
-	if err != nil {
+	neighbours := s.Origin.view(references)
+	if err := s.err(); err != nil {
 		return err
 	}
-	s.After, err = s.Origin.apply(paths, files, "preview")
-	return err
+	// 参照内容未变，沿用发布时的分类；目标已按实际当前和拟写入内容单独分类。
+	for _, repo := range []*repostats.Repository{&s.Before, &s.After} {
+		maps.Copy(repo.Files, neighbours.Files)
+		maps.Copy(repo.Roles, neighbours.Roles)
+		maps.Copy(repo.Syntax, neighbours.Syntax)
+		for key, test := range neighbours.TestUnits {
+			if test {
+				repo.TestUnits[key] = true
+			}
+		}
+		maps.Copy(repo.TestSeeds, neighbours.TestSeeds)
+	}
+	return nil
 }
