@@ -80,7 +80,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		status := "complete"
 		if scope == "none" {
 			status = "skipped"
-		} else if scope == "test_purposes" {
+		} else if scope != "full" {
 			status = "partial"
 		}
 		if failure != nil {
@@ -164,12 +164,30 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 	}
 	scope = "test_purposes"
 	details["purpose_candidates"], details["test_cases"] = len(purposes.Candidates), len(purposes.Cases)
+	completed := purposes.Candidates
 	partial := func(err error) (string, error) {
 		previewErr = err
-		text, selected := editAdvice(purposes.Candidates, "本次仅完成上述测试用途核对，其余编辑前核对未完成。")
+		suffix := "本次仅完成上述测试用途核对，其余编辑前核对未完成。"
+		if scope == "targets" {
+			suffix = "本次已完成目标内容的设计与测试用途核对，测试比较未完成。"
+		}
+		text, selected := editAdvice(completed, suffix)
 		details["displayed"] = selected
 		return text, nil
 	}
+	advance("design")
+	input.Queries = snapshot.editQueries(ctx, w, beforeFiles, files)
+	design, err := signals.DesignPreview(ctx, input)
+	if err != nil {
+		return partial(err)
+	}
+	if err := snapshot.err(); err != nil {
+		return partial(err)
+	}
+	design = requirementFacts(view, input, design)
+	completed = append(slices.Clone(design.Candidates), purposes.Candidates...)
+	scope = "targets"
+	details["design_candidates"] = len(design.Candidates)
 	comparisons := slices.ContainsFunc(purposes.Cases, func(c signals.Case) bool {
 		return c.Added && c.AgentOnly && !c.Retained
 	})
@@ -180,8 +198,9 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 			return partial(err)
 		}
 	}
-	advance("signals")
-	result, err := analyzeSignals(ctx, view, signals.Input{EditPreview: true, Queries: snapshot.editQueries(ctx, w, beforeFiles, files), Before: snapshot.Before, After: snapshot.After, Changes: delta, Requirements: requirements(view)})
+	advance("test_comparisons")
+	input.Before, input.After = snapshot.Before, snapshot.After
+	result, err := signals.CompletePreview(ctx, input, design)
 	if err != nil {
 		return partial(err)
 	}

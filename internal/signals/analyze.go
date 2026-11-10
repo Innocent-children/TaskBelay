@@ -109,7 +109,7 @@ func mentionsFile(text, name string) bool {
 	return false
 }
 
-func Analyze(ctx context.Context, in Input) (Result, error) {
+func analyzeDesign(ctx context.Context, in Input) (Result, error) {
 	r := Result{TestBudget: map[string]int{}}
 	if len(in.Changes.Hunks) == 0 {
 		return r, ctx.Err()
@@ -263,19 +263,41 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		return r, err
 	}
 	r.Candidates = append(r.Candidates, duplicate...)
+	return r, ctx.Err()
+}
+
+func Analyze(ctx context.Context, in Input) (Result, error) {
+	r, err := analyzeDesign(ctx, in)
+	if err != nil || len(in.Changes.Hunks) == 0 {
+		return r, err
+	}
 	if !in.EditPreview && in.Before.Converged && in.After.Converged {
 		r.Candidates = append(r.Candidates, unused(in)...)
 	}
 	if in.Before.Converged && in.After.Converged {
 		var gaps []string
-		r.Cases, r.TestBudget, duplicate, gaps, err = cases(ctx, in, false)
+		var candidates []Candidate
+		r.Cases, r.TestBudget, candidates, gaps, err = cases(ctx, in, false)
 		if err != nil {
 			return r, err
 		}
-		r.Candidates = append(r.Candidates, duplicate...)
+		r.Candidates = append(r.Candidates, candidates...)
 		r.Gaps = append(r.Gaps, gaps...)
 	} else if !in.EditPreview {
 		r.Gaps = append(r.Gaps, "按词汇识别测试内容的分类结果尚未稳定，未生成依赖该分类的建议")
+	}
+	return finishCandidates(ctx, in, r)
+}
+
+/**
+ * DesignPreview 在测试比较参照准备前完成目标内容的设计核对。
+ * 与完整检查共用规则，测试比较不会扩大这一步的分析范围。
+ */
+func DesignPreview(ctx context.Context, in Input) (Result, error) {
+	in.EditPreview = true
+	r, err := analyzeDesign(ctx, in)
+	if err != nil {
+		return r, err
 	}
 	return finishCandidates(ctx, in, r)
 }
@@ -285,13 +307,34 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
  * 参照尚未补齐时，不计算等价类、表格行比较或测试数量建议。
  */
 func TestPurposePreview(ctx context.Context, in Input) (Result, error) {
+	return testPreview(ctx, in, true, nil)
+}
+
+/**
+ * CompletePreview 在参照核对后完成测试分析，合并此前的设计结果。
+ * 设计候选不重复计算，测试候选沿用同簇的防御保护。
+ */
+func CompletePreview(ctx context.Context, in Input, design Result) (Result, error) {
+	r, err := testPreview(ctx, in, false, design.Defensive)
+	if err != nil {
+		return r, err
+	}
+	r.Candidates = append(slices.Clone(design.Candidates), r.Candidates...)
+	r.External, r.Defensive = design.External, design.Defensive
+	r.Gaps = append(slices.Clone(design.Gaps), r.Gaps...)
+	sort.Slice(r.Candidates, func(i, j int) bool { return r.Candidates[i].ID < r.Candidates[j].ID })
+	sort.Strings(r.Gaps)
+	return r, nil
+}
+
+func testPreview(ctx context.Context, in Input, purposesOnly bool, defensive []string) (Result, error) {
 	in.EditPreview = true
-	r := Result{TestBudget: map[string]int{}}
+	r := Result{TestBudget: map[string]int{}, Defensive: defensive}
 	if len(in.Changes.Hunks) == 0 || !in.Before.Converged || !in.After.Converged {
 		return r, ctx.Err()
 	}
 	var err error
-	r.Cases, r.TestBudget, r.Candidates, r.Gaps, err = cases(ctx, in, true)
+	r.Cases, r.TestBudget, r.Candidates, r.Gaps, err = cases(ctx, in, purposesOnly)
 	if err != nil {
 		return r, err
 	}

@@ -267,6 +267,10 @@ func analyzeSignals(ctx context.Context, view ledger.TaskView, input signals.Inp
 	if err != nil {
 		return result, err
 	}
+	return requirementFacts(view, input, result), nil
+}
+
+func requirementFacts(view ledger.TaskView, input signals.Input, result signals.Result) signals.Result {
 	locations := map[[2]string][]string{}
 	declared := map[string][]string{}
 	for _, requirement := range view.Requirements {
@@ -305,7 +309,7 @@ func analyzeSignals(ctx context.Context, view ledger.TaskView, input signals.Inp
 			candidate.Facts = append(candidate.Facts, "以上是 Agent 在该位置登记的用途，仍需核对实际行为")
 		}
 	}
-	return result, nil
+	return result
 }
 
 func requirements(view ledger.TaskView) []changes.Requirement {
