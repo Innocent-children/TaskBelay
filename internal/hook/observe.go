@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -353,6 +354,7 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		}
 		existing.Decision.Records = record.Decision.Records
 		existing.Decision.Records = editRecords(task, existing)
+		ledger.DebugRecord(ctx, "edit_preview.result", map[string]any{"status": "skipped", "stage": "eligibility", "reason": "replayed_edit"})
 		return existing.Decision, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
@@ -409,6 +411,21 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		if advice, analysisErr := check.EditAdvice(ctx, o.Store, o.Workspace, currentContents, expectedContents); analysisErr == nil {
 			record.Decision.AdditionalContext = strings.TrimSpace(record.Decision.AdditionalContext + "\n" + advice)
 		}
+	} else if ledger.DebugEnabled(ctx) {
+		omitted := slices.Clone(skipped)
+		for _, file := range record.Files {
+			if _, ready := expectedContents[file.Path]; ready {
+				continue
+			}
+			reason := file.Reason
+			if reason == "" {
+				reason = "请求含删除，略过整批可选预览"
+			}
+			for _, index := range file.Requests {
+				omitted = append(omitted, ledger.UnverifiedEdit{Request: index, Path: file.Path, Reason: reason})
+			}
+		}
+		ledger.DebugRecord(ctx, "edit_preview.result", map[string]any{"status": "skipped", "stage": "eligibility", "reason": "incomplete_request", "requests": len(e.Edits), "prepared": len(expectedContents), "omitted": omitted, "displayed": 0})
 	}
 	return record.Decision, nil
 }

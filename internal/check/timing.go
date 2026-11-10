@@ -13,6 +13,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
+	"unicode/utf8"
 )
 
 func ReuseAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, actor ledger.Actor, text string) (string, error) {
@@ -63,16 +65,61 @@ func ReuseAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, act
 	return "可先核对已有实现：" + strings.Join(out, "、"), nil
 }
 
-func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, current, contents map[string][]byte) (string, error) {
+func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, current, contents map[string][]byte) (advice string, failure error) {
+	started, stageStarted := time.Now(), time.Now()
+	stage, scope, reason := "context", "none", "no_task"
+	durations := map[string]float64{}
+	details := map[string]any{"paths": keys(contents), "displayed": 0}
+	var previewErr error
+	advance := func(next string) {
+		durations[stage] = float64(time.Since(stageStarted).Microseconds()) / 1000
+		stage, stageStarted = next, time.Now()
+	}
+	defer func() {
+		advance(stage)
+		status := "complete"
+		if scope == "none" {
+			status = "skipped"
+		} else if scope == "test_purposes" {
+			status = "partial"
+		}
+		if failure != nil {
+			previewErr = failure
+			status = "failed"
+		}
+		if previewErr != nil {
+			reason = "error"
+			if errors.Is(previewErr, ErrIndexPending) {
+				status, reason = "skipped", "index_pending"
+			} else if errors.Is(previewErr, context.DeadlineExceeded) {
+				reason = "deadline"
+			} else if errors.Is(previewErr, context.Canceled) {
+				reason = "canceled"
+			}
+			details["error"] = previewErr.Error()
+		}
+		details["status"], details["scope"], details["stage"], details["reason"] = status, scope, stage, reason
+		details["durations_ms"], details["elapsed_ms"] = durations, float64(time.Since(started).Microseconds())/1000
+		details["characters"] = utf8.RuneCountInString(advice)
+		ledger.DebugRecord(ctx, "edit_preview.result", details)
+	}()
+	if deadline, ok := ctx.Deadline(); ok {
+		details["remaining_ms"] = float64(time.Until(deadline).Microseconds()) / 1000
+	}
 	view, err := s.EditAnalysisContext(ctx, w.ID)
 	if err != nil || view.Task == nil {
 		return "", err
 	}
 	ctx = publishedOnly(ctx)
+	advance("index")
 	base, err := taskIndex(ctx, s, w, *view.Task)
 	if err != nil {
 		return "", err
 	}
+	details["index_id"], details["index_generation"] = base.id, base.meta.Generation
+	details["index_variant"], details["index_tree"] = base.variant, base.meta.Tree
+	details["converged"] = base.meta.Converged
+	advance("targets")
 	paths := keys(contents)
 	beforeFiles := map[string]units.File{}
 	files := map[string]units.File{}
@@ -100,21 +147,59 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 	if err != nil {
 		return "", err
 	}
+	advance("diff")
 	delta, err := changes.Compare(ctx, changes.Input{Before: before, After: after})
 	if err != nil {
 		return "", err
 	}
 	snapshot := indexedSnapshot{Origin: base, Current: base, Before: before, After: after, Paths: paths}
-	if err := snapshot.editCaseNeighbourhood(ctx, w, beforeFiles, files); err != nil {
-		return "", err
-	}
-	result, err := analyzeSignals(ctx, view, signals.Input{EditPreview: true, Queries: snapshot.editQueries(ctx, w, beforeFiles, files), Before: snapshot.Before, After: snapshot.After, Changes: delta, Requirements: requirements(view)})
+	advance("test_purposes")
+	input := signals.Input{EditPreview: true, Before: before, After: after, Changes: delta, Requirements: requirements(view)}
+	purposes, err := signals.TestPurposePreview(ctx, input)
 	if err != nil {
 		return "", err
 	}
+	if err := snapshot.err(); err != nil {
+		return "", err
+	}
+	scope = "test_purposes"
+	details["purpose_candidates"], details["test_cases"] = len(purposes.Candidates), len(purposes.Cases)
+	partial := func(err error) (string, error) {
+		previewErr = err
+		text, selected := editAdvice(purposes.Candidates, "本次仅完成上述测试用途核对，其余编辑前核对未完成。")
+		details["displayed"] = selected
+		return text, nil
+	}
+	advance("references")
+	if err := snapshot.editCaseNeighbourhood(ctx, w, beforeFiles, files); err != nil {
+		return partial(err)
+	}
+	advance("signals")
+	result, err := analyzeSignals(ctx, view, signals.Input{EditPreview: true, Queries: snapshot.editQueries(ctx, w, beforeFiles, files), Before: snapshot.Before, After: snapshot.After, Changes: delta, Requirements: requirements(view)})
+	if err != nil {
+		return partial(err)
+	}
+	if err := snapshot.err(); err != nil {
+		return partial(err)
+	}
+	scope, reason = "full", "no_candidates"
+	details["candidates"] = len(result.Candidates)
+	advance("feedback")
+	advice, selected := editAdvice(result.Candidates, "")
+	details["displayed"] = selected
+	if selected > 0 {
+		reason = "advice"
+	} else if len(result.Candidates) > 0 {
+		reason = "feedback_budget"
+	}
+	return advice, nil
+}
+
+func editAdvice(candidates []signals.Candidate, suffix string) (string, int) {
 	var advice []string
+	characters := utf8.RuneCountInString(suffix)
 	for _, kind := range []string{"test_equivalence", "test_budget", "mock_only", "assertion", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
-		for _, c := range result.Candidates {
+		for _, c := range candidates {
 			if c.Kind != kind || len(advice) >= CategoryLimit {
 				continue
 			}
@@ -138,12 +223,24 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 				text += strings.Join(c.Facts, "；") + "；"
 			}
 			text += c.Advice
-			if !slices.Contains(advice, text) {
+			cost := utf8.RuneCountInString(text)
+			if len(advice) > 0 || suffix != "" {
+				cost++
+			}
+			if !slices.Contains(advice, text) && characters+cost <= FeedbackBudget {
 				advice = append(advice, text)
+				characters += cost
 			}
 		}
 	}
-	return LimitFeedback(strings.Join(advice, "\n")), snapshot.err()
+	if len(advice) == 0 {
+		return "", 0
+	}
+	text := strings.Join(advice, "\n")
+	if suffix != "" {
+		text += "\n" + suffix
+	}
+	return text, len(advice)
 }
 
 /**

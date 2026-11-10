@@ -268,7 +268,7 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 	}
 	if in.Before.Converged && in.After.Converged {
 		var gaps []string
-		r.Cases, r.TestBudget, duplicate, gaps, err = cases(ctx, in)
+		r.Cases, r.TestBudget, duplicate, gaps, err = cases(ctx, in, false)
 		if err != nil {
 			return r, err
 		}
@@ -277,6 +277,28 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 	} else if !in.EditPreview {
 		r.Gaps = append(r.Gaps, "按词汇识别测试内容的分类结果尚未稳定，未生成依赖该分类的建议")
 	}
+	return finishCandidates(ctx, in, r)
+}
+
+/**
+ * TestPurposePreview 复用新增用例的身份、保留条件和断言识别，只核对目标内容。
+ * 参照尚未补齐时，不计算等价类、表格行比较或测试数量建议。
+ */
+func TestPurposePreview(ctx context.Context, in Input) (Result, error) {
+	in.EditPreview = true
+	r := Result{TestBudget: map[string]int{}}
+	if len(in.Changes.Hunks) == 0 || !in.Before.Converged || !in.After.Converged {
+		return r, ctx.Err()
+	}
+	var err error
+	r.Cases, r.TestBudget, r.Candidates, r.Gaps, err = cases(ctx, in, true)
+	if err != nil {
+		return r, err
+	}
+	return finishCandidates(ctx, in, r)
+}
+
+func finishCandidates(ctx context.Context, in Input, r Result) (Result, error) {
 	commandClusters := map[string]bool{}
 	for _, c := range in.Changes.Clusters {
 		commandClusters[c.ID] = c.Origin == "command"

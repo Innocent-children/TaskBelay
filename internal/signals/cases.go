@@ -12,7 +12,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/units"
 )
 
-func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, []string, error) {
+func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string]int, []Candidate, []string, error) {
 	var all []Case
 	budget := map[string]int{}
 	var out []Candidate
@@ -71,7 +71,7 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 	}
 	targets := map[string][]target{}
 	for _, p := range keys(in.After.Files) {
-		if in.After.Roles[p].Test {
+		if purposesOnly || in.After.Roles[p].Test {
 			continue
 		}
 		for _, u := range in.After.Files[p].Units {
@@ -233,6 +233,9 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 				out = append(out, candidate)
 			}
 			all = append(all, c)
+			if purposesOnly {
+				continue
+			}
 			// 同一列表中骨架相同的兄弟元素逐行参与，避免把整张表当成一条用例。
 			groups := map[string][]units.Unit{}
 			for _, row := range f.Units {
