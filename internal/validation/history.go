@@ -51,7 +51,7 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 	}
 	d.Validation = is
 	if !is {
-		return d, nil
+		return firstScopeAdvice(ctx, current, history)
 	}
 	key := CommandKey(current.Command)
 	var previous *Run
@@ -145,6 +145,50 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 		if credible(agreements, counter) {
 			d.Kind, d.PreviousID, d.Output, d.Reason = "implication", r.ID, r.Output, "从历史通过情况看，本次验证可能不会提供新信息；这里只作提示"
 			d.Agreements, d.Counterexamples = agreements, counter
+			return d, nil
+		}
+	}
+	return d, nil
+}
+
+/**
+ * firstScopeAdvice 只用调用方已读取的近期记录提醒首次请求的较小范围命令。
+ * 路径包含不证明本次命令属于验证；已有同命令执行结果时不替代原判断。
+ */
+func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision, error) {
+	d := Decision{}
+	if current.ReadOnly || current.Rerun || current.Command.Mixed || current.Command.Writes || current.Command.Unknown || !current.Input.Complete {
+		return d, nil
+	}
+	key := CommandKey(current.Command)
+	for _, r := range history {
+		if err := ctx.Err(); err != nil {
+			return d, err
+		}
+		if r.Executed && CommandKey(r.Command) == key {
+			return d, nil
+		}
+	}
+	seen := map[string]bool{}
+	for i := len(history) - 1; i >= 0; i-- {
+		if err := ctx.Err(); err != nil {
+			return d, err
+		}
+		r := history[i]
+		if !r.Executed && !r.Started {
+			continue
+		}
+		sourceKey := CommandKey(r.Command)
+		if seen[sourceKey] {
+			continue
+		}
+		seen[sourceKey] = true
+		if !r.Validation || !r.Executed || r.State != "passed" || r.Before == "" || r.Before != r.After || !r.Input.Complete || r.Command.Mixed || r.Command.Writes || r.Command.Unknown {
+			continue
+		}
+		if r.Input.Content == current.Input.Content && sameRuntime(current, r) && Contains(r.Command, current.Command) {
+			d.Kind, d.PreviousID, d.Output = "contained", r.ID, r.Output
+			d.Reason = "近期已通过的验证按路径参数包含本次范围；本次命令尚无执行记录，这里只作提示，不阻止运行，也不据此将其归为验证"
 			return d, nil
 		}
 	}
