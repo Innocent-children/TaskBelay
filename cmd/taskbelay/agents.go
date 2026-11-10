@@ -113,6 +113,9 @@ func runHook(ctx context.Context, args []string, env platform.Env, input io.Read
 		if err != nil {
 			return event.Decision{}, fmt.Errorf("打开账本: %w", err)
 		}
+		if workspace, err = store.ResolveWorkspace(ctx, workspace); err != nil {
+			return event.Decision{}, fmt.Errorf("核对工作区标识: %w", err)
+		}
 		if e.Kind == event.CommandUse {
 			known, lookupErr := check.KnownValidation(ctx, store, workspace.ID, ledger.VerificationRecord{Command: hook.CommandScript(e)})
 			if lookupErr != nil {

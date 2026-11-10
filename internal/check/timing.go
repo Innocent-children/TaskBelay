@@ -2,6 +2,7 @@ package check
 
 import (
 	"context"
+	"errors"
 	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
@@ -17,11 +18,15 @@ func ReuseAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, act
 	if err != nil || v.Task == nil {
 		return "", err
 	}
+	// 用户消息只使用已发布的索引；索引未就绪时不提示，把时间留给接续摘要。
+	ctx = publishedOnly(ctx)
 	x, err := openIndex(ctx, s, w, v.Task.OriginTree)
-	if err != nil {
-		return "", err
+	if err == nil {
+		x, err = observedIndex(x, runSamples(v.Verifications))
 	}
-	x, err = observedIndex(x, runSamples(v.Verifications))
+	if errors.Is(err, ErrIndexPending) {
+		return "", nil
+	}
 	if err != nil {
 		return "", err
 	}
@@ -65,6 +70,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, cont
 	if err != nil || view.Task == nil {
 		return "", err
 	}
+	ctx = publishedOnly(ctx)
 	base, err := taskIndex(ctx, s, w, *view.Task)
 	if err != nil {
 		return "", err

@@ -36,7 +36,9 @@ func runMCP(ctx context.Context, env platform.Env, dir string, input io.ReadClos
 		store, err = ledger.Open(setup, env.DataDir, ledger.NormalWait)
 		if err == nil {
 			defer store.Close()
-			err = store.RegisterGitWorkspace(setup, workspace)
+			if workspace, err = store.ResolveWorkspace(setup, workspace); err == nil {
+				err = store.RegisterGitWorkspace(setup, workspace)
+			}
 			service = hook.Tasks{Observer: hook.Observer{Store: store, Workspace: workspace}}
 		}
 	}

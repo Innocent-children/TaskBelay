@@ -38,6 +38,9 @@ func runHits(ctx context.Context, args []string, env platform.Env, dir string, o
 		return err
 	}
 	defer store.Close()
+	if workspace, err = store.ResolveWorkspace(ctx, workspace); err != nil {
+		return err
+	}
 	hits, err := store.Hits(ctx, workspace.ID, time.Now().Add(-time.Duration(days)*24*time.Hour))
 	if err != nil {
 		return err

@@ -40,6 +40,9 @@ func runCheck(ctx context.Context, args []string, env platform.Env, dir string, 
 		return err
 	}
 	defer store.Close()
+	if workspace, err = store.ResolveWorkspace(ctx, workspace); err != nil {
+		return err
+	}
 	if err := store.RegisterGitWorkspace(ctx, workspace); err != nil {
 		return err
 	}

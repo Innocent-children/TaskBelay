@@ -68,7 +68,27 @@ type repositoryIndex struct {
 	statCache   map[string]wordStats
 	writes      map[string]ledger.IndexRow
 	files       map[string]units.File
+	pages       map[string][]units.MatcherState
+	preloaded   map[string]bool
 	err         error
+}
+
+// 叠加当前改动时，这几类条目会被逐键读取数万次；整类一次读入，避免逐条查询账本。
+var preloadKinds = map[string]bool{"volume": true, "test_model": true, "stats": true}
+
+func (x *repositoryIndex) preload(kind string) {
+	x.preloaded[kind] = true
+	for key, members := range x.prefix(kind, "") {
+		k := rowKey(kind, key)
+		if x.loaded[k] {
+			continue
+		}
+		x.rows[k], x.loaded[k] = members, true
+		if x.rowKinds[kind] == nil {
+			x.rowKinds[kind] = map[string]bool{}
+		}
+		x.rowKinds[kind][key] = true
+	}
 }
 
 func rowKey(kind, key string) string { return kind + "\x00" + key }
@@ -84,6 +104,13 @@ func (x *repositoryIndex) read(kind, key string) map[string]string {
 			r[member] = raw
 		}
 		x.err = x.base.err
+	} else if x.id != "" && x.err == nil && preloadKinds[kind] {
+		if !x.preloaded[kind] {
+			x.preload(kind)
+		}
+		if x.loaded[k] {
+			return x.rows[k]
+		}
 	} else if x.id != "" && x.err == nil {
 		rows, err := x.s.IndexRows(x.ctx, x.id, kind, key)
 		if err != nil {
@@ -322,13 +349,17 @@ func entryKeys(p string, u units.Unit) []string {
 func (x *repositoryIndex) matcher(kind, text string) ([]units.Match, error) {
 	var out []units.Match
 	for _, root := range x.meta.Matchers[kind] {
-		pages := map[int][]units.MatcherState{}
 		matches, err := units.FindStates(x.ctx, text, func(i int) (units.MatcherState, error) {
 			page, offset := i/MatcherPageSize, i%MatcherPageSize
-			states, ok := pages[page]
+			key := root + ":" + strconv.Itoa(page)
+			states, ok := x.pages[key]
 			if !ok {
-				x.get("matcher", root+":"+strconv.Itoa(page), &states)
-				pages[page] = states
+				x.get("matcher", key, &states)
+				// 读取失败的页不缓存，也不当作缺页。
+				if x.err != nil {
+					return units.MatcherState{}, x.err
+				}
+				x.pages[key] = states
 			}
 			if offset >= len(states) {
 				return units.MatcherState{}, fmt.Errorf("自动机索引页缺失：%s/%d", root, page)
@@ -669,7 +700,7 @@ func (x *repositoryIndex) publish(id, parent string) error {
 }
 
 func newIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace) *repositoryIndex {
-	return &repositoryIndex{ctx: ctx, s: s, w: w, variant: Algorithm, rows: map[string]map[string]string{}, loaded: map[string]bool{}, rowKinds: map[string]map[string]bool{}, volumes: map[string]changes.VolumeNode{}, volumeDirty: map[string]bool{}, fileCache: map[string]indexFile{}, unitCache: map[string]indexUnit{}, statCache: map[string]wordStats{}, writes: map[string]ledger.IndexRow{}, files: map[string]units.File{}, meta: indexMeta{Matchers: map[string][]string{}}}
+	return &repositoryIndex{ctx: ctx, s: s, w: w, variant: Algorithm, rows: map[string]map[string]string{}, loaded: map[string]bool{}, rowKinds: map[string]map[string]bool{}, volumes: map[string]changes.VolumeNode{}, volumeDirty: map[string]bool{}, fileCache: map[string]indexFile{}, unitCache: map[string]indexUnit{}, statCache: map[string]wordStats{}, writes: map[string]ledger.IndexRow{}, files: map[string]units.File{}, pages: map[string][]units.MatcherState{}, preloaded: map[string]bool{}, meta: indexMeta{Matchers: map[string][]string{}}}
 }
 
 func openIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree string) (*repositoryIndex, error) {
@@ -682,6 +713,10 @@ func openIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree 
 		x.id = r.ID
 		err = json.Unmarshal(r.Data, &x.meta)
 		return x, err
+	}
+	// 建立起点索引的耗时超过 hook 的预算，由 MCP 后台和交付检查完成。
+	if usesPublishedOnly(ctx) {
+		return x, ErrIndexPending
 	}
 	previous, hasPrevious, err := s.FindIndex(ctx, w.ProjectID, "", Algorithm)
 	if err != nil {

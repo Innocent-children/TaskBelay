@@ -218,13 +218,21 @@ func (t Tasks) AfterCommand(ctx context.Context, e event.Event) (event.Decision,
 	if result.Record.Denied || !result.Changed {
 		return event.Decision{}, nil
 	}
-	view, observed, err := t.observeEvent(ctx, e)
-	if err != nil {
-		return event.Decision{}, err
-	}
 	output := ""
 	if e.Result != nil {
 		output = e.Result.Output
+	}
+	if request.Command.ReadOnly() {
+		// 只读命令不改变工作区，只记录结果，不采集整个工作区。
+		if err = check.CompleteVerification(ctx, t.Store, t.Workspace, ledger.TaskRecord{}, result.Record, result.Record.Tree, output); err != nil {
+			return event.Decision{}, err
+		}
+		t.recordSession(request.Actor, verificationRecord(result.Record))
+		return event.Decision{}, nil
+	}
+	view, observed, err := t.observeEvent(ctx, e)
+	if err != nil {
+		return event.Decision{}, err
 	}
 	if view.Task != nil {
 		if err = check.CompleteVerification(ctx, t.Store, t.Workspace, *view.Task, result.Record, observed.Tree, output); err != nil {

@@ -21,6 +21,9 @@ func (o Observer) LinkBoundary(ctx context.Context, task, path string) (gitstate
 	if err != nil {
 		return gitstate.Workspace{}, err
 	}
+	if child, err = o.Store.ResolveWorkspace(ctx, child); err != nil {
+		return gitstate.Workspace{}, err
+	}
 	if child.ID == o.Workspace.ID {
 		return gitstate.Workspace{}, fmt.Errorf("目标不是独立工作区")
 	}

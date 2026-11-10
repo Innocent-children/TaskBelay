@@ -37,6 +37,21 @@ func (s *Store) FindIndex(ctx context.Context, project, tree, variant string) (A
 	return out, err == nil, err
 }
 
+// LatestDerivedIndex 返回在 parent 之上最近发布的索引版本。
+func (s *Store) LatestDerivedIndex(ctx context.Context, project, parent string) (AnalysisIndex, bool, error) {
+	var out AnalysisIndex
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		var raw string
+		err := q.QueryRowContext(ctx, "SELECT id,project_id,tree,variant,parent_id,data FROM analysis_indexes_v12 WHERE project_id=? AND parent_id=? AND variant<>(SELECT variant FROM analysis_indexes_v12 WHERE id=?) ORDER BY rowid DESC LIMIT 1", project, parent, parent).Scan(&out.ID, &out.ProjectID, &out.Tree, &out.Variant, &out.ParentID, &raw)
+		out.Data = json.RawMessage(raw)
+		return err
+	})
+	if errors.Is(err, sql.ErrNoRows) {
+		return out, false, nil
+	}
+	return out, err == nil, err
+}
+
 /**
  * 行按内容版本不可变；空正文遮蔽父索引条目。根记录最后发布，未完成的构建不会被读取。
  */

@@ -17,7 +17,7 @@ func ClassifyTargets(ctx context.Context, s *ledger.Store, w gitstate.Workspace,
 	if err != nil || task.ID == "" {
 		return out, err
 	}
-	index, err := taskIndex(ctx, s, w, task)
+	index, err := taskIndex(publishedOnly(ctx), s, w, task)
 	if err != nil {
 		return out, err
 	}

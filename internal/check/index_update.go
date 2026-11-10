@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
@@ -164,6 +165,22 @@ func (x *repositoryIndex) conventions(sketches []repostats.FileSketch, r reposta
 	}
 }
 
+// ErrIndexPending 表示所需索引尚未发布，而当前入口不负责建立它。
+var ErrIndexPending = errors.New("分析索引尚未就绪")
+
+type publishedOnlyKey struct{}
+
+// publishedOnly 用于 hook：只读取已发布的索引。建立起点索引、扫描新的运行输出和
+// 重新学习测试内容的耗时超过 hook 预算，由 MCP 后台和交付检查完成。
+func publishedOnly(ctx context.Context) context.Context {
+	return context.WithValue(ctx, publishedOnlyKey{}, true)
+}
+
+func usesPublishedOnly(ctx context.Context) bool {
+	only, _ := ctx.Value(publishedOnlyKey{}).(bool)
+	return only
+}
+
 func taskIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, task ledger.TaskRecord) (*repositoryIndex, error) {
 	base, err := openIndex(ctx, s, w, task.OriginTree)
 	if err != nil {
@@ -176,45 +193,132 @@ func taskIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, task 
 	return observedIndex(base, runSamples(records))
 }
 
+/**
+ * observedNames 返回运行输出中出现过的单元名。每条输出只扫描一次，结果按起点索引
+ * 和输出内容保存；整段历史的并集按运行编号保存，新增一条运行时只需处理这一条。
+ * hook 中只查询整段历史的已有结果，known 为 false 表示还有运行记录没有并入。
+ */
+func observedNames(base *repositoryIndex, runs []repostats.Run) (names []string, known bool, err error) {
+	var eligible []repostats.Run
+	for _, run := range runs {
+		if run.Started && run.ExitCode != nil {
+			eligible = append(eligible, run)
+		}
+	}
+	if len(eligible) == 0 {
+		return []string{}, true, nil
+	}
+	history := func(n int) string {
+		parts := []string{Algorithm, base.id}
+		for _, run := range eligible[:n] {
+			parts = append(parts, run.ID, units.Hash(run.Output))
+		}
+		return units.Hash(parts...)
+	}
+	found, err := base.s.AnalysisCache(base.ctx, "observed", history(len(eligible)), &names)
+	if err != nil || found || usesPublishedOnly(base.ctx) {
+		return names, found, err
+	}
+	done := 0
+	if len(eligible) > 1 {
+		found, err = base.s.AnalysisCache(base.ctx, "observed", history(len(eligible)-1), &names)
+		if err != nil {
+			return nil, false, err
+		}
+		if found {
+			done = len(eligible) - 1
+		}
+	}
+	seeds := map[string]bool{}
+	for _, name := range names {
+		seeds[name] = true
+	}
+	for _, run := range eligible[done:] {
+		var matched []string
+		key := units.Hash(Algorithm, base.id, units.Hash(run.Output))
+		found, err := base.s.AnalysisCache(base.ctx, "run-names", key, &matched)
+		if err != nil {
+			return nil, false, err
+		}
+		if !found {
+			matches, err := base.matcher("graph", strings.ToLower(run.Output))
+			if err != nil {
+				return nil, false, err
+			}
+			// 同一个名字在一条输出里会命中很多次，整词核对只做一次。
+			own, patterns := map[string]bool{}, map[string]bool{}
+			for _, match := range matches {
+				if patterns[match.Pattern] {
+					continue
+				}
+				patterns[match.Pattern] = true
+				for _, raw := range base.read("fold_name", match.Pattern) {
+					var name string
+					if err := json.Unmarshal([]byte(raw), &name); err != nil {
+						return nil, false, err
+					}
+					if _, checked := own[name]; !checked {
+						own[name] = units.HasWord(run.Output, name)
+					}
+				}
+			}
+			if base.err != nil {
+				return nil, false, base.err
+			}
+			matched = []string{}
+			for _, name := range keys(own) {
+				if own[name] {
+					matched = append(matched, name)
+				}
+			}
+			if err := base.s.SaveAnalysisCache(base.ctx, "run-names", key, matched); err != nil {
+				return nil, false, err
+			}
+		}
+		for _, name := range matched {
+			seeds[name] = true
+		}
+	}
+	names = keys(seeds)
+	return names, true, base.s.SaveAnalysisCache(base.ctx, "observed", history(len(eligible)), names)
+}
+
 func observedIndex(base *repositoryIndex, runs []repostats.Run) (*repositoryIndex, error) {
 	if len(runs) == 0 {
 		return base, base.err
 	}
-	seeds := map[string]bool{}
-	for _, run := range runs {
-		if !run.Started || run.ExitCode == nil {
-			continue
-		}
-		matches, err := base.matcher("graph", strings.ToLower(run.Output))
-		if err != nil {
-			return base, err
-		}
-		for _, match := range matches {
-			for _, raw := range base.read("fold_name", match.Pattern) {
-				var name string
-				if err := json.Unmarshal([]byte(raw), &name); err != nil {
-					return base, err
-				}
-				if units.HasWord(run.Output, name) {
-					seeds[name] = true
-				}
-			}
-		}
-	}
-	names := keys(seeds)
-	if base.err != nil {
-		return base, base.err
-	}
-	variant := Algorithm + ":seeds:" + units.Hash(encode(names))
-	saved, found, err := base.s.FindIndex(base.ctx, base.w.ProjectID, base.meta.Tree, variant)
+	names, known, err := observedNames(base, runs)
 	if err != nil {
 		return base, err
 	}
-	if found {
+	if base.err != nil {
+		return base, base.err
+	}
+	open := func(saved ledger.AnalysisIndex) (*repositoryIndex, error) {
 		x := newIndex(base.ctx, base.s, base.w)
-		x.id, x.variant = saved.ID, variant
-		err = json.Unmarshal(saved.Data, &x.meta)
-		return x, err
+		x.id, x.variant = saved.ID, saved.Variant
+		return x, json.Unmarshal(saved.Data, &x.meta)
+	}
+	variant := Algorithm + ":seeds:" + units.Hash(encode(names))
+	if known {
+		saved, found, err := base.s.FindIndex(base.ctx, base.w.ProjectID, base.meta.Tree, variant)
+		if err != nil {
+			return base, err
+		}
+		if found {
+			return open(saved)
+		}
+	}
+	if usesPublishedOnly(base.ctx) {
+		// 最新的运行记录尚未并入时，沿用这个起点上最近一次发布的识别结果。
+		saved, found, err := base.s.LatestDerivedIndex(base.ctx, base.w.ProjectID, base.id)
+		if err != nil {
+			return base, err
+		}
+		if !found {
+			return base, ErrIndexPending
+		}
+		return open(saved)
 	}
 	x := base.overlay(base.meta.Tree)
 	x.variant = variant

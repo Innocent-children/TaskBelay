@@ -50,6 +50,7 @@ func (b *Background) loop() {
 		case <-b.ctx.Done():
 			return
 		case <-b.wake:
+			b.warm()
 		case <-timer.C:
 		}
 		b.mu.Lock()
@@ -63,6 +64,23 @@ func (b *Background) loop() {
 		}
 	}
 }
+
+/**
+ * warm 在 MCP 调用后为当前任务准备分析索引。从头学习起点耗时超过 hook 的预算，
+ * 只在这里和交付检查中进行；hook 使用已发布的结果。
+ */
+func (b *Background) warm() {
+	ctx, cancel := context.WithTimeout(b.ctx, event.StaticBudget+event.TestsBudget)
+	defer cancel()
+	task, _, err := b.store.CommandContext(ctx, b.workspace.ID)
+	if err == nil && task.ID != "" {
+		_, err = taskIndex(ctx, b.store, b.workspace, task)
+	}
+	if err != nil && b.ctx.Err() == nil && b.report != nil {
+		b.report(err)
+	}
+}
+
 func (b *Background) run(actor ledger.Actor) error {
 	ctx, cancel := context.WithTimeout(b.ctx, event.StaticBudget+event.TestsBudget)
 	defer cancel()

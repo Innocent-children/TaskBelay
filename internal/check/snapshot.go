@@ -217,7 +217,8 @@ func keys[T any](m map[string]T) []string {
 func runSamples(records []ledger.VerificationRecord) []repostats.Run {
 	var out []repostats.Run
 	for _, r := range records {
-		if r.Algorithm == Algorithm && r.Executed && r.ExitCode != nil && !r.EndedAt.IsZero() {
+		// 只读命令显示的是文件内容，不是运行项目代码得到的输出。
+		if r.Algorithm == Algorithm && r.Executed && r.ExitCode != nil && !r.EndedAt.IsZero() && !r.Command.ReadOnly() {
 			out = append(out, repostats.Run{ID: r.ID, Output: r.Output, ExitCode: r.ExitCode, Started: true})
 		}
 	}

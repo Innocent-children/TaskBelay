@@ -47,6 +47,9 @@ func runStatus(ctx context.Context, env platform.Env, dir string, output io.Writ
 		return err
 	}
 	defer store.Close()
+	if workspace, err = store.ResolveWorkspace(ctx, workspace); err != nil {
+		return err
+	}
 	if err := store.RegisterGitWorkspace(ctx, workspace); err != nil {
 		return err
 	}

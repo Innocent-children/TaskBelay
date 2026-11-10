@@ -357,9 +357,11 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 	if planContext.TaskID != task {
 		return event.Decision{}, &ledger.TaskConflict{CurrentTaskID: planContext.TaskID}
 	}
-	auxiliary, err := check.ClassifyTargets(ctx, o.Store, o.Workspace, planContents)
-	if err != nil {
-		return event.Decision{}, err
+	// 只有半自动模式按测试、生成文件或锁文件的类别放行。类别核对不了时不放行，
+	// 明确授权的范围照常生效，编辑证据照常保存。
+	var auxiliary map[string]bool
+	if planContext.Workflow == "semi" {
+		auxiliary, _ = check.ClassifyTargets(ctx, o.Store, o.Workspace, planContents)
 	}
 	planCheck, err := plan.BeforeEdit(o.Workspace, planContext, paths, auxiliary)
 	for i := range planCheck.Issues {
@@ -369,9 +371,6 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		return event.Decision{}, fmt.Errorf("核对编辑授权: %w", err)
 	}
 	record.PlanCheck = &planCheck
-	if advice, analysisErr := check.EditAdvice(ctx, o.Store, o.Workspace, expectedContents); analysisErr == nil {
-		record.Decision.AdditionalContext = strings.TrimSpace(record.Decision.AdditionalContext + "\n" + advice)
-	}
 	if len(observation.Files) > 0 {
 		if err := o.retain(ctx, &observation, view, record.Files, expectedContents); err != nil {
 			return event.Decision{}, fmt.Errorf("保存用于核对编辑的原始内容: %w", err)
@@ -381,6 +380,10 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 		return event.Decision{}, fmt.Errorf("登记编辑观察: %w", err)
 	}
 	record.Decision.Records = editRecords(task, record)
+	// 设计提示排在证据和冲突决定保存之后，来不及生成时只略过这次提示。
+	if advice, analysisErr := check.EditAdvice(ctx, o.Store, o.Workspace, expectedContents); analysisErr == nil {
+		record.Decision.AdditionalContext = strings.TrimSpace(record.Decision.AdditionalContext + "\n" + advice)
+	}
 	return record.Decision, nil
 }
 

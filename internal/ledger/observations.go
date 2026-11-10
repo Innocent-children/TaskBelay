@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Innocent-children/taskbelay/internal/platform"
 	"time"
 
 	"github.com/Innocent-children/taskbelay/internal/event"
@@ -136,6 +137,53 @@ type UnverifiedEdit struct {
  * 将 G01 使用的路径标识关联到稳定的 git 目录标识，保留原有项目与任务设置。
  * 目录移动只更新位置；标识和位置都没变时不申请写锁。
  */
+/**
+ * ResolveWorkspace 让同一目录在设备号变化后继续使用原来的标识，任务、观察和索引
+ * 不因此分成两份。同一路径下有多份记录时，沿用最近仍在观察的那一份。
+ */
+func (s *Store) ResolveWorkspace(ctx context.Context, w gitstate.Workspace) (gitstate.Workspace, error) {
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		known := func(current, query string, args ...any) (string, error) {
+			rows, err := q.QueryContext(ctx, query, args...)
+			if err != nil {
+				return "", err
+			}
+			defer rows.Close()
+			adopted := ""
+			for rows.Next() {
+				var id string
+				if err := rows.Scan(&id); err != nil {
+					return "", err
+				}
+				if id == current {
+					return current, rows.Err()
+				}
+				if adopted == "" && platform.MovedIdentity(id, current) {
+					adopted = id
+				}
+			}
+			if adopted == "" {
+				adopted = current
+			}
+			return adopted, rows.Err()
+		}
+		id, err := known(w.ID, "SELECT id FROM workspaces_v12 WHERE path=? ORDER BY latest_observation DESC", w.Root)
+		if err != nil {
+			return err
+		}
+		project := id
+		if w.ProjectID != w.ID {
+			project, err = known(w.ProjectID, "SELECT project_id FROM workspaces_v12 GROUP BY project_id ORDER BY MAX(latest_observation) DESC")
+			if err != nil {
+				return err
+			}
+		}
+		w.ID, w.ProjectID = id, project
+		return nil
+	})
+	return w, err
+}
+
 func (s *Store) RegisterGitWorkspace(ctx context.Context, w gitstate.Workspace) error {
 	if w.ID == "" || w.ProjectID == "" || w.Root == "" || w.GitDir == "" || w.CommonDir == "" {
 		return fmt.Errorf("工作区标识和 git 路径不能为空")

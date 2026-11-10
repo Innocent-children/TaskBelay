@@ -48,10 +48,27 @@ func (w Workspace) CaptureTree(ctx context.Context) (snapshot Snapshot, err erro
 		return snapshot, err
 	}
 	copyPath := filepath.Join(temp, "index")
-	if _, err = w.command(ctx, nil, nil, "read-tree", "--index-output="+copyPath, "--prefix=", strings.TrimSpace(string(empty))); err != nil {
+	env := []string{"GIT_INDEX_FILE=" + copyPath}
+	// 直接复制索引文件，不经过会占用仓库 index.lock 的 Git 命令。Git 以改名方式
+	// 替换索引，读到的总是某一次完整写入的内容。
+	source, err := w.command(ctx, nil, nil, "rev-parse", "--git-path", "index")
+	if err != nil {
 		return snapshot, err
 	}
-	env := []string{"GIT_INDEX_FILE=" + copyPath}
+	sourcePath := strings.TrimSuffix(string(source), "\n")
+	if !filepath.IsAbs(sourcePath) {
+		sourcePath = filepath.Join(w.Root, sourcePath)
+	}
+	index, err := os.ReadFile(sourcePath)
+	if errors.Is(err, os.ErrNotExist) {
+		// 尚无索引的仓库从空索引开始；锁只落在临时索引上。
+		_, err = w.command(ctx, nil, env, "read-tree", "--empty")
+	} else if err == nil {
+		err = os.WriteFile(copyPath, index, 0600)
+	}
+	if err != nil {
+		return snapshot, err
+	}
 	if _, err = w.command(ctx, nil, env, "update-index", "--no-split-index"); err != nil {
 		return snapshot, err
 	}
