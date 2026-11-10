@@ -202,6 +202,14 @@ func Analyze(ctx context.Context, in Input) (Result, error) {
 		}
 		if in.EditPreview {
 			switch item.Kind {
+			case "file":
+				c.Facts = append(c.Facts, "当前规则未识别到其他代码对该新文件的引用；不能据此确认文件没有使用者或独立用途，文档、脚本、示例和配置也可能是必要交付")
+				c.Advice = "先核对谁使用这份文件、它承担什么当前需求、现有文件能否承接，以及单独维护这份文件的成本；确认多余后再省去，无法确认时保留必要文件，不因此补测试"
+				if item.Anchor == "agent" {
+					c.Advice += "；沿用已有登记，无需重复登记"
+				} else {
+					c.Advice += "；确需保留时用 implemented_by 登记对应需求和用途"
+				}
 			case "flag", "env", "route", "entry":
 				if item.Value != "" {
 					c.Facts = append(c.Facts, "识别到的取值片段："+item.Value)
