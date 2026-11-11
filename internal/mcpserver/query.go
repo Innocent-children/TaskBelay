@@ -68,6 +68,9 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 		}
 		if input.OutputContains != "" {
 			item["output_excerpt"] = record.OutputExcerpt
+			if record.LastOutputExcerpt != "" {
+				item["last_output_excerpt"] = record.LastOutputExcerpt
+			}
 		}
 		items = append(items, item)
 		last = record.Seq

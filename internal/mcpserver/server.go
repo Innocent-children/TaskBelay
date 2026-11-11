@@ -39,7 +39,7 @@ type getInput struct {
 	TaskID          string `json:"task_id,omitempty" jsonschema:"省略时读取当前工作区任务"`
 	Category        string `json:"category,omitempty" jsonschema:"省略返回概要；messages、sources、requirements、notes、plans、checks、verifications、workspace_updates 或 task_updates；指定后默认只列编号和状态，不含正文"`
 	CommandContains string `json:"command_contains,omitempty" jsonschema:"仅 verifications 列表使用；在已保存的脱敏命令全文中按字面查找，区分大小写；匹配项附命令开头 command_prefix，续页沿用同一片段"`
-	OutputContains  string `json:"output_contains,omitempty" jsonschema:"仅 verifications 列表使用，在已保存的输出中按字面查找，区分大小写。output_excerpt 给出首次匹配处的原文。与 command_contains 同时使用时，两项都要匹配"`
+	OutputContains  string `json:"output_contains,omitempty" jsonschema:"仅 verifications 列表使用，在已保存的输出中按字面查找，区分大小写。output_excerpt 给出首次匹配处的原文，末次摘录不同时另附 last_output_excerpt。与 command_contains 同时使用时，两项都要匹配"`
 	AfterSeq        int64  `json:"after_seq,omitempty" jsonschema:"仅列表使用，返回序号更大的记录；不能与 record_id 混用"`
 	Limit           int    `json:"limit,omitempty" jsonschema:"仅列表使用，默认 20，最多 100；不能与 record_id 混用"`
 	RecordID        string `json:"record_id,omitempty" jsonschema:"单条正文编号，从列表或写入结果取得"`
@@ -73,7 +73,7 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		resolver = MetadataContext
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "taskbelay", Version: "0.1.0"}, nil)
-	register(server, "task_get", `默认返回简要信息与记录总数。列表返回编号和状态，例如 {"category":"messages","limit":5}。用 after_seq、limit 翻页。重跑前可在 verifications 列表用 command_contains 查命令，或用 output_contains 查已保存的输出，例如 {"category":"verifications","output_contains":"TestExport"}。用 command_prefix、整次运行的状态和 output_excerpt 核对结果，需要上下文时再读正文。列表不传 revision、char_offset、char_limit。按 records[].read 的 category、record_id 读取单条 JSON 正文，需求和方案还须指定 revision；此时才可用 char_offset、char_limit，不传列表参数。按 next_offset 续读，拼接完整后再解析。state 表示查询时的状态，已保存的正文不随状态变化而改写。`, false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input getInput) (any, error) {
+	register(server, "task_get", `默认返回简要信息与记录总数。列表返回编号和状态，例如 {"category":"messages","limit":5}。用 after_seq、limit 翻页。重跑前可在 verifications 列表用 command_contains 查命令，或用 output_contains 查已保存的输出，例如 {"category":"verifications","output_contains":"TestExport"}。用 command_prefix、整次运行的状态和匹配处的输出摘录核对结果，需要上下文时再读正文。列表不传 revision、char_offset、char_limit。按 records[].read 的 category、record_id 读取单条 JSON 正文，需求和方案还须指定 revision；此时才可用 char_offset、char_limit，不传列表参数。按 next_offset 续读，拼接完整后再解析。state 表示查询时的状态，已保存的正文不随状态变化而改写。`, false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input getInput) (any, error) {
 		return getTask(ctx, service, actor, input)
 	})
 	register(server, "task_start", "开始、恢复或重新打开任务；保留原始起点，并记录此时的工作区状态。workflow 只接受 auto（全自动）或 semi（半自动），省略时沿用有效设置。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.StartTaskInput) (any, error) {

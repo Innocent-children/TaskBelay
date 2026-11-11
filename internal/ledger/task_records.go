@@ -35,21 +35,34 @@ type TaskRecordBody struct {
 	Body               string
 	CommandPrefix      string
 	OutputExcerpt      string
+	LastOutputExcerpt  string
 	CharEnd, CharTotal int
 	State              map[string]any
 }
 
 var RecordCategories = []string{"messages", "sources", "requirements", "notes", "plans", "checks", "verifications", "workspace_updates", "task_updates"}
 
+func outputExcerpts(output, match string) (string, string) {
+	first := strings.Index(output, match)
+	if first < 0 {
+		return "", ""
+	}
+	// 列表只持有摘录，避免短字符串占住整份输出。
+	head := strings.Clone(outputExcerpt(output, match, first))
+	if last := strings.LastIndex(output, match); last != first {
+		tail := outputExcerpt(output, match, last)
+		if tail != head {
+			return head, strings.Clone(tail)
+		}
+	}
+	return head, ""
+}
+
 /**
  * 先给匹配文字留出空间，再从同一行取上下文。跨行查询保留匹配中的换行。
  */
-func outputExcerpt(output, match string) string {
+func outputExcerpt(output, match string, at int) string {
 	const limit = 120
-	at := strings.Index(output, match)
-	if at < 0 {
-		return ""
-	}
 	start := at
 	for range min(limit/2, limit-utf8.RuneCountInString(match)) {
 		r, size := utf8.DecodeLastRuneInString(output[:start])
@@ -176,8 +189,7 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 					record.CommandPrefix = data
 				}
 				if input.OutputContains != "" {
-					// 列表只保留摘录，避免一小段字符串占住整份输出。
-					record.OutputExcerpt = strings.Clone(outputExcerpt(savedOutput, input.OutputContains))
+					record.OutputExcerpt, record.LastOutputExcerpt = outputExcerpts(savedOutput, input.OutputContains)
 				}
 				result.Records = append(result.Records, record)
 				continue
