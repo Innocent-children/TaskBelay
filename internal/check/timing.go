@@ -200,27 +200,29 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 	if err := snapshot.err(); err != nil {
 		return partial(err)
 	}
-	completed = append(slices.Clone(design.Candidates), purposes.Candidates...)
 	scope = "targets"
 	details["design_candidates"] = len(design.Candidates)
 	comparisons := slices.ContainsFunc(purposes.Cases, func(c signals.Case) bool {
 		return c.Added && c.AgentOnly && !c.Retained
 	})
 	details["test_references_needed"] = comparisons
+	// 表格行继承所属用例的保留状态；没有可提醒的用例时，设计候选已是最终结果。
+	result := design
 	if comparisons {
+		completed = append(slices.Clone(design.Candidates), purposes.Candidates...)
 		advance("references")
 		if err := snapshot.editCaseNeighbourhood(ctx, w); err != nil {
 			return partial(err)
 		}
-	}
-	advance("test_comparisons")
-	input.Before, input.After = snapshot.Before, snapshot.After
-	result, err := signals.CompletePreview(ctx, input, design)
-	if err != nil {
-		return partial(err)
-	}
-	if err := snapshot.err(); err != nil {
-		return partial(err)
+		advance("test_comparisons")
+		input.Before, input.After = snapshot.Before, snapshot.After
+		result, err = signals.CompletePreview(ctx, input, design)
+		if err != nil {
+			return partial(err)
+		}
+		if err := snapshot.err(); err != nil {
+			return partial(err)
+		}
 	}
 	scope, reason = "full", "no_candidates"
 	details["candidates"] = len(result.Candidates)
