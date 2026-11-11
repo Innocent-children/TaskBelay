@@ -86,7 +86,7 @@ func (s *Store) taskView(ctx context.Context, workspace, id string, actor Actor,
 		if err != nil {
 			return err
 		}
-		if !overview {
+		if !overview && id != "" {
 			view.Verifications, err = readVerifications(ctx, q, workspace, id)
 			if err != nil {
 				return err
