@@ -186,7 +186,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 			input.PreviewTestFiles[c.Path] = true
 		}
 	}
-	input.Queries = snapshot.editQueries(ctx, w, beforeFiles, files)
+	input.Queries = snapshot.editQueries(ctx, beforeFiles, files)
 	design, err := signals.DesignPreview(ctx, input)
 	if err != nil {
 		return partial(err)
@@ -308,7 +308,7 @@ func editAdvice(candidates []signals.Candidate, suffix string) (string, int) {
  * 起点索引只用于找相似候选；预览不能把已变化的实现当作当前可复用的参照。
  * 同批目标直接核对两份内容，其余文件按路径复用本次读取结果。
  */
-func (s indexedSnapshot) editQueries(ctx context.Context, w gitstate.Workspace, current, proposed map[string]units.File) *signals.Queries {
+func (s indexedSnapshot) editQueries(ctx context.Context, current, proposed map[string]units.File) *signals.Queries {
 	q := s.queries()
 	// 仅用原始目标收集调用，排除索引旧调用及为测试比较补齐的参照。
 	calls := map[string][]signals.CallSite{}
@@ -325,7 +325,7 @@ func (s indexedSnapshot) editQueries(ctx context.Context, w gitstate.Workspace, 
 	}
 	q.Calls = func(name string) []signals.CallSite { return calls[name] }
 	similar := q.Similar
-	checked := map[string]bool{}
+	references := map[string]units.File{}
 	q.Similar = func(signature []uint64) []signals.SimilarUnit {
 		var out []signals.SimilarUnit
 		for _, candidate := range similar(signature) {
@@ -337,38 +337,45 @@ func (s indexedSnapshot) editQueries(ctx context.Context, w gitstate.Workspace, 
 				continue
 			}
 			p := candidate.Path
-			if f, editing := proposed[p]; editing {
-				// 索引单元省略了词流，从已有文件分析中取回，不能拿空词流比较。
-				origin := s.Origin.load(p)
-				for _, u := range origin.Units {
-					if u.ID == candidate.Unit.ID && u.Start == candidate.Unit.Start {
-						lines := origin.Lines[u.Line-1 : u.EndLine]
-						if _, ok := previewDeclaration(current[p], u, lines); !ok {
-							break
-						}
-						if proposedUnit, ok := previewDeclaration(f, u, lines); ok {
-							candidate.Unit = proposedUnit
-							out = append(out, candidate)
-						}
+			f, editing := proposed[p]
+			if !editing {
+				info := s.Origin.fileInfo(p)
+				ref, known := references[p]
+				if !known {
+					var err error
+					ref, err = s.Origin.readPreviewReference(p, gitstate.File{Blob: info.Blob, Mode: info.Mode})
+					if err != nil {
+						s.Origin.err = err
+						return nil
+					}
+					references[p] = ref
+				}
+				if ref.Blob != "" && ref.Blob == info.Blob {
+					out = append(out, candidate)
+					continue
+				}
+				f = ref
+				if len(f.Units) == 0 {
+					continue
+				}
+			}
+			// 索引单元省略了词流，从已有文件分析中取回原声明及所在各行。
+			origin := s.Origin.load(p)
+			for _, u := range origin.Units {
+				if u.ID != candidate.Unit.ID || u.Start != candidate.Unit.Start {
+					continue
+				}
+				lines := origin.Lines[u.Line-1 : u.EndLine]
+				if editing {
+					if _, ok := previewDeclaration(current[p], u, lines, true); !ok {
 						break
 					}
 				}
-				continue
-			}
-			valid, known := checked[p]
-			if !known {
-				f := s.Origin.fileInfo(p)
-				indexed := gitstate.File{Blob: f.Blob, Mode: f.Mode}
-				observed, _, err := w.ReadObservedFile(ctx, p, indexed)
-				if err != nil {
-					s.Origin.err = err
-					return nil
+				if matched, ok := previewDeclaration(f, u, lines, editing); ok {
+					candidate.Unit = matched
+					out = append(out, candidate)
 				}
-				valid = indexed.Blob != "" && observed == indexed
-				checked[p] = valid
-			}
-			if valid {
-				out = append(out, candidate)
+				break
 			}
 		}
 		return out
@@ -377,16 +384,37 @@ func (s indexedSnapshot) editQueries(ctx context.Context, w gitstate.Workspace, 
 }
 
 /**
- * 原位置沿用完整词流核对。位置变化时核对声明所在各行的原文，
+ * 文件与索引一致时直接使用索引单元。只有同模式的普通文件内容变化时，
+ * 才分析已读到的字节，供该文件的所有候选核对原声明。
+ */
+func (x *repositoryIndex) readPreviewReference(p string, indexed gitstate.File) (units.File, error) {
+	observed, data, err := x.w.ReadObservedFile(x.ctx, p, indexed)
+	if err != nil || indexed.Blob == "" || observed.Mode != indexed.Mode {
+		return units.File{}, err
+	}
+	if observed == indexed {
+		return units.File{Path: p, Blob: observed.Blob, Mode: observed.Mode}, nil
+	}
+	if !regular(observed) {
+		return units.File{}, nil
+	}
+	var syntax units.Syntax
+	x.get("syntax", path.Ext(p), &syntax)
+	source := units.Source{Path: p, Blob: observed.Blob, Mode: observed.Mode, Data: data}
+	return units.Analyze(x.ctx, source, syntax)
+}
+
+/**
+ * 同批目标在原位置沿用完整词流核对。其余情况核对声明所在各行的原文，
  * 返回实际找到的声明，让重叠判断使用同一份拟写入内容的坐标。
  */
-func previewDeclaration(f units.File, indexed units.Unit, lines []string) (units.Unit, bool) {
+func previewDeclaration(f units.File, indexed units.Unit, lines []string, editTarget bool) (units.Unit, bool) {
 	for _, u := range f.Units {
 		if u.ID != indexed.ID || u.Name != indexed.Name || u.End-u.Start != indexed.End-indexed.Start ||
 			u.HeaderEnd-u.Start != indexed.HeaderEnd-indexed.Start || u.EndLine-u.Line != indexed.EndLine-indexed.Line {
 			continue
 		}
-		if u.Start == indexed.Start && u.Line == indexed.Line {
+		if editTarget && u.Start == indexed.Start && u.Line == indexed.Line {
 			if !slices.Equal(u.Tokens, indexed.Tokens) {
 				continue
 			}
