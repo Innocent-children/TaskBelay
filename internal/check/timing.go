@@ -219,7 +219,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 	if len(compared) > 0 {
 		completed = append(slices.Clone(design.Candidates), purposes.Candidates...)
 		advance("references")
-		if err := snapshot.editCaseNeighbourhood(ctx, w, compared); err != nil {
+		if err := snapshot.editCaseNeighbourhood(compared); err != nil {
 			return partial(err)
 		}
 		advance("test_comparisons")
@@ -347,7 +347,7 @@ func (s indexedSnapshot) editQueries(ctx context.Context, current, proposed map[
 				ref, known := references[p]
 				if !known {
 					var err error
-					ref, err = s.Origin.readPreviewReference(p, gitstate.File{Blob: info.Blob, Mode: info.Mode})
+					ref, err = s.Origin.readPreviewReference(p, gitstate.File{Blob: info.Blob, Mode: info.Mode}, true)
 					if err != nil {
 						s.Origin.err = err
 						return nil
@@ -389,9 +389,9 @@ func (s indexedSnapshot) editQueries(ctx context.Context, current, proposed map[
 
 /**
  * 文件与索引一致时直接使用索引单元。只有同模式的普通文件内容变化时，
- * 才分析已读到的字节，供该文件的所有候选核对原声明。
+ * 才按调用方需要分析已读到的字节；无法采用的参照返回空文件。
  */
-func (x *repositoryIndex) readPreviewReference(p string, indexed gitstate.File) (units.File, error) {
+func (x *repositoryIndex) readPreviewReference(p string, indexed gitstate.File, analyzeChanged bool) (units.File, error) {
 	observed, data, err := x.w.ReadObservedFile(x.ctx, p, indexed)
 	if err != nil || indexed.Blob == "" || observed.Mode != indexed.Mode {
 		return units.File{}, err
@@ -399,7 +399,7 @@ func (x *repositoryIndex) readPreviewReference(p string, indexed gitstate.File) 
 	if observed == indexed {
 		return units.File{Path: p, Blob: observed.Blob, Mode: observed.Mode}, nil
 	}
-	if !regular(observed) {
+	if !analyzeChanged || !regular(observed) {
 		return units.File{}, nil
 	}
 	var syntax units.Syntax
@@ -433,10 +433,10 @@ func previewDeclaration(f units.File, indexed units.Unit, lines []string, editTa
 }
 
 /**
- * 预览只分析请求中的当前与预期内容。直接参照仍来自已发布索引，内容已变化时
- * 略过测试比较，避免把旧断言或旧分段点当作当前事实。
+ * 索引按生产声明名和测试文件中的引用决定参照范围。只有这些依据仍有效，
+ * 才能在原范围内用当前实现比较用例。
  */
-func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.Workspace, compared map[string]bool) error {
+func (s *indexedSnapshot) editCaseNeighbourhood(compared map[string]bool) error {
 	if !s.Before.Converged || !s.After.Converged {
 		return nil
 	}
@@ -452,6 +452,7 @@ func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.
 		return err
 	}
 	var references []string
+	changed := map[string]units.File{}
 	for _, p := range paths {
 		if _, editing := s.After.Files[p]; editing {
 			continue
@@ -461,12 +462,15 @@ func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.
 			continue
 		}
 		indexed := gitstate.File{Blob: f.Blob, Mode: f.Mode}
-		current, _, err := w.ReadObservedFile(ctx, p, indexed)
+		current, err := s.Origin.readPreviewReference(p, indexed, !f.Role.Test)
 		if err != nil {
 			return err
 		}
-		if current != indexed {
+		if current.Blob == "" || current.Binary {
 			return fmt.Errorf("测试参照 %s 已变化，略过编辑前提示", p)
+		}
+		if current.Blob != indexed.Blob {
+			changed[p] = current
 		}
 		references = append(references, p)
 	}
@@ -474,7 +478,18 @@ func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.
 	if err := s.err(); err != nil {
 		return err
 	}
-	// 参照内容未变，沿用发布时的分类；目标已按实际当前和拟写入内容单独分类。
+	if len(changed) > 0 {
+		current, err := s.Origin.apply(keys(changed), changed, "current")
+		if err != nil {
+			return err
+		}
+		for p, file := range changed {
+			if current.Roles[p].Test || !maps.Equal(signals.DeclarationNames(file), signals.DeclarationNames(neighbours.Files[p])) {
+				return fmt.Errorf("生产参照 %s 的测试身份或声明名已变化，略过编辑前提示", p)
+			}
+			neighbours.Files[p], neighbours.Roles[p] = file, current.Roles[p]
+		}
+	}
 	for _, repo := range []*repostats.Repository{&s.Before, &s.After} {
 		maps.Copy(repo.Files, neighbours.Files)
 		maps.Copy(repo.Roles, neighbours.Roles)
