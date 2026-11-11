@@ -157,6 +157,22 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			var numbers []float64
 			stringsSet := map[string]bool{}
 			body := u.BodyTokens()
+			if purposesOnly && c.Added && !c.Retained && f.Layout == "brackets" {
+				for i, token := range body {
+					if token.Text != "if" {
+						continue
+					}
+					short, long := overlappingTextSearches(body[i+1:])
+					if short != 0 {
+						out = append(out, Candidate{
+							Kind: "test_substring", Object: c.ID, At: fmt.Sprintf("%s:%s/%d", p, c.Name, token.Line), Cluster: cluster, AgentOnly: true,
+							Facts:  []string{fmt.Sprintf("同一条件在同一个值中逐项查找。第 %d 项的查找文本已完整出现在第 %d 项中", short, long)},
+							Advice: "若调用按子串查找且没有副作用，命中长片段就会同时命中短片段。需要分别检查两处时，可给短片段加上能区分位置的上下文；只要求长片段时可省去短片段检查",
+						})
+						break
+					}
+				}
+			}
 			var names map[string]bool
 			if !purposesOnly {
 				names = units.DirectCallNames(body)
@@ -462,6 +478,45 @@ func copiedTestLines(ctx context.Context, in Input, f units.File, test units.Uni
 		}
 	}
 	return out
+}
+
+/**
+ * 只比较完整条件中相邻的两项。保持接收者、方法和输入不变，混合运算或动态实参会改变判断依据。
+ */
+func overlappingTextSearches(condition []units.Token) (short, long int) {
+	first := condition
+	previous := ""
+	for term := 1; len(condition) >= 10; term++ {
+		// ! receiver . Contains ( input , "text" )，随后是 || 或分支起点。
+		if condition[0].Text != "!" || condition[1].Kind != "identifier" || condition[2].Text != "." ||
+			!strings.EqualFold(condition[3].Text, "contains") || condition[4].Text != "(" || condition[5].Kind != "identifier" ||
+			condition[6].Text != "," || condition[8].Text != ")" ||
+			condition[1].Text != first[1].Text || condition[3].Text != first[3].Text || condition[5].Text != first[5].Text {
+			break
+		}
+		t := condition[7]
+		if (t.Kind != "string" && t.Kind != "key") || len(t.Text) <= 2 || t.Text[0] != '"' || t.Text[len(t.Text)-1] != '"' ||
+			strings.ContainsAny(t.Text, "\\\r\n${}") {
+			break
+		}
+		needle := t.Text[1 : len(t.Text)-1]
+		if short == 0 && term > 1 && previous != needle {
+			switch {
+			case strings.Contains(previous, needle):
+				short, long = term, term-1
+			case strings.Contains(needle, previous):
+				short, long = term-1, term
+			}
+		}
+		if condition[9].Text == "{" {
+			return short, long
+		}
+		if condition[9].Text != "||" {
+			break
+		}
+		previous, condition = needle, condition[10:]
+	}
+	return 0, 0
 }
 
 func literalRow(tokens []units.Token) bool {

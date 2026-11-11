@@ -232,9 +232,9 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 			return partial(err)
 		}
 	}
-	// 同文件副本只依赖目标原文，不需要为它准备跨文件参照。
+	// 这些提醒只依赖目标原文，补齐参照时不会重新生成。
 	for _, c := range purposes.Candidates {
-		if c.Kind == "test_copy" {
+		if c.Kind == "test_copy" || c.Kind == "test_substring" {
 			result.Candidates = append(result.Candidates, c)
 		}
 	}
@@ -255,7 +255,7 @@ func editAdvice(candidates []signals.Candidate, suffix string) (string, int) {
 	var advice []string
 	characters := utf8.RuneCountInString(suffix)
 	copies := map[string]bool{}
-	for _, kind := range []string{"test_copy", "test_equivalence", "test_budget", "assertion", "field_overwrite", "repeated_filter", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
+	for _, kind := range []string{"test_copy", "test_substring", "test_equivalence", "test_budget", "assertion", "field_overwrite", "repeated_filter", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
 		for _, c := range candidates {
 			if c.Kind != kind || len(advice) >= CategoryLimit || copies[c.Object] {
 				continue
@@ -263,6 +263,8 @@ func editAdvice(candidates []signals.Candidate, suffix string) (string, int) {
 			text := c.At + "："
 			if c.Kind == "test_copy" {
 				text = "拟新增测试副本 " + text
+			} else if c.Kind == "test_substring" {
+				text = "拟新增测试的子串检查 " + text
 			} else if c.Kind == "test_equivalence" {
 				text = "拟新增相近测试 " + text
 			} else if c.Kind == "test_budget" {
