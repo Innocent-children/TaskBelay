@@ -114,19 +114,20 @@ func workflow(settings ledger.EffectiveSettings) string {
 func Guidance(settings ledger.EffectiveSettings) string {
 	mode := "按当前需求进行全自动开发。"
 	if settings.Values["workflow"].Value == "semi" {
-		mode = "半自动用 plan_save 提交完整方案，列变更要点和路径。核对附带修改，用 plan_confirm 记用户明确确认的原话。讨论或否定仍待确认，可继续已确认范围。"
+		mode = "半自动用 plan_save 提交完整方案、改动和路径。核对附带修改，用 plan_confirm 记用户明确确认原话。讨论或否定时仅继续已确认范围。"
 	}
-	enforcement := "过期编辑退回后，先读当前内容再改。"
+	enforcement := "编辑过期先重读再改。"
 	if settings.Values["enforcement"].Value == "hint" {
-		enforcement = "只提示模式下，遇到冲突先读当前内容。"
+		enforcement = "只提示模式遇到冲突先重读。"
 	}
 	tests := "关闭"
 	if settings.Values["analysis.tests"].Value == "on" {
 		tests = "开启"
 	}
-	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新。用 note_add 记决定和待办，少量可疑设计、测试或防御可用 note_add.review 引用代码说明用途。工作区变化不代表新授权，勿用旧代码覆盖当前修改。"+enforcement+
-		"写测试先看已有用例缺什么，已删用例可查运行快照 workspace_tree。局部能测清就直接测，验证衔接走实际流程。重跑前用 task_get 查命令或输出（command_contains、output_contains）。"+
-		"只查待提交补丁的空白，可暂存后运行一次 git diff --cached --check。工作区内编辑工具可核对改动、预览测试。shell 写入不预览。动态测试："+tests+"；未知或未完成不能算通过。", GuidanceBudget)
+	return Truncate("事前提示："+mode+"开发前用 requirement_save 记需求，完成、变更或撤销时更新。用 note_add 记决定和待办，少量可疑改动可用 note_add.review 引用代码说明用途。工作区变化不扩大授权，勿用旧代码覆盖当前修改。"+enforcement+
+		"分支要覆盖结果或下游要重算时，先看哪次计算能省。"+
+		"写测试先看用例缺什么，已删用例查运行快照 workspace_tree。局部能测清就直接测，验证衔接走实际流程。重跑前用 task_get 查命令或输出（command_contains、output_contains）。"+
+		"只查待提交补丁空白，可暂存后运行一次 git diff --cached --check。工作区内编辑工具可核对改动、预览测试。shell 写入不预览。动态测试："+tests+"；未知或未完成不能算通过。", GuidanceBudget)
 }
 
 func GuidanceVersion(settings ledger.EffectiveSettings) string {
