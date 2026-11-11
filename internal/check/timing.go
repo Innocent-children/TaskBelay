@@ -180,6 +180,12 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		return text, nil
 	}
 	advance("design")
+	input.PreviewTestFiles = map[string]bool{}
+	for _, c := range purposes.Cases {
+		if after.Roles[c.Path].Test {
+			input.PreviewTestFiles[c.Path] = true
+		}
+	}
 	input.Queries = snapshot.editQueries(ctx, w, beforeFiles, files)
 	design, err := signals.DesignPreview(ctx, input)
 	if err != nil {
@@ -223,6 +229,12 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		if err := snapshot.err(); err != nil {
 			return partial(err)
 		}
+		// 完整等价类比较替换早期用途候选，直接从目标原文确认的副本仍然有效。
+		for _, c := range purposes.Candidates {
+			if c.Kind == "test_copy" {
+				result.Candidates = append(result.Candidates, c)
+			}
+		}
 	}
 	scope, reason = "full", "no_candidates"
 	details["candidates"] = len(result.Candidates)
@@ -240,13 +252,16 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 func editAdvice(candidates []signals.Candidate, suffix string) (string, int) {
 	var advice []string
 	characters := utf8.RuneCountInString(suffix)
-	for _, kind := range []string{"test_equivalence", "test_budget", "assertion", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
+	copies := map[string]bool{}
+	for _, kind := range []string{"test_copy", "test_equivalence", "test_budget", "assertion", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
 		for _, c := range candidates {
-			if c.Kind != kind || len(advice) >= CategoryLimit {
+			if c.Kind != kind || len(advice) >= CategoryLimit || copies[c.Object] {
 				continue
 			}
 			text := c.At + "："
-			if c.Kind == "test_equivalence" {
+			if c.Kind == "test_copy" {
+				text = "拟新增测试副本 " + text
+			} else if c.Kind == "test_equivalence" {
 				text = "拟新增相近测试 " + text
 			} else if c.Kind == "test_budget" {
 				text = "拟新增测试数量 " + text
@@ -272,6 +287,9 @@ func editAdvice(candidates []signals.Candidate, suffix string) (string, int) {
 			if !slices.Contains(advice, text) && characters+cost <= FeedbackBudget {
 				advice = append(advice, text)
 				characters += cost
+				if c.Kind == "test_copy" {
+					copies[c.Object] = true
+				}
 			}
 		}
 	}

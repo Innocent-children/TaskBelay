@@ -50,7 +50,7 @@ func external(in Input) []External {
 		role := in.After.Roles[p]
 		// 被本次改动的代码引用的新文件是实现的一部分；没有代码引用的文档、脚本、
 		// 示例和配置才是独立新增的内容。新文件只可能被本次改动过的文件引用。
-		if !exists && !f.Binary && !referenced(in, p) {
+		if !exists && !f.Binary && !in.PreviewTestFiles[p] && !referenced(in, p) {
 			out = append(out, External{Kind: "file", Method: "new_file", Name: p, At: p, Cluster: cluster, Reliable: true, AgentOnly: agent})
 		}
 		// 文档里提到的名字是说明文字，测试里的字面量是测试数据，都不是新增的入口。

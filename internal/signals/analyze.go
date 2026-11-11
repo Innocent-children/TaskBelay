@@ -23,6 +23,9 @@ type Input struct {
 	Requirements  []changes.Requirement
 	Retained      []string
 	Confirmed     []string
+
+	// 已在编辑目标中识别到独立用例的测试文件，可以由运行器发现。
+	PreviewTestFiles map[string]bool
 }
 type Candidate struct {
 	ID, Kind, Object, At, Cluster string
@@ -330,7 +333,7 @@ func SimilarityPreview(ctx context.Context, in Input, design Result) (Result, er
 }
 
 /**
- * TestPurposePreview 复用新增用例的身份、保留条件和断言识别，只核对目标内容。
+ * TestPurposePreview 在目标内容上核对独立用例、保留条件、同文件副本和断言。
  * 参照尚未补齐时，不计算等价类、表格行比较或测试数量建议。
  */
 func TestPurposePreview(ctx context.Context, in Input) (Result, error) {

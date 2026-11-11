@@ -85,6 +85,7 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			return all, budget, out, gaps, err
 		}
 		f := in.After.Files[p]
+		firstCase := len(all)
 		caseUnits := repostats.CaseUnits(in.After, p)
 		callers := map[string]map[string]bool{}
 		for _, u := range caseUnits {
@@ -288,6 +289,9 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 				}
 			}
 		}
+		if purposesOnly {
+			out = append(out, copiedTestCases(ctx, f, caseUnits, all[firstCase:])...)
+		}
 	}
 	// 先登记不能精简的用例，避免新文件排在既有用例前面时漏掉可比较的断言。
 	for _, eligible := range []bool{false, true} {
@@ -325,6 +329,69 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 		}
 	}
 	return all, budget, out, gaps, ctx.Err()
+}
+
+/**
+ * 只比较本文件已识别的独立用例。跳过声明名，其余原文逐字比较，
+ * 避免把不同实参、断言、注释或缩进当作重复。
+ */
+func copiedTestCases(ctx context.Context, f units.File, caseUnits []units.Unit, cases []Case) []Candidate {
+	if len(cases) < 2 || !slices.ContainsFunc(cases, func(c Case) bool { return c.Added && c.AgentOnly && !c.Retained }) {
+		return nil
+	}
+	byUnit := make(map[string]Case, len(cases))
+	for _, c := range cases {
+		byUnit[c.Unit] = c
+	}
+	type declarationText struct {
+		parent         int
+		prefix, suffix string
+	}
+	source := strings.Join(f.Lines, "")
+	groups := map[declarationText][]Case{}
+	for _, u := range caseUnits {
+		if ctx.Err() != nil {
+			return nil
+		}
+		c, ok := byUnit[u.ID]
+		if !ok {
+			continue
+		}
+		for i, token := range u.Tokens {
+			if token.End > u.HeaderEnd {
+				break
+			}
+			if token.Kind == "identifier" && token.Text == u.Name && i+1 < len(u.Tokens) && u.Tokens[i+1].Text == "(" {
+				key := declarationText{u.Parent, source[u.Start:token.Start], source[token.End:u.End]}
+				groups[key] = append(groups[key], c)
+				break
+			}
+		}
+	}
+	var out []Candidate
+	for _, group := range groups {
+		if len(group) < 2 {
+			continue
+		}
+		reference := group[0]
+		for _, c := range group {
+			if c.Retained {
+				reference = c
+				break
+			}
+		}
+		for _, c := range group {
+			if c.Name == reference.Name || !c.Added || !c.AgentOnly || c.Retained {
+				continue
+			}
+			out = append(out, Candidate{
+				Kind: "test_copy", Object: c.ID, At: c.Path + ":" + c.Name, Cluster: c.Cluster, AgentOnly: true,
+				Facts:  []string{"与 " + reference.Path + ":" + reference.Name + " 同属一个文件和上级节点，两处声明原文只有用例名不同"},
+				Advice: "名称、标注或夹具选择了不同场景，或需要重复执行来检查时序和共享状态时，两条都保留。确认它们只承担同一项检查后，保留 " + reference.Name + "，省去 " + c.Name + " 及其单独运行",
+			})
+		}
+	}
+	return out
 }
 
 // 断言比较需要完整的调用文本。大小比较保留在实参中，不用尖括号截断表达式。
