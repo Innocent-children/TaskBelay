@@ -114,18 +114,18 @@ func workflow(settings ledger.EffectiveSettings) string {
 func Guidance(settings ledger.EffectiveSettings) string {
 	mode := "按当前需求进行全自动开发。"
 	if settings.Values["workflow"].Value == "semi" {
-		mode = "半自动先用 plan_save 提交完整方案，告诉用户要点、变更摘要和文件路径；明确确认后用 plan_confirm 记录原话。讨论或否定保持待确认，附带修改一并核对；已确认范围内可继续。"
+		mode = "半自动用 plan_save 提交完整方案，说明要点、变更和文件路径。用户明确确认后用 plan_confirm 记录原话。讨论或否定仍待确认，核对附带修改，已确认范围可继续。"
 	}
-	enforcement := "过期编辑按设置退回，先读取当前内容后重新组织编辑。"
+	enforcement := "过期编辑退回后，先读当前内容再改。"
 	if settings.Values["enforcement"].Value == "hint" {
-		enforcement = "当前为只提示模式，收到冲突提示后先读取当前内容。"
+		enforcement = "只提示模式下，遇到冲突先读当前内容。"
 	}
 	tests := "关闭"
 	if settings.Values["analysis.tests"].Value == "on" {
 		tests = "开启"
 	}
-	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新状态；用 note_add 记录决定和待办事项。对少量可疑设计、测试或防御，可用 note_add.review 引用具体代码说明用途。工作区发生变化不代表用户授权了新工作，不恢复旧代码覆盖当前修改。"+enforcement+
-		"写测试前看已有用例还缺哪项检查。重跑前用 task_get 查命令或输出片段（command_contains、output_contains）。工作区内用编辑工具可核对改动、预览测试。工作区外或 shell 写入不预览。动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
+	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新状态。用 note_add 记决定和待办，对少量可疑设计、测试或防御可用 note_add.review 引用代码说明用途。工作区变化不代表新授权，勿用旧代码覆盖当前修改。"+enforcement+
+		"写测试先看已有用例缺哪项检查。局部入口能测清就省去无关准备，要查环节衔接就走实际流程。重跑前用 task_get 查命令或输出片段（command_contains、output_contains）。工作区内用编辑工具可核对改动、预览测试。工作区外或 shell 写入不预览。动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
 }
 
 func GuidanceVersion(settings ledger.EffectiveSettings) string {
