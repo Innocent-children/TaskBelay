@@ -161,7 +161,6 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 					names[t.Text] = true
 				}
 			}
-			c.Inputs = inputValues(u.Tokens)
 			for _, name := range keys(names) {
 				for _, target := range targets[name] {
 					q, v := target.path, target.unit
@@ -208,14 +207,14 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 				}
 			}
 			sort.Strings(c.Targets)
-			c.Class, c.Boundary = equivalence(c.Inputs, constants, stringsSet)
-			key := strings.Join(c.Targets, "|")
 			boundaryPoints := map[float64]bool{}
 			for _, n := range constants {
 				boundaryPoints[n-1] = true
 				boundaryPoints[n] = true
 				boundaryPoints[n+1] = true
 			}
+			c.Inputs, c.Class, c.Boundary = equivalence(u.Tokens, constants, boundaryPoints, stringsSet)
+			key := strings.Join(c.Targets, "|")
 			if len(constants) == 0 && len(stringsSet) == 0 {
 				if c.Added || cluster != "" {
 					gaps = append(gaps, "等价类未知："+location(p, u))
@@ -279,8 +278,7 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 					child.Shape = strings.Join(units.Sequence(row.Tokens, true), " ")
 					child.checks = append([]string{strings.Join(units.Sequence(row.Tokens, false), " ")}, c.checks...)
 					child.checksUnknown = c.checksUnknown || len(c.checks) == 0
-					child.Inputs = inputValues(row.Tokens)
-					child.Class, child.Boundary = equivalence(child.Inputs, constants, stringsSet)
+					child.Inputs, child.Class, child.Boundary = equivalence(row.Tokens, constants, boundaryPoints, stringsSet)
 					identity := strings.Join(child.Targets, "|") + "\x00" + child.Class + "\x00" + child.Shape
 					if len(constants) > 0 || len(stringsSet) > 0 {
 						comparisons = append(comparisons, comparison{child, "row\x00" + identity, true, 1})
@@ -443,43 +441,43 @@ func assertionExpressions(repo repostats.Repository, caseName string, body []uni
 	return checks, unknown
 }
 
-func equivalence(inputs []string, constants []float64, stringsSet map[string]bool) (string, []string) {
-	var classes, boundary []string
-	for _, value := range inputs {
-		if n, err := strconv.ParseFloat(value, 64); err == nil {
-			at := sort.SearchFloat64s(constants, n)
-			label := fmt.Sprintf("interval:%d", at)
-			if at < len(constants) && constants[at] == n {
-				label = "equal:" + value
-			}
-			classes = append(classes, label)
-			for _, c := range constants {
-				if n == c || n == c-1 || n == c+1 {
-					boundary = append(boundary, value)
-				}
-			}
-		} else if stringsSet[value] {
-			classes = append(classes, "equal:"+value)
-			boundary = append(boundary, value)
-		} else {
-			classes = append(classes, "string:other")
-		}
-	}
-	return strings.Join(classes, "|"), boundary
-}
-
-func inputValues(tokens []units.Token) []string {
+func equivalence(tokens []units.Token, constants []float64, boundaryPoints map[float64]bool, stringsSet map[string]bool) (inputs []string, class string, boundary []string) {
 	tokens = units.Significant(tokens)
-	var out []string
+	var classes []string
 	for i, t := range tokens {
-		if t.Kind != "number" && t.Kind != "key" && t.Kind != "string" {
-			continue
+		switch t.Kind {
+		case "key", "string":
+			value := units.Literal(t)
+			inputs = append(inputs, value)
+			if stringsSet[value] {
+				classes = append(classes, "equal:"+value)
+				boundary = append(boundary, value)
+			} else {
+				classes = append(classes, "string:other")
+			}
+		case "number":
+			value := t.Text
+			if i > 0 && tokens[i-1].Text == "-" && (i < 2 || tokens[i-2].Kind == "symbol") {
+				value = "-" + value
+			}
+			inputs = append(inputs, value)
+			n, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				classes = append(classes, "literal:"+value)
+				continue
+			}
+			at, exact := slices.BinarySearch(constants, n)
+			switch {
+			case exact:
+				classes = append(classes, "equal:"+value)
+			case boundaryPoints[n]:
+				classes = append(classes, "boundary:"+value)
+			default:
+				classes = append(classes, fmt.Sprintf("interval:%d", at))
+				continue
+			}
+			boundary = append(boundary, value)
 		}
-		value := units.Literal(t)
-		if t.Kind == "number" && i > 0 && tokens[i-1].Text == "-" && (i < 2 || tokens[i-2].Kind == "symbol") {
-			value = "-" + value
-		}
-		out = append(out, value)
 	}
-	return out
+	return inputs, strings.Join(classes, "|"), boundary
 }
