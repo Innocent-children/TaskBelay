@@ -339,9 +339,15 @@ func (s indexedSnapshot) editQueries(ctx context.Context, w gitstate.Workspace, 
 			p := candidate.Path
 			if f, editing := proposed[p]; editing {
 				// 索引单元省略了词流，从已有文件分析中取回，不能拿空词流比较。
-				for _, u := range s.Origin.load(p).Units {
+				origin := s.Origin.load(p)
+				for _, u := range origin.Units {
 					if u.ID == candidate.Unit.ID && u.Start == candidate.Unit.Start {
-						if samePreviewDeclaration(current[p], u) && samePreviewDeclaration(f, u) {
+						lines := origin.Lines[u.Line-1 : u.EndLine]
+						if _, ok := previewDeclaration(current[p], u, lines); !ok {
+							break
+						}
+						if proposedUnit, ok := previewDeclaration(f, u, lines); ok {
+							candidate.Unit = proposedUnit
 							out = append(out, candidate)
 						}
 						break
@@ -371,17 +377,27 @@ func (s indexedSnapshot) editQueries(ctx context.Context, w gitstate.Workspace, 
 }
 
 /**
- * 位置和完整词流都要保留，避免用相似度规整后相同的字面量或旧位置确认参照。
+ * 原位置沿用完整词流核对。位置变化时核对声明所在各行的原文，
+ * 返回实际找到的声明，让重叠判断使用同一份拟写入内容的坐标。
  */
-func samePreviewDeclaration(f units.File, indexed units.Unit) bool {
+func previewDeclaration(f units.File, indexed units.Unit, lines []string) (units.Unit, bool) {
 	for _, u := range f.Units {
-		if u.ID == indexed.ID && u.Start == indexed.Start && u.End == indexed.End &&
-			u.HeaderEnd == indexed.HeaderEnd && u.Line == indexed.Line && u.EndLine == indexed.EndLine &&
-			slices.Equal(u.Tokens, indexed.Tokens) && signals.Structure(f, u).Callable {
-			return true
+		if u.ID != indexed.ID || u.Name != indexed.Name || u.End-u.Start != indexed.End-indexed.Start ||
+			u.HeaderEnd-u.Start != indexed.HeaderEnd-indexed.Start || u.EndLine-u.Line != indexed.EndLine-indexed.Line {
+			continue
+		}
+		if u.Start == indexed.Start && u.Line == indexed.Line {
+			if !slices.Equal(u.Tokens, indexed.Tokens) {
+				continue
+			}
+		} else if !slices.Equal(f.Lines[u.Line-1:u.EndLine], lines) {
+			continue
+		}
+		if signals.Structure(f, u).Callable {
+			return u, true
 		}
 	}
-	return false
+	return units.Unit{}, false
 }
 
 /**
