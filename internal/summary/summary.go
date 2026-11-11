@@ -126,8 +126,8 @@ func Guidance(settings ledger.EffectiveSettings) string {
 	}
 	return Truncate("事前提示："+mode+"开发前用 requirement_save 记需求，完成、变更或撤销时更新。用 note_add 记决定和待办，少量可疑改动可用 note_add.review 引用代码说明用途。工作区变化不扩大授权，勿用旧代码覆盖当前修改。"+enforcement+
 		"分支覆盖结果或下游重算时，看哪步可省。"+
-		"写测试先看缺哪项检查，已删用例查快照 workspace_tree。准备数据可用写入返回的值。局部能测清就直接测，衔接走实际流程。重跑前用 task_get 按 command_contains 或 output_contains 查记录。"+
-		"只查待提交补丁空白，可暂存后运行一次 git diff --cached --check。工作区内编辑工具可核对改动、预览测试。shell 写入不预览。动态测试："+tests+"；未知或未完成不能算通过。", GuidanceBudget)
+		"写测试先看漏测什么，已删用例查 workspace_tree。准备数据可用写入返回值。局部直接测，衔接走实际流程。重跑前用 task_get 查记录（command_contains/output_contains），能推算改后结果就免跑。"+
+		"查待提交补丁空白，可暂存后跑一次 git diff --cached --check。工作区内用编辑工具核对改动、预览测试，shell 写入不预览。动态测试："+tests+"；未知或未完成不能算通过。", GuidanceBudget)
 }
 
 func GuidanceVersion(settings ledger.EffectiveSettings) string {
