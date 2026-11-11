@@ -259,7 +259,7 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			// 同一列表中骨架相同的兄弟元素逐行参与，避免把整张表当成一条用例。
 			groups := map[string][]units.Unit{}
 			for _, row := range f.Units {
-				if row.Parent >= 0 && row.Start > u.HeaderEnd && row.End <= u.End {
+				if row.Parent >= 0 && row.Start > u.HeaderEnd && row.End <= u.End && tableRowBoundary(f, row) {
 					key := fmt.Sprint(row.Parent) + ":" + strings.Join(units.Sequence(row.Tokens, true), " ")
 					groups[key] = append(groups[key], row)
 				}
@@ -332,6 +332,25 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 		}
 	}
 	return all, budget, out, gaps, ctx.Err()
+}
+
+/**
+ * 大括号内的同形调用可能只是几条语句。按列表行比较时，末项可借前面的逗号确认边界。
+ */
+func tableRowBoundary(f units.File, row units.Unit) bool {
+	if f.Layout != "brackets" || row.Tokens[len(row.Tokens)-1].Text != ")" {
+		return true
+	}
+	parent := f.Units[row.Parent].Tokens
+	if parent[len(parent)-1].Text != "}" {
+		return true
+	}
+	next := sort.Search(len(parent), func(i int) bool { return parent[i].Start >= row.End })
+	if next != len(parent)-1 {
+		return next < len(parent) && parent[next].Text == ","
+	}
+	start := sort.Search(len(parent), func(i int) bool { return parent[i].Start >= row.Start })
+	return start > 0 && parent[start-1].Text == ","
 }
 
 /**
