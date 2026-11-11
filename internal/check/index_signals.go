@@ -107,19 +107,28 @@ func (s indexedSnapshot) casePaths() []string {
 	paths := map[string]bool{}
 	names := map[string]bool{}
 	targetPaths := map[string][]string{}
-	targets := func(name string) []string {
-		if paths, found := targetPaths[name]; found {
-			return paths
-		}
-		paths := map[string]bool{}
-		for key := range s.Current.read("name", name) {
-			p := indexUnitPath(key)
-			if !s.Current.fileInfo(p).Role.Test {
+	addTargets := func(tokens []units.Token, recordNames bool) bool {
+		for _, token := range tokens {
+			if token.Kind != "identifier" {
+				continue
+			}
+			targets, known := targetPaths[token.Text]
+			if !known {
+				found := map[string]bool{}
+				if !s.Current.collectReferencePaths("name", token.Text, false, found) {
+					return false
+				}
+				targets = keys(found)
+				targetPaths[token.Text] = targets
+			}
+			if recordNames && len(targets) > 0 {
+				names[token.Text] = true
+			}
+			for _, p := range targets {
 				paths[p] = true
 			}
 		}
-		targetPaths[name] = keys(paths)
-		return targetPaths[name]
+		return true
 	}
 	for _, p := range s.Paths {
 		paths[p] = true
@@ -127,15 +136,8 @@ func (s indexedSnapshot) casePaths() []string {
 			if !s.After.Roles[p].Test && u.Name != "" {
 				names[u.Name] = true
 			}
-			if s.After.TestUnits[repostats.UnitKey(p, u)] {
-				for _, t := range u.Tokens {
-					if t.Kind == "identifier" {
-						for _, target := range targets(t.Text) {
-							names[t.Text] = true
-							paths[target] = true
-						}
-					}
-				}
+			if s.After.TestUnits[repostats.UnitKey(p, u)] && !addTargets(u.Tokens, true) {
+				return nil
 			}
 		}
 	}
@@ -145,11 +147,8 @@ func (s indexedSnapshot) casePaths() []string {
 		return nil
 	}
 	for _, name := range referencedNames {
-		for key := range s.Current.read("word", name) {
-			p := indexUnitPath(key)
-			if s.Current.fileInfo(p).Role.Test {
-				paths[p] = true
-			}
+		if !s.Current.collectReferencePaths("word", name, true, paths) {
+			return nil
 		}
 	}
 	// 新纳入的既有用例可能还引用其他被测声明，边界与等价类必须用全部直接目标。
@@ -159,18 +158,36 @@ func (s indexedSnapshot) casePaths() []string {
 		}
 		f := s.Current.load(p)
 		s.Current.prefetchNames(f.Tokens)
-		if s.Current.err != nil {
+		if s.Current.err != nil || !addTargets(f.Tokens, false) {
 			return nil
-		}
-		for _, t := range f.Tokens {
-			if t.Kind == "identifier" {
-				for _, target := range targets(t.Text) {
-					paths[target] = true
-				}
-			}
 		}
 	}
 	return keys(paths)
+}
+
+/**
+ * 预取的是原始行。缓存命中后仍须逐个检查取消，避免超时后继续解码其余文件的元数据。
+ */
+func (x *repositoryIndex) collectReferencePaths(kind, key string, wantTest bool, paths map[string]bool) bool {
+	members := x.read(kind, key)
+	if x.err != nil {
+		return false
+	}
+	for member := range members {
+		if err := x.ctx.Err(); err != nil {
+			x.err = err
+			return false
+		}
+		p := indexUnitPath(member)
+		info := x.fileInfo(p)
+		if x.err != nil {
+			return false
+		}
+		if info.Role.Test == wantTest {
+			paths[p] = true
+		}
+	}
+	return true
 }
 
 /**
