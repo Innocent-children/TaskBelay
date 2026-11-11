@@ -115,6 +115,7 @@ func branchCandidates(ctx context.Context, in Input) ([]Candidate, error) {
 			productionLines[path] = lines
 			collectFilterLoops(ctx, f, lines, changed[path], clusters, loops)
 			out = append(out, fieldOverwrites(ctx, f, lines, changed[path], clusters)...)
+			out = append(out, repeatedLookupKeys(ctx, f, lines, changed[path], clusters)...)
 		}
 		blocks, err := recoveryBlocks(ctx, in.After, f)
 		if err != nil {
