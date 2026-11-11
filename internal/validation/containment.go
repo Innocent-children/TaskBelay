@@ -15,11 +15,9 @@ func Contains(a, b Command) bool {
 	if !slices.Equal(ao, bo) {
 		return false
 	}
-	if len(ap) == 0 {
-		return true
-	}
-	if len(bp) == 0 {
-		return false
+	if len(ap) == 0 || len(bp) == 0 {
+		// 省略路径时，默认运行范围由程序决定。
+		return len(ap) == len(bp)
 	}
 	for _, target := range bp {
 		covered := false
