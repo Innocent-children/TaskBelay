@@ -6,18 +6,8 @@ import (
 	"fmt"
 	"github.com/Innocent-children/taskbelay/internal/units"
 	"path"
-	"sort"
 	"strings"
 )
-
-func sorted[T any](m map[string]T) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
 
 type Command struct {
 	Program                             string

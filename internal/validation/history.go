@@ -218,35 +218,34 @@ func credible(agreements, counter int) bool {
 }
 
 func implication(a, b Run, history []Run) (int, int) {
-	byInput := map[string]map[string]string{}
+	type input struct{ content, environment string }
+	sourceKey, targetKey := CommandKey(a.Command), CommandKey(b.Command)
+	sourcePassed := map[input]bool{}
+	targetResult := map[input]string{}
 	for _, r := range history {
-		if !r.Executed || !known(r.State) || !r.Input.Complete {
+		if !r.Executed || !known(r.State) || !r.Input.Complete || r.Before != r.After {
 			continue
 		}
-		keyCommand := CommandKey(r.Command)
-		if keyCommand != CommandKey(a.Command) && keyCommand != CommandKey(b.Command) {
-			continue
+		key := input{r.Input.Content, r.Input.Environment}
+		switch CommandKey(r.Command) {
+		case sourceKey:
+			if r.State == "passed" && sameRuntime(r, a) {
+				sourcePassed[key] = true
+			}
+		case targetKey:
+			// 同一输入上的一次失败就能构成反例，重跑成功也要保留它。
+			if sameRuntime(r, b) && targetResult[key] != "failed" {
+				targetResult[key] = r.State
+			}
 		}
-		if keyCommand == CommandKey(a.Command) && !sameRuntime(r, a) || keyCommand == CommandKey(b.Command) && !sameRuntime(r, b) || r.Before != r.After {
-			continue
-		}
-		key := r.Input.Content + "\x00" + r.Input.Environment
-		row := byInput[key]
-		if row == nil {
-			row = map[string]string{}
-			byInput[key] = row
-		}
-		row[CommandKey(r.Command)] = r.State
 	}
 	yes, no := 0, 0
-	for _, key := range sorted(byInput) {
-		row := byInput[key]
-		if row[CommandKey(a.Command)] == "passed" {
-			if row[CommandKey(b.Command)] == "passed" {
-				yes++
-			} else if row[CommandKey(b.Command)] == "failed" {
-				no++
-			}
+	for key := range sourcePassed {
+		switch targetResult[key] {
+		case "passed":
+			yes++
+		case "failed":
+			no++
 		}
 	}
 	return yes, no
