@@ -129,11 +129,15 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 	if err != nil {
 		return d, err
 	}
+	seen := map[string]bool{}
 	for i := len(history) - 1; i >= 0; i-- {
 		if err := ctx.Err(); err != nil {
 			return d, err
 		}
 		r := history[i]
+		if !takeLatestAttempt(r, seen) {
+			continue
+		}
 		if r.State != "passed" || !r.Executed || r.Before != r.After || r.Input.Content != current.Input.Content || current.Input.Environment != r.Input.Environment || current.Command.Directory != r.Command.Directory || current.Command.Shell != r.Command.Shell {
 			continue
 		}
@@ -175,14 +179,9 @@ func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision
 			return d, err
 		}
 		r := history[i]
-		if !r.Executed && !r.Started {
+		if !takeLatestAttempt(r, seen) {
 			continue
 		}
-		sourceKey := CommandKey(r.Command)
-		if seen[sourceKey] {
-			continue
-		}
-		seen[sourceKey] = true
 		if !r.Validation || !r.Executed || r.State != "passed" || r.Before == "" || r.Before != r.After || !r.Input.Complete || r.Command.Mixed || r.Command.Writes || r.Command.Unknown {
 			continue
 		}
@@ -193,6 +192,21 @@ func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision
 		}
 	}
 	return d, nil
+}
+
+/**
+ * 倒序查找提示依据时，先记住每条命令最近的尝试，再判断那次结果能否引用。
+ */
+func takeLatestAttempt(r Run, seen map[string]bool) bool {
+	if !r.Executed && !r.Started {
+		return false
+	}
+	key := CommandKey(r.Command)
+	if seen[key] {
+		return false
+	}
+	seen[key] = true
+	return true
 }
 
 func sameRuntime(a, b Run) bool {

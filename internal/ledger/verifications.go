@@ -351,12 +351,14 @@ func (s *Store) VerificationHistory(ctx context.Context, workspace, key string) 
 	return result, other > recentVerifications, err
 }
 
-// VerificationOutcomes 提供跨命令分析需要的历史输入和结果，不加载输出及提示中附带的上次输出。
+/**
+ * VerificationOutcomes 也返回已放行但尚无结果的记录，以免跨命令提示引用更早的成功。
+ */
 func (s *Store) VerificationOutcomes(ctx context.Context, workspace, algorithm string) ([]VerificationRecord, error) {
 	var result []VerificationRecord
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		rows, err := q.QueryContext(ctx, `SELECT json_remove(data,'$.output','$.issue') FROM verifications_v12
-WHERE workspace_id=? AND executed=1 AND json_extract(data,'$.algorithm')=? ORDER BY seq`, workspace, algorithm)
+WHERE workspace_id=? AND denied=0 AND json_extract(data,'$.algorithm')=? ORDER BY seq`, workspace, algorithm)
 		if err != nil {
 			return err
 		}
