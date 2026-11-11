@@ -50,7 +50,18 @@ func CommandKey(record ledger.VerificationRecord) string {
 }
 
 func validationRun(r ledger.VerificationRecord) validation.Run {
-	return validation.Run{ID: r.ID, Command: command(r), Input: validation.Identity{Hash: r.Scope.Hash, Content: r.Scope.Content, Semantic: r.Scope.Semantic, Tool: r.Scope.Tool, Environment: r.EnvironmentID, Complete: r.Scope.Complete, Included: r.Scope.Included, Excluded: r.Scope.Excluded}, Before: r.Tree, After: r.AfterTree, State: r.State, Output: r.Output, Cases: r.Scope.Cases, Started: !r.StartedAt.IsZero(), Executed: r.Executed, EnvironmentChanged: r.Scope.EnvironmentChanged, Rerun: r.RerunNoteID != "", At: r.StartedAt, ReadOnly: r.Command.ReadOnly(), Validation: r.Scope.Validation}
+	return validation.Run{
+		ID: r.ID, Command: command(r),
+		Input: validation.Identity{
+			Hash: r.Scope.Hash, Content: r.Scope.Content, Semantic: r.Scope.Semantic,
+			Tool: r.Scope.Tool, Environment: r.EnvironmentID, Complete: r.Scope.Complete,
+			Included: r.Scope.Included, Excluded: r.Scope.Excluded,
+		},
+		Before: r.Tree, After: r.AfterTree, State: r.State, Output: r.Output, Cases: r.Scope.Cases,
+		Started: !r.StartedAt.IsZero(), Executed: r.Executed, StartedAt: r.StartedAt, EndedAt: r.EndedAt,
+		EnvironmentChanged: r.Scope.EnvironmentChanged, Rerun: r.RerunNoteID != "",
+		ReadOnly: r.Command.ReadOnly(), Validation: r.Scope.Validation,
+	}
 }
 
 func validationRuns(history []ledger.VerificationRecord, exclude string) []validation.Run {

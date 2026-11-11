@@ -18,7 +18,7 @@ type Run struct {
 	Started, Executed, EnvironmentChanged, Rerun bool
 	// ReadOnly 表示只查看内容的命令；Validation 表示已按运行事实归为验证。
 	ReadOnly, Validation bool
-	At                   time.Time
+	StartedAt, EndedAt   time.Time
 }
 
 /**
@@ -32,6 +32,16 @@ func (r Run) attempted() bool {
 func (r Run) reusableSingleRun() bool {
 	return r.Executed && r.State == "passed" && r.Before != "" && r.Before == r.After &&
 		r.Input.Complete && !r.Command.Mixed && !r.Command.Writes && !r.Command.Unknown
+}
+
+func (r Run) reportsAll(names []string) bool {
+	// 后置事件保存的用例名已排序。
+	for _, name := range names {
+		if _, found := slices.BinarySearch(r.Cases, name); !found {
+			return false
+		}
+	}
+	return true
 }
 
 func (r Run) mayChangeExternalState() bool {
@@ -73,10 +83,10 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 	}
 	d.Validation = is
 	if !is {
-		return firstScopeAdvice(ctx, current, history)
+		return recentScopeAdvice(ctx, current, history, d, nil)
 	}
 	key := CommandKey(current.Command)
-	var previous *Run
+	previousIndex := -1
 	var matchingID string
 	possibleExternalChange := false
 	states := map[string]string{}
@@ -92,7 +102,7 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 			continue
 		}
 		if r.attempted() {
-			previous = &history[i]
+			previousIndex = i
 			possibleExternalChange = false
 			// 同命令中途失败或结果无法核对时，不能越过这次运行引用更早的成功。
 			if !r.reusableSingleRun() || r.EnvironmentChanged {
@@ -108,12 +118,21 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 			states[r.Input.Hash] = r.State
 		}
 	}
-	if previous == nil {
+	if previousIndex < 0 {
 		return d, nil
 	}
+	previous := &history[previousIndex]
 	d.PreviousID, d.Output = previous.ID, previous.Output
-	if current.Rerun || current.Command.Writes || current.Command.Unknown || previous.Before != previous.After || previous.Command.Writes || previous.State != "passed" || !current.Input.Complete || !previous.Input.Complete || d.Unstable {
+	if current.Rerun || current.Command.Writes || current.Command.Unknown || previous.Before != previous.After || previous.Command.Writes || !current.Input.Complete || !previous.Input.Complete || d.Unstable {
 		d.Reason = "已有重跑决定、输入信息不全、命令会写入或包含多项操作、结果不稳定，或上次未通过，因此本次照常运行"
+		return d, nil
+	}
+	if previous.State != "passed" {
+		d.Reason = "上次验证未通过或尚无结果，本次照常运行"
+		if previous.State == "failed" && previous.Executed && !previous.EndedAt.IsZero() && previous.Before != "" && len(previous.Cases) > 0 &&
+			previous.Input.Content != current.Input.Content && states[current.Input.Hash] != "failed" && !current.EnvironmentChanged {
+			return recentScopeAdvice(ctx, current, history[previousIndex+1:], d, previous)
+		}
 		return d, nil
 	}
 	if current.Input.Hash == previous.Input.Hash {
@@ -187,21 +206,22 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 }
 
 /**
- * firstScopeAdvice 只用调用方已读取的近期记录提醒首次请求的较小范围命令。
- * 路径包含不证明本次命令属于验证；同一命令已经启动过就不再是首次请求。
+ * 首次请求只按路径核对。失败后的重跑只看失败之后的记录，
+ * 较大范围的输出还须报告上次识别出的全部用例名。
  */
-func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision, error) {
-	d := Decision{}
+func recentScopeAdvice(ctx context.Context, current Run, history []Run, d Decision, failed *Run) (Decision, error) {
 	if current.ReadOnly || current.Rerun || current.Command.Mixed || current.Command.Writes || current.Command.Unknown || !current.Input.Complete {
 		return d, nil
 	}
-	key := CommandKey(current.Command)
-	for _, r := range history {
-		if err := ctx.Err(); err != nil {
-			return d, err
-		}
-		if r.attempted() && CommandKey(r.Command) == key {
-			return d, nil
+	if failed == nil {
+		key := CommandKey(current.Command)
+		for _, r := range history {
+			if err := ctx.Err(); err != nil {
+				return d, err
+			}
+			if r.attempted() && CommandKey(r.Command) == key {
+				return d, nil
+			}
 		}
 	}
 	seen := map[string]bool{}
@@ -215,11 +235,19 @@ func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision
 		if !r.Validation || !r.reusableSingleRun() {
 			continue
 		}
-		if r.Input.Content == current.Input.Content && sameRuntime(current, r) && Contains(r.Command, current.Command) {
-			d.Kind, d.PreviousID, d.Output = "contained", r.ID, r.Output
-			d.Reason = "近期较大路径范围的验证已通过。请从那次输出核对是否已检查本次关心的目标。本次命令尚无执行记录，照常运行"
-			return d, nil
+		if r.Input.Content != current.Input.Content || !sameRuntime(current, r) || !Contains(r.Command, current.Command) {
+			continue
 		}
+		if failed != nil && (r.StartedAt.Before(failed.EndedAt) || !r.reportsAll(failed.Cases)) {
+			continue
+		}
+		d.Kind, d.PreviousID, d.Output = "contained", r.ID, r.Output
+		if failed != nil {
+			d.Reason = "这条验证上次在改动前失败。改动后，较大范围的验证已通过，输出中包含上次识别出的全部用例名。请核对原先失败的检查，本次仍可运行"
+		} else {
+			d.Reason = "近期较大路径范围的验证已通过。请从那次输出核对是否已检查本次关心的目标。本次命令尚无执行记录，照常运行"
+		}
+		return d, nil
 	}
 	return d, nil
 }
