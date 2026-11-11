@@ -769,6 +769,24 @@ macOS 上的真实 Codex 任务 t63 使用 `fa7e19fe/content-15` 和第 339 代�
 
 此次核对的是预览执行了哪些步骤及其反馈，未测量真实 Agent 的整次 hook 延迟，未在 Windows 或 Linux 上运行。阶段三仍在进行。
 
+### 2026-11-11：核查 t65 三次前置 hook 登记超时
+
+macOS arm64 上的真实 Codex 任务 t65 运行 `727c63bb/content-16`。`035-stderr.log` 显示，同一批的三次调用在北京时间 09:25:35.869071 至 09:25:35.869090 发出。按调用编号核对 `t65.jsonl` 和 `035-events.jsonl`，对应关系如下。命令中的 `~` 表示当时用户主目录的绝对路径。
+
+| Codex 事件 | 前置 hook PID | 命令 | 事件总预算 |
+| --- | ---: | --- | ---: |
+| `item_8` | 61160 | `sed -n '94,103p;540,565p;620,649p;662,673p' docs/roadmap.md` | 50 ms |
+| `item_9` | 61159 | `rg -n -i 'codebase.memory' ~/.codex/config.toml && command -v codebase-memory-mcp` | 1,000 ms |
+| `item_10` | 61161 | `rg -n 'casePaths\|prefetchReference\|collectReferencePaths' internal/check && rg -n '参照\|300 毫秒' docs/algorithm.md docs/product-architecture.md docs/over-testing.md \| tail -30` | 50 ms |
+
+三个 hook 的准备耗时均为 8 ms。`item_9` 的 `command -v` 被归为 `other`，因此整条命令获得一秒预算。三个前置 hook 的单次账本预算均为 20 ms，从 `hook.setup` 到本机错误日志约 20.1–20.3 ms。三条追踪均报告 `登记 hook 开始: context deadline exceeded`，没有进入分派。约 30 ms 的 `operation.end` 耗时还包含失败后的调试快照。三条命令均以 0 退出；该 session 已登记的 133 行 hook 事件均无错误，三个调用编号各只有一行后置 `tool_end`。对应命令记录均为 `post_only=true`，前置核对缺失。
+
+002（`1431da6f`）修复了 SQLite 递增忙等待错过短暂写锁释放的问题。故障版本和本次已安装的 `08b2dbfe/content-16` 均包含该修复。t33 至 t64 留存的 1,717 条前置 hook 结束追踪均为 `completed`。t65 没有记录登记事务在哪一步耗尽预算，也没有记录持锁者。随后三个后置 hook 从准备完毕到登记成功也用了约 49–58 ms，它们使用普通账本预算。
+
+在 macOS arm64、Go 1.27.2 上，用临时 Go overlay、独立 Git 工作区和本机账本的只读备份，分别从两个版本的 `runHook` 入口并发回放三条命令的前置事件。没有额外写者时两版各登记 3/3；另一连接以 `BEGIN IMMEDIATE` 持锁直至三进程退出时，两版各失败 3/3，错误与 t65 一致，均正常退出，未留下前置 hook 或命令记录。首次回放时临时 debug 目录恰在并发创建，缺了两条追踪，但三条登记行均在；目录存在后用新调用编号完成上述对照。另以历史版本执行首次后台索引准备和清理，约 5.74 秒后同批 hook 均成功登记。副本取自事后，无法还原事发时的索引与写锁状态。
+
+本次交付诊断并在架构文档中补充了查证方法。持续占锁能复现故障，现有证据不足以归因于某个历史写者或确认 002 回归。保留现有登记实现与等待预算。本次仅验证了 macOS 上的 Codex 输入。
+
 ## 保持产品简单
 
 **TaskBelay 自身也应做到够用、可靠、易于维护，这一原则贯穿所有阶段。** 提高判断准确性时，也要保持操作和实现简单；新增能力应当省下更多工作，而不是增加更多记录、解释和维护负担。保存任务信息，是为了换会话后还能沿用有效判断；保存代码位置、运行结果和用户要求，是为了说明为什么建议精简。这些功能都应帮助减少多余工作。
