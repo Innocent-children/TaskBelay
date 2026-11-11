@@ -157,7 +157,7 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 		filtered := input.CommandContains != "" || input.OutputContains != ""
 		if filtered {
 			columns = `seq,id,revision,substr(ltrim(json_extract(data,'$.command.display'),char(9,10,13,32)),1,120),
-json_patch(state,json_object('workspace_tree',workspace_tree))`
+json_patch(state,workspace_snapshots)`
 		}
 		if err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM ("+query+")", args...).Scan(&result.Total); err != nil {
 			return err
@@ -301,8 +301,12 @@ json_object('confirmed',json_extract(data,'$.confirmation') IS NOT NULL,'revocat
 'exit_code',json_extract(data,'$.exit_code'),'ended_at',json_extract(data,'$.ended_at')) state,
 CASE WHEN executed=1 AND denied=0 AND state IN ('passed','failed')
  AND json_extract(data,'$.algorithm')<>'' AND json_extract(data,'$.before_observation')>0
- AND json_extract(data,'$.tree')=json_extract(data,'$.after_tree')
- THEN nullif(json_extract(data,'$.tree'),'') END workspace_tree
+ AND json_extract(data,'$.tree')<>'' AND json_extract(data,'$.after_tree')<>''
+ THEN CASE WHEN json_extract(data,'$.tree')=json_extract(data,'$.after_tree')
+      THEN json_object('workspace_tree',json_extract(data,'$.tree'))
+      ELSE json_object('before_tree',json_extract(data,'$.tree'),'after_tree',json_extract(data,'$.after_tree'))
+      END
+ ELSE '{}' END workspace_snapshots
 FROM verifications_v12 WHERE task_id=?`, args, nil
 	case "workspace_updates":
 		return `SELECT c.id seq,CAST(c.id AS TEXT) id,0 revision,c.data,
