@@ -88,8 +88,6 @@ func (s *indexedSnapshot) caseNeighbourhood() {
 func (s indexedSnapshot) casePaths() []string {
 	paths := map[string]bool{}
 	names := map[string]bool{}
-	// UnitKey 由路径、冒号和单元哈希组成；从末尾拆分，保留路径中的冒号。
-	unitPath := func(key string) string { return key[:strings.LastIndexByte(key, ':')] }
 	targetPaths := map[string][]string{}
 	targets := func(name string) []string {
 		if paths, found := targetPaths[name]; found {
@@ -97,7 +95,7 @@ func (s indexedSnapshot) casePaths() []string {
 		}
 		paths := map[string]bool{}
 		for key := range s.Current.read("name", name) {
-			p := unitPath(key)
+			p := indexUnitPath(key)
 			if !s.Current.fileInfo(p).Role.Test {
 				paths[p] = true
 			}
@@ -128,13 +126,13 @@ func (s indexedSnapshot) casePaths() []string {
 		}
 	}
 	referencedNames := keys(names)
-	s.Current.prefetchMembers("word", referencedNames)
+	s.Current.prefetchReferenceFiles("word", referencedNames)
 	if s.Current.err != nil {
 		return nil
 	}
 	for _, name := range referencedNames {
 		for key := range s.Current.read("word", name) {
-			p := unitPath(key)
+			p := indexUnitPath(key)
 			if s.Current.fileInfo(p).Role.Test {
 				paths[p] = true
 			}
@@ -168,13 +166,41 @@ func (x *repositoryIndex) prefetchNames(tokens []units.Token) {
 	if !usesPublishedOnly(x.ctx) {
 		return
 	}
-	var names []string
+	names := map[string]bool{}
 	for _, token := range tokens {
 		if token.Kind == "identifier" {
-			names = append(names, token.Text)
+			names[token.Text] = true
 		}
 	}
-	x.prefetchMembers("name", names)
+	x.prefetchReferenceFiles("name", keys(names))
+}
+
+/**
+ * UnitKey 由路径、冒号和单元哈希组成；从末尾拆分，保留路径中的冒号。
+ */
+func indexUnitPath(key string) string { return key[:strings.LastIndexByte(key, ':')] }
+
+/**
+ * 倒排成员的文件角色随后会被逐一查询，只预取这些文件尚未缓存的元数据。
+ */
+func (x *repositoryIndex) prefetchReferenceFiles(kind string, requested []string) {
+	if !usesPublishedOnly(x.ctx) || x.base != nil || x.id == "" || x.err != nil {
+		return
+	}
+	x.prefetchMembers(kind, requested)
+	if x.err != nil {
+		return
+	}
+	paths := map[string]bool{}
+	for _, key := range requested {
+		for member := range x.read(kind, key) {
+			p := indexUnitPath(member)
+			if _, cached := x.fileCache[p]; !cached {
+				paths[p] = true
+			}
+		}
+	}
+	x.prefetchMembers("file", keys(paths))
 }
 
 /**
