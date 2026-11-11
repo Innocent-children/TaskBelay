@@ -86,6 +86,24 @@ func (s *indexedSnapshot) caseNeighbourhood() {
 }
 
 func (s indexedSnapshot) casePaths() []string {
+	if usesPublishedOnly(s.Current.ctx) {
+		caseNames := map[string]bool{}
+		for _, p := range s.Paths {
+			for _, u := range s.After.Files[p].Units {
+				if s.After.TestUnits[repostats.UnitKey(p, u)] {
+					for _, token := range u.Tokens {
+						if token.Kind == "identifier" {
+							caseNames[token.Text] = true
+						}
+					}
+				}
+			}
+		}
+		s.Current.prefetchReferenceFiles("name", keys(caseNames))
+		if s.Current.err != nil {
+			return nil
+		}
+	}
 	paths := map[string]bool{}
 	names := map[string]bool{}
 	targetPaths := map[string][]string{}
@@ -110,10 +128,6 @@ func (s indexedSnapshot) casePaths() []string {
 				names[u.Name] = true
 			}
 			if s.After.TestUnits[repostats.UnitKey(p, u)] {
-				s.Current.prefetchNames(u.Tokens)
-				if s.Current.err != nil {
-					return nil
-				}
 				for _, t := range u.Tokens {
 					if t.Kind == "identifier" {
 						for _, target := range targets(t.Text) {
