@@ -88,7 +88,7 @@ func recoveryCalls(tokens []units.Token) map[string]bool {
 }
 
 // 只描述相邻赋值、条件和调用的关系。名字和括号不能证明这是错误路径。
-func recoveries(ctx context.Context, in Input) ([]Candidate, error) {
+func branchCandidates(ctx context.Context, in Input) ([]Candidate, error) {
 	clusters := map[string]changes.Cluster{}
 	for _, cluster := range in.Changes.Clusters {
 		for _, id := range cluster.Hunks {
@@ -107,6 +107,10 @@ func recoveries(ctx context.Context, in Input) ([]Candidate, error) {
 		lines := map[int][]units.Token{}
 		for _, t := range units.Significant(f.Tokens) {
 			lines[t.Line] = append(lines[t.Line], t)
+		}
+		role := in.After.Roles[path]
+		if in.EditPreview && !role.Test && !role.Document && !role.Config && !role.Manifest {
+			out = append(out, fieldOverwrites(ctx, f, lines, changed[path], clusters)...)
 		}
 		blocks, err := recoveryBlocks(ctx, in.After, f)
 		if err != nil {

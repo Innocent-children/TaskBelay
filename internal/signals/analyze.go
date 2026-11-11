@@ -245,13 +245,13 @@ func analyzeTargetDesign(ctx context.Context, in Input) (Result, error) {
 		}
 		r.Candidates = append(r.Candidates, c)
 	}
-	recovery, err := recoveries(ctx, in)
+	branches, err := branchCandidates(ctx, in)
 	if err != nil {
 		return r, err
 	}
-	r.Candidates = append(r.Candidates, recovery...)
-	for _, c := range recovery {
-		if !slices.Contains(r.Defensive, c.Cluster) {
+	r.Candidates = append(r.Candidates, branches...)
+	for _, c := range branches {
+		if c.Defensive && !slices.Contains(r.Defensive, c.Cluster) {
 			r.Defensive = append(r.Defensive, c.Cluster)
 		}
 	}
