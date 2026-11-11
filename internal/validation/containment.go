@@ -10,37 +10,38 @@ func Contains(a, b Command) bool {
 	if a.Mixed || b.Mixed || a.Program != b.Program || a.Directory != b.Directory || a.Shell != b.Shell {
 		return false
 	}
-	ap, ao := arguments(a.Args)
-	bp, bo := arguments(b.Args)
-	if !slices.Equal(ao, bo) {
-		return false
-	}
-	if len(ap) == 0 || len(bp) == 0 {
-		// 省略路径时，默认运行范围由程序决定。
-		return len(ap) == len(bp)
-	}
-	for _, target := range bp {
-		covered := false
-		for _, scope := range ap {
-			covered = covered || pathContains(scope, target)
-		}
-		if !covered {
+	scopes, targets := a.Args, b.Args
+	for {
+		// 非路径参数隔开的路径可能用途不同，例如测试包和传给测试的数据文件。
+		scopePaths, scopeRest := cutPaths(scopes)
+		targetPaths, targetRest := cutPaths(targets)
+		if (len(scopePaths) == 0) != (len(targetPaths) == 0) {
 			return false
 		}
+		for _, target := range targetPaths {
+			if !slices.ContainsFunc(scopePaths, func(scope string) bool { return pathContains(scope, target) }) {
+				return false
+			}
+		}
+		if len(scopeRest) == 0 || len(targetRest) == 0 {
+			return len(scopeRest) == len(targetRest)
+		}
+		if scopeRest[0] != targetRest[0] {
+			return false
+		}
+		scopes, targets = scopeRest[1:], targetRest[1:]
 	}
-	return true
 }
-func arguments(args []string) ([]string, []string) {
-	var paths, other []string
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "./") || strings.HasPrefix(arg, "../") || strings.HasPrefix(arg, "/") {
-			paths = append(paths, arg)
-		} else {
-			other = append(other, arg)
+
+func cutPaths(args []string) (paths, rest []string) {
+	for i, arg := range args {
+		if !strings.HasPrefix(arg, "./") && !strings.HasPrefix(arg, "../") && !strings.HasPrefix(arg, "/") {
+			return args[:i], args[i:]
 		}
 	}
-	return paths, other
+	return args, nil
 }
+
 func pathContains(scope, target string) bool {
 	if scope == target {
 		return true
