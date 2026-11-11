@@ -61,7 +61,11 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 	items := make([]any, 0, len(page.Records))
 	last := input.AfterSeq
 	for _, record := range page.Records {
-		items = append(items, map[string]any{"seq": record.Seq, "id": record.ID, "revision": record.Revision, "state": record.State, "read": readLink(page.TaskID, input.Category, record.ID, record.Revision)})
+		item := map[string]any{"seq": record.Seq, "id": record.ID, "revision": record.Revision, "state": record.State, "read": readLink(page.TaskID, input.Category, record.ID, record.Revision)}
+		if input.CommandContains != "" {
+			item["command_prefix"] = record.CommandPrefix
+		}
+		items = append(items, item)
 		last = record.Seq
 	}
 	value["records"], value["last_seq"], value["has_more"] = items, last, page.HasMore

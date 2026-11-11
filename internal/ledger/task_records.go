@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 type RecordQuery struct {
@@ -30,6 +31,7 @@ type TaskRecordBody struct {
 	ID                 string
 	Revision           int64
 	Body               string
+	CommandPrefix      string
 	CharEnd, CharTotal int
 	State              map[string]any
 }
@@ -82,14 +84,15 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 		if err != nil {
 			return err
 		}
+		columns := "seq,id,revision,'{}',state"
 		if input.CommandContains != "" {
 			query += " AND instr(json_extract(data,'$.command.display'), ?) > 0"
 			args = append(args, input.CommandContains)
+			columns = "seq,id,revision,substr(ltrim(json_extract(data,'$.command.display'),char(9,10,13,32)),1,120),state"
 		}
 		if err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM ("+query+")", args...).Scan(&result.Total); err != nil {
 			return err
 		}
-		columns := "seq,id,revision,'{}',state"
 		if input.ID != "" {
 			columns = "seq,id,revision,data,state"
 		}
@@ -124,6 +127,12 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 				return err
 			}
 			if input.ID == "" {
+				if input.CommandContains != "" {
+					if end := strings.IndexAny(data, "\r\n"); end >= 0 {
+						data = data[:end]
+					}
+					record.CommandPrefix = data
+				}
 				result.Records = append(result.Records, record)
 				continue
 			}

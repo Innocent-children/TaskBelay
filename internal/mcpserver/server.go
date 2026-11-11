@@ -38,7 +38,7 @@ func MetadataContext(_ context.Context, request *mcp.CallToolRequest) (ledger.Ac
 type getInput struct {
 	TaskID          string `json:"task_id,omitempty" jsonschema:"省略时读取当前工作区任务"`
 	Category        string `json:"category,omitempty" jsonschema:"省略返回概要；messages、sources、requirements、notes、plans、checks、verifications、workspace_updates 或 task_updates；指定后默认只列编号和状态，不含正文"`
-	CommandContains string `json:"command_contains,omitempty" jsonschema:"仅 verifications 列表使用；在已保存的脱敏命令文本中按字面查找，区分大小写；续页沿用同一片段"`
+	CommandContains string `json:"command_contains,omitempty" jsonschema:"仅 verifications 列表使用；在已保存的脱敏命令全文中按字面查找，区分大小写；匹配项附命令开头 command_prefix，续页沿用同一片段"`
 	AfterSeq        int64  `json:"after_seq,omitempty" jsonschema:"仅列表使用，返回序号更大的记录；不能与 record_id 混用"`
 	Limit           int    `json:"limit,omitempty" jsonschema:"仅列表使用，默认 20，最多 100；不能与 record_id 混用"`
 	RecordID        string `json:"record_id,omitempty" jsonschema:"单条正文编号，从列表或写入结果取得"`
@@ -72,7 +72,7 @@ func New(service hook.Tasks, unavailable error, resolver ContextResolver) *mcp.S
 		resolver = MetadataContext
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "taskbelay", Version: "0.1.0"}, nil)
-	register(server, "task_get", `默认返回简要信息与记录总数。列表只返回编号和状态，不含正文，例如 {"category":"messages","limit":5}。用 after_seq、limit 翻页。重跑前可用 {"category":"verifications","command_contains":"TestExport"} 查命令中含该片段的请求。列表不传 revision、char_offset、char_limit。再按 records[].read 的 category、record_id 读取单条 JSON 正文，需求和方案还须指定 revision；此时才可用 char_offset、char_limit，不传列表参数。按 next_offset 续读，拼接完整后再解析。state 表示查询时的状态，已保存的正文不随状态变化而改写。`, false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input getInput) (any, error) {
+	register(server, "task_get", `默认返回简要信息与记录总数。列表返回编号和状态，例如 {"category":"messages","limit":5}。用 after_seq、limit 翻页。重跑前可用 {"category":"verifications","command_contains":"TestExport"} 查命令中含该片段的请求，根据 command_prefix 和状态选出要读取的记录。列表不传 revision、char_offset、char_limit。再按 records[].read 的 category、record_id 读取单条 JSON 正文，需求和方案还须指定 revision；此时才可用 char_offset、char_limit，不传列表参数。按 next_offset 续读，拼接完整后再解析。state 表示查询时的状态，已保存的正文不随状态变化而改写。`, false, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input getInput) (any, error) {
 		return getTask(ctx, service, actor, input)
 	})
 	register(server, "task_start", "开始、恢复或重新打开任务；保留原始起点，并记录此时的工作区状态。workflow 只接受 auto（全自动）或 semi（半自动），省略时沿用有效设置。", true, service, unavailable, resolver, func(ctx context.Context, actor ledger.Actor, input ledger.StartTaskInput) (any, error) {
