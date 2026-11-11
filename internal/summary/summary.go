@@ -10,6 +10,7 @@ import (
 
 	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
+	"github.com/Innocent-children/taskbelay/internal/shell"
 )
 
 const Budget = 2000
@@ -175,14 +176,6 @@ func Version(input Input) string {
 		}
 		checks = append(checks, check)
 	}
-	type verificationVersion struct {
-		ID, State        string
-		Denied, Executed bool
-	}
-	var verifications []verificationVersion
-	for _, record := range input.View.Verifications {
-		verifications = append(verifications, verificationVersion{record.ID, record.State, record.Denied, record.Executed})
-	}
 	data, _ := json.Marshal(struct {
 		Task           taskVersion
 		Candidates     []taskVersion
@@ -195,10 +188,10 @@ func Version(input Input) string {
 		Peers          []ledger.SessionActivity
 		Check          string
 		Checks         []checkVersion
-		Verifications  []verificationVersion
+		Verification   string
 		Partial        bool
 		PendingActions []string
-	}{task, candidates, input.ContentRevision, input.Observation.Context.Branch, input.Observation.Context.HEAD, input.View.Settings.Revision, GuidanceVersion(input.View.Settings), decisions, input.Peers, input.View.LatestCheck, checks, verifications, input.Partial, input.View.PendingActions})
+	}{task, candidates, input.ContentRevision, input.Observation.Context.Branch, input.Observation.Context.HEAD, input.View.Settings.Revision, GuidanceVersion(input.View.Settings), decisions, input.Peers, input.View.LatestCheck, checks, recentVerification(input.View), input.Partial, input.View.PendingActions})
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
@@ -232,6 +225,45 @@ func NextStep(view ledger.TaskView) *ledger.Note {
 		}
 	}
 	return latest
+}
+
+func recentVerification(view ledger.TaskView) string {
+	if view.Task == nil {
+		return "选定任务后可查看该任务的验证记录。"
+	}
+	known := map[string]bool{}
+	var latest, historical *ledger.VerificationRecord
+	for i := range view.Verifications {
+		r := &view.Verifications[i]
+		if r.Algorithm == "" {
+			historical = r
+			continue
+		}
+		// 同一命令后来再运行，即使那次未完成分类，也应展示新的状态。
+		if r.Scope.Validation && r.CommandKey != "" {
+			known[r.CommandKey] = true
+		}
+		if r.Scope.Validation || known[r.CommandKey] {
+			latest = r
+		}
+	}
+	label := "最近的验证命令"
+	if latest == nil {
+		if historical == nil {
+			return "本任务暂无已识别的验证命令。"
+		}
+		latest = historical
+		label = "历史验证记录（" + latest.HistoricalVersion + "，仅供回看）"
+	} else if segments := latest.Command.Segments; len(segments) == 1 && len(segments[0].Args) > 0 {
+		label += "（" + Truncate(oneLine(shell.Base(segments[0].Args[0])), 12) + "）"
+	}
+	state := latest.State
+	if latest.Denied {
+		state = "被拦截，未执行"
+	} else if state == "" {
+		state = "未知"
+	}
+	return fmt.Sprintf("%s的状态为 %s。用 task_get({\"task_id\":%q,\"category\":\"verifications\",\"record_id\":%q}) 回看这次请求。", label, state, view.Task.ID, latest.ID)
 }
 
 func requirements(view ledger.TaskView) string {
@@ -437,19 +469,7 @@ func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 	if view.LatestCheck != "" && view.LatestCheck != "not_checked" {
 		check = oneLine(view.LatestCheck)
 	}
-	verification := "最近验证：尚无验证记录。"
-	if len(view.Verifications) > 0 {
-		record := view.Verifications[len(view.Verifications)-1]
-		state := record.State
-		if record.Denied {
-			state = "被拦截，未执行"
-		}
-		verification = "最近验证：" + record.ID + " " + state + "。"
-		if record.Algorithm == "" {
-			verification = "历史验证（" + record.HistoricalVersion + "）：" + record.ID + " " + state + "；不参与当前判定。"
-		}
-	}
-	lines = append(lines, verification, "最近检查："+check+"。")
+	lines = append([]string{recentVerification(view), "最近检查：" + check + "。"}, lines...)
 	parts[6] = Truncate(strings.Join(lines, "\n"), 150)
 	prelude := ""
 	if guidance {
