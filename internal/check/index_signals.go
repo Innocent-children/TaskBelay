@@ -90,6 +90,20 @@ func (s *indexedSnapshot) caseNeighbourhood() {
 }
 
 func (s indexedSnapshot) casePaths() []string {
+	x := s.Current
+	isTestFile := func(p string) bool { return x.fileInfo(p).Role.Test }
+	prefetch := x.prefetchReferenceFiles
+	if usesPublishedOnly(x.ctx) && x.base == nil && x.meta.TestFilesIndexed {
+		members := x.read("test_files", x.id)
+		if x.err != nil {
+			return nil
+		}
+		isTestFile = func(p string) bool {
+			_, ok := members[p]
+			return ok
+		}
+		prefetch = x.prefetchMembers
+	}
 	paths := map[string]bool{}
 	names := map[string]bool{}
 	caseNames := map[string]bool{}
@@ -105,13 +119,13 @@ func (s indexedSnapshot) casePaths() []string {
 		}
 	}
 	requestedNames := keys(caseNames)
-	s.Current.prefetchReferenceFiles("name", requestedNames)
+	prefetch("name", requestedNames)
 	if s.Current.err != nil {
 		return nil
 	}
 	for _, name := range requestedNames {
 		found := map[string]bool{}
-		if !s.Current.collectReferencePaths("name", name, false, found) {
+		if !s.Current.collectReferencePaths("name", name, isTestFile, false, found) {
 			return nil
 		}
 		if len(found) > 0 {
@@ -120,12 +134,12 @@ func (s indexedSnapshot) casePaths() []string {
 		}
 	}
 	referencedNames := keys(names)
-	s.Current.prefetchReferenceFiles("word", referencedNames)
+	prefetch("word", referencedNames)
 	if s.Current.err != nil {
 		return nil
 	}
 	for _, name := range referencedNames {
-		if !s.Current.collectReferencePaths("word", name, true, paths) {
+		if !s.Current.collectReferencePaths("word", name, isTestFile, true, paths) {
 			return nil
 		}
 	}
@@ -136,7 +150,7 @@ func (s indexedSnapshot) casePaths() []string {
 			s.Current.err = err
 			return nil
 		}
-		if s.Current.fileInfo(p).Role.Test {
+		if isTestFile(p) {
 			collectIdentifiers(otherNames, s.Current.load(p).Tokens)
 		}
 		if s.Current.err != nil {
@@ -147,12 +161,12 @@ func (s indexedSnapshot) casePaths() []string {
 		delete(otherNames, name)
 	}
 	remainingNames := keys(otherNames)
-	s.Current.prefetchReferenceFiles("name", remainingNames)
+	prefetch("name", remainingNames)
 	if s.Current.err != nil {
 		return nil
 	}
 	for _, name := range remainingNames {
-		if !s.Current.collectReferencePaths("name", name, false, paths) {
+		if !s.Current.collectReferencePaths("name", name, isTestFile, false, paths) {
 			return nil
 		}
 	}
@@ -160,9 +174,9 @@ func (s indexedSnapshot) casePaths() []string {
 }
 
 /**
- * 预取的是原始行。缓存命中后仍须逐个检查取消，避免超时后继续解码其余文件的元数据。
+ * 命中缓存或直接查询路径集合时也逐个检查取消，避免在截止后继续筛选成员。
  */
-func (x *repositoryIndex) collectReferencePaths(kind, key string, wantTest bool, paths map[string]bool) bool {
+func (x *repositoryIndex) collectReferencePaths(kind, key string, isTestFile func(string) bool, wantTest bool, paths map[string]bool) bool {
 	members := x.read(kind, key)
 	if x.err != nil {
 		return false
@@ -173,11 +187,11 @@ func (x *repositoryIndex) collectReferencePaths(kind, key string, wantTest bool,
 			return false
 		}
 		p := indexUnitPath(member)
-		info := x.fileInfo(p)
+		test := isTestFile(p)
 		if x.err != nil {
 			return false
 		}
-		if info.Role.Test == wantTest {
+		if test == wantTest {
 			paths[p] = true
 		}
 	}

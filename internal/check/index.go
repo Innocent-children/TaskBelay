@@ -27,6 +27,7 @@ type indexMeta struct {
 	Iterations                         int
 	LogPrior                           float64
 	TestExtensions                     map[string]bool
+	TestFilesIndexed                   bool `json:",omitempty"`
 	Matchers                           map[string][]string
 	SimilarityMean, SimilarityVariance float64
 	Indirection                        map[string]float64
@@ -833,7 +834,12 @@ func (x *repositoryIndex) writeRows(build ledger.IndexBuild, rows iter.Seq[ledge
 	return flush()
 }
 
-func (x *repositoryIndex) publish(build ledger.IndexBuild) error {
+func (x *repositoryIndex) publish(build ledger.IndexBuild, roles map[string]repostats.Role) error {
+	for p, role := range roles {
+		if role.Test {
+			x.put("test_files", build.ID, p, true)
+		}
+	}
 	for key := range x.volumeDirty {
 		x.put("volume", key, "", x.volumes[key])
 	}
@@ -844,6 +850,8 @@ func (x *repositoryIndex) publish(build ledger.IndexBuild) error {
 		return err
 	}
 	x.meta.Generation = build.Generation
+	// 随根记录发布完整性标记，即使同一构建有旧版进程参与，也不会读到只写了一批的路径。
+	x.meta.TestFilesIndexed = true
 	parent := ledger.IndexBuild{}
 	if x.base != nil {
 		parent = x.base.publishedBuild()
@@ -1020,7 +1028,7 @@ func openIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree 
 	x.updatePrior()
 	x.addMatcher("case", keys(x.rows["case_name"]))
 	x.addMatcher("graph", keys(x.rows["match"]))
-	if err := x.publish(build); err != nil {
+	if err := x.publish(build, raw.Roles); err != nil {
 		return x, err
 	}
 	return x, x.err
