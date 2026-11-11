@@ -8,6 +8,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/platform"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
+	"github.com/Innocent-children/taskbelay/internal/signals"
 	"github.com/Innocent-children/taskbelay/internal/units"
 	"os"
 	"path"
@@ -103,6 +104,16 @@ func (x *repositoryIndex) conventions(sketches []repostats.FileSketch, r reposta
 			continue
 		}
 		info := x.fileInfo(p)
+		var declarationNames map[string]bool
+		if namesChanged {
+			// load 按刚写入的语法约定为单元命名，缓存里的文件可能仍使用旧名字。
+			delete(x.files, p)
+			f := x.load(p)
+			if x.err != nil {
+				return
+			}
+			declarationNames = signals.DeclarationNames(f)
+		}
 		rows := map[string]indexMember{}
 		for _, row := range info.Rows {
 			rows[rowKey(row.Kind, row.Key)+"\x00"+row.Member] = row
@@ -137,10 +148,12 @@ func (x *repositoryIndex) conventions(sketches []repostats.FileSketch, r reposta
 					update("match", strings.ToLower(p+":"+old), key, nil)
 				}
 				if u.Name != "" {
-					update("name", u.Name, key, true)
 					update("fold_name", strings.ToLower(u.Name), key, u.Name)
 					update("match", strings.ToLower(p+":"+u.Name), key, "u:"+key)
 				}
+			}
+			if namesChanged && u.Name != "" {
+				update("name", u.Name, key, nameShape(declarationNames[u.Name]))
 			}
 			if old != "" && sketch.Tests[key] && (old != u.Name || !tests[key]) {
 				update("case_name", old, key, nil)

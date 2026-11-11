@@ -245,6 +245,35 @@ func callStart(ts []Token, open int) bool {
 }
 
 /**
+ * DirectCallNames 只收集名字后圆括号闭合的调用形状。下标和普通变量不能用来定位被测声明。
+ */
+func DirectCallNames(tokens []Token) map[string]bool {
+	ts := Significant(tokens)
+	names := map[string]bool{}
+	var opens []int
+	for i, t := range ts {
+		switch t.Text {
+		case "(":
+			opens = append(opens, i)
+		case ")":
+			if n := len(opens); n > 0 {
+				open := opens[n-1]
+				opens = opens[:n-1]
+				if callStart(ts, open) {
+					names[ts[open-1].Text] = true
+				}
+			}
+		}
+	}
+	return names
+}
+
+func (u Unit) BodyTokens() []Token {
+	start := sort.Search(len(u.Tokens), func(i int) bool { return u.Tokens[i].Start >= u.HeaderEnd })
+	return u.Tokens[start:]
+}
+
+/**
  * CallableHeader 核对首行里的名字和完整参数括号。完整文件与只保留首行的学习摘要共用这项判断。
  */
 func CallableHeader(u Unit) bool {

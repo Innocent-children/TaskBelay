@@ -76,7 +76,7 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			continue
 		}
 		for _, u := range in.After.Files[p].Units {
-			if u.Name != "" {
+			if declaration(in.After.Files[p], u) {
 				targets[u.Name] = append(targets[u.Name], target{p, u})
 			}
 		}
@@ -96,11 +96,7 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			if !declaration(f, u) {
 				continue
 			}
-			body := 0
-			for body < len(u.Tokens) && u.Tokens[body].Start < u.HeaderEnd {
-				body++
-			}
-			for name := range units.Calls(u.Tokens[body:]) {
+			for name := range units.Calls(u.BodyTokens()) {
 				if callers[name] == nil {
 					callers[name] = map[string]bool{}
 				}
@@ -160,11 +156,10 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			c.Retained = c.Retained || old
 			var numbers []float64
 			stringsSet := map[string]bool{}
-			names := map[string]bool{}
-			for _, t := range u.Tokens {
-				if t.Kind == "identifier" {
-					names[t.Text] = true
-				}
+			body := u.BodyTokens()
+			var names map[string]bool
+			if !purposesOnly {
+				names = units.DirectCallNames(body)
 			}
 			for _, name := range keys(names) {
 				for _, target := range targets[name] {
@@ -233,12 +228,6 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 					classes += len(stringsSet) + 1
 				}
 				budget[key] = len(boundaryPoints) + len(stringsSet) + classes
-			}
-			var body []units.Token
-			for _, t := range u.Tokens {
-				if t.Start >= u.HeaderEnd {
-					body = append(body, t)
-				}
 			}
 			c.checks, c.checksUnknown = assertionExpressions(in.After, u.Name, body)
 			if len(constants) > 0 || len(stringsSet) > 0 {
@@ -335,10 +324,14 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 }
 
 /**
- * 大括号内的同形调用可能只是几条语句。按列表行比较时，末项可借前面的逗号确认边界。
+ * 大括号内的同形调用和分支都可能是独立语句。列表末项可借前面的逗号确认边界。
  */
 func tableRowBoundary(f units.File, row units.Unit) bool {
-	if f.Layout != "brackets" || row.Tokens[len(row.Tokens)-1].Text != ")" {
+	if f.Layout != "brackets" {
+		return true
+	}
+	end := row.Tokens[len(row.Tokens)-1].Text
+	if end != ")" && end != "}" {
 		return true
 	}
 	parent := f.Units[row.Parent].Tokens

@@ -695,7 +695,7 @@ func (x *repositoryIndex) changeFile(p string, f units.File, r repostats.Reposit
 			put("head", word, key, true)
 		}
 		if u.Name != "" {
-			put("name", u.Name, key, true)
+			put("name", u.Name, key, nameShape(v.Structure.Callable))
 			put("fold_name", strings.ToLower(u.Name), key, u.Name)
 			if r.TestUnits[key] {
 				put("case_name", u.Name, key, true)

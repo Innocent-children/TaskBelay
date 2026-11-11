@@ -75,6 +75,19 @@ func declaration(f units.File, u units.Unit) bool {
 	return true
 }
 
+/**
+ * DeclarationNames 只收集符合测试比较所用声明形状的名字，供索引和参照准备使用。
+ */
+func DeclarationNames(f units.File) map[string]bool {
+	names := map[string]bool{}
+	for _, u := range f.Units {
+		if declaration(f, u) {
+			names[u.Name] = true
+		}
+	}
+	return names
+}
+
 // outsideCallable 判断单元是否不在任何函数形状的单元内部。
 func outsideCallable(f units.File, u units.Unit) bool {
 	for parent := u.Parent; parent >= 0; parent = f.Units[parent].Parent {

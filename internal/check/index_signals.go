@@ -114,18 +114,17 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 	var requiredNames map[string]bool
 	for _, p := range s.Paths {
 		paths[p] = true
+		if !s.After.Roles[p].Test {
+			maps.Copy(names, signals.DeclarationNames(s.After.Files[p]))
+		}
 		for _, u := range s.After.Files[p].Units {
-			if !s.After.Roles[p].Test && u.Name != "" {
-				names[u.Name] = true
-			}
 			key := repostats.UnitKey(p, u)
-			if compared[key] {
-				identifiers := map[string]bool{}
-				collectIdentifiers(identifiers, u.Tokens)
-				maps.Copy(caseNames, identifiers)
-				requiredNames = intersectNames(requiredNames, identifiers)
-			} else if s.After.TestUnits[key] {
-				collectIdentifiers(caseNames, u.Tokens)
+			if compared[key] || s.After.TestUnits[key] {
+				calls := units.DirectCallNames(u.BodyTokens())
+				maps.Copy(caseNames, calls)
+				if compared[key] {
+					requiredNames = intersectNames(requiredNames, calls)
+				}
 			}
 		}
 	}
@@ -136,21 +135,16 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 	}
 	for _, name := range requestedNames {
 		found := map[string]bool{}
-		if !s.Current.collectReferencePaths("name", name, isTestFile, false, found) {
+		external := s.collectTargetPaths(name, isTestFile, found)
+		if x.err != nil {
 			return nil
 		}
 		if len(found) > 0 {
 			names[name] = true
 			maps.Copy(paths, found)
 		}
-		if requiredNames[name] {
-			// 同批生产声明可能改名，只以稍后会核对内容的请求外声明作依据。
-			for _, p := range s.Paths {
-				delete(found, p)
-			}
-			if len(found) == 0 {
-				delete(requiredNames, name)
-			}
+		if !external {
+			delete(requiredNames, name)
 		}
 	}
 	referencedNames := keys(names)
@@ -164,7 +158,7 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 		if requiredNames[name] {
 			dest = map[string]bool{}
 		}
-		if !s.Current.collectReferencePaths(wordKind, name, isTestFile, true, dest) {
+		if !s.Current.collectTestPaths(wordKind, name, isTestFile, dest) {
 			return nil
 		}
 		if requiredNames[name] {
@@ -179,9 +173,12 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 			s.Current.err = err
 			return nil
 		}
-		_, editing := s.After.Files[p]
+		f, editing := s.After.Files[p]
 		if isTestFile(p) && (editing || possibleTests == nil || possibleTests[p]) {
-			collectIdentifiers(otherNames, s.Current.load(p).Tokens)
+			if !editing {
+				f = x.load(p)
+			}
+			maps.Copy(otherNames, units.DirectCallNames(f.Tokens))
 		}
 		if s.Current.err != nil {
 			return nil
@@ -196,7 +193,8 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 		return nil
 	}
 	for _, name := range remainingNames {
-		if !s.Current.collectReferencePaths("name", name, isTestFile, false, paths) {
+		s.collectTargetPaths(name, isTestFile, paths)
+		if x.err != nil {
 			return nil
 		}
 	}
@@ -214,10 +212,42 @@ func intersectNames(common, next map[string]bool) map[string]bool {
 	return common
 }
 
+func nameShape(callable bool) string {
+	if callable {
+		return "callable"
+	}
+	return "other"
+}
+
 /**
- * 命中缓存或直接查询路径集合时也逐个检查取消，避免在截止后继续筛选成员。
+ * 旧名字成员的值为 true，只能用于补齐可能的参照。用共同调用名排除其他测试之前，
+ * 须找到请求外的可调用声明，同批目标随后可能改名。
  */
-func (x *repositoryIndex) collectReferencePaths(kind, key string, isTestFile func(string) bool, wantTest bool, paths map[string]bool) bool {
+func (s indexedSnapshot) collectTargetPaths(name string, isTestFile func(string) bool, paths map[string]bool) bool {
+	x := s.Current
+	external := false
+	for member, shape := range x.read("name", name) {
+		if err := x.ctx.Err(); err != nil {
+			x.err = err
+			return false
+		}
+		if shape == `"other"` {
+			continue
+		}
+		p := indexUnitPath(member)
+		if !isTestFile(p) {
+			paths[p] = true
+			_, editing := s.After.Files[p]
+			external = external || !editing && shape == `"callable"`
+		}
+		if x.err != nil {
+			return false
+		}
+	}
+	return external
+}
+
+func (x *repositoryIndex) collectTestPaths(kind, key string, isTestFile func(string) bool, paths map[string]bool) bool {
 	members := x.read(kind, key)
 	if x.err != nil {
 		return false
@@ -228,26 +258,18 @@ func (x *repositoryIndex) collectReferencePaths(kind, key string, isTestFile fun
 			return false
 		}
 		p := member
-		if kind == "name" || kind == "word" {
+		if kind == "word" {
 			p = indexUnitPath(member)
 		}
 		test := isTestFile(p)
 		if x.err != nil {
 			return false
 		}
-		if test == wantTest {
+		if test {
 			paths[p] = true
 		}
 	}
 	return true
-}
-
-func collectIdentifiers(names map[string]bool, tokens []units.Token) {
-	for _, token := range tokens {
-		if token.Kind == "identifier" {
-			names[token.Text] = true
-		}
-	}
 }
 
 /**
