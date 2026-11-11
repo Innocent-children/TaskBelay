@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -95,8 +96,8 @@ const indexLineage = `WITH RECURSIVE lineage(id,depth) AS (
 ) `
 
 type indexMatch struct {
-	key, member, data, page string
-	emptyMembers            bool
+	member, data, page string
+	emptyMembers       bool
 }
 
 func (s *Store) IndexRows(ctx context.Context, id, kind, key string) ([]IndexRow, error) {
@@ -115,7 +116,7 @@ func (s *Store) IndexRows(ctx context.Context, id, kind, key string) ([]IndexRow
 		}
 		defer rows.Close()
 		for rows.Next() {
-			m := indexMatch{key: key}
+			var m indexMatch
 			if err := rows.Scan(&m.member, &m.data, &m.page, &m.emptyMembers); err != nil {
 				return err
 			}
@@ -126,7 +127,7 @@ func (s *Store) IndexRows(ctx context.Context, id, kind, key string) ([]IndexRow
 	if err != nil {
 		return nil, err
 	}
-	return s.mergeIndexMatches(ctx, kind, matches)
+	return s.mergeIndexMatches(ctx, kind, key, matches)
 }
 
 /**
@@ -137,49 +138,78 @@ func (s *Store) IndexRowsForKeys(ctx context.Context, id, kind string, keys []st
 	if len(keys) == 0 {
 		return nil, ctx.Err()
 	}
+	keys = slices.Clone(keys)
+	slices.Sort(keys)
+	keys = slices.Compact(keys)
+	if len(keys) == 1 {
+		return s.IndexRows(ctx, id, kind, keys[0])
+	}
 	args := []any{id, kind}
 	values := make([]string, len(keys))
 	for i, key := range keys {
 		values[i] = fmt.Sprintf("(?%d)", i+3)
 		args = append(args, key)
 	}
-	var matches []indexMatch
+	type span struct {
+		first, last string
+		match       indexMatch
+	}
+	var spans []span
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
-		query := indexLineage + `, requested(key) AS (SELECT DISTINCT column1 FROM (VALUES ` + strings.Join(values, ",") + `))
- SELECT key,member,data,page,empty_members FROM (
- SELECT k.key,l.depth,0 AS priority,0 AS seq,r.member,r.data,'' AS page,0 AS empty_members
+		query := indexLineage + `, requested(key) AS (VALUES ` + strings.Join(values, ",") + `)
+ SELECT first_key,last_key,member,data,page,empty_members FROM (
+ SELECT k.key AS first_key,k.key AS last_key,l.depth,0 AS priority,0 AS seq,r.member,r.data,'' AS page,0 AS empty_members
  FROM lineage l CROSS JOIN requested k CROSS JOIN analysis_index_rows_v12 r
  WHERE r.index_id=l.id AND r.kind=?2 AND r.key=k.key
  UNION ALL
- SELECT k.key,l.depth,2-p.legacy,p.seq,'','',p.sha256,p.empty_members
- FROM lineage l CROSS JOIN requested k CROSS JOIN analysis_index_pages_v13 p
- WHERE p.index_id=l.id AND p.kind=?2 AND p.last_key>=k.key AND p.first_key<=k.key)
- ORDER BY key,depth,priority,seq`
+ SELECT p.first_key,p.last_key,l.depth,2-p.legacy,p.seq,'','',p.sha256,p.empty_members
+ FROM lineage l CROSS JOIN analysis_index_pages_v13 p
+ WHERE p.index_id=l.id AND p.kind=?2
+ AND p.last_key>=(SELECT MIN(key) FROM requested) AND p.first_key<=(SELECT MAX(key) FROM requested))
+ ORDER BY depth,priority,seq`
 		rows, err := q.QueryContext(ctx, query, args...)
 		if err != nil {
 			return err
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var m indexMatch
-			if err := rows.Scan(&m.key, &m.member, &m.data, &m.page, &m.emptyMembers); err != nil {
+			var page span
+			if err := rows.Scan(&page.first, &page.last, &page.match.member, &page.match.data, &page.match.page, &page.match.emptyMembers); err != nil {
 				return err
 			}
-			matches = append(matches, m)
+			spans = append(spans, page)
 		}
 		return rows.Err()
 	})
 	if err != nil {
 		return nil, err
 	}
-	return s.mergeIndexMatches(ctx, kind, matches)
+	// 同一页可能覆盖多个请求键。退出短事务后，再按每个键分发已排序的目录项。
+	byKey := make([][]indexMatch, len(keys))
+	for _, page := range spans {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		first, _ := slices.BinarySearch(keys, page.first)
+		for i := first; i < len(keys) && keys[i] <= page.last; i++ {
+			byKey[i] = append(byKey[i], page.match)
+		}
+	}
+	var out []IndexRow
+	for i, key := range keys {
+		rows, err := s.mergeIndexMatches(ctx, kind, key, byKey[i])
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rows...)
+	}
+	return out, ctx.Err()
 }
 
-func (s *Store) mergeIndexMatches(ctx context.Context, kind string, matches []indexMatch) ([]IndexRow, error) {
+func (s *Store) mergeIndexMatches(ctx context.Context, kind, key string, matches []indexMatch) ([]IndexRow, error) {
 	var out []IndexRow
 	seen := map[string]bool{}
-	previousKey := ""
-	add := func(key, member, data string) {
+	add := func(member, data string) {
 		if !seen[member] && data != "" {
 			out = append(out, IndexRow{kind, key, member, data})
 		}
@@ -189,12 +219,8 @@ func (s *Store) mergeIndexMatches(ctx context.Context, kind string, matches []in
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if m.key != previousKey {
-			clear(seen)
-			previousKey = m.key
-		}
 		if m.page == "" {
-			add(m.key, m.member, m.data)
+			add(m.member, m.data)
 			continue
 		}
 		if m.emptyMembers && seen[""] {
@@ -204,18 +230,15 @@ func (s *Store) mergeIndexMatches(ctx context.Context, kind string, matches []in
 		if err != nil {
 			return nil, err
 		}
-		start := sort.Search(len(rows), func(i int) bool { return rows[i].Key >= m.key })
+		start := sort.Search(len(rows), func(i int) bool { return rows[i].Key >= key })
 		for _, row := range rows[start:] {
-			if row.Key != m.key {
+			if row.Key != key {
 				break
 			}
-			add(m.key, row.Member, row.Data)
+			add(row.Member, row.Data)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
-		if out[i].Key != out[j].Key {
-			return out[i].Key < out[j].Key
-		}
 		return out[i].Member < out[j].Member
 	})
 	return out, ctx.Err()
