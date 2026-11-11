@@ -3,9 +3,10 @@ package signals
 import (
 	"context"
 	"fmt"
+	"math"
+
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
-	"math"
 )
 
 func similarities(ctx context.Context, in Input) ([]Candidate, error) {
@@ -36,15 +37,17 @@ func similarities(ctx context.Context, in Input) ([]Candidate, error) {
 			if err != nil {
 				return out, err
 			}
+			target := location(p, u)
 			for _, v := range in.Queries.Similar(sig) {
 				if !v.Callable {
 					continue
 				}
-				if v.Path == p && v.Unit.Line <= u.EndLine && u.Line <= v.Unit.EndLine {
+				if v.Path == p && (v.Unit.ID == u.ID || v.Unit.Line <= u.EndLine && u.Line <= v.Unit.EndLine) {
 					continue
 				}
 				at := location(v.Path, v.Unit)
-				if at == location(p, u) || v.Unit.ID == u.ID && v.Path == p {
+				// 只有编辑预览已将同文件参照核对到拟写入的位置。
+				if at == target && !in.EditPreview {
 					continue
 				}
 				similarity := units.Similarity(grams, v.Grams)
@@ -55,7 +58,21 @@ func similarities(ctx context.Context, in Input) ([]Candidate, error) {
 				if in.Queries.Variance > 0 {
 					z /= math.Sqrt(in.Queries.Variance)
 				}
-				out = append(out, Candidate{Kind: "duplicate", Object: units.Hash(p, u.ID, v.Path, v.Unit.ID), At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{fmt.Sprintf("与 %s 相似度 %.3f；无关单元均值 %.3f", at, similarity, in.Queries.Mean), "词序列相似不证明用途和行为相同"}, Advice: "比较 " + location(p, u) + " 与 " + at + " 的输入输出、副作用和依赖；行为与职责一致时复用已有单元，否则保留必要差异", Features: map[string]float64{"similarity": similarity, "similarity_excess": z, "structure": in.After.Files[p].Confidence}, Benefit: 1})
+				advice := "比较 " + target + " 与 " + at + " 的输入输出、副作用和依赖；行为与职责一致时复用已有单元，否则保留必要差异"
+				if at == target {
+					advice = fmt.Sprintf("拟写入内容中，第 %d 行的声明与第 %d 行已有的同名声明相似。核对两处的输入输出、副作用和依赖，保留各自调用约定需要的入口，只复用行为一致的实现", u.Line, v.Unit.Line)
+				}
+				out = append(out, Candidate{
+					Kind:      "duplicate",
+					Object:    units.Hash(p, u.ID, v.Path, v.Unit.ID),
+					At:        target,
+					Cluster:   cluster,
+					AgentOnly: agent,
+					Facts:     []string{fmt.Sprintf("与 %s 相似度 %.3f；无关单元均值 %.3f", at, similarity, in.Queries.Mean), "词序列相似不证明用途和行为相同"},
+					Advice:    advice,
+					Features:  map[string]float64{"similarity": similarity, "similarity_excess": z, "structure": in.After.Files[p].Confidence},
+					Benefit:   1,
+				})
 			}
 		}
 	}
