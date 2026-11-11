@@ -94,12 +94,13 @@ const indexLineage = `WITH RECURSIVE lineage(id,depth) AS (
  SELECT ?,0 UNION ALL SELECT i.parent_id,l.depth+1 FROM analysis_indexes_v12 i JOIN lineage l ON i.id=l.id WHERE i.parent_id<>''
 ) `
 
+type indexMatch struct {
+	key, member, data, page string
+	emptyMembers            bool
+}
+
 func (s *Store) IndexRows(ctx context.Context, id, kind, key string) ([]IndexRow, error) {
-	type match struct {
-		member, data, page string
-		emptyMembers       bool
-	}
-	var matches []match
+	var matches []indexMatch
 	err := s.read(ctx, func(ctx context.Context, q queryer) error {
 		query := indexLineage + `SELECT member,data,page,empty_members FROM (
  SELECT l.depth,0 AS priority,0 AS seq,r.member,r.data,'' AS page,0 AS empty_members FROM lineage l CROSS JOIN analysis_index_rows_v12 r
@@ -114,7 +115,7 @@ func (s *Store) IndexRows(ctx context.Context, id, kind, key string) ([]IndexRow
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var m match
+			m := indexMatch{key: key}
 			if err := rows.Scan(&m.member, &m.data, &m.page, &m.emptyMembers); err != nil {
 				return err
 			}
@@ -125,17 +126,75 @@ func (s *Store) IndexRows(ctx context.Context, id, kind, key string) ([]IndexRow
 	if err != nil {
 		return nil, err
 	}
+	return s.mergeIndexMatches(ctx, kind, matches)
+}
+
+/**
+ * IndexRowsForKeys 只读取请求键的倒排成员，与逐键读取共用谱系覆盖和删除规则。
+ * 调用方按现有批量参数分批，空结果仅在完整读取成功后才可缓存。
+ */
+func (s *Store) IndexRowsForKeys(ctx context.Context, id, kind string, keys []string) ([]IndexRow, error) {
+	if len(keys) == 0 {
+		return nil, ctx.Err()
+	}
+	args := []any{id, kind}
+	values := make([]string, len(keys))
+	for i, key := range keys {
+		values[i] = fmt.Sprintf("(?%d)", i+3)
+		args = append(args, key)
+	}
+	var matches []indexMatch
+	err := s.read(ctx, func(ctx context.Context, q queryer) error {
+		query := indexLineage + `, requested(key) AS (SELECT DISTINCT column1 FROM (VALUES ` + strings.Join(values, ",") + `))
+ SELECT key,member,data,page,empty_members FROM (
+ SELECT k.key,l.depth,0 AS priority,0 AS seq,r.member,r.data,'' AS page,0 AS empty_members
+ FROM lineage l CROSS JOIN requested k CROSS JOIN analysis_index_rows_v12 r
+ WHERE r.index_id=l.id AND r.kind=?2 AND r.key=k.key
+ UNION ALL
+ SELECT k.key,l.depth,2-p.legacy,p.seq,'','',p.sha256,p.empty_members
+ FROM lineage l CROSS JOIN requested k CROSS JOIN analysis_index_pages_v13 p
+ WHERE p.index_id=l.id AND p.kind=?2 AND p.last_key>=k.key AND p.first_key<=k.key)
+ ORDER BY key,depth,priority,seq`
+		rows, err := q.QueryContext(ctx, query, args...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var m indexMatch
+			if err := rows.Scan(&m.key, &m.member, &m.data, &m.page, &m.emptyMembers); err != nil {
+				return err
+			}
+			matches = append(matches, m)
+		}
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return s.mergeIndexMatches(ctx, kind, matches)
+}
+
+func (s *Store) mergeIndexMatches(ctx context.Context, kind string, matches []indexMatch) ([]IndexRow, error) {
 	var out []IndexRow
 	seen := map[string]bool{}
-	add := func(member, data string) {
+	previousKey := ""
+	add := func(key, member, data string) {
 		if !seen[member] && data != "" {
 			out = append(out, IndexRow{kind, key, member, data})
 		}
 		seen[member] = true
 	}
 	for _, m := range matches {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if m.key != previousKey {
+			clear(seen)
+			previousKey = m.key
+		}
 		if m.page == "" {
-			add(m.member, m.data)
+			add(m.key, m.member, m.data)
 			continue
 		}
 		if m.emptyMembers && seen[""] {
@@ -145,15 +204,20 @@ func (s *Store) IndexRows(ctx context.Context, id, kind, key string) ([]IndexRow
 		if err != nil {
 			return nil, err
 		}
-		start := sort.Search(len(rows), func(i int) bool { return rows[i].Key >= key })
+		start := sort.Search(len(rows), func(i int) bool { return rows[i].Key >= m.key })
 		for _, row := range rows[start:] {
-			if row.Key != key {
+			if row.Key != m.key {
 				break
 			}
-			add(row.Member, row.Data)
+			add(m.key, row.Member, row.Data)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Member < out[j].Member })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Key != out[j].Key {
+			return out[i].Key < out[j].Key
+		}
+		return out[i].Member < out[j].Member
+	})
 	return out, ctx.Err()
 }
 

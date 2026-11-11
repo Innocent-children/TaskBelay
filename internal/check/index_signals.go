@@ -6,6 +6,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/signals"
 	"github.com/Innocent-children/taskbelay/internal/units"
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -111,6 +112,10 @@ func (s indexedSnapshot) casePaths() []string {
 				names[u.Name] = true
 			}
 			if s.After.TestUnits[repostats.UnitKey(p, u)] {
+				s.Current.prefetchNames(u.Tokens)
+				if s.Current.err != nil {
+					return nil
+				}
 				for _, t := range u.Tokens {
 					if t.Kind == "identifier" {
 						for _, target := range targets(t.Text) {
@@ -136,6 +141,10 @@ func (s indexedSnapshot) casePaths() []string {
 			continue
 		}
 		f := s.Current.load(p)
+		s.Current.prefetchNames(f.Tokens)
+		if s.Current.err != nil {
+			return nil
+		}
 		for _, t := range f.Tokens {
 			if t.Kind == "identifier" {
 				for _, target := range targets(t.Text) {
@@ -145,4 +154,33 @@ func (s indexedSnapshot) casePaths() []string {
 		}
 	}
 	return keys(paths)
+}
+
+/**
+ * 编辑前只批量预取本来会逐键查询的名字；静态叠加索引仍沿用原读取方式。
+ */
+func (x *repositoryIndex) prefetchNames(tokens []units.Token) {
+	if !usesPublishedOnly(x.ctx) || x.base != nil || x.id == "" || x.err != nil {
+		return
+	}
+	pending := map[string]bool{}
+	for _, token := range tokens {
+		if token.Kind == "identifier" && !x.loaded[rowKey("name", token.Text)] {
+			pending[token.Text] = true
+		}
+	}
+	for batch := range slices.Chunk(keys(pending), IndexBatch) {
+		rows, err := x.s.IndexRowsForKeys(x.ctx, x.id, "name", batch)
+		if err != nil {
+			x.err = err
+			return
+		}
+		for _, name := range batch {
+			x.setMembers("name", name, map[string]string{})
+			x.loaded[rowKey("name", name)] = true
+		}
+		for _, row := range rows {
+			x.rows["name"][row.Key][row.Member] = row.Data
+		}
+	}
 }
