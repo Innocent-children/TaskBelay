@@ -2,6 +2,7 @@ package validation
 
 import (
 	"context"
+	"fmt"
 	"iter"
 	"math"
 	"slices"
@@ -121,10 +122,10 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 	var last *Run
 	for i := range history {
 		r := &history[i]
-		if CommandKey(r.Command) != key || !r.Executed {
+		if CommandKey(r.Command) != key || !r.Executed || !sameRuntime(current, *r) {
 			continue
 		}
-		if last != nil && last.Input.Semantic == r.Input.Semantic && last.Input.Content != r.Input.Content && last.Input.Environment == r.Input.Environment && last.Input.Tool == r.Input.Tool {
+		if last != nil && last.Input.Semantic == r.Input.Semantic && last.Input.Content != r.Input.Content {
 			if last.State == r.State && known(last.State) {
 				d.Agreements++
 			} else {
@@ -136,7 +137,7 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 	d.CommentInsensitive = credible(d.Agreements, d.Counterexamples)
 	if d.CommentInsensitive && current.Input.Semantic == previous.Input.Semantic && sameRuntime(current, *previous) {
 		d.Kind = "comments"
-		d.Reason = "从历史结果看，仅修改注释后重跑该命令很少提供新信息"
+		d.Reason = fmt.Sprintf("在当前工具和环境下，过去 %d 次只改注释或空白后，重跑这条命令的结果都与改动前一致。本次重跑可能没有新信息", d.Agreements)
 		return d, nil
 	}
 	history, err = relatedHistory()
