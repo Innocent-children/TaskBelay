@@ -158,6 +158,8 @@ session 保存 Agent、session 编号、工作区、开始及最近活动时间�
 
 例如，`{"category":"verifications","output_contains":"TestExport"}` 可找到整组运行中输出过该用例名的记录。`output_contains` 在已保存的输出中按字面查找，区分大小写。`output_excerpt` 给出首次匹配处的原文。末次匹配的摘录与首次不同时，`last_output_excerpt` 给出末次原文。每段最多 120 个 Unicode 字符。按单行文字查询时，如果两处匹配之间还有一行紧邻末次匹配，且这行有内容、与末次摘录连起来能完整放下，就一并显示。例如，用例结束前打印的错误可能直接出现在失败行上方。并行任务也可能在此处写入日志，行的先后只说明输出顺序。整次运行的状态见 `state`，需要其他输出或运行条件时按 `read` 读取正文。同时指定命令和输出片段时，只列出两项都匹配的记录，续页保留两项条件。
 
+按命令或输出查找时，如果命令实际执行并返回通过或失败，且运行前后观察到同一棵工作区 Git tree，列表会在该条记录的 `state.workspace_tree` 中给出完整对象名。两次运行的结果不同时，可以在仓库中用 `git diff <前一次的 tree> <后一次的 tree>` 查看当时哪些文件变了，即使临时用例后来已经删除。对象仍需保存在本地 Git 仓库中。缺少运行前或运行后快照、两者不同或结果未知时省略该字段。快照只涵盖工作区文件，工具版本、环境变量和外部数据仍需另行核对。
+
 工具说明及输入字段说明须直接写明参数的适用条件，让新会话不必先调用失败才知道用法：
 
 - `task_get` 的列表不含正文，列表页使用 `category`、`after_seq` 和 `limit`，只有 `verifications` 列表可指定 `command_contains` 或 `output_contains`。`revision`、`char_offset` 和 `char_limit` 仅用于已指定 `record_id` 的正文读取，不能与列表参数混用。例如先用 `{"category":"messages","limit":5}` 取得列表，再按其中的 `records[].read` 读取正文，需要时增加 `char_limit`，按 `next_offset` 续读。
