@@ -51,15 +51,15 @@ func outputExcerpts(output, match string) (string, string) {
 	}
 	// 列表只持有摘录，避免短字符串占住整份输出。
 	headStart, headEnd := outputExcerptBounds(output, match, first)
-	head := strings.Clone(output[headStart:headEnd])
+	head := output[headStart:headEnd]
 	last := strings.LastIndex(output, match)
 	if last == first {
-		return head, ""
+		return strings.Clone(head), ""
 	}
 	tailStart, tailEnd := outputExcerptBounds(output, match, last)
 	tail := output[tailStart:tailEnd]
 	if tail == head {
-		return head, ""
+		return strings.Clone(head), ""
 	}
 	if headEnd < tailStart && !strings.ContainsAny(match, "\r\n") {
 		// 只附上两段之间紧邻末段的完整行，保留原来的换行符和字符预算。
@@ -70,10 +70,20 @@ func outputExcerpts(output, match string) (string, string) {
 			extended := output[headEnd+lineStart : tailEnd]
 			if utf8.RuneCountInString(extended) <= outputExcerptLimit {
 				tail = extended
+				gap = gap[:lineStart]
+			}
+		}
+		// 从首段末尾跨过一个换行，只取尚未显示且也命中的下一整行。
+		next := strings.TrimPrefix(strings.TrimPrefix(gap, "\r"), "\n")
+		newlineBytes := len(gap) - len(next)
+		if end := strings.IndexAny(next, "\r\n"); newlineBytes > 0 && end >= 0 && strings.Contains(next[:end], match) {
+			extended := output[headStart : headEnd+newlineBytes+end]
+			if utf8.RuneCountInString(extended) <= outputExcerptLimit {
+				head = extended
 			}
 		}
 	}
-	return head, strings.Clone(tail)
+	return strings.Clone(head), strings.Clone(tail)
 }
 
 /**
