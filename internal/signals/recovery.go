@@ -102,6 +102,8 @@ func branchCandidates(ctx context.Context, in Input) ([]Candidate, error) {
 		}
 	}
 	var out []Candidate
+	productionLines := map[string]map[int][]units.Token{}
+	loops := map[string][]filterLoop{}
 	for _, path := range keys(changed) {
 		f := in.After.Files[path]
 		lines := map[int][]units.Token{}
@@ -110,6 +112,8 @@ func branchCandidates(ctx context.Context, in Input) ([]Candidate, error) {
 		}
 		role := in.After.Roles[path]
 		if in.EditPreview && !role.Test && !role.Document && !role.Config && !role.Manifest {
+			productionLines[path] = lines
+			collectFilterLoops(ctx, f, lines, changed[path], clusters, loops)
 			out = append(out, fieldOverwrites(ctx, f, lines, changed[path], clusters)...)
 		}
 		blocks, err := recoveryBlocks(ctx, in.After, f)
@@ -199,6 +203,9 @@ func branchCandidates(ctx context.Context, in Input) ([]Candidate, error) {
 				}
 			}
 		}
+	}
+	if len(loops) > 0 {
+		out = append(out, repeatedFilters(ctx, in, productionLines, loops)...)
 	}
 	return out, ctx.Err()
 }

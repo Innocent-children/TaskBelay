@@ -255,7 +255,7 @@ func editAdvice(candidates []signals.Candidate, suffix string) (string, int) {
 	var advice []string
 	characters := utf8.RuneCountInString(suffix)
 	copies := map[string]bool{}
-	for _, kind := range []string{"test_copy", "test_equivalence", "test_budget", "assertion", "field_overwrite", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
+	for _, kind := range []string{"test_copy", "test_equivalence", "test_budget", "assertion", "field_overwrite", "repeated_filter", "recovery", "forwarding", "abstraction", "parameter", "external", "duplicate"} {
 		for _, c := range candidates {
 			if c.Kind != kind || len(advice) >= CategoryLimit || copies[c.Object] {
 				continue
@@ -271,6 +271,8 @@ func editAdvice(candidates []signals.Candidate, suffix string) (string, int) {
 				text = "拟新增测试用途 " + text
 			} else if c.Kind == "field_overwrite" {
 				text = "拟编辑字段初值 " + text
+			} else if c.Kind == "repeated_filter" {
+				text = "拟编辑集合筛选 " + text
 			} else if c.Kind == "recovery" {
 				text = "拟编辑分支调用 " + text
 			} else if c.Kind == "forwarding" {
