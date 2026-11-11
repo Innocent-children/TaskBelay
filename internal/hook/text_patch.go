@@ -46,7 +46,7 @@ func applyTextHunks(current string, hunks []event.TextHunk) (*string, error) {
 	}
 	var replacements []replacement
 	offset := 0
-	find := func(before []string, offset int, atEnd bool) int {
+	find := func(before []string, offset int, atEnd bool) (int, int) {
 		match := -1
 		for i := offset; i+len(before) <= len(lines); i++ {
 			if atEnd && i+len(before) != len(lines) {
@@ -61,21 +61,23 @@ func applyTextHunks(current string, hunks []event.TextHunk) (*string, error) {
 			}
 			if ok {
 				if match != -1 {
-					return -2
+					return match, i
 				}
 				match = i
 			}
 		}
-		return match
+		return match, -1
 	}
+	var ambiguity error
+	var alternativeEnd int
 	for _, hunk := range hunks {
 		if hunk.Anchor != nil {
-			at := find([]string{*hunk.Anchor}, offset, false)
-			if at == -2 {
+			at, second := find([]string{*hunk.Anchor}, offset, false)
+			if second >= 0 {
 				return nil, fmt.Errorf("补丁锚点有多个匹配位置")
 			}
 			if at < 0 {
-				return nil, nil
+				return nil, ambiguity
 			}
 			offset = at + 1
 		}
@@ -88,15 +90,23 @@ func applyTextHunks(current string, hunks []event.TextHunk) (*string, error) {
 				before = append(before, line[1:])
 			}
 		}
-		at := len(lines)
+		at, second := len(lines), -1
 		if len(before) > 0 {
-			at = find(before, offset, hunk.AtEnd)
-			if at == -2 {
-				return nil, fmt.Errorf("补丁上下文有多个匹配位置")
-			}
+			at, second = find(before, offset, hunk.AtEnd)
 			if at < 0 {
-				return nil, nil
+				return nil, ambiguity
 			}
+		}
+		if ambiguity != nil {
+			// 只有本段原文位置唯一，且前段的第二个匹配放不下时，才能采用前段的第一个匹配。
+			if len(before) == 0 || second >= 0 || alternativeEnd <= at {
+				return nil, ambiguity
+			}
+			ambiguity = nil
+		}
+		if second >= 0 {
+			ambiguity = fmt.Errorf("补丁上下文有多个匹配位置")
+			alternativeEnd = second + len(before)
 		}
 		r := replacement{start: at, end: at + len(before)}
 		old := at
@@ -115,6 +125,9 @@ func applyTextHunks(current string, hunks []event.TextHunk) (*string, error) {
 		if len(before) > 0 {
 			offset = r.end
 		}
+	}
+	if ambiguity != nil {
+		return nil, ambiguity
 	}
 	sort.SliceStable(replacements, func(i, j int) bool { return replacements[i].start < replacements[j].start })
 	var result []textLine
