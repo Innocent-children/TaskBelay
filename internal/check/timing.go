@@ -208,15 +208,18 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 	}
 	scope = "targets"
 	details["design_candidates"] = len(design.Candidates)
-	comparisons := slices.ContainsFunc(purposes.Cases, func(c signals.Case) bool {
-		return c.Added && c.AgentOnly && !c.Retained
-	})
-	details["test_references_needed"] = comparisons
+	compared := map[string]bool{}
+	for _, c := range purposes.Cases {
+		if c.Added && c.AgentOnly && !c.Retained {
+			compared[repostats.UnitKey(c.Path, units.Unit{ID: c.Unit})] = true
+		}
+	}
+	details["test_references_needed"] = len(compared) > 0
 	result := design
-	if comparisons {
+	if len(compared) > 0 {
 		completed = append(slices.Clone(design.Candidates), purposes.Candidates...)
 		advance("references")
-		if err := snapshot.editCaseNeighbourhood(ctx, w); err != nil {
+		if err := snapshot.editCaseNeighbourhood(ctx, w, compared); err != nil {
 			return partial(err)
 		}
 		advance("test_comparisons")
@@ -431,7 +434,7 @@ func previewDeclaration(f units.File, indexed units.Unit, lines []string, editTa
  * 预览只分析请求中的当前与预期内容。直接参照仍来自已发布索引，内容已变化时
  * 略过测试比较，避免把旧断言或旧分段点当作当前事实。
  */
-func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.Workspace) error {
+func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.Workspace, compared map[string]bool) error {
 	if !s.Before.Converged || !s.After.Converged {
 		return nil
 	}
@@ -442,7 +445,7 @@ func (s *indexedSnapshot) editCaseNeighbourhood(ctx context.Context, w gitstate.
 	if !tests {
 		return nil
 	}
-	paths := s.casePaths()
+	paths := s.casePaths(compared)
 	if err := s.err(); err != nil {
 		return err
 	}

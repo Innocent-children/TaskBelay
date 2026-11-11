@@ -84,12 +84,12 @@ func (s indexedSnapshot) queries() *signals.Queries {
  * 用例只补齐被改动声明及其被测对象的直接引用邻域；其余计算查询计数和首行汇总。
  */
 func (s *indexedSnapshot) caseNeighbourhood() {
-	paths := s.casePaths()
+	paths := s.casePaths(nil)
 	s.Before = s.Origin.view(paths)
 	s.After = s.Current.view(paths)
 }
 
-func (s indexedSnapshot) casePaths() []string {
+func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 	x := s.Current
 	isTestFile := func(p string) bool { return x.fileInfo(p).Role.Test }
 	prefetch := x.prefetchReferenceFiles
@@ -111,13 +111,20 @@ func (s indexedSnapshot) casePaths() []string {
 	paths := map[string]bool{}
 	names := map[string]bool{}
 	caseNames := map[string]bool{}
+	var requiredNames map[string]bool
 	for _, p := range s.Paths {
 		paths[p] = true
 		for _, u := range s.After.Files[p].Units {
 			if !s.After.Roles[p].Test && u.Name != "" {
 				names[u.Name] = true
 			}
-			if s.After.TestUnits[repostats.UnitKey(p, u)] {
+			key := repostats.UnitKey(p, u)
+			if compared[key] {
+				identifiers := map[string]bool{}
+				collectIdentifiers(identifiers, u.Tokens)
+				maps.Copy(caseNames, identifiers)
+				requiredNames = intersectNames(requiredNames, identifiers)
+			} else if s.After.TestUnits[key] {
 				collectIdentifiers(caseNames, u.Tokens)
 			}
 		}
@@ -136,25 +143,44 @@ func (s indexedSnapshot) casePaths() []string {
 			names[name] = true
 			maps.Copy(paths, found)
 		}
+		if requiredNames[name] {
+			// 同批生产声明可能改名，只以稍后会核对内容的请求外声明作依据。
+			for _, p := range s.Paths {
+				delete(found, p)
+			}
+			if len(found) == 0 {
+				delete(requiredNames, name)
+			}
+		}
 	}
 	referencedNames := keys(names)
 	prefetch(wordKind, referencedNames)
 	if s.Current.err != nil {
 		return nil
 	}
+	var possibleTests map[string]bool
 	for _, name := range referencedNames {
-		if !s.Current.collectReferencePaths(wordKind, name, isTestFile, true, paths) {
+		dest := paths
+		if requiredNames[name] {
+			dest = map[string]bool{}
+		}
+		if !s.Current.collectReferencePaths(wordKind, name, isTestFile, true, dest) {
 			return nil
 		}
+		if requiredNames[name] {
+			maps.Copy(paths, dest)
+			possibleTests = intersectNames(possibleTests, dest)
+		}
 	}
-	// 只从当前邻域的既有测试收集名字；后面补入的声明不再扩展邻域。
+	// 缺少共同被测名字的测试仍须核对文件内容，但它的其他目标无法使两条用例等价。
 	otherNames := map[string]bool{}
 	for _, p := range keys(paths) {
 		if err := s.Current.ctx.Err(); err != nil {
 			s.Current.err = err
 			return nil
 		}
-		if isTestFile(p) {
+		_, editing := s.After.Files[p]
+		if isTestFile(p) && (editing || possibleTests == nil || possibleTests[p]) {
 			collectIdentifiers(otherNames, s.Current.load(p).Tokens)
 		}
 		if s.Current.err != nil {
@@ -175,6 +201,17 @@ func (s indexedSnapshot) casePaths() []string {
 		}
 	}
 	return keys(paths)
+}
+
+/**
+ * nil 表示尚未取得第一组名字。交集为空时，后续集合不能再将它扩大。
+ */
+func intersectNames(common, next map[string]bool) map[string]bool {
+	if common == nil {
+		return next
+	}
+	maps.DeleteFunc(common, func(name string, _ bool) bool { return !next[name] })
+	return common
 }
 
 /**
