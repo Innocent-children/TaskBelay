@@ -192,7 +192,7 @@ func Version(input Input) string {
 		Verification   string
 		Partial        bool
 		PendingActions []string
-	}{task, candidates, input.ContentRevision, input.Observation.Context.Branch, input.Observation.Context.HEAD, input.View.Settings.Revision, GuidanceVersion(input.View.Settings), decisions, input.Peers, input.View.LatestCheck, checks, recentVerification(input.View), input.Partial, input.View.PendingActions})
+	}{task, candidates, input.ContentRevision, input.Observation.Context.Branch, input.Observation.Context.HEAD, input.View.Settings.Revision, GuidanceVersion(input.View.Settings), decisions, input.Peers, input.View.LatestCheck, checks, recentVerification(input), input.Partial, input.View.PendingActions})
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
@@ -228,7 +228,8 @@ func NextStep(view ledger.TaskView) *ledger.Note {
 	return latest
 }
 
-func recentVerification(view ledger.TaskView) string {
+func recentVerification(input Input) string {
+	view := input.View
 	if view.Task == nil {
 		return "选定任务后可查看该任务的验证记录。"
 	}
@@ -264,7 +265,22 @@ func recentVerification(view ledger.TaskView) string {
 	} else if state == "" {
 		state = "未知"
 	}
-	return fmt.Sprintf("%s的状态为 %s。用 task_get({\"task_id\":%q,\"category\":\"verifications\",\"record_id\":%q}) 回看这次请求。", label, state, view.Task.ID, latest.ID)
+	snapshot := ""
+	if latest.Algorithm != "" && latest.Executed && !latest.Denied && (state == "passed" || state == "failed") {
+		switch {
+		case latest.BeforeObservation == 0 || latest.Tree == "" || latest.AfterTree == "":
+			snapshot = "缺少运行前后的完整快照。"
+		case latest.Tree != latest.AfterTree:
+			snapshot = "命令运行前后的工作区快照不同。"
+		case !input.Observation.Complete || !input.Observation.Full || input.Observation.Tree == "":
+			snapshot = "本次未取得整个工作区的快照，无法与运行时比较。"
+		case input.Observation.Tree == latest.Tree:
+			snapshot = "当前工作区快照与运行前后相同，重跑前先看已有输出。"
+		default:
+			snapshot = "当前工作区快照与运行时不同，先核对改动是否影响这项检查。"
+		}
+	}
+	return fmt.Sprintf("%s的状态为 %s。%s用 task_get({\"task_id\":%q,\"category\":\"verifications\",\"record_id\":%q}) 回看这次请求。", label, state, snapshot, view.Task.ID, latest.ID)
 }
 
 func requirements(view ledger.TaskView) string {
@@ -470,7 +486,7 @@ func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 	if view.LatestCheck != "" && view.LatestCheck != "not_checked" {
 		check = oneLine(view.LatestCheck)
 	}
-	lines = append([]string{recentVerification(view), "最近检查：" + check + "。"}, lines...)
+	lines = append([]string{recentVerification(input), "最近检查：" + check + "。"}, lines...)
 	parts[6] = Truncate(strings.Join(lines, "\n"), 150)
 	prelude := ""
 	if guidance {
