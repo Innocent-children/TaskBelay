@@ -521,7 +521,7 @@ func observedIndex(base *repositoryIndex, runs []repostats.Run) (*repositoryInde
 	if err != nil {
 		return x, err
 	}
-	if err = x.publish(build, r.Roles); err != nil {
+	if err = x.publish(build, r.Roles, sketches); err != nil {
 		return x, err
 	}
 	return x, x.err
@@ -658,7 +658,7 @@ func buildNextIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, 
 	if err = x.refreshStatistics(base, changed, sketches); err != nil {
 		return x, err
 	}
-	if err = x.publish(build, learned.Roles); err != nil {
+	if err = x.publish(build, learned.Roles, sketches); err != nil {
 		return x, err
 	}
 	return x, x.err

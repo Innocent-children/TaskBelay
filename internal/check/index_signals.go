@@ -93,6 +93,7 @@ func (s indexedSnapshot) casePaths() []string {
 	x := s.Current
 	isTestFile := func(p string) bool { return x.fileInfo(p).Role.Test }
 	prefetch := x.prefetchReferenceFiles
+	wordKind := "word"
 	if usesPublishedOnly(x.ctx) && x.base == nil && x.meta.TestFilesIndexed {
 		members := x.read("test_files", x.id)
 		if x.err != nil {
@@ -103,6 +104,9 @@ func (s indexedSnapshot) casePaths() []string {
 			return ok
 		}
 		prefetch = x.prefetchMembers
+		if x.meta.TestWordPathsIndexed {
+			wordKind = testWordPathKind(x.id)
+		}
 	}
 	paths := map[string]bool{}
 	names := map[string]bool{}
@@ -134,12 +138,12 @@ func (s indexedSnapshot) casePaths() []string {
 		}
 	}
 	referencedNames := keys(names)
-	prefetch("word", referencedNames)
+	prefetch(wordKind, referencedNames)
 	if s.Current.err != nil {
 		return nil
 	}
 	for _, name := range referencedNames {
-		if !s.Current.collectReferencePaths("word", name, isTestFile, true, paths) {
+		if !s.Current.collectReferencePaths(wordKind, name, isTestFile, true, paths) {
 			return nil
 		}
 	}
@@ -186,7 +190,10 @@ func (x *repositoryIndex) collectReferencePaths(kind, key string, isTestFile fun
 			x.err = err
 			return false
 		}
-		p := indexUnitPath(member)
+		p := member
+		if kind == "name" || kind == "word" {
+			p = indexUnitPath(member)
+		}
 		test := isTestFile(p)
 		if x.err != nil {
 			return false

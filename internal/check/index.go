@@ -28,6 +28,7 @@ type indexMeta struct {
 	LogPrior                           float64
 	TestExtensions                     map[string]bool
 	TestFilesIndexed                   bool `json:",omitempty"`
+	TestWordPathsIndexed               bool `json:",omitempty"`
 	Matchers                           map[string][]string
 	SimilarityMean, SimilarityVariance float64
 	Indirection                        map[string]float64
@@ -834,7 +835,28 @@ func (x *repositoryIndex) writeRows(build ledger.IndexBuild, rows iter.Seq[ledge
 	return flush()
 }
 
-func (x *repositoryIndex) publish(build ledger.IndexBuild, roles map[string]repostats.Role) error {
+func testWordPathKind(indexID string) string { return "test_word_paths:" + indexID }
+
+func (x *repositoryIndex) indexTestWords(build ledger.IndexBuild, sketch repostats.FileSketch) {
+	kind := testWordPathKind(build.ID)
+	for _, unit := range sketch.Units {
+		if err := x.ctx.Err(); err != nil {
+			x.err = err
+			return
+		}
+		for word := range unit.Words {
+			x.put(kind, word, sketch.Path, true)
+		}
+	}
+}
+
+func (x *repositoryIndex) publish(build ledger.IndexBuild, roles map[string]repostats.Role, sketches []repostats.FileSketch) error {
+	// 初建时每个摘要已随源文件处理。派生索引按这次学习后的角色重新选取测试文件。
+	for _, sketch := range sketches {
+		if roles[sketch.Path].Test {
+			x.indexTestWords(build, sketch)
+		}
+	}
 	for p, role := range roles {
 		if role.Test {
 			x.put("test_files", build.ID, p, true)
@@ -852,6 +874,7 @@ func (x *repositoryIndex) publish(build ledger.IndexBuild, roles map[string]repo
 	x.meta.Generation = build.Generation
 	// 随根记录发布完整性标记，即使同一构建有旧版进程参与，也不会读到只写了一批的路径。
 	x.meta.TestFilesIndexed = true
+	x.meta.TestWordPathsIndexed = true
 	parent := ledger.IndexBuild{}
 	if x.base != nil {
 		parent = x.base.publishedBuild()
@@ -976,6 +999,9 @@ func openIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree 
 				return
 			}
 			info := x.fileInfo(p)
+			if info.Role.Test {
+				x.indexTestWords(build, sketch)
+			}
 			sketch.Classified = info.Role
 			sketch.Tests, sketch.Seeds = info.Tests, info.Seeds
 			x.saveSketch(sketch)
@@ -1028,7 +1054,7 @@ func openIndex(ctx context.Context, s *ledger.Store, w gitstate.Workspace, tree 
 	x.updatePrior()
 	x.addMatcher("case", keys(x.rows["case_name"]))
 	x.addMatcher("graph", keys(x.rows["match"]))
-	if err := x.publish(build, raw.Roles); err != nil {
+	if err := x.publish(build, raw.Roles, nil); err != nil {
 		return x, err
 	}
 	return x, x.err
