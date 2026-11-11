@@ -17,6 +17,15 @@ type Run struct {
 	ReadOnly, Validation bool
 	At                   time.Time
 }
+
+/**
+ * 前置事件可确认命令已启动，只有后置事件时也可确认命令执行过。
+ * 被拦截且未执行的请求不算一次运行。
+ */
+func (r Run) attempted() bool {
+	return r.Started || r.Executed
+}
+
 type Decision struct {
 	Kind, PreviousID, Output, Reason                string
 	Block, Validation, Unstable, CommentInsensitive bool
@@ -70,7 +79,7 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 		if CommandKey(r.Command) != key {
 			continue
 		}
-		if r.Executed {
+		if r.attempted() {
 			previous = &history[i]
 			envChanged = false
 		}
@@ -157,7 +166,7 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 
 /**
  * firstScopeAdvice 只用调用方已读取的近期记录提醒首次请求的较小范围命令。
- * 路径包含不证明本次命令属于验证；已有同命令执行结果时不替代原判断。
+ * 路径包含不证明本次命令属于验证；同一命令已经启动过就不再是首次请求。
  */
 func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision, error) {
 	d := Decision{}
@@ -169,7 +178,7 @@ func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision
 		if err := ctx.Err(); err != nil {
 			return d, err
 		}
-		if r.Executed && CommandKey(r.Command) == key {
+		if r.attempted() && CommandKey(r.Command) == key {
 			return d, nil
 		}
 	}
@@ -198,7 +207,7 @@ func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision
  * 倒序查找提示依据时，先记住每条命令最近的尝试，再判断那次结果能否引用。
  */
 func takeLatestAttempt(r Run, seen map[string]bool) bool {
-	if !r.Executed && !r.Started {
+	if !r.attempted() {
 		return false
 	}
 	key := CommandKey(r.Command)
