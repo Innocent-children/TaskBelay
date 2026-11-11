@@ -445,7 +445,19 @@ func literalRow(tokens []units.Token) bool {
 		return false
 	}
 	fields := tokens[1 : len(tokens)-1]
+	inRecord := false
 	for len(fields) > 0 {
+		// 一列可以是 Name{Field: literal, ...}，字段值仍只接受字面量。
+		if !inRecord && len(fields) > 1 && fields[0].Kind == "identifier" && fields[1].Text == "{" {
+			inRecord = true
+			fields = fields[2:]
+		}
+		if inRecord {
+			if len(fields) < 3 || fields[0].Kind != "identifier" || fields[1].Text != ":" {
+				return false
+			}
+			fields = fields[2:]
+		}
 		if len(fields) > 1 && fields[0].Text == "-" && fields[1].Kind == "number" {
 			fields = fields[1:]
 		}
@@ -454,13 +466,18 @@ func literalRow(tokens []units.Token) bool {
 		default:
 			return false
 		}
-		if len(fields) == 1 {
-			return true
+		fields = fields[1:]
+		if inRecord && len(fields) > 0 && fields[0].Text == "}" {
+			inRecord = false
+			fields = fields[1:]
 		}
-		if fields[1].Text != "," {
+		if len(fields) == 0 {
+			return !inRecord
+		}
+		if fields[0].Text != "," {
 			return false
 		}
-		fields = fields[2:]
+		fields = fields[1:]
 	}
 	return false
 }
