@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type RecordQuery struct {
@@ -33,11 +34,40 @@ type TaskRecordBody struct {
 	Revision           int64
 	Body               string
 	CommandPrefix      string
+	OutputExcerpt      string
 	CharEnd, CharTotal int
 	State              map[string]any
 }
 
 var RecordCategories = []string{"messages", "sources", "requirements", "notes", "plans", "checks", "verifications", "workspace_updates", "task_updates"}
+
+/**
+ * 先给匹配文字留出空间，再从同一行取上下文。跨行查询保留匹配中的换行。
+ */
+func outputExcerpt(output, match string) string {
+	const limit = 120
+	at := strings.Index(output, match)
+	if at < 0 {
+		return ""
+	}
+	start := at
+	for range min(limit/2, limit-utf8.RuneCountInString(match)) {
+		r, size := utf8.DecodeLastRuneInString(output[:start])
+		if size == 0 || r == '\r' || r == '\n' {
+			break
+		}
+		start -= size
+	}
+	matchEnd := at + len(match)
+	count := 0
+	for offset, r := range output[start:] {
+		if count == limit || start+offset >= matchEnd && (r == '\r' || r == '\n') {
+			return output[start : start+offset]
+		}
+		count++
+	}
+	return output[start:]
+}
 
 /**
  * 分页只读取指定任务中的记录。游标是保留期间不改写的记录序号，不是切片下标；
@@ -104,7 +134,11 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 		if input.ID != "" {
 			columns = "seq,id,revision,data,state"
 		}
-		query = "SELECT " + columns + " FROM (" + query + ") WHERE seq>?"
+		output := "''"
+		if input.ID == "" && input.OutputContains != "" {
+			output = "json_extract(data,'$.output')"
+		}
+		query = "SELECT " + columns + "," + output + " FROM (" + query + ") WHERE seq>?"
 		args = append(args, input.AfterSeq)
 		if input.ID != "" {
 			query += " AND id=?"
@@ -123,8 +157,8 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 		defer rows.Close()
 		for rows.Next() {
 			var record TaskRecordBody
-			var data, state string
-			if err := rows.Scan(&record.Seq, &record.ID, &record.Revision, &data, &state); err != nil {
+			var data, state, savedOutput string
+			if err := rows.Scan(&record.Seq, &record.ID, &record.Revision, &data, &state, &savedOutput); err != nil {
 				return err
 			}
 			if len(result.Records) == input.Limit {
@@ -140,6 +174,10 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 						data = data[:end]
 					}
 					record.CommandPrefix = data
+				}
+				if input.OutputContains != "" {
+					// 列表只保留摘录，避免一小段字符串占住整份输出。
+					record.OutputExcerpt = strings.Clone(outputExcerpt(savedOutput, input.OutputContains))
 				}
 				result.Records = append(result.Records, record)
 				continue

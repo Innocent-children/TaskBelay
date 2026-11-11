@@ -66,6 +66,9 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 		if filtered {
 			item["command_prefix"] = record.CommandPrefix
 		}
+		if input.OutputContains != "" {
+			item["output_excerpt"] = record.OutputExcerpt
+		}
 		items = append(items, item)
 		last = record.Seq
 	}
