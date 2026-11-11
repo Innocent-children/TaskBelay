@@ -173,7 +173,7 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 			continue
 		}
 		if sameRuntime(current, r) && Contains(r.Command, current.Command) {
-			d.Kind, d.PreviousID, d.Output, d.Reason = "contained", r.ID, r.Output, "此前已通过的验证包含本次验证范围；这里只作提示，不阻止运行"
+			d.Kind, d.PreviousID, d.Output, d.Reason = "contained", r.ID, r.Output, "此前较大路径范围的验证已通过。请从那次输出核对是否已检查本次关心的目标，本次仍可运行"
 			return d, nil
 		}
 		agreements, counter := implication(r, current, history)
@@ -217,7 +217,7 @@ func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision
 		}
 		if r.Input.Content == current.Input.Content && sameRuntime(current, r) && Contains(r.Command, current.Command) {
 			d.Kind, d.PreviousID, d.Output = "contained", r.ID, r.Output
-			d.Reason = "近期已通过的验证按路径参数包含本次范围；本次命令尚无执行记录，这里只作提示，不阻止运行，也不据此将其归为验证"
+			d.Reason = "近期较大路径范围的验证已通过。请从那次输出核对是否已检查本次关心的目标。本次命令尚无执行记录，照常运行"
 			return d, nil
 		}
 	}

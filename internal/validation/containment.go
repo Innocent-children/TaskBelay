@@ -10,6 +10,9 @@ func Contains(a, b Command) bool {
 	if a.Mixed || b.Mixed || a.Program != b.Program || a.Directory != b.Directory || a.Shell != b.Shell {
 		return false
 	}
+	if narrowsToCurrentDirectory(a.Args, b.Args) {
+		return true
+	}
 	scopes, targets := a.Args, b.Args
 	for {
 		// 非路径参数隔开的路径可能用途不同，例如测试包和传给测试的数据文件。
@@ -31,6 +34,25 @@ func Contains(a, b Command) bool {
 		}
 		scopes, targets = scopeRest[1:], targetRest[1:]
 	}
+}
+
+/**
+ * 单独的点也可能是匹配表达式。只在相同参数位置把 ./... 缩为 .，
+ * 只比较第一个选项之前的位置，不把选项值或转交给被测程序的参数当成目录。
+ */
+func narrowsToCurrentDirectory(scopes, targets []string) bool {
+	if len(scopes) != len(targets) {
+		return false
+	}
+	for i, scope := range scopes {
+		if strings.HasPrefix(scope, "-") {
+			return false
+		}
+		if scope != targets[i] {
+			return scope == "./..." && targets[i] == "." && slices.Equal(scopes[i+1:], targets[i+1:])
+		}
+	}
+	return false
 }
 
 func cutPaths(args []string) (paths, rest []string) {
