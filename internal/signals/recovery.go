@@ -131,13 +131,23 @@ func recoveries(ctx context.Context, in Input) ([]Candidate, error) {
 			var symbols strings.Builder
 			onlyAssigned := true
 			var value string
+			bracketDepth := 0
 			for i, t := range block.header {
 				if t.Kind == "symbol" {
 					symbols.WriteString(t.Text)
+					switch t.Text {
+					case "[":
+						bracketDepth++
+					case "]":
+						bracketDepth = max(0, bracketDepth-1)
+					}
 				}
 				if t.Kind == "identifier" {
 					member := i > 0 && block.header[i-1].Text == "." || i+1 < len(block.header) && (block.header[i+1].Text == "." || block.header[i+1].Text == "[")
-					if !member && slices.ContainsFunc(prior[:assign], func(lhs units.Token) bool { return lhs.Kind == "identifier" && lhs.Text == t.Text }) {
+					// 写入前排除只用作下标的返回值。修改后仍保守地保护可能的恢复分支。
+					if !member && (!in.EditPreview || bracketDepth == 0) && slices.ContainsFunc(prior[:assign], func(lhs units.Token) bool {
+						return lhs.Kind == "identifier" && lhs.Text == t.Text
+					}) {
 						value = t.Text
 					} else if !slices.Contains(in.After.SyntaxFor(path).Keywords, t.Text) {
 						onlyAssigned = false
