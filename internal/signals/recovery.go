@@ -168,9 +168,14 @@ func recoveries(ctx context.Context, in Input) ([]Candidate, error) {
 				if t.Kind != "identifier" || i+1 == len(body) || body[i+1].Text != "(" {
 					continue
 				}
-				line := slices.IndexFunc(body[:i+1], func(v units.Token) bool { return v.Line == t.Line })
-				if _, repeated := calls[t.Text]; !repeated && line < i && slices.Contains(in.After.SyntaxFor(path).Returns, body[line].Text) {
-					continue
+				if !calls[t.Text] {
+					if in.EditPreview {
+						continue
+					}
+					line := slices.IndexFunc(body[:i+1], func(v units.Token) bool { return v.Line == t.Line })
+					if line < i && slices.Contains(in.After.SyntaxFor(path).Returns, body[line].Text) {
+						continue
+					}
 				}
 				for _, h := range changed[path] {
 					if t.Line <= h.Span.AfterStart || t.Line > h.Span.AfterEnd {
