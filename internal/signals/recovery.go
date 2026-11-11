@@ -183,9 +183,15 @@ func recoveries(ctx context.Context, in Input) ([]Candidate, error) {
 					}
 					cluster := clusters[h.ID]
 					at := fmt.Sprintf("%s:%d", path, t.Line)
-					out = append(out, Candidate{Kind: "recovery", At: at, Object: units.Hash(path, u.ID, t.Text, fmt.Sprint(t.Start-u.Start)), Cluster: cluster.ID, AgentOnly: changes.ByAgent(cluster.Origin), Defensive: true, ReviewOnly: true, Benefit: 1,
-						Facts:  []string{fmt.Sprintf("%s:%d 的赋值中出现调用 %s；下一行的条件使用同名 %s，分支内的改动含调用 %s", path, u.Line-1, strings.Join(keys(calls), "、"), value, t.Text)},
-						Advice: "核对触发条件、处理职责以及再次调用会改变什么结果；结合幂等约定、已有失败处理或更直接的做法说明用途"})
+					c := Candidate{Kind: "recovery", At: at, Object: units.Hash(path, u.ID, t.Text, fmt.Sprint(t.Start-u.Start)), Cluster: cluster.ID, AgentOnly: changes.ByAgent(cluster.Origin), Defensive: true, ReviewOnly: true, Benefit: 1}
+					if in.EditPreview {
+						c.Facts = []string{fmt.Sprintf("第 %d 行的赋值片段「%s」，下一行的条件使用 %s；分支内同名调用 %s 所在行的片段「%s」", u.Line-1, previewExcerpt(prior), value, t.Text, previewExcerpt(lines[t.Line]))}
+						c.Advice = "对照两次调用的对象、实参和副作用。若重复计算了可复用的结果，考虑只算一次；处理不同输入或按约定需要重试时，保留相应调用"
+					} else {
+						c.Facts = []string{fmt.Sprintf("%s:%d 的赋值中出现调用 %s；下一行的条件使用同名 %s，分支内的改动含调用 %s", path, u.Line-1, strings.Join(keys(calls), "、"), value, t.Text)}
+						c.Advice = "核对触发条件、处理职责以及再次调用会改变什么结果；结合幂等约定、已有失败处理或更直接的做法说明用途"
+					}
+					out = append(out, c)
 				}
 			}
 		}

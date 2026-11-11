@@ -22,22 +22,21 @@ type indirection struct {
 }
 
 /**
- * 单元名可能只是声明中的普通词。摘录拟写入的声明，让 Agent 能看到成员的实际写法。
- * 单元词流已排除注释和空白；按完整词截取，避免长声明占满反馈预算。
+ * 从已排除注释和空白的词流摘录拟写入的代码。隐去字面量，按完整词截取。
  */
-func abstractionExcerpt(u units.Unit) string {
+func previewExcerpt(tokens []units.Token) string {
 	const maxBytes = 160
 	var excerpt strings.Builder
-	for i, token := range u.Tokens {
+	for i, token := range tokens {
 		word := token.Text
 		switch token.Kind {
 		case "string", "key", "number":
 			word = "…"
 		}
 		separator := ""
-		if i > 0 && token.Line != u.Tokens[i-1].Line {
+		if i > 0 && token.Line != tokens[i-1].Line {
 			separator = "\n"
-		} else if i > 0 && token.Start > u.Tokens[i-1].End {
+		} else if i > 0 && token.Start > tokens[i-1].End {
 			separator = " "
 		}
 		if excerpt.Len()+len(separator)+len(word) > maxBytes {
@@ -361,7 +360,7 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 		switch kind {
 		case "abstraction":
 			if abstractPreview {
-				facts = append(facts, fmt.Sprintf("拟写入第 %d 行的声明片段「%s」；成员符合抽象形状，未统计实现数量或确认类型关系", v.unit.Line, abstractionExcerpt(v.unit)))
+				facts = append(facts, fmt.Sprintf("拟写入第 %d 行的声明片段「%s」；成员符合抽象形状，未统计实现数量或确认类型关系", v.unit.Line, previewExcerpt(v.unit.Tokens)))
 				advice = "核对直接使用已有类型会失去哪些状态、依赖隔离或调用约定；已有类型能表达所需状态且满足这些约定时，可以省去这一层；依据不足时保留，不因此补测试"
 			} else {
 				facts = append(facts, "按成员名与首行共现识别出一个实现候选："+v.replacement+"；未确认类型关系或隔离用途")
