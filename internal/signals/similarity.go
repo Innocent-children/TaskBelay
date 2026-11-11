@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 
 	"github.com/Innocent-children/taskbelay/internal/repostats"
@@ -80,6 +81,10 @@ func similarities(ctx context.Context, in Input) ([]Candidate, error) {
 						fact = "两处声明的主体原文相同"
 					}
 					advice = fmt.Sprintf("在拟写入内容中，本次改动的声明在第 %d 行，已有声明在第 %d 行。%s。核对两处的输入输出、副作用和依赖，保留各自调用约定需要的入口，只复用行为一致的实现", u.Line, v.Unit.Line, fact)
+				} else if in.EditPreview && v.Path == p {
+					if detail := booleanForwardingAdvice(f, u, v.Unit); detail != "" {
+						advice = detail
+					}
 				}
 				out = append(out, Candidate{
 					Kind:      "duplicate",
@@ -96,6 +101,76 @@ func similarities(ctx context.Context, in Input) ([]Candidate, error) {
 		}
 	}
 	return out, ctx.Err()
+}
+
+func booleanForwardingAdvice(f units.File, proposed, reference units.Unit) string {
+	target, args := returnedCall(f, proposed)
+	if target == "" {
+		return ""
+	}
+	other, prior := returnedCall(f, reference)
+	if other != target || len(args) != len(prior) {
+		return ""
+	}
+	different := -1
+	for i, arg := range args {
+		if arg == prior[i] {
+			continue
+		}
+		if different >= 0 || !(arg == "true" && prior[i] == "false" || arg == "false" && prior[i] == "true") {
+			return ""
+		}
+		different = i
+	}
+	if different < 0 {
+		return ""
+	}
+	return fmt.Sprintf("拟写入的 %s（第 %d 行）和 %s（第 %d 行）都直接返回 %s 的调用结果。第 %d 个实参分别为 %s 和 %s，其余实参写法相同。核对这两个取值改变了什么。如果调用方用 %s 的结果就能保留所需行为和入口约定，可以省去这层转发", proposed.Name, proposed.Line, reference.Name, reference.Line, target, different+1, args[different], prior[different], reference.Name)
+}
+
+/**
+ * 声明首行的类型括号也可能成为相似候选。按起点和名字找到完整的大括号主体，
+ * 只接受直接返回一次调用且每个实参均为单个标识符的写法。
+ */
+func returnedCall(f units.File, at units.Unit) (string, []string) {
+	if f.Layout != "brackets" {
+		return "", nil
+	}
+	first := sort.Search(len(f.Units), func(i int) bool { return f.Units[i].Start >= at.Start })
+	for _, u := range f.Units[first:] {
+		if u.Start != at.Start {
+			break
+		}
+		if u.Name != at.Name || u.End < at.End {
+			continue
+		}
+		body := u.BodyTokens()
+		if len(body) < 6 || body[len(body)-1].Text != "}" || !declaration(f, u) {
+			continue
+		}
+		body = body[:len(body)-1]
+		if body[len(body)-1].Text == ";" {
+			body = body[:len(body)-1]
+		}
+		// 换行可能结束 return 语句，不能把下一条调用当作返回值。
+		if body[0].Line != body[2].Line || body[0].Text != "return" || body[1].Kind != "identifier" ||
+			body[2].Text != "(" || body[len(body)-1].Text != ")" {
+			continue
+		}
+		fields := body[3 : len(body)-1]
+		if len(fields)%2 != 1 {
+			continue
+		}
+		var args []string
+		for i := 0; i < len(fields); i += 2 {
+			if fields[i].Kind != "identifier" || i > 0 && fields[i-1].Text != "," {
+				return "", nil
+			}
+			args = append(args, fields[i].Text)
+		}
+		return body[1].Text, args
+	}
+	return "", nil
 }
 
 /**
