@@ -134,7 +134,7 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			for _, v := range in.Before.Files[p].Units {
 				old = old || v.Name == u.Name
 			}
-			c := Case{ID: units.Hash(p, u.ID), Name: u.Name, Path: p, Unit: u.ID, Cluster: cluster, Start: u.Start, End: u.End, Added: !old, AgentOnly: agent, Retained: !agent, Shape: strings.Join(units.Sequence(u.Tokens, true), " ")}
+			c := Case{ID: units.Hash(p, u.ID), Name: u.Name, Path: p, Unit: u.ID, Cluster: cluster, Start: u.Start, End: u.End, Added: !old, AgentOnly: agent, Retained: !agent}
 			var assertionShape []string
 			for _, token := range u.Tokens {
 				if token.End > u.HeaderEnd {
