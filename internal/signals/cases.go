@@ -151,7 +151,7 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 				}
 			}
 			if purposesOnly && !c.Retained && f.Layout == "brackets" {
-				out = append(out, copiedTestLines(ctx, in, f, u, c)...)
+				out = append(out, testDataLines(ctx, in, f, u, c)...)
 			}
 			c.Retained = c.Retained || old
 			var numbers []float64
@@ -389,10 +389,10 @@ func caseInsertions(in Input, path string, test units.Unit) []changes.Span {
 }
 
 /**
- * 在同一张表中比较数据行，在用例主体中比较连续的相同调用。
+ * 在同一张表中比较数据行，在用例主体中核对字面量调用的输入和副本。
  * 优先以未改动的行为参照，位置、次数和执行顺序的用途仍需由 Agent 核对。
  */
-func copiedTestLines(ctx context.Context, in Input, f units.File, test units.Unit, c Case) []Candidate {
+func testDataLines(ctx context.Context, in Input, f units.File, test units.Unit, c Case) []Candidate {
 	var insertions []changes.Span
 	if !c.Added {
 		insertions = caseInsertions(in, c.Path, test)
@@ -410,6 +410,7 @@ func copiedTestLines(ctx context.Context, in Input, f units.File, test units.Uni
 	}
 	first := map[rowText]int{}
 	var proposed []proposedRow
+	var out []Candidate
 	lastCall, callStart := 0, 0
 	start := sort.Search(len(f.Units), func(i int) bool { return f.Units[i].Start > test.HeaderEnd })
 	for i := start; i < len(f.Units); i++ {
@@ -443,13 +444,19 @@ func copiedTestLines(ctx context.Context, in Input, f units.File, test units.Uni
 			insertions = insertions[1:]
 		}
 		inserted := len(insertions) > 0 && insertions[0].AfterStart < row.Line
+		if (c.Added || inserted) && key.callStart != 0 && len(out) == 0 && adjacentMatchFragments(row.Tokens) {
+			out = append(out, Candidate{
+				Kind: "test_input_gap", Object: c.ID, At: fmt.Sprintf("%s:%s/%d", c.Path, c.Name, row.Line), Cluster: c.Cluster, AgentOnly: true,
+				Facts:  []string{"第三、四项都含有第二项的跨行文本，两项之间加一个换行就得到第一项，中间没有其他行"},
+				Advice: "若要检查跨行匹配时不会附带中间行，可在原输入的两段之间放一行不匹配的文字，保留原预期。若要检查两段紧邻时的行为，保留这组输入",
+			})
+		}
 		if inserted || c.Added && first[key] != 0 {
 			proposed = append(proposed, proposedRow{key, i})
 		} else if first[key] == 0 {
 			first[key] = row.Line
 		}
 	}
-	var out []Candidate
 	for _, item := range proposed {
 		if ctx.Err() != nil {
 			return nil
@@ -478,6 +485,34 @@ func copiedTestLines(ctx context.Context, in Input, f units.File, test units.Uni
 		}
 	}
 	return out
+}
+
+/**
+ * 调用已按独占一行的字面量实参核对。只解释普通双引号文本中的换行转义。
+ */
+func adjacentMatchFragments(call []units.Token) bool {
+	var args [4]string
+	if len(call) != 10 {
+		return false
+	}
+	for i := range args {
+		t := call[2+i*2]
+		if (t.Kind != "string" && t.Kind != "key") || len(t.Text) < 2 || t.Text[0] != '"' || t.Text[len(t.Text)-1] != '"' || strings.ContainsAny(t.Text, "\r\n${}") {
+			return false
+		}
+		value := strings.ReplaceAll(strings.ReplaceAll(t.Text[1:len(t.Text)-1], `\r`, "\r"), `\n`, "\n")
+		if strings.Contains(value, `\`) {
+			return false
+		}
+		args[i] = value
+	}
+	input, match, head, tail := args[0], args[1], args[2], args[3]
+	if head == tail || !strings.ContainsAny(strings.Trim(match, "\r\n"), "\r\n") || !strings.Contains(head, match) || !strings.Contains(tail, match) {
+		return false
+	}
+	rest, starts := strings.CutPrefix(input, head)
+	gap, ends := strings.CutSuffix(rest, tail)
+	return starts && ends && (gap == "\n" || gap == "\r\n" || gap == "\r")
 }
 
 /**
