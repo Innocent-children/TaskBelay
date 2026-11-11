@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Innocent-children/taskbelay/internal/changes"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
 )
@@ -137,7 +138,7 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			for _, v := range in.Before.Files[p].Units {
 				old = old || v.Name == u.Name
 			}
-			c := Case{ID: units.Hash(p, u.ID), Name: u.Name, Path: p, Unit: u.ID, Cluster: cluster, Start: u.Start, End: u.End, Added: !old, AgentOnly: agent, Retained: old || !agent, Shape: strings.Join(units.Sequence(u.Tokens, true), " ")}
+			c := Case{ID: units.Hash(p, u.ID), Name: u.Name, Path: p, Unit: u.ID, Cluster: cluster, Start: u.Start, End: u.End, Added: !old, AgentOnly: agent, Retained: !agent, Shape: strings.Join(units.Sequence(u.Tokens, true), " ")}
 			var assertionShape []string
 			for _, token := range u.Tokens {
 				if token.End > u.HeaderEnd {
@@ -153,6 +154,10 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 					c.Retained = true
 				}
 			}
+			if purposesOnly && !c.Retained && f.Layout == "brackets" {
+				out = append(out, copiedLiteralRows(ctx, in, f, u, c)...)
+			}
+			c.Retained = c.Retained || old
 			var numbers []float64
 			stringsSet := map[string]bool{}
 			names := map[string]bool{}
@@ -249,9 +254,6 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			}
 			all = append(all, c)
 			if purposesOnly {
-				if c.Added && c.AgentOnly && !c.Retained && f.Layout == "brackets" {
-					out = append(out, copiedLiteralRows(ctx, in, f, u, c)...)
-				}
 				continue
 			}
 			// 同一列表中骨架相同的兄弟元素逐行参与，避免把整张表当成一条用例。
@@ -333,18 +335,56 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 }
 
 /**
+ * 既有用例只核对纯插入。首次插入之前的行差可定位原声明，沿用按原用例编号作出的保留决定。
+ */
+func caseInsertions(in Input, path string, test units.Unit) []changes.Span {
+	var insertions []changes.Span
+	for _, h := range in.Changes.Hunks {
+		s := h.Span
+		if h.Path != path || s.AfterEnd < test.Line || s.AfterStart >= test.EndLine {
+			continue
+		}
+		if s.BeforeStart != s.BeforeEnd || h.Kind == "move" || s.AfterStart < test.Line {
+			return nil
+		}
+		insertions = append(insertions, s)
+	}
+	if len(in.Retained) > 0 && len(insertions) > 0 {
+		beforeLine := test.Line + insertions[0].BeforeStart - insertions[0].AfterStart
+		for _, u := range in.Before.Files[path].Units {
+			if u.Line == beforeLine && u.Name == test.Name && slices.Contains(in.Retained, units.Hash(path, u.ID)) {
+				return nil
+			}
+		}
+	}
+	return insertions
+}
+
+/**
  * 只在同一括号容器中比较独占一行的数据。行号与原文来自拟写入的文件，
  * 位置、次数和执行顺序的用途仍需由 Agent 核对。
  */
 func copiedLiteralRows(ctx context.Context, in Input, f units.File, test units.Unit, c Case) []Candidate {
+	var insertions []changes.Span
+	if !c.Added {
+		insertions = caseInsertions(in, c.Path, test)
+		if len(insertions) == 0 {
+			return nil
+		}
+	}
 	type rowText struct {
 		parent int
 		text   string
 	}
+	type proposedRow struct {
+		key   rowText
+		index int
+	}
 	first := map[rowText]int{}
-	var out []Candidate
+	var proposed []proposedRow
 	start := sort.Search(len(f.Units), func(i int) bool { return f.Units[i].Start > test.HeaderEnd })
-	for _, row := range f.Units[start:] {
+	for i := start; i < len(f.Units); i++ {
+		row := f.Units[i]
 		if row.Start >= test.End || ctx.Err() != nil {
 			break
 		}
@@ -361,11 +401,27 @@ func copiedLiteralRows(ctx context.Context, in Input, f units.File, test units.U
 			continue
 		}
 		key := rowText{row.Parent, line}
-		prior := first[key]
-		if prior == 0 {
+		// 已有用例只以未改动的行为参照，参照可能排在插入位置之后。
+		for len(insertions) > 0 && insertions[0].AfterEnd < row.Line {
+			insertions = insertions[1:]
+		}
+		inserted := len(insertions) > 0 && insertions[0].AfterStart < row.Line
+		if inserted || c.Added && first[key] != 0 {
+			proposed = append(proposed, proposedRow{key, i})
+		} else if first[key] == 0 {
 			first[key] = row.Line
+		}
+	}
+	var out []Candidate
+	for _, item := range proposed {
+		if ctx.Err() != nil {
+			return nil
+		}
+		prior := first[item.key]
+		if prior == 0 {
 			continue
 		}
+		row := f.Units[item.index]
 		cluster, _ := clusterFor(in, c.Path, row.Line, row.Line)
 		if cluster != "" {
 			out = append(out, Candidate{

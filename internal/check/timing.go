@@ -212,7 +212,6 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		return c.Added && c.AgentOnly && !c.Retained
 	})
 	details["test_references_needed"] = comparisons
-	// 表格行继承所属用例的保留状态；没有可提醒的用例时，设计候选已是最终结果。
 	result := design
 	if comparisons {
 		completed = append(slices.Clone(design.Candidates), purposes.Candidates...)
@@ -229,11 +228,11 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 		if err := snapshot.err(); err != nil {
 			return partial(err)
 		}
-		// 完整等价类比较替换早期用途候选，直接从目标原文确认的副本仍然有效。
-		for _, c := range purposes.Candidates {
-			if c.Kind == "test_copy" {
-				result.Candidates = append(result.Candidates, c)
-			}
+	}
+	// 同表插入的副本只依赖目标原文，不需要为它准备跨文件参照。
+	for _, c := range purposes.Candidates {
+		if c.Kind == "test_copy" {
+			result.Candidates = append(result.Candidates, c)
 		}
 	}
 	scope, reason = "full", "no_candidates"
