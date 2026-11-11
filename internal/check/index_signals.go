@@ -84,12 +84,12 @@ func (s indexedSnapshot) queries() *signals.Queries {
  * 用例只补齐被改动声明及其被测对象的直接引用邻域；其余计算查询计数和首行汇总。
  */
 func (s *indexedSnapshot) caseNeighbourhood() {
-	paths := s.casePaths(nil)
+	paths, _ := s.casePaths(nil)
 	s.Before = s.Origin.view(paths)
 	s.After = s.Current.view(paths)
 }
 
-func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
+func (s indexedSnapshot) casePaths(compared map[string]bool) ([]string, []string) {
 	x := s.Current
 	isTestFile := func(p string) bool { return x.fileInfo(p).Role.Test }
 	prefetch := x.prefetchReferenceFiles
@@ -97,7 +97,7 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 	if usesPublishedOnly(x.ctx) && x.base == nil && x.meta.TestFilesIndexed {
 		members := x.read("test_files", x.id)
 		if x.err != nil {
-			return nil
+			return nil, nil
 		}
 		isTestFile = func(p string) bool {
 			_, ok := members[p]
@@ -131,13 +131,13 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 	requestedNames := keys(caseNames)
 	prefetch("name", requestedNames)
 	if s.Current.err != nil {
-		return nil
+		return nil, nil
 	}
 	for _, name := range requestedNames {
 		found := map[string]bool{}
 		external := s.collectTargetPaths(name, isTestFile, found)
 		if x.err != nil {
-			return nil
+			return nil, nil
 		}
 		if len(found) > 0 {
 			names[name] = true
@@ -150,7 +150,7 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 	referencedNames := keys(names)
 	prefetch(wordKind, referencedNames)
 	if s.Current.err != nil {
-		return nil
+		return nil, nil
 	}
 	var possibleTests map[string]bool
 	for _, name := range referencedNames {
@@ -159,7 +159,7 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 			dest = map[string]bool{}
 		}
 		if !s.Current.collectTestPaths(wordKind, name, isTestFile, dest) {
-			return nil
+			return nil, nil
 		}
 		if requiredNames[name] {
 			maps.Copy(paths, dest)
@@ -171,7 +171,7 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 	for _, p := range keys(paths) {
 		if err := s.Current.ctx.Err(); err != nil {
 			s.Current.err = err
-			return nil
+			return nil, nil
 		}
 		f, editing := s.After.Files[p]
 		if isTestFile(p) && (editing || possibleTests == nil || possibleTests[p]) {
@@ -181,7 +181,7 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 			maps.Copy(otherNames, units.DirectCallNames(f.Tokens))
 		}
 		if s.Current.err != nil {
-			return nil
+			return nil, nil
 		}
 	}
 	for name := range caseNames {
@@ -190,15 +190,19 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) []string {
 	remainingNames := keys(otherNames)
 	prefetch("name", remainingNames)
 	if s.Current.err != nil {
-		return nil
+		return nil, nil
 	}
 	for _, name := range remainingNames {
 		s.collectTargetPaths(name, isTestFile, paths)
 		if x.err != nil {
-			return nil
+			return nil, nil
 		}
 	}
-	return keys(paths)
+	// 编辑前核对查找范围时，原先没有命中声明的名字也算查询依据。
+	if compared != nil {
+		return keys(paths), append(requestedNames, remainingNames...)
+	}
+	return keys(paths), nil
 }
 
 /**

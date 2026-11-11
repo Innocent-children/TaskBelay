@@ -453,7 +453,7 @@ func (s *indexedSnapshot) editCaseNeighbourhood(compared map[string]bool) error 
 	if !tests {
 		return nil
 	}
-	paths := s.casePaths(compared)
+	paths, queriedNames := s.casePaths(compared)
 	if err := s.err(); err != nil {
 		return err
 	}
@@ -490,8 +490,15 @@ func (s *indexedSnapshot) editCaseNeighbourhood(compared map[string]bool) error 
 			return err
 		}
 		for p, file := range changed {
-			if current.Roles[p].Test || !maps.Equal(signals.DeclarationNames(file), signals.DeclarationNames(neighbours.Files[p])) {
-				return fmt.Errorf("生产参照 %s 的测试身份或声明名已变化，略过编辑前提示", p)
+			if current.Roles[p].Test {
+				return fmt.Errorf("生产参照 %s 的测试身份已变化，略过编辑前提示", p)
+			}
+			indexedNames := signals.DeclarationNames(neighbours.Files[p])
+			currentNames := signals.DeclarationNames(file)
+			for _, name := range queriedNames {
+				if indexedNames[name] != currentNames[name] {
+					return fmt.Errorf("生产参照 %s 中查找的声明名 %s 已变化，略过编辑前提示", p, name)
+				}
 			}
 			neighbours.Files[p], neighbours.Roles[p] = file, current.Roles[p]
 		}
