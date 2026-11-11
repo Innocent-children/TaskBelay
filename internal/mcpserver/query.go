@@ -82,6 +82,9 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 	}
 	if input.OutputContains != "" {
 		list["output_contains"] = input.OutputContains
+		if page.Total == 0 {
+			value["details"] = map[string]any{"hint": "output_contains 按已保存的连续原文匹配。可用确定出现过的短片段查输出，用 command_contains 限定命令。若只记得命令，可单独查命令，再读运行记录。"}
+		}
 	}
 	value["read"] = list
 	return value, nil
