@@ -21,6 +21,35 @@ type indirection struct {
 	sites       []string
 }
 
+/**
+ * 单元名可能只是声明中的普通词。摘录拟写入的声明，让 Agent 能看到成员的实际写法。
+ * 单元词流已排除注释和空白；按完整词截取，避免长声明占满反馈预算。
+ */
+func abstractionExcerpt(u units.Unit) string {
+	const maxBytes = 160
+	var excerpt strings.Builder
+	for i, token := range u.Tokens {
+		word := token.Text
+		switch token.Kind {
+		case "string", "key", "number":
+			word = "…"
+		}
+		separator := ""
+		if i > 0 && token.Line != u.Tokens[i-1].Line {
+			separator = "\n"
+		} else if i > 0 && token.Start > u.Tokens[i-1].End {
+			separator = " "
+		}
+		if excerpt.Len()+len(separator)+len(word) > maxBytes {
+			excerpt.WriteString("…")
+			break
+		}
+		excerpt.WriteString(separator)
+		excerpt.WriteString(word)
+	}
+	return excerpt.String()
+}
+
 // 每个词只记录它在哪些匹配首行出现。排除当前单元和同名声明时，
 // 仍能找到其他出处，不会把同名声明自己的首行算作实现证据。
 type headWords struct {
@@ -327,8 +356,8 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 		switch kind {
 		case "abstraction":
 			if abstractPreview {
-				facts = append(facts, "成员仅有首行或简短主体，符合抽象形状；成员名字为 "+v.replacement+"；未统计实现数量，也未确认类型关系或隔离用途")
-				advice = "核对 " + at + " 隔离的实际依赖或变化、类型和调用约定，以及直接使用具体实现会失去什么行为；确认无需这一层且这些行为可保留时，才考虑省去本次拟编辑的抽象；依据不足时保留必要抽象，不因此补测试"
+				facts = append(facts, fmt.Sprintf("拟写入第 %d 行的声明片段「%s」；成员符合抽象形状，未统计实现数量或确认类型关系", v.unit.Line, abstractionExcerpt(v.unit)))
+				advice = "核对直接使用已有类型会失去哪些状态、依赖隔离或调用约定；已有类型能表达所需状态且满足这些约定时，可以省去这一层；依据不足时保留，不因此补测试"
 			} else {
 				facts = append(facts, "按成员名与首行共现识别出一个实现候选："+v.replacement+"；未确认类型关系或隔离用途")
 				advice = "核对 " + at + " 是否承担当前需求中的依赖隔离或替换约定；确认不需要、且调用方可直接使用 " + v.replacement + " 后，再调整引用并删除该抽象"
