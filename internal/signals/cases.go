@@ -155,7 +155,7 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 				}
 			}
 			if purposesOnly && !c.Retained && f.Layout == "brackets" {
-				out = append(out, copiedLiteralRows(ctx, in, f, u, c)...)
+				out = append(out, copiedTestLines(ctx, in, f, u, c)...)
 			}
 			c.Retained = c.Retained || old
 			var numbers []float64
@@ -361,10 +361,10 @@ func caseInsertions(in Input, path string, test units.Unit) []changes.Span {
 }
 
 /**
- * 只在同一括号容器中比较独占一行的数据。行号与原文来自拟写入的文件，
- * 位置、次数和执行顺序的用途仍需由 Agent 核对。
+ * 在同一张表中比较数据行，在用例主体中比较连续的相同调用。
+ * 优先以未改动的行为参照，位置、次数和执行顺序的用途仍需由 Agent 核对。
  */
-func copiedLiteralRows(ctx context.Context, in Input, f units.File, test units.Unit, c Case) []Candidate {
+func copiedTestLines(ctx context.Context, in Input, f units.File, test units.Unit, c Case) []Candidate {
 	var insertions []changes.Span
 	if !c.Added {
 		insertions = caseInsertions(in, c.Path, test)
@@ -373,8 +373,8 @@ func copiedLiteralRows(ctx context.Context, in Input, f units.File, test units.U
 		}
 	}
 	type rowText struct {
-		parent int
-		text   string
+		parent, callStart int
+		text              string
 	}
 	type proposedRow struct {
 		key   rowText
@@ -382,26 +382,35 @@ func copiedLiteralRows(ctx context.Context, in Input, f units.File, test units.U
 	}
 	first := map[rowText]int{}
 	var proposed []proposedRow
+	lastCall, callStart := 0, 0
 	start := sort.Search(len(f.Units), func(i int) bool { return f.Units[i].Start > test.HeaderEnd })
 	for i := start; i < len(f.Units); i++ {
 		row := f.Units[i]
 		if row.Start >= test.End || ctx.Err() != nil {
 			break
 		}
-		if row.Parent < 0 || row.Line != row.EndLine || !literalRow(row.Tokens) {
+		if row.Parent < 0 || row.Line != row.EndLine {
 			continue
 		}
 		parent := f.Units[row.Parent]
-		if parent.Tokens[len(parent.Tokens)-1].Text == ")" {
-			continue
-		}
 		line := strings.TrimSpace(f.Lines[row.Line-1])
-		body, comma := strings.CutSuffix(line, ",")
-		if !comma || len(strings.TrimSpace(body)) != row.End-row.Start {
-			continue
+		key := rowText{parent: row.Parent, text: line}
+		if body, comma := strings.CutSuffix(line, ","); comma {
+			if parent.Tokens[len(parent.Tokens)-1].Text == ")" || len(strings.TrimSpace(body)) != row.End-row.Start || !literalRow(row.Tokens) {
+				continue
+			}
+		} else {
+			body := strings.TrimSpace(strings.TrimSuffix(line, ";"))
+			if parent.ID != test.ID || len(body) != row.End-row.Start || len(row.Tokens) < 4 ||
+				row.Tokens[0].Kind != "identifier" || row.Tokens[1].Text != "(" || !literalRow(row.Tokens[1:]) {
+				continue
+			}
+			if lastCall == 0 || lastCall+1 != row.Line || f.Lines[lastCall-1] != f.Lines[row.Line-1] {
+				callStart = row.Line
+			}
+			lastCall, key.callStart = row.Line, callStart
 		}
-		key := rowText{row.Parent, line}
-		// 先收集同表未改动的行，即使它排在新行之后，也优先作为参照。
+		// 先收集未改动的行，即使它排在新行之后，也优先作为参照。
 		for len(insertions) > 0 && insertions[0].AfterEnd < row.Line {
 			insertions = insertions[1:]
 		}
@@ -425,10 +434,18 @@ func copiedLiteralRows(ctx context.Context, in Input, f units.File, test units.U
 		}
 		cluster, _ := clusterFor(in, c.Path, row.Line, row.Line)
 		if cluster != "" {
+			var fact, advice string
+			if item.key.callStart == 0 {
+				fact = fmt.Sprintf("同一组表格数据中，第 %d 行与第 %d 行的字面量和排列完全相同", row.Line, prior)
+				advice = fmt.Sprintf("核对两行是否各自承担一次必要检查。行的位置、次数、顺序或共享状态有意义时保留；确认重复后可省去第 %d 行", row.Line)
+			} else {
+				fact = fmt.Sprintf("第 %d 行与第 %d 行属于一段连续的相同调用，调用名 %s 和字面量实参均相同", row.Line, prior, row.Tokens[0].Text)
+				advice = fmt.Sprintf("核对再次调用检查了什么。依赖状态变化、幂等性或执行次数时保留；确认只重复同一项检查后可省去第 %d 行", row.Line)
+			}
 			out = append(out, Candidate{
 				Kind: "test_copy", Object: units.Hash(c.ID, row.ID), At: fmt.Sprintf("%s:%s/%d", c.Path, c.Name, row.Line), Cluster: cluster, AgentOnly: true,
-				Facts:  []string{fmt.Sprintf("同一组表格数据中，第 %d 行与第 %d 行的字面量和排列完全相同", row.Line, prior)},
-				Advice: fmt.Sprintf("核对两行是否各自承担一次必要检查。行的位置、次数、顺序或共享状态有意义时保留；确认重复后可省去第 %d 行", row.Line),
+				Facts:  []string{fact},
+				Advice: advice,
 			})
 		}
 	}

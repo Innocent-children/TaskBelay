@@ -229,7 +229,7 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, curr
 			return partial(err)
 		}
 	}
-	// 同表插入的副本只依赖目标原文，不需要为它准备跨文件参照。
+	// 同文件副本只依赖目标原文，不需要为它准备跨文件参照。
 	for _, c := range purposes.Candidates {
 		if c.Kind == "test_copy" {
 			result.Candidates = append(result.Candidates, c)
