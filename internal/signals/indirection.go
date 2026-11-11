@@ -332,8 +332,13 @@ func indirections(ctx context.Context, in Input) ([]Candidate, []string, error) 
 	}
 	var out []Candidate
 	for _, v := range after {
-		cluster, agent := clusterFor(in, v.path, v.unit.Line, v.unit.EndLine)
 		abstractPreview := in.EditPreview && v.kind == "abstraction"
+		endLine := v.unit.EndLine
+		if abstractPreview {
+			// 成员改动不能说明本次编辑引入了整个抽象；只核对声明首行所属的改动。
+			endLine = v.unit.Line
+		}
+		cluster, agent := clusterFor(in, v.path, v.unit.Line, endLine)
 		if cluster == "" || !abstractPreview && v.count != 1 {
 			continue
 		}
