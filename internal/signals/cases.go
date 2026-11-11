@@ -401,7 +401,7 @@ func copiedLiteralRows(ctx context.Context, in Input, f units.File, test units.U
 			continue
 		}
 		key := rowText{row.Parent, line}
-		// 已有用例只以未改动的行为参照，参照可能排在插入位置之后。
+		// 先收集同表未改动的行，即使它排在新行之后，也优先作为参照。
 		for len(insertions) > 0 && insertions[0].AfterEnd < row.Line {
 			insertions = insertions[1:]
 		}
@@ -417,11 +417,12 @@ func copiedLiteralRows(ctx context.Context, in Input, f units.File, test units.U
 		if ctx.Err() != nil {
 			return nil
 		}
+		row := f.Units[item.index]
 		prior := first[item.key]
 		if prior == 0 {
+			first[item.key] = row.Line
 			continue
 		}
-		row := f.Units[item.index]
 		cluster, _ := clusterFor(in, c.Path, row.Line, row.Line)
 		if cluster != "" {
 			out = append(out, Candidate{
