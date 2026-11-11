@@ -114,7 +114,7 @@ func workflow(settings ledger.EffectiveSettings) string {
 func Guidance(settings ledger.EffectiveSettings) string {
 	mode := "按当前需求进行全自动开发。"
 	if settings.Values["workflow"].Value == "semi" {
-		mode = "半自动用 plan_save 提交完整方案，说明要点、变更和文件路径。用户明确确认后用 plan_confirm 记录原话。讨论或否定仍待确认，核对附带修改，已确认范围可继续。"
+		mode = "半自动用 plan_save 提交完整方案，列变更要点和路径。核对附带修改，用 plan_confirm 记用户明确确认的原话。讨论或否定仍待确认，可继续已确认范围。"
 	}
 	enforcement := "过期编辑退回后，先读当前内容再改。"
 	if settings.Values["enforcement"].Value == "hint" {
@@ -124,8 +124,9 @@ func Guidance(settings ledger.EffectiveSettings) string {
 	if settings.Values["analysis.tests"].Value == "on" {
 		tests = "开启"
 	}
-	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新状态。用 note_add 记决定和待办，对少量可疑设计、测试或防御可用 note_add.review 引用代码说明用途。工作区变化不代表新授权，勿用旧代码覆盖当前修改。"+enforcement+
-		"写测试先看已有用例缺什么，旧用例已删可查运行快照 workspace_tree。局部能测清就直接测，验证衔接就走实际流程。重跑前用 task_get 查命令或输出（command_contains、output_contains）。编辑工具可核对改动、预览测试，限工作区内。shell 写入不预览。动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
+	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新。用 note_add 记决定和待办，少量可疑设计、测试或防御可用 note_add.review 引用代码说明用途。工作区变化不代表新授权，勿用旧代码覆盖当前修改。"+enforcement+
+		"写测试先看已有用例缺什么，已删用例可查运行快照 workspace_tree。局部能测清就直接测，验证衔接走实际流程。重跑前用 task_get 查命令或输出（command_contains、output_contains）。"+
+		"只查待提交补丁的空白，可暂存后运行一次 git diff --cached --check。工作区内编辑工具可核对改动、预览测试。shell 写入不预览。动态测试："+tests+"；未知或未完成不能算通过。", GuidanceBudget)
 }
 
 func GuidanceVersion(settings ledger.EffectiveSettings) string {
@@ -505,7 +506,7 @@ func BuildWithRecord(input Input, guidance bool) (string, event.SessionRecord) {
 		if !input.Sessionless {
 			count++
 		}
-		shared := fmt.Sprintf("最近十分钟有 %d 个 session 活动，正在共享当前工作区和任务；独立开发可使用 worktree。", count)
+		shared := fmt.Sprintf("近十分钟有 %d 个 session 共享工作区和任务。独立开发可用 worktree。", count)
 		prelude = Truncate(prelude, GuidanceBudget-Tokens(shared)-1)
 		prelude = strings.TrimSpace(prelude + "\n" + shared)
 	}
