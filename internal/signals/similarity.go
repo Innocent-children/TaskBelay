@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 
@@ -125,7 +126,69 @@ func booleanForwardingAdvice(f units.File, proposed, reference units.Unit) strin
 	if different < 0 {
 		return ""
 	}
-	return fmt.Sprintf("拟写入的 %s（第 %d 行）和 %s（第 %d 行）都直接返回 %s 的调用结果。第 %d 个实参分别为 %s 和 %s，其余实参写法相同。核对这两个取值改变了什么。如果调用方用 %s 的结果就能保留所需行为和入口约定，可以省去这层转发", proposed.Name, proposed.Line, reference.Name, reference.Line, target, different+1, args[different], prior[different], reference.Name)
+	fact := fmt.Sprintf("拟写入的 %s（第 %d 行）和 %s（第 %d 行）都直接返回 %s 的调用结果。第 %d 个实参分别为 %s 和 %s，其余实参写法相同。", proposed.Name, proposed.Line, reference.Name, reference.Line, target, different+1, args[different], prior[different])
+	if name, line := loopFilterParameter(f, target, different, len(args)); line > 0 {
+		return fact + fmt.Sprintf("同文件的 %s 在循环第 %d 行的 if 条件中使用形参 %s，分支内只执行 continue。若 %s 的结果保留了筛选所需的数据，且在调用处筛选能保持求值、副作用和入口约定，可省去这层转发", target, line, name, reference.Name)
+	}
+	return fact + fmt.Sprintf("核对这两个取值改变了什么。如果调用方用 %s 的结果就能保留所需行为和入口约定，可以省去这层转发", reference.Name)
+}
+
+/**
+ * 只跟进已有转发建议。两个调用的实参位置须对应同一份声明，且这个形参在正文里只有一处可核对的使用。
+ */
+func loopFilterParameter(f units.File, target string, slot, arity int) (string, int) {
+	callee := -1
+	for i, u := range f.Units {
+		if u.Name == target && declaration(f, u) && u.Tokens[len(u.Tokens)-1].Text == "}" {
+			if callee >= 0 {
+				return "", 0
+			}
+			callee = i
+		}
+	}
+	if callee < 0 {
+		return "", 0
+	}
+	u := f.Units[callee]
+	params := declarationParams(u)
+	if len(params) != arity {
+		return "", 0
+	}
+	name, ok := strings.CutSuffix(params[slot].Text, " bool")
+	if !ok {
+		return "", 0
+	}
+	body := u.BodyTokens()
+	isName := func(t units.Token) bool { return t.Kind == "identifier" && t.Text == name }
+	use := slices.IndexFunc(body, isName)
+	if use < 1 || slices.ContainsFunc(body[use+1:], isName) {
+		return "", 0
+	}
+	// 排除字段选择、重新绑定等同名写法，只接受直接作为条件项的变量。
+	if before := body[use-1].Text; before != "if" && before != "||" && before != "&&" {
+		return "", 0
+	}
+	if after := body[use+1].Text; after != "&&" && after != "||" && after != "{" {
+		return "", 0
+	}
+	for _, branch := range f.Units[callee+1:] {
+		if branch.Start > body[use].Start {
+			break
+		}
+		if branch.HeaderEnd < body[use].End || branch.Parent < 0 || branch.Tokens[0].Text != "if" {
+			continue
+		}
+		loop := f.Units[branch.Parent]
+		if loop.Parent != callee || loop.Tokens[0].Text != "for" {
+			continue
+		}
+		statements := branch.BodyTokens()
+		if (len(statements) == 2 || len(statements) == 3 && statements[1].Text == ";") &&
+			statements[0].Text == "continue" && statements[len(statements)-1].Text == "}" {
+			return name, branch.Line
+		}
+	}
+	return "", 0
 }
 
 /**

@@ -55,7 +55,7 @@ func fieldCondition(ts []units.Token, element string) string {
 /**
  * 只取声明首行中的具名参数，沿用调用实参的分隔规则。
  */
-func filterParams(u units.Unit) []units.Token {
+func declarationParams(u units.Unit) []units.Token {
 	end := len(u.Tokens) - len(u.BodyTokens())
 	sites := units.Calls(u.Tokens[:end])[u.Name]
 	if len(sites) != 1 {
@@ -82,7 +82,7 @@ func collectFilterLoops(ctx context.Context, f units.File, lines map[int][]units
 				continue
 			}
 			u := EnclosingDeclaration(f, loop[0].Start, guard[len(guard)-1].End)
-			params := filterParams(u)
+			params := declarationParams(u)
 			slot := slices.IndexFunc(params, func(param units.Token) bool {
 				return strings.HasPrefix(param.Text, loop[6].Text+" [ ] ")
 			})
@@ -177,7 +177,7 @@ func filterRoute(ctx context.Context, in Input, files map[string]map[int][]units
 			if len(sites) == 0 || !declaration(f, u) {
 				continue
 			}
-			params := filterParams(u)
+			params := declarationParams(u)
 			for i, param := range params {
 				variable, _, slice := strings.Cut(param.Text, " [ ] ")
 				if !slice || !passes(branch, sites, len(params), i, source) {
