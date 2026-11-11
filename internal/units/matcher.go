@@ -34,21 +34,28 @@ func WholeWord(text string, m Match) bool {
 }
 
 func HasWord(text, word string) bool {
+	return WordIndex(text, word) >= 0
+}
+
+/**
+ * WordIndex 返回第一次整词匹配的字节位置，供调用方核对该处的上下文。
+ */
+func WordIndex(text, word string) int {
 	if word == "" {
-		return false
+		return -1
 	}
 	for offset := 0; offset < len(text); {
 		i := strings.Index(text[offset:], word)
 		if i < 0 {
-			return false
+			break
 		}
 		i += offset
 		if WholeWord(text, Match{word, i, i + len(word)}) {
-			return true
+			return i
 		}
 		offset = i + len(word)
 	}
-	return false
+	return -1
 }
 
 type MatcherEdge struct {

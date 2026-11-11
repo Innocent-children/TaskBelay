@@ -13,8 +13,10 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 func (x *repositoryIndex) saveSketch(sketch repostats.FileSketch) {
@@ -351,6 +353,9 @@ func observedNames(base *repositoryIndex, runs []repostats.Run) (names []string,
 // EvidenceContext 是判断输出片段是否照抄源码时，名字两侧各取的字符数。
 const EvidenceContext = 16
 
+// 带源码位置的诊断正文可能逐项打印任意名字，不能据此确认这些用例运行过。
+var diagnosticLocation = regexp.MustCompile(`^[[:space:]]*[^[:space:]]+:[0-9]+:([[:space:]]|$)`)
+
 /**
  * executed 从输出里出现的名字中，留下能说明代码确实被执行过的那些。
  * 查看文件、搜索文本的命令也会输出名字，但名字连同旁边的文字是从源码照抄的；
@@ -367,11 +372,17 @@ func executed(base *repositoryIndex, output string, names []string) ([]string, e
 	var patterns []string
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimRight(line, "\r")
+		if diagnosticLocation.MatchString(line) {
+			continue
+		}
 		for _, name := range names {
-			if len(byName[name]) >= 3 || !units.HasWord(line, name) {
+			if len(byName[name]) >= 3 || !strings.Contains(line, name) {
 				continue
 			}
-			at := strings.Index(line, name)
+			at := reportNameOffset(line, name)
+			if at < 0 {
+				continue
+			}
 			left, right := []rune(line[:at]), []rune(line[at+len(name):])
 			if len(left) > EvidenceContext {
 				left = left[len(left)-EvidenceContext:]
@@ -419,6 +430,32 @@ func executed(base *repositoryIndex, output string, names []string) ([]string, e
 		}
 	}
 	return keys(reported), nil
+}
+
+/**
+ * reportNameOffset 要求名字之外另有报告文字，选项拼写、单列文件名和纯计数不足以提供运行证据。
+ */
+func reportNameOffset(line, name string) int {
+	at, offset := -1, 0
+	hasDetail := false
+	for field := range strings.FieldsSeq(line) {
+		start := offset + strings.Index(line[offset:], field)
+		offset = start + len(field)
+		if strings.HasPrefix(field, "-") {
+			continue
+		}
+		if i := units.WordIndex(field, name); i >= 0 {
+			if at < 0 {
+				at = start + i
+			}
+		} else if strings.ContainsFunc(field, func(r rune) bool { return unicode.IsLetter(r) || unicode.Is(unicode.So, r) }) {
+			hasDetail = true
+		}
+		if at >= 0 && hasDetail {
+			return at
+		}
+	}
+	return -1
 }
 
 // reportShape 把一行输出里的名字换成占位符、数字换成 0，得到这一行的报告格式。

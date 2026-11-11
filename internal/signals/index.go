@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/units"
-	"strings"
 )
 
 type CallSite struct {
@@ -58,52 +57,7 @@ func hasBody(u units.Unit) bool {
  * 要求参数括号在首行部分完整闭合，避免把调用的实参节点当作声明。
  */
 func callable(u units.Unit) bool {
-	if u.Name == "" || !hasBody(u) {
-		return false
-	}
-	tokens := units.Significant(u.Tokens)
-	depth := 0
-	for _, t := range tokens {
-		if t.End > u.HeaderEnd {
-			break
-		}
-		if depth == 0 && strings.ContainsAny(t.Text, "=!") && t.Kind == "symbol" {
-			return false
-		}
-		if t.Text == "(" {
-			depth++
-		}
-		if t.Text == ")" {
-			depth--
-		}
-	}
-	for i, t := range tokens {
-		if t.End > u.HeaderEnd {
-			break
-		}
-		if t.Text != u.Name || i+1 >= len(tokens) || tokens[i+1].Text != "(" {
-			continue
-		}
-		if i > 0 && tokens[i-1].Text == "." {
-			return false
-		}
-		depth := 0
-		for _, arg := range tokens[i+1:] {
-			if arg.End > u.HeaderEnd {
-				break
-			}
-			if arg.Text == "(" {
-				depth++
-			}
-			if arg.Text == ")" {
-				depth--
-				if depth == 0 {
-					return true
-				}
-			}
-		}
-	}
-	return false
+	return units.CallableHeader(u) && hasBody(u)
 }
 
 /**

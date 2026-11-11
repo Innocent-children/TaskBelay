@@ -244,6 +244,50 @@ func callStart(ts []Token, open int) bool {
 	return open > 0 && ts[open-1].Kind == "identifier" && ts[open].Text != "{"
 }
 
+/**
+ * CallableHeader 核对首行里的名字和完整参数括号。完整文件与只保留首行的学习摘要共用这项判断。
+ */
+func CallableHeader(u Unit) bool {
+	if u.Name == "" {
+		return false
+	}
+	end := sort.Search(len(u.Tokens), func(i int) bool { return u.Tokens[i].End > u.HeaderEnd })
+	tokens := Significant(u.Tokens[:end])
+	depth := 0
+	for _, t := range tokens {
+		if depth == 0 && strings.ContainsAny(t.Text, "=!") && t.Kind == "symbol" {
+			return false
+		}
+		switch t.Text {
+		case "(":
+			depth++
+		case ")":
+			depth--
+		}
+	}
+	for i, t := range tokens {
+		if t.Text != u.Name || i+1 >= len(tokens) || tokens[i+1].Text != "(" {
+			continue
+		}
+		if i > 0 && tokens[i-1].Text == "." {
+			return false
+		}
+		depth := 0
+		for _, arg := range tokens[i+1:] {
+			switch arg.Text {
+			case "(":
+				depth++
+			case ")":
+				depth--
+				if depth == 0 {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func CallNameCount(tokens []Token) int {
 	ts := Significant(tokens)
 	names := map[string]struct{}{}

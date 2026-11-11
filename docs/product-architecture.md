@@ -367,6 +367,8 @@ SessionStart 后的维护和状态维护各使用独立的两秒总预算，单�
 
 `edit_preview.result.details.remaining_ms` 是进入预览时原 hook 预算还剩的时间，`details.elapsed_ms` 从进入 `EditAdvice` 起算。外层 `elapsed_ms` 从本次 debug 追踪开始累计；同一追踪的 `hook.output` 记录协议输出，结束快照在其后。核查返回延迟时应区分这些时间。测试参照阶段因截止时间返回 `partial` 时，只能采用此前已完成的提醒。
 
+`test_cases` 统计用途核对在拟写入的目标全文中识别出的用例声明，包含已有用例。此时尚未展开表格行或引入外部参照。`purpose_candidates` 统计该步骤产生的提醒候选。只有存在拟新增、归属于本次编辑且未受保留条件保护的用例，`test_references_needed` 才为真。实际展示和放行情况见同次追踪的 `hook.output`。
+
 格式版本 2 将检查正文保存到同一日期目录下的 `<任务唯一标识>.checks/<SHA-256>.json`。同一天、同一任务中，相同内容只保存一份，多个进程和 session 共用；内容变化时生成新的哈希文件。JSONL 中的检查位置保留 `check_ref`、`sha256`、`bytes`，以及检查编号、深度、输入版本、状态和结论级别。`check_ref` 相对于 JSONL 所在的日期目录；动态检查正文中的静态检查也使用这种引用。正文完整写入并关闭后才发布，随后追加引用，写入失败按诊断故障记录。
 
 检查引用只用于 debug 序列化。账本、内部检查和动态用例选择继续使用完整数据；MCP 在响应层生成有限摘要及续读入口，预算与查询方式见 [任务账本](requirements-ledger.md#mcp-工具)。MCP 的 `mcp.handle.end` 记录处理结束环节，最终返回结果只在 `operation.end` 保存一次；`mcp.output_size` 记录业务与协议字节数及估算 token。调用结束的任务快照继续保存当时的完整账本视图，其中检查正文复用上述引用。

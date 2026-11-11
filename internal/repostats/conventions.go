@@ -113,7 +113,10 @@ func learnTests(ctx context.Context, r *Repository, runs []Run) error {
 					return err
 				}
 				if run.Started && run.ExitCode != nil && u.Name != "" && units.HasWord(run.Output, u.Name) {
-					matched[UnitKey(p, testRoot(f, u))] = true
+					if root, ok := reportedTestRoot(f, u); ok {
+						matched[UnitKey(p, root)] = true
+					}
+					break
 				}
 			}
 		}
@@ -251,6 +254,19 @@ func testRoot(f units.File, u units.Unit) units.Unit {
 		u = f.Units[u.Parent]
 	}
 	return u
+}
+
+/**
+ * reportedTestRoot 把容器中报告的名字归到顶层。函数内部的同名局部节点不能证明外层函数是用例。
+ */
+func reportedTestRoot(f units.File, u units.Unit) (units.Unit, bool) {
+	for u.Parent >= 0 {
+		u = f.Units[u.Parent]
+		if units.CallableHeader(u) {
+			return units.Unit{}, false
+		}
+	}
+	return u, true
 }
 
 func learnEntries(r *Repository) {
