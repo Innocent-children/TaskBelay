@@ -64,24 +64,24 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 	}
 	key := CommandKey(current.Command)
 	var previous *Run
-	envChanged := false
+	possibleExternalChange := false
 	states := map[string]string{}
 	for i := range history {
 		if err := ctx.Err(); err != nil {
 			return d, err
 		}
 		r := history[i]
-		// 其间运行过别的命令时，服务、数据库等工作区之外的状态可能已经变化。
-		// 只查看内容的命令和输出里有用例名的验证除外。
-		if r.EnvironmentChanged || r.Executed && !r.ReadOnly && !(r.Validation && !r.Command.Mixed && len(r.Cases) > 0) && CommandKey(r.Command) != key {
-			envChanged = true
-		}
 		if CommandKey(r.Command) != key {
+			// 其他命令可能在返回结果前就改写外部状态。
+			reportedCases := r.Validation && !r.Command.Mixed && len(r.Cases) > 0
+			if r.attempted() && (r.EnvironmentChanged || !r.ReadOnly && !reportedCases) {
+				possibleExternalChange = true
+			}
 			continue
 		}
 		if r.attempted() {
 			previous = &history[i]
-			envChanged = false
+			possibleExternalChange = false
 		}
 		if r.Executed && r.Input.Hash != "" {
 			if state, ok := states[r.Input.Hash]; ok && state != r.State {
@@ -105,8 +105,8 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 			d.Reason = "验证输入与上次通过时相同，组合命令可能还要执行其他操作，这里只作提示"
 		case truncated:
 			d.Reason = "验证输入与上次通过时相同，两次验证之间的操作记录未读全，这里只作提示"
-		case envChanged || current.EnvironmentChanged:
-			d.Reason = "验证输入与上次通过时相同，但其间运行过其他命令或调整过环境变量，这里只作提示"
+		case possibleExternalChange || current.EnvironmentChanged:
+			d.Reason = "验证输入与上次通过时相同，但其他命令可能已改变外部状态，或本次命令调整了环境变量，本次照常运行"
 		default:
 			d.Block = true
 			d.Reason = "验证输入与上次通过时相同；环境变量或外部服务变化时，用 note_add 指向上次验证写明重跑理由"
