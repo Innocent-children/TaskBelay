@@ -5,6 +5,7 @@ import (
 	"github.com/Innocent-children/taskbelay/internal/repostats"
 	"github.com/Innocent-children/taskbelay/internal/signals"
 	"github.com/Innocent-children/taskbelay/internal/units"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -86,59 +87,33 @@ func (s *indexedSnapshot) caseNeighbourhood() {
 }
 
 func (s indexedSnapshot) casePaths() []string {
-	if usesPublishedOnly(s.Current.ctx) {
-		caseNames := map[string]bool{}
-		for _, p := range s.Paths {
-			for _, u := range s.After.Files[p].Units {
-				if s.After.TestUnits[repostats.UnitKey(p, u)] {
-					for _, token := range u.Tokens {
-						if token.Kind == "identifier" {
-							caseNames[token.Text] = true
-						}
-					}
-				}
-			}
-		}
-		s.Current.prefetchReferenceFiles("name", keys(caseNames))
-		if s.Current.err != nil {
-			return nil
-		}
-	}
 	paths := map[string]bool{}
 	names := map[string]bool{}
-	targetPaths := map[string][]string{}
-	addTargets := func(tokens []units.Token, recordNames bool) bool {
-		for _, token := range tokens {
-			if token.Kind != "identifier" {
-				continue
-			}
-			targets, known := targetPaths[token.Text]
-			if !known {
-				found := map[string]bool{}
-				if !s.Current.collectReferencePaths("name", token.Text, false, found) {
-					return false
-				}
-				targets = keys(found)
-				targetPaths[token.Text] = targets
-			}
-			if recordNames && len(targets) > 0 {
-				names[token.Text] = true
-			}
-			for _, p := range targets {
-				paths[p] = true
-			}
-		}
-		return true
-	}
+	caseNames := map[string]bool{}
 	for _, p := range s.Paths {
 		paths[p] = true
 		for _, u := range s.After.Files[p].Units {
 			if !s.After.Roles[p].Test && u.Name != "" {
 				names[u.Name] = true
 			}
-			if s.After.TestUnits[repostats.UnitKey(p, u)] && !addTargets(u.Tokens, true) {
-				return nil
+			if s.After.TestUnits[repostats.UnitKey(p, u)] {
+				collectIdentifiers(caseNames, u.Tokens)
 			}
+		}
+	}
+	requestedNames := keys(caseNames)
+	s.Current.prefetchReferenceFiles("name", requestedNames)
+	if s.Current.err != nil {
+		return nil
+	}
+	for _, name := range requestedNames {
+		found := map[string]bool{}
+		if !s.Current.collectReferencePaths("name", name, false, found) {
+			return nil
+		}
+		if len(found) > 0 {
+			names[name] = true
+			maps.Copy(paths, found)
 		}
 	}
 	referencedNames := keys(names)
@@ -151,14 +126,30 @@ func (s indexedSnapshot) casePaths() []string {
 			return nil
 		}
 	}
-	// 新纳入的既有用例可能还引用其他被测声明，边界与等价类必须用全部直接目标。
+	// 只从当前邻域的既有测试收集名字；后面补入的声明不再扩展邻域。
+	otherNames := map[string]bool{}
 	for _, p := range keys(paths) {
-		if !s.Current.fileInfo(p).Role.Test {
-			continue
+		if err := s.Current.ctx.Err(); err != nil {
+			s.Current.err = err
+			return nil
 		}
-		f := s.Current.load(p)
-		s.Current.prefetchNames(f.Tokens)
-		if s.Current.err != nil || !addTargets(f.Tokens, false) {
+		if s.Current.fileInfo(p).Role.Test {
+			collectIdentifiers(otherNames, s.Current.load(p).Tokens)
+		}
+		if s.Current.err != nil {
+			return nil
+		}
+	}
+	for name := range caseNames {
+		delete(otherNames, name)
+	}
+	remainingNames := keys(otherNames)
+	s.Current.prefetchReferenceFiles("name", remainingNames)
+	if s.Current.err != nil {
+		return nil
+	}
+	for _, name := range remainingNames {
+		if !s.Current.collectReferencePaths("name", name, false, paths) {
 			return nil
 		}
 	}
@@ -190,20 +181,12 @@ func (x *repositoryIndex) collectReferencePaths(kind, key string, wantTest bool,
 	return true
 }
 
-/**
- * 只收集原路径发现会查询的标识符，不预取其他名字。
- */
-func (x *repositoryIndex) prefetchNames(tokens []units.Token) {
-	if !usesPublishedOnly(x.ctx) {
-		return
-	}
-	names := map[string]bool{}
+func collectIdentifiers(names map[string]bool, tokens []units.Token) {
 	for _, token := range tokens {
 		if token.Kind == "identifier" {
 			names[token.Text] = true
 		}
 	}
-	x.prefetchReferenceFiles("name", keys(names))
 }
 
 /**
@@ -225,6 +208,10 @@ func (x *repositoryIndex) prefetchReferenceFiles(kind string, requested []string
 	paths := map[string]bool{}
 	for _, key := range requested {
 		for member := range x.read(kind, key) {
+			if err := x.ctx.Err(); err != nil {
+				x.err = err
+				return
+			}
 			p := indexUnitPath(member)
 			if _, cached := x.fileCache[p]; !cached {
 				paths[p] = true
