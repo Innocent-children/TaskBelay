@@ -327,8 +327,11 @@ func SimilarityPreview(ctx context.Context, in Input, design Result) (Result, er
 	if err != nil {
 		return Result{}, err
 	}
+	// 编辑前展示名额有限，先比较词序列最接近的实现；同分时保留问题编号顺序。
+	sort.SliceStable(r.Candidates, func(i, j int) bool {
+		return r.Candidates[i].Features["similarity"] > r.Candidates[j].Features["similarity"]
+	})
 	design.Candidates = append(slices.Clone(design.Candidates), r.Candidates...)
-	sort.Slice(design.Candidates, func(i, j int) bool { return design.Candidates[i].ID < design.Candidates[j].ID })
 	return design, nil
 }
 
@@ -352,7 +355,6 @@ func CompletePreview(ctx context.Context, in Input, design Result) (Result, erro
 	r.Candidates = append(slices.Clone(design.Candidates), r.Candidates...)
 	r.External, r.Defensive = design.External, design.Defensive
 	r.Gaps = append(slices.Clone(design.Gaps), r.Gaps...)
-	sort.Slice(r.Candidates, func(i, j int) bool { return r.Candidates[i].ID < r.Candidates[j].ID })
 	sort.Strings(r.Gaps)
 	return r, nil
 }
