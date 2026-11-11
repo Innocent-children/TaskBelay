@@ -42,29 +42,46 @@ type TaskRecordBody struct {
 
 var RecordCategories = []string{"messages", "sources", "requirements", "notes", "plans", "checks", "verifications", "workspace_updates", "task_updates"}
 
+const outputExcerptLimit = 120
+
 func outputExcerpts(output, match string) (string, string) {
 	first := strings.Index(output, match)
 	if first < 0 {
 		return "", ""
 	}
 	// 列表只持有摘录，避免短字符串占住整份输出。
-	head := strings.Clone(outputExcerpt(output, match, first))
-	if last := strings.LastIndex(output, match); last != first {
-		tail := outputExcerpt(output, match, last)
-		if tail != head {
-			return head, strings.Clone(tail)
+	headStart, headEnd := outputExcerptBounds(output, match, first)
+	head := strings.Clone(output[headStart:headEnd])
+	last := strings.LastIndex(output, match)
+	if last == first {
+		return head, ""
+	}
+	tailStart, tailEnd := outputExcerptBounds(output, match, last)
+	tail := output[tailStart:tailEnd]
+	if tail == head {
+		return head, ""
+	}
+	if headEnd < tailStart && !strings.ContainsAny(match, "\r\n") {
+		// 只附上两段之间紧邻末段的完整行，保留原来的换行符和字符预算。
+		gap := output[headEnd:tailStart]
+		lines := strings.TrimSuffix(strings.TrimSuffix(gap, "\n"), "\r")
+		lineStart := strings.LastIndexAny(lines, "\r\n") + 1
+		if len(lines) < len(gap) && lineStart > 0 && strings.TrimSpace(lines[lineStart:]) != "" {
+			extended := output[headEnd+lineStart : tailEnd]
+			if utf8.RuneCountInString(extended) <= outputExcerptLimit {
+				tail = extended
+			}
 		}
 	}
-	return head, ""
+	return head, strings.Clone(tail)
 }
 
 /**
  * 先给匹配文字留出空间，再从同一行取上下文。跨行查询保留匹配中的换行。
  */
-func outputExcerpt(output, match string, at int) string {
-	const limit = 120
+func outputExcerptBounds(output, match string, at int) (int, int) {
 	start := at
-	for range min(limit/2, limit-utf8.RuneCountInString(match)) {
+	for range min(outputExcerptLimit/2, outputExcerptLimit-utf8.RuneCountInString(match)) {
 		r, size := utf8.DecodeLastRuneInString(output[:start])
 		if size == 0 || r == '\r' || r == '\n' {
 			break
@@ -74,12 +91,12 @@ func outputExcerpt(output, match string, at int) string {
 	matchEnd := at + len(match)
 	count := 0
 	for offset, r := range output[start:] {
-		if count == limit || start+offset >= matchEnd && (r == '\r' || r == '\n') {
-			return output[start : start+offset]
+		if count == outputExcerptLimit || start+offset >= matchEnd && (r == '\r' || r == '\n') {
+			return start, start + offset
 		}
 		count++
 	}
-	return output[start:]
+	return start, len(output)
 }
 
 /**

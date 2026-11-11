@@ -39,7 +39,7 @@ type getInput struct {
 	TaskID          string `json:"task_id,omitempty" jsonschema:"省略时读取当前工作区任务"`
 	Category        string `json:"category,omitempty" jsonschema:"省略返回概要；messages、sources、requirements、notes、plans、checks、verifications、workspace_updates 或 task_updates；指定后默认只列编号和状态，不含正文"`
 	CommandContains string `json:"command_contains,omitempty" jsonschema:"仅 verifications 列表使用；在已保存的脱敏命令全文中按字面查找，区分大小写；匹配项附命令开头 command_prefix，续页沿用同一片段"`
-	OutputContains  string `json:"output_contains,omitempty" jsonschema:"仅 verifications 列表使用，在已保存的输出中按字面查找，区分大小写。output_excerpt 给出首次匹配处的原文，末次摘录不同时另附 last_output_excerpt。与 command_contains 同时使用时，两项都要匹配"`
+	OutputContains  string `json:"output_contains,omitempty" jsonschema:"仅 verifications 列表使用，在已保存的输出中按字面查找，区分大小写。output_excerpt 给出首次匹配处的原文，末次摘录不同时另附 last_output_excerpt，可能含紧邻匹配的前一行。与 command_contains 同时使用时，两项都要匹配"`
 	AfterSeq        int64  `json:"after_seq,omitempty" jsonschema:"仅列表使用，返回序号更大的记录；不能与 record_id 混用"`
 	Limit           int    `json:"limit,omitempty" jsonschema:"仅列表使用，默认 20，最多 100；不能与 record_id 混用"`
 	RecordID        string `json:"record_id,omitempty" jsonschema:"单条正文编号，从列表或写入结果取得"`
