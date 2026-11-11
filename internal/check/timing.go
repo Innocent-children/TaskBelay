@@ -326,9 +326,9 @@ func (s indexedSnapshot) editQueries(ctx context.Context, current, proposed map[
 	q.Calls = func(name string) []signals.CallSite { return calls[name] }
 	similar := q.Similar
 	references := map[string]units.File{}
-	q.Similar = func(signature []uint64) []signals.SimilarUnit {
+	q.Similar = func(signature []uint64, sameFileKeys []string) []signals.SimilarUnit {
 		var out []signals.SimilarUnit
-		for _, candidate := range similar(signature) {
+		for _, candidate := range similar(signature, sameFileKeys) {
 			if err := ctx.Err(); err != nil {
 				s.Origin.err = err
 				return nil

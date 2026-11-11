@@ -29,7 +29,7 @@ type Queries struct {
 	Heads          func(string) []Head
 	Defined        func(string) bool
 	Uses           func(string) int
-	Similar        func([]uint64) []SimilarUnit
+	Similar        func(signature []uint64, sameFileKeys []string) []SimilarUnit
 	Prior          map[string]float64
 	Mean, Variance float64
 }

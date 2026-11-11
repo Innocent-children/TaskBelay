@@ -60,8 +60,11 @@ func (s indexedSnapshot) queries() *signals.Queries {
 	}
 	q.Defined = func(name string) bool { return len(x.read("name", name)) > 0 }
 	q.Uses = func(name string) int { return x.stats(name).Uses }
-	q.Similar = func(sig []uint64) []signals.SimilarUnit {
+	q.Similar = func(sig []uint64, sameFileKeys []string) []signals.SimilarUnit {
 		set := map[string]bool{}
+		for _, key := range sameFileKeys {
+			set[key] = true
+		}
 		for _, bucket := range signals.SimilarityBuckets(sig) {
 			for key := range origin.read("lsh", bucket) {
 				set[key] = true
