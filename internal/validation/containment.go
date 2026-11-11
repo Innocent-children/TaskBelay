@@ -6,7 +6,8 @@ import (
 )
 
 func Contains(a, b Command) bool {
-	if a.Program != b.Program || a.Directory != b.Directory || a.Shell != b.Shell {
+	// 组合命令的路径分属不同命令段，放在一起比较会误判覆盖范围。
+	if a.Mixed || b.Mixed || a.Program != b.Program || a.Directory != b.Directory || a.Shell != b.Shell {
 		return false
 	}
 	ap, ao := arguments(a.Args)
