@@ -84,12 +84,16 @@ func (s indexedSnapshot) queries() *signals.Queries {
  * 用例只补齐被改动声明及其被测对象的直接引用邻域；其余计算查询计数和首行汇总。
  */
 func (s *indexedSnapshot) caseNeighbourhood() {
-	paths, _ := s.casePaths(nil)
+	files, _ := s.casePaths(nil)
+	paths := keys(files)
 	s.Before = s.Origin.view(paths)
 	s.After = s.Current.view(paths)
 }
 
-func (s indexedSnapshot) casePaths(compared map[string]bool) ([]string, []string) {
+/**
+ * 编辑预览按路径核对参照。值为 false 表示只核对文件内容和模式，不载入其中的用例。
+ */
+func (s indexedSnapshot) casePaths(compared map[string]bool) (map[string]bool, []string) {
 	x := s.Current
 	isTestFile := func(p string) bool { return x.fileInfo(p).Role.Test }
 	prefetch := x.prefetchReferenceFiles
@@ -166,7 +170,6 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) ([]string, []string
 			possibleTests = intersectNames(possibleTests, dest)
 		}
 	}
-	// 缺少共同被测名字的测试仍须核对文件内容，但它的其他目标无法使两条用例等价。
 	otherNames := map[string]bool{}
 	for _, p := range keys(paths) {
 		if err := s.Current.ctx.Err(); err != nil {
@@ -174,8 +177,12 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) ([]string, []string
 			return nil, nil
 		}
 		f, editing := s.After.Files[p]
-		if isTestFile(p) && (editing || possibleTests == nil || possibleTests[p]) {
+		if isTestFile(p) {
 			if !editing {
+				if possibleTests != nil && !possibleTests[p] {
+					paths[p] = false
+					continue
+				}
 				f = x.load(p)
 			}
 			maps.Copy(otherNames, units.DirectCallNames(f.Tokens))
@@ -200,9 +207,9 @@ func (s indexedSnapshot) casePaths(compared map[string]bool) ([]string, []string
 	}
 	// 编辑前核对查找范围时，原先没有命中声明的名字也算查询依据。
 	if compared != nil {
-		return keys(paths), append(requestedNames, remainingNames...)
+		return paths, append(requestedNames, remainingNames...)
 	}
-	return keys(paths), nil
+	return paths, nil
 }
 
 /**

@@ -453,13 +453,13 @@ func (s *indexedSnapshot) editCaseNeighbourhood(compared map[string]bool) error 
 	if !tests {
 		return nil
 	}
-	paths, queriedNames := s.casePaths(compared)
+	compareFile, queriedNames := s.casePaths(compared)
 	if err := s.err(); err != nil {
 		return err
 	}
 	var references []string
 	changed := map[string]units.File{}
-	for _, p := range paths {
+	for _, p := range keys(compareFile) {
 		if _, editing := s.After.Files[p]; editing {
 			continue
 		}
@@ -478,7 +478,9 @@ func (s *indexedSnapshot) editCaseNeighbourhood(compared map[string]bool) error 
 		if current.Blob != indexed.Blob {
 			changed[p] = current
 		}
-		references = append(references, p)
+		if compareFile[p] {
+			references = append(references, p)
+		}
 	}
 	neighbours := s.Origin.view(references)
 	if err := s.err(); err != nil {
