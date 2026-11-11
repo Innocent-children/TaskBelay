@@ -29,6 +29,11 @@ func (r Run) attempted() bool {
 	return r.Started || r.Executed
 }
 
+func (r Run) reusableSingleRun() bool {
+	return r.Executed && r.State == "passed" && r.Before != "" && r.Before == r.After &&
+		r.Input.Complete && !r.Command.Mixed && !r.Command.Writes && !r.Command.Unknown
+}
+
 func (r Run) mayChangeExternalState() bool {
 	reportedCases := r.Validation && !r.Command.Mixed && len(r.Cases) > 0
 	return r.attempted() && (r.EnvironmentChanged || !r.ReadOnly && !reportedCases)
@@ -72,6 +77,7 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 	}
 	key := CommandKey(current.Command)
 	var previous *Run
+	var matchingID string
 	possibleExternalChange := false
 	states := map[string]string{}
 	for i := range history {
@@ -88,6 +94,12 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 		if r.attempted() {
 			previous = &history[i]
 			possibleExternalChange = false
+			// 同命令中途失败或结果无法核对时，不能越过这次运行引用更早的成功。
+			if !r.reusableSingleRun() || r.EnvironmentChanged {
+				matchingID = ""
+			} else if r.Input.Hash == current.Input.Hash {
+				matchingID = r.ID
+			}
 		}
 		if r.Executed && r.Input.Hash != "" {
 			if state, ok := states[r.Input.Hash]; ok && state != r.State {
@@ -149,6 +161,11 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 		if err := ctx.Err(); err != nil {
 			return d, err
 		}
+		if matchingID != "" && r.ID == matchingID && !current.Command.Mixed && !current.EnvironmentChanged {
+			d.Kind, d.PreviousID, d.Output = "restored", r.ID, r.Output
+			d.Reason = "当前验证输入已恢复到这条命令此前通过时的状态。如果仍要核对同一问题，可以查看那次输出"
+			return d, nil
+		}
 		if !takeLatestAttempt(r, seen) {
 			continue
 		}
@@ -195,7 +212,7 @@ func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision
 		if !takeLatestAttempt(r, seen) {
 			continue
 		}
-		if !r.Validation || !r.Executed || r.State != "passed" || r.Before == "" || r.Before != r.After || !r.Input.Complete || r.Command.Mixed || r.Command.Writes || r.Command.Unknown {
+		if !r.Validation || !r.reusableSingleRun() {
 			continue
 		}
 		if r.Input.Content == current.Input.Content && sameRuntime(current, r) && Contains(r.Command, current.Command) {

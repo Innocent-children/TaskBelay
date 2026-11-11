@@ -104,7 +104,11 @@ func Verification(ctx context.Context, s *ledger.Store, w gitstate.Workspace, ta
 		if d.Block {
 			level = "block"
 		}
-		record.Issue = &ledger.Issue{Algorithm: Algorithm, Selected: true, Rule: "validation_" + d.Kind, LogicalAt: record.CommandKey, At: record.CommandKey, FactKey: record.Scope.Hash, Status: "open", Level: level, Facts: []string{d.Reason, "上次记录：" + d.PreviousID, "上次输出：" + d.Output}, Advice: "有新的环境或外部状态变化时，用 note_add 指向上次验证记录并写明重跑理由"}
+		advice := "有新的环境或外部状态变化时，用 note_add 指向上次验证记录并写明重跑理由"
+		if d.Kind == "restored" {
+			advice = "查看相同输入时的输出；有新的疑问或外部数据已变化时可以重跑"
+		}
+		record.Issue = &ledger.Issue{Algorithm: Algorithm, Selected: true, Rule: "validation_" + d.Kind, LogicalAt: record.CommandKey, At: record.CommandKey, FactKey: record.Scope.Hash, Status: "open", Level: level, Facts: []string{d.Reason, "上次记录：" + d.PreviousID, "上次输出：" + d.Output}, Advice: advice}
 		if d.Kind != "repeat" {
 			record.Scope.Suggestion = d.Reason
 		}

@@ -83,6 +83,7 @@ var ruleNames = map[string]string{
 	"duplicate": "重复实现", "unused": "没人使用的代码", "recovery": "恢复处理", "mock_only": "只检查了 mock 调用",
 	"assertion": "没有检查结果的用例", "test_equivalence": "相近用例", "test_budget": "超出测试预算", "test_gap": "测试缺口",
 	"validation_repeat": "重复验证", "validation_contained": "范围已被覆盖的验证", "validation_implication": "可能没有新信息的验证", "validation_comments": "只改注释后的验证",
+	"validation_restored": "恢复到已验证的输入",
 }
 
 /**
@@ -178,7 +179,11 @@ func FormatVerification(r ledger.VerificationRecord) string {
 		fmt.Fprintf(&b, "TaskBelay 提示（%s）：%s\n", r.Command.Display, reason)
 	}
 	if previous != "" {
-		fmt.Fprintf(&b, "上次输出（记录 %s）：\n%s\n", previous, clipOutput(output))
+		label := "上次输出"
+		if r.Issue.Rule == "validation_restored" {
+			label = "相同输入时的输出"
+		}
+		fmt.Fprintf(&b, "%s（记录 %s）：\n%s\n", label, previous, clipOutput(output))
 	}
 	if r.Denied {
 		fmt.Fprintf(&b, "外部服务、数据或环境确有变化、需要重跑时，先调用 note_add 写明理由（kind 为 decision，target 的 kind 为 verification、id 为 %s、effect 为 rerun_once、scope 为 once），再运行同一条命令。", previous)
