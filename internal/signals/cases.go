@@ -249,6 +249,9 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 			}
 			all = append(all, c)
 			if purposesOnly {
+				if c.Added && c.AgentOnly && !c.Retained && f.Layout == "brackets" {
+					out = append(out, copiedLiteralRows(ctx, in, f, u, c)...)
+				}
 				continue
 			}
 			// 同一列表中骨架相同的兄弟元素逐行参与，避免把整张表当成一条用例。
@@ -327,6 +330,82 @@ func cases(ctx context.Context, in Input, purposesOnly bool) ([]Case, map[string
 		}
 	}
 	return all, budget, out, gaps, ctx.Err()
+}
+
+/**
+ * 只在同一括号容器中比较独占一行的数据。行号与原文来自拟写入的文件，
+ * 位置、次数和执行顺序的用途仍需由 Agent 核对。
+ */
+func copiedLiteralRows(ctx context.Context, in Input, f units.File, test units.Unit, c Case) []Candidate {
+	type rowText struct {
+		parent int
+		text   string
+	}
+	first := map[rowText]int{}
+	var out []Candidate
+	start := sort.Search(len(f.Units), func(i int) bool { return f.Units[i].Start > test.HeaderEnd })
+	for _, row := range f.Units[start:] {
+		if row.Start >= test.End || ctx.Err() != nil {
+			break
+		}
+		if row.Parent < 0 || row.Line != row.EndLine || !literalRow(row.Tokens) {
+			continue
+		}
+		parent := f.Units[row.Parent]
+		if parent.Tokens[len(parent.Tokens)-1].Text == ")" {
+			continue
+		}
+		line := strings.TrimSpace(f.Lines[row.Line-1])
+		body, comma := strings.CutSuffix(line, ",")
+		if !comma || len(strings.TrimSpace(body)) != row.End-row.Start {
+			continue
+		}
+		key := rowText{row.Parent, line}
+		prior := first[key]
+		if prior == 0 {
+			first[key] = row.Line
+			continue
+		}
+		cluster, _ := clusterFor(in, c.Path, row.Line, row.Line)
+		if cluster != "" {
+			out = append(out, Candidate{
+				Kind: "test_copy", Object: units.Hash(c.ID, row.ID), At: fmt.Sprintf("%s:%s/%d", c.Path, c.Name, row.Line), Cluster: cluster, AgentOnly: true,
+				Facts:  []string{fmt.Sprintf("同一组表格数据中，第 %d 行与第 %d 行的字面量和排列完全相同", row.Line, prior)},
+				Advice: fmt.Sprintf("核对两行是否各自承担一次必要检查。行的位置、次数、顺序或共享状态有意义时保留；确认重复后可省去第 %d 行", row.Line),
+			})
+		}
+	}
+	return out
+}
+
+func literalRow(tokens []units.Token) bool {
+	if len(tokens) < 3 {
+		return false
+	}
+	switch tokens[0].Text + tokens[len(tokens)-1].Text {
+	case "{}", "[]", "()":
+	default:
+		return false
+	}
+	fields := tokens[1 : len(tokens)-1]
+	for len(fields) > 0 {
+		if len(fields) > 1 && fields[0].Text == "-" && fields[1].Kind == "number" {
+			fields = fields[1:]
+		}
+		switch fields[0].Kind {
+		case "number", "string", "key":
+		default:
+			return false
+		}
+		if len(fields) == 1 {
+			return true
+		}
+		if fields[1].Text != "," {
+			return false
+		}
+		fields = fields[2:]
+	}
+	return false
 }
 
 /**

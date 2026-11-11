@@ -336,8 +336,8 @@ func SimilarityPreview(ctx context.Context, in Input, design Result) (Result, er
 }
 
 /**
- * TestPurposePreview 在目标内容上核对独立用例、保留条件、同文件副本和断言。
- * 参照尚未补齐时，不计算等价类、表格行比较或测试数量建议。
+ * TestPurposePreview 在目标内容上核对独立用例、保留条件、同文件的用例和数据行副本，以及断言。
+ * 参照尚未补齐时，不计算等价类或测试数量建议。
  */
 func TestPurposePreview(ctx context.Context, in Input) (Result, error) {
 	return testPreview(ctx, in, true, nil)
