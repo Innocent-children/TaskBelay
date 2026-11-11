@@ -127,7 +127,12 @@ func (s indexedSnapshot) casePaths() []string {
 			}
 		}
 	}
-	for _, name := range keys(names) {
+	referencedNames := keys(names)
+	s.Current.prefetchMembers("word", referencedNames)
+	if s.Current.err != nil {
+		return nil
+	}
+	for _, name := range referencedNames {
 		for key := range s.Current.read("word", name) {
 			p := unitPath(key)
 			if s.Current.fileInfo(p).Role.Test {
@@ -157,30 +162,46 @@ func (s indexedSnapshot) casePaths() []string {
 }
 
 /**
- * 编辑前只批量预取本来会逐键查询的名字；静态叠加索引仍沿用原读取方式。
+ * 只收集原路径发现会查询的标识符，不预取其他名字。
  */
 func (x *repositoryIndex) prefetchNames(tokens []units.Token) {
+	if !usesPublishedOnly(x.ctx) {
+		return
+	}
+	var names []string
+	for _, token := range tokens {
+		if token.Kind == "identifier" {
+			names = append(names, token.Text)
+		}
+	}
+	x.prefetchMembers("name", names)
+}
+
+/**
+ * 编辑前只分批预取本来会逐键查询的倒排；静态叠加索引仍沿用原读取方式。
+ */
+func (x *repositoryIndex) prefetchMembers(kind string, requested []string) {
 	if !usesPublishedOnly(x.ctx) || x.base != nil || x.id == "" || x.err != nil {
 		return
 	}
 	pending := map[string]bool{}
-	for _, token := range tokens {
-		if token.Kind == "identifier" && !x.loaded[rowKey("name", token.Text)] {
-			pending[token.Text] = true
+	for _, key := range requested {
+		if !x.loaded[rowKey(kind, key)] {
+			pending[key] = true
 		}
 	}
 	for batch := range slices.Chunk(keys(pending), IndexBatch) {
-		rows, err := x.s.IndexRowsForKeys(x.ctx, x.id, "name", batch)
+		rows, err := x.s.IndexRowsForKeys(x.ctx, x.id, kind, batch)
 		if err != nil {
 			x.err = err
 			return
 		}
-		for _, name := range batch {
-			x.setMembers("name", name, map[string]string{})
-			x.loaded[rowKey("name", name)] = true
+		for _, key := range batch {
+			x.setMembers(kind, key, map[string]string{})
+			x.loaded[rowKey(kind, key)] = true
 		}
 		for _, row := range rows {
-			x.rows["name"][row.Key][row.Member] = row.Data
+			x.rows[kind][row.Key][row.Member] = row.Data
 		}
 	}
 }
