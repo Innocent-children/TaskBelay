@@ -139,7 +139,7 @@ session 保存 Agent、session 编号、工作区、开始及最近活动时间�
 
 | 工具 | 参数 | 作用和返回 |
 | --- | --- | --- |
-| `task_get` | `task_id` 可选；列表用 `category`、`after_seq`、`limit`，命令记录列表还可用 `command_contains`；正文用 `record_id`、`revision`、`char_offset`、`char_limit` | 默认返回有限概要、当前状态和记录总数；记录列表与正文按需续读 |
+| `task_get` | `task_id` 可选；列表用 `category`、`after_seq`、`limit`，命令记录列表还可用 `command_contains`、`output_contains`；正文用 `record_id`、`revision`、`char_offset`、`char_limit` | 默认返回有限概要、当前状态和记录总数；记录列表与正文按需续读 |
 | `task_start` | 新任务用 `title`；恢复用 `task_id`；可选 `start_message_id`、`workflow` | 暂停原任务，开始、恢复或重新打开目标任务；返回任务和恢复摘要 |
 | `requirement_save` | `id` 可选、`content`、`quote`、`source_id`、`acceptance`、`status`、`implemented_by`、更新时的 `base_revision` | 返回任务和需求编号、修订、状态、来源编号、待补位置数及有限示例 |
 | `note_add` | `kind`、`text`；可选 `target`、`quote`、`source_id`、`review` | 返回笔记编号、类型、保存结果、决定是否生效及原因 |
@@ -156,9 +156,11 @@ session 保存 Agent、session 编号、工作区、开始及最近活动时间�
 
 准备重跑时，可用 `{"category":"verifications","command_contains":"TestExport"}` 在所选任务已保存的脱敏命令全文中按字面查找，区分大小写。每条匹配记录的 `command_prefix` 显示命令开头，略过开头的空格、制表符和换行，取首行最多 120 个字符。例如，运行测试和在 PR 说明中引用测试命令都可能匹配，用命令开头和执行状态选出要回看的记录，再按 `read` 读取完整命令和输出。失败、尚无结果、被拦截以及未归为验证的请求也参与查找。`total` 给出匹配数，续页沿用同一片段和上一页的 `last_seq`。
 
+例如，`{"category":"verifications","output_contains":"TestExport"}` 可找到整组运行中输出过该用例名的记录。`output_contains` 只在已保存的输出中按字面查找，同样区分大小写。两项条件同时指定时，只列出两项都匹配的记录，续页保留两项条件。匹配的文字也可能来自失败日志或查看文件的命令，须结合命令、状态和输出判断用例是否运行、结果如何。
+
 工具说明及输入字段说明须直接写明参数的适用条件，让新会话不必先调用失败才知道用法：
 
-- `task_get` 的列表不含正文，列表页使用 `category`、`after_seq` 和 `limit`，只有 `verifications` 列表可指定 `command_contains`。`revision`、`char_offset` 和 `char_limit` 仅用于已指定 `record_id` 的正文读取，不能与列表参数混用。例如先用 `{"category":"messages","limit":5}` 取得列表，再按其中的 `records[].read` 读取正文，需要时增加 `char_limit`，按 `next_offset` 续读。
+- `task_get` 的列表不含正文，列表页使用 `category`、`after_seq` 和 `limit`，只有 `verifications` 列表可指定 `command_contains` 或 `output_contains`。`revision`、`char_offset` 和 `char_limit` 仅用于已指定 `record_id` 的正文读取，不能与列表参数混用。例如先用 `{"category":"messages","limit":5}` 取得列表，再按其中的 `records[].read` 读取正文，需要时增加 `char_limit`，按 `next_offset` 续读。
 - `requirement_save`、`note_add` 及 `implemented_by` 中的原话引用 `quote` 与 `source_id` 必须成对提供。来源编号使用 `messages` 或 `sources` 列表中的 `id`，例如消息编号 `m12`；需求编号 `R1` 不是来源编号。没有原话依据的推断需求、实现判断笔记或不引用原话的位置可以同时省略这两项，省略引用不构成用户授权。笔记关联需求使用 `target={kind:"requirement",id:"R1"}`。
 - `task_start.workflow` 只接受 `auto`（全自动）或 `semi`（半自动），省略时沿用有效设置。工具说明和字段说明均列出这两个值。
 

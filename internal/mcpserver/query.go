@@ -11,8 +11,9 @@ import (
 )
 
 func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input getInput) (map[string]any, error) {
-	if input.CommandContains != "" && (input.Category != "verifications" || input.RecordID != "") {
-		return nil, fmt.Errorf("command_contains 仅用于 category 为 verifications 的列表；读取正文时请移除该参数")
+	filtered := input.CommandContains != "" || input.OutputContains != ""
+	if filtered && (input.Category != "verifications" || input.RecordID != "") {
+		return nil, fmt.Errorf("command_contains 和 output_contains 仅用于 category 为 verifications 的列表；读取正文时请移除筛选条件")
 	}
 	if input.Category == "" {
 		if input.RecordID != "" || input.Revision != 0 || input.AfterSeq != 0 || input.CharOffset != 0 || input.CharLimit != 0 || input.Limit != 0 {
@@ -34,7 +35,7 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 		return nil, fmt.Errorf("指定 record_id 读取单条正文时不能传 after_seq 或 limit；请移除列表参数，需要限制正文长度时用 char_limit")
 	}
 	page, err := service.Store.TaskRecords(ctx, service.Workspace.ID, actor, ledger.RecordQuery{
-		TaskID: input.TaskID, Category: input.Category, CommandContains: input.CommandContains,
+		TaskID: input.TaskID, Category: input.Category, CommandContains: input.CommandContains, OutputContains: input.OutputContains,
 		ID: input.RecordID, Revision: input.Revision, AfterSeq: input.AfterSeq, Limit: input.Limit,
 		CharOffset: input.CharOffset, CharLimit: input.CharLimit,
 	})
@@ -62,7 +63,7 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 	last := input.AfterSeq
 	for _, record := range page.Records {
 		item := map[string]any{"seq": record.Seq, "id": record.ID, "revision": record.Revision, "state": record.State, "read": readLink(page.TaskID, input.Category, record.ID, record.Revision)}
-		if input.CommandContains != "" {
+		if filtered {
 			item["command_prefix"] = record.CommandPrefix
 		}
 		items = append(items, item)
@@ -72,6 +73,9 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 	list := readLink(page.TaskID, input.Category, "", 0)
 	if input.CommandContains != "" {
 		list["command_contains"] = input.CommandContains
+	}
+	if input.OutputContains != "" {
+		list["output_contains"] = input.OutputContains
 	}
 	value["read"] = list
 	return value, nil

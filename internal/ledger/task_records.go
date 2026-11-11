@@ -12,6 +12,7 @@ type RecordQuery struct {
 	TaskID                string
 	Category              string
 	CommandContains       string
+	OutputContains        string
 	AfterSeq              int64
 	Limit                 int
 	ID                    string
@@ -88,6 +89,13 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 		if input.CommandContains != "" {
 			query += " AND instr(json_extract(data,'$.command.display'), ?) > 0"
 			args = append(args, input.CommandContains)
+		}
+		if input.OutputContains != "" {
+			query += " AND instr(json_extract(data,'$.output'), ?) > 0"
+			args = append(args, input.OutputContains)
+		}
+		filtered := input.CommandContains != "" || input.OutputContains != ""
+		if filtered {
 			columns = "seq,id,revision,substr(ltrim(json_extract(data,'$.command.display'),char(9,10,13,32)),1,120),state"
 		}
 		if err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM ("+query+")", args...).Scan(&result.Total); err != nil {
@@ -127,7 +135,7 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 				return err
 			}
 			if input.ID == "" {
-				if input.CommandContains != "" {
+				if filtered {
 					if end := strings.IndexAny(data, "\r\n"); end >= 0 {
 						data = data[:end]
 					}
