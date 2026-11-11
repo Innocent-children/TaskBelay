@@ -125,7 +125,7 @@ func Guidance(settings ledger.EffectiveSettings) string {
 		tests = "开启"
 	}
 	return Truncate("事前提示："+mode+"开发前用 requirement_save 保存需求，完成、修改或撤销时更新状态；用 note_add 记录决定和待办事项。对少量可疑设计、测试或防御，可用 note_add.review 引用具体代码说明用途。工作区发生变化不代表用户授权了新工作，不恢复旧代码覆盖当前修改。"+enforcement+
-		"写测试前看已有用例还缺哪项检查，重跑前看已有输出能否解答疑问。在工作区内用编辑工具可核对改动、预览测试。工作区外或 shell 写入不做编辑预览。动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
+		"写测试前看已有用例还缺哪项检查。重跑前可用 task_get 的 command_contains 查已有输出，看能否解答疑问。在工作区内用编辑工具可核对改动、预览测试。工作区外或 shell 写入不做编辑预览。动态测试设置："+tests+"；未知或未完成的检查不能当作通过。", GuidanceBudget)
 }
 
 func GuidanceVersion(settings ledger.EffectiveSettings) string {

@@ -139,7 +139,7 @@ session 保存 Agent、session 编号、工作区、开始及最近活动时间�
 
 | 工具 | 参数 | 作用和返回 |
 | --- | --- | --- |
-| `task_get` | `task_id` 可选；列表用 `category`、`after_seq`、`limit`；正文用 `record_id`、`revision`、`char_offset`、`char_limit` | 默认返回有限概要、当前状态和记录总数；记录列表与正文按需续读 |
+| `task_get` | `task_id` 可选；列表用 `category`、`after_seq`、`limit`，命令记录列表还可用 `command_contains`；正文用 `record_id`、`revision`、`char_offset`、`char_limit` | 默认返回有限概要、当前状态和记录总数；记录列表与正文按需续读 |
 | `task_start` | 新任务用 `title`；恢复用 `task_id`；可选 `start_message_id`、`workflow` | 暂停原任务，开始、恢复或重新打开目标任务；返回任务和恢复摘要 |
 | `requirement_save` | `id` 可选、`content`、`quote`、`source_id`、`acceptance`、`status`、`implemented_by`、更新时的 `base_revision` | 返回任务和需求编号、修订、状态、来源编号、待补位置数及有限示例 |
 | `note_add` | `kind`、`text`；可选 `target`、`quote`、`source_id`、`review` | 返回笔记编号、类型、保存结果、决定是否生效及原因 |
@@ -154,9 +154,11 @@ session 保存 Agent、session 编号、工作区、开始及最近活动时间�
 
 单条读取的 `record_id` 和需求、方案的 `revision` 从记录列表或写入返回的 `read` 入口取得。方案的正文修订号与提交版本、任务方案修订分别返回，确认不会改写原提交正文。`body` 是完整记录正文的 JSON 文本片段；按 `next_offset` 续读，拼接全部片段后解析 JSON。字符范围按 Unicode 字符计数，默认每次 2,000 个，最多请求 12,000 个；协议预算可进一步缩短，`char_offset`、`char_end`、`char_total` 与 `next_offset` 始终反映实际范围。
 
+准备重跑时，可用 `{"category":"verifications","command_contains":"TestExport"}` 查找命令里带有该用例名的请求。它在所选任务已保存的脱敏命令文本中按字面匹配，区分大小写。失败、尚无结果、被拦截以及未归为验证的请求也参与查找。`total` 给出匹配数，续页沿用同一片段和上一页的 `last_seq`。要看实际命令和输出，按匹配项的 `read` 读取正文。
+
 工具说明及输入字段说明须直接写明参数的适用条件，让新会话不必先调用失败才知道用法：
 
-- `task_get` 的列表不含正文，只使用 `category`、`after_seq` 和 `limit`；`revision`、`char_offset` 和 `char_limit` 仅用于已指定 `record_id` 的正文读取，不能与列表游标或条数混用。例如先用 `{"category":"messages","limit":5}` 取得列表，再按其中的 `records[].read` 读取正文，需要时增加 `char_limit`，按 `next_offset` 续读。
+- `task_get` 的列表不含正文，列表页使用 `category`、`after_seq` 和 `limit`，只有 `verifications` 列表可指定 `command_contains`。`revision`、`char_offset` 和 `char_limit` 仅用于已指定 `record_id` 的正文读取，不能与列表参数混用。例如先用 `{"category":"messages","limit":5}` 取得列表，再按其中的 `records[].read` 读取正文，需要时增加 `char_limit`，按 `next_offset` 续读。
 - `requirement_save`、`note_add` 及 `implemented_by` 中的原话引用 `quote` 与 `source_id` 必须成对提供。来源编号使用 `messages` 或 `sources` 列表中的 `id`，例如消息编号 `m12`；需求编号 `R1` 不是来源编号。没有原话依据的推断需求、实现判断笔记或不引用原话的位置可以同时省略这两项，省略引用不构成用户授权。笔记关联需求使用 `target={kind:"requirement",id:"R1"}`。
 - `task_start.workflow` 只接受 `auto`（全自动）或 `semi`（半自动），省略时沿用有效设置。工具说明和字段说明均列出这两个值。
 

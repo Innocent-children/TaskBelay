@@ -10,6 +10,7 @@ import (
 type RecordQuery struct {
 	TaskID                string
 	Category              string
+	CommandContains       string
 	AfterSeq              int64
 	Limit                 int
 	ID                    string
@@ -80,6 +81,10 @@ func (s *Store) TaskRecords(ctx context.Context, workspace string, actor Actor, 
 		query, args, err := recordQuery(task, input.Category)
 		if err != nil {
 			return err
+		}
+		if input.CommandContains != "" {
+			query += " AND instr(json_extract(data,'$.command.display'), ?) > 0"
+			args = append(args, input.CommandContains)
 		}
 		if err := q.QueryRowContext(ctx, "SELECT COUNT(*) FROM ("+query+")", args...).Scan(&result.Total); err != nil {
 			return err

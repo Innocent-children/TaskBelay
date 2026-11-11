@@ -11,6 +11,9 @@ import (
 )
 
 func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input getInput) (map[string]any, error) {
+	if input.CommandContains != "" && (input.Category != "verifications" || input.RecordID != "") {
+		return nil, fmt.Errorf("command_contains 仅用于 category 为 verifications 的列表；读取正文时请移除该参数")
+	}
 	if input.Category == "" {
 		if input.RecordID != "" || input.Revision != 0 || input.AfterSeq != 0 || input.CharOffset != 0 || input.CharLimit != 0 || input.Limit != 0 {
 			return nil, fmt.Errorf("分页或正文读取必须指定 category")
@@ -25,12 +28,16 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 		return nil, fmt.Errorf("char_offset 不能为负；char_limit 为 1 至 12000，默认 2000")
 	}
 	if input.RecordID == "" && (input.CharOffset != 0 || input.CharLimit != 0 || input.Revision != 0) {
-		return nil, fmt.Errorf("revision、char_offset、char_limit 仅用于指定 record_id 的正文读取；列表只用 category、after_seq、limit。请移除正文参数查询列表，再按 records[].read 读取单条正文")
+		return nil, fmt.Errorf("revision、char_offset、char_limit 仅用于指定 record_id 的正文读取。请移除正文参数查询列表，再按 records[].read 读取单条正文")
 	}
 	if input.RecordID != "" && (input.AfterSeq != 0 || input.Limit != 0) {
 		return nil, fmt.Errorf("指定 record_id 读取单条正文时不能传 after_seq 或 limit；请移除列表参数，需要限制正文长度时用 char_limit")
 	}
-	page, err := service.Store.TaskRecords(ctx, service.Workspace.ID, actor, ledger.RecordQuery{TaskID: input.TaskID, Category: input.Category, ID: input.RecordID, Revision: input.Revision, AfterSeq: input.AfterSeq, Limit: input.Limit, CharOffset: input.CharOffset, CharLimit: input.CharLimit})
+	page, err := service.Store.TaskRecords(ctx, service.Workspace.ID, actor, ledger.RecordQuery{
+		TaskID: input.TaskID, Category: input.Category, CommandContains: input.CommandContains,
+		ID: input.RecordID, Revision: input.Revision, AfterSeq: input.AfterSeq, Limit: input.Limit,
+		CharOffset: input.CharOffset, CharLimit: input.CharLimit,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +65,11 @@ func getTask(ctx context.Context, service hook.Tasks, actor ledger.Actor, input 
 		last = record.Seq
 	}
 	value["records"], value["last_seq"], value["has_more"] = items, last, page.HasMore
-	value["read"] = readLink(page.TaskID, input.Category, "", 0)
+	list := readLink(page.TaskID, input.Category, "", 0)
+	if input.CommandContains != "" {
+		list["command_contains"] = input.CommandContains
+	}
+	value["read"] = list
 	return value, nil
 }
 
