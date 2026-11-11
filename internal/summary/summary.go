@@ -228,6 +228,14 @@ func NextStep(view ledger.TaskView) *ledger.Note {
 	return latest
 }
 
+func parsedVerificationRequest(command shell.Script) bool {
+	if command.Complex || command.Sequential || len(command.Missing) != 0 || len(command.Segments) != 1 {
+		return false
+	}
+	segment := command.Segments[0]
+	return segment.Kind == shell.Verification && segment.Known && !segment.Background && !segment.Piped && !segment.SideEffect
+}
+
 func recentVerification(input Input) string {
 	view := input.View
 	if view.Task == nil {
@@ -245,11 +253,11 @@ func recentVerification(input Input) string {
 		if r.Scope.Validation && r.CommandKey != "" {
 			known[r.CommandKey] = true
 		}
-		if r.Scope.Validation || known[r.CommandKey] {
+		if r.Scope.Validation || known[r.CommandKey] || parsedVerificationRequest(r.Command) {
 			latest = r
 		}
 	}
-	label := "最近的验证命令"
+	label := "最近的验证请求"
 	if latest == nil {
 		if historical == nil {
 			return "本任务暂无已识别的验证命令。"
