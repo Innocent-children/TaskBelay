@@ -1,7 +1,6 @@
 package validation
 
 import (
-	"path"
 	"slices"
 	"strings"
 )
@@ -45,10 +44,24 @@ func pathContains(scope, target string) bool {
 	if scope == target {
 		return true
 	}
-	if strings.HasSuffix(scope, "/...") {
-		prefix := path.Clean(strings.TrimSuffix(scope, "/..."))
-		target = path.Clean(strings.TrimSuffix(target, "/..."))
-		return prefix == "." || target == prefix || strings.HasPrefix(target, prefix+"/")
+	if !strings.HasSuffix(scope, "/...") {
+		return false
 	}
-	return false
+	base, parts := pathComponents(scope), pathComponents(target)
+	return len(parts) >= len(base) && slices.Equal(base, parts[:len(base)]) && !slices.Contains(parts[len(base):], "..")
+}
+
+func pathComponents(name string) []string {
+	if strings.HasSuffix(name, "/...") {
+		name = strings.TrimSuffix(name, "...")
+	}
+	rest := strings.TrimLeft(name, "/")
+	// 首项保留路径开头的斜杠，区分相对路径、绝对路径和双斜杠起点。
+	parts := []string{strings.TrimSuffix(name, rest)}
+	for part := range strings.SplitSeq(rest, "/") {
+		if part != "" && part != "." {
+			parts = append(parts, part)
+		}
+	}
+	return parts
 }
