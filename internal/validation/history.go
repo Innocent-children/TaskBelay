@@ -2,7 +2,9 @@ package validation
 
 import (
 	"context"
+	"iter"
 	"math"
+	"slices"
 	"time"
 )
 
@@ -24,6 +26,11 @@ type Run struct {
  */
 func (r Run) attempted() bool {
 	return r.Started || r.Executed
+}
+
+func (r Run) mayChangeExternalState() bool {
+	reportedCases := r.Validation && !r.Command.Mixed && len(r.Cases) > 0
+	return r.attempted() && (r.EnvironmentChanged || !r.ReadOnly && !reportedCases)
 }
 
 type Decision struct {
@@ -72,9 +79,7 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 		}
 		r := history[i]
 		if CommandKey(r.Command) != key {
-			// 其他命令可能在返回结果前就改写外部状态。
-			reportedCases := r.Validation && !r.Command.Mixed && len(r.Cases) > 0
-			if r.attempted() && (r.EnvironmentChanged || !r.ReadOnly && !reportedCases) {
+			if r.mayChangeExternalState() {
 				possibleExternalChange = true
 			}
 			continue
@@ -139,11 +144,10 @@ func Evaluate(ctx context.Context, current Run, history []Run, truncated bool, r
 		return d, err
 	}
 	seen := map[string]bool{}
-	for i := len(history) - 1; i >= 0; i-- {
+	for r := range runsSinceExternalChange(history) {
 		if err := ctx.Err(); err != nil {
 			return d, err
 		}
-		r := history[i]
 		if !takeLatestAttempt(r, seen) {
 			continue
 		}
@@ -183,11 +187,10 @@ func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision
 		}
 	}
 	seen := map[string]bool{}
-	for i := len(history) - 1; i >= 0; i-- {
+	for r := range runsSinceExternalChange(history) {
 		if err := ctx.Err(); err != nil {
 			return d, err
 		}
-		r := history[i]
 		if !takeLatestAttempt(r, seen) {
 			continue
 		}
@@ -201,6 +204,20 @@ func firstScopeAdvice(ctx context.Context, current Run, history []Run) (Decision
 		}
 	}
 	return d, nil
+}
+
+/**
+ * 倒序查找可引用的结果。可能改变外部状态的命令也可以有自己的验证结果，
+ * 但更早的成功无法说明这条命令启动后的状态。
+ */
+func runsSinceExternalChange(history []Run) iter.Seq[Run] {
+	return func(yield func(Run) bool) {
+		for _, r := range slices.Backward(history) {
+			if !yield(r) || r.mayChangeExternalState() {
+				return
+			}
+		}
+	}
 }
 
 /**
