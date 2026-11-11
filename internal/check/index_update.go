@@ -369,6 +369,11 @@ const EvidenceContext = 16
 // 带源码位置的诊断正文可能逐项打印任意名字，不能据此确认这些用例运行过。
 var diagnosticLocation = regexp.MustCompile(`^[[:space:]]*[^[:space:]]+:[0-9]+:([[:space:]]|$)`)
 
+// 清单中名字后面是类别、可选文件列、源码行号范围和计数。省略文件列的行只在文件标题下识别。
+var sourceFileHeading = regexp.MustCompile(`(?:^|[\s(])[^()\s]+\.[\pL\d_]+\)?:\s*$`)
+var sourceRangeRow = regexp.MustCompile(`^\s*\S+\s+[\pL_]+\s+(?:(\S+\.[\pL\d_]+)\s+)?\d+-\d+(?:\s+\d+)+\s*$`)
+var scalarProperty = regexp.MustCompile(`^\s*[\pL_][\pL\d_.-]*:\s+(?:\d+|true|false)\s*$`)
+
 /**
  * executed 从输出里出现的名字中，留下能说明代码确实被执行过的那些。
  * 查看文件、搜索文本的命令也会输出名字，但名字连同旁边的文字是从源码照抄的；
@@ -383,9 +388,14 @@ func executed(base *repositoryIndex, output string, names []string) ([]string, e
 	}
 	byName := map[string][]occurrence{}
 	var patterns []string
+	inFileListing := false
 	for _, line := range strings.Split(output, "\n") {
 		line = strings.TrimRight(line, "\r")
-		if diagnosticLocation.MatchString(line) {
+		if row := sourceRangeRow.FindStringSubmatch(line); row != nil && (inFileListing || row[1] != "") {
+			continue
+		}
+		inFileListing = sourceFileHeading.MatchString(line)
+		if inFileListing || diagnosticLocation.MatchString(line) || scalarProperty.MatchString(line) {
 			continue
 		}
 		for _, name := range names {
