@@ -19,4 +19,4 @@
 
 以上十条来自 117 轮中由真实运行记录确认的缺陷。它们是否也出现在当前已采用版本上，由修复条目的第一步（在该版本用原输入重现）回答；B00 的已采用基线取冻结的 main。
 
-出处里的提交都在 117 轮末端 `2a2f06ce` 的历史上。用 `git show <提交>` 可以看到当时的提交说明、改动，以及它在 `docs/roadmap.md`“已完成记录”里新增的一段，其中写了现象、原因和修法。当时的原始输入留在本机：Codex 会话在 `~/.codex/sessions/2026/11/`，各轮的事件输出在 `~/.local/state/taskbelay-self-evolution-20261110/`，TaskBelay 的 debug 在 `~/.taskbelay/debug/`，账本是 `~/.taskbelay/taskbelay.db`（只读打开）。
+出处里的提交都在 117 轮末端 `2a2f06ce` 的历史上。用 `git show <提交>` 可以看到当时的提交说明、改动，以及它在 `docs/roadmap.md`“已完成记录”里新增的一段，其中写了现象、原因和修法。当时的原始输入留在本机：Codex 会话在 `~/.codex/sessions/2026/11/`，各轮的事件输出在 `~/.local/state/taskbelay-self-evolution-20261110/`，用户已删除日常 TaskBelay 数据，不能再假设 `~/.taskbelay/` 中保留当时 debug 或账本；只使用核实仍存在的原始记录和旧实验归档，不为重现恢复用户有意删除的数据。
