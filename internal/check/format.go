@@ -2,9 +2,11 @@ package check
 
 import (
 	"fmt"
-	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"sort"
 	"strings"
+
+	"github.com/Innocent-children/taskbelay/internal/event"
+	"github.com/Innocent-children/taskbelay/internal/ledger"
 )
 
 func LimitFeedback(text string) string {
@@ -22,6 +24,25 @@ func limitFeedback(text string) (body, notice string) {
 }
 
 func Format(record ledger.CheckRecord, limit int) string {
+	return feedbackText(checkParts(&record, limit))
+}
+
+// 同一段正文用于展示和留痕；合并为数量的问题只关联检查。
+type feedbackPart struct {
+	text  string
+	check *ledger.CheckRecord
+	issue *ledger.Issue
+}
+
+func feedbackText(parts []feedbackPart) string {
+	lines := make([]string, 0, len(parts))
+	for _, part := range parts {
+		lines = append(lines, part.text)
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func checkParts(record *ledger.CheckRecord, limit int) []feedbackPart {
 	var b strings.Builder
 	var selected []ledger.Issue
 	blocks := 0
@@ -48,9 +69,9 @@ func Format(record ledger.CheckRecord, limit int) string {
 	if record.HistoricalVersion != "" {
 		fmt.Fprintf(&b, "历史规则版本：%s（不参与当前判定）\n", record.HistoricalVersion)
 	}
-	if issues := FormatIssues(selected, limit); issues != "" {
-		b.WriteString(issues + "\n")
-	}
+	parts := []feedbackPart{{text: strings.TrimSuffix(b.String(), "\n"), check: record}}
+	parts = append(parts, issueParts(selected, limit, record)...)
+	b.Reset()
 	counts := record.GapCounts()
 	if len(record.Missing) > 0 {
 		// 无法判断的部分只给数量和少量示例，完整清单在检查记录里。
@@ -80,7 +101,17 @@ func Format(record ledger.CheckRecord, limit int) string {
 			fmt.Fprintf(&b, "验证 %s：%s\n", v.ID, v.State)
 		}
 	}
-	return strings.TrimSpace(b.String())
+	last := &parts[len(parts)-1]
+	if tail := strings.TrimSpace(b.String()); tail != "" {
+		if last.issue == nil {
+			last.text += "\n" + tail
+		} else {
+			parts = append(parts, feedbackPart{text: tail, check: record})
+		}
+	} else {
+		last.text = strings.TrimSpace(last.text)
+	}
+	return parts
 }
 
 var ruleNames = map[string]string{
@@ -96,6 +127,10 @@ var ruleNames = map[string]string{
  * 拦截排在前面，可以直接动手的建议排在只报告现状的提示前面。
  */
 func FormatIssues(issues []ledger.Issue, limit int) string {
+	return feedbackText(issueParts(issues, limit, nil))
+}
+
+func issueParts(issues []ledger.Issue, limit int, record *ledger.CheckRecord) []feedbackPart {
 	var open []ledger.Issue
 	for _, i := range issues {
 		if i.Status == "open" || i.Status == "retained" {
@@ -123,8 +158,9 @@ func FormatIssues(issues []ledger.Issue, limit int) string {
 			open = open[:limit]
 		}
 	}
-	var b strings.Builder
-	for _, i := range open {
+	var parts []feedbackPart
+	for idx := range open {
+		i := &open[idx]
 		level := "建议"
 		if i.Level == "block" {
 			level = "拦截"
@@ -133,13 +169,71 @@ func FormatIssues(issues []ledger.Issue, limit int) string {
 		if name == "" {
 			name = i.Rule
 		}
-		fmt.Fprintf(&b, "[%s] %s：%s（编号 %s）\n  %s\n  → %s\n", level, name, i.At, i.ID, strings.Join(i.Facts, "；"), i.Advice)
+		text := fmt.Sprintf("[%s] %s：%s（编号 %s）\n  %s\n  → %s", level, name, i.At, i.ID, strings.Join(i.Facts, "；"), i.Advice)
+		parts = append(parts, feedbackPart{text: text, check: record, issue: i})
 	}
 	if kept > 0 {
-		fmt.Fprintf(&b, "另有 %d 条涉及工作区更新或来源无法核对的内容，只记录现状，保留当前内容即可。\n", kept)
+		text := fmt.Sprintf("另有 %d 条涉及工作区更新或来源无法核对的内容，只记录现状，保留当前内容即可。", kept)
+		parts = append(parts, feedbackPart{text: text, check: record})
+	} else if len(parts) > 0 {
+		last := &parts[len(parts)-1]
+		last.text = strings.TrimSpace(last.text)
 	}
-	return strings.TrimSpace(b.String())
+	return parts
 }
+
+/**
+ * DeliveryFeedback 将 Stop 的提示正文和阻断理由分别按原有预算截断。
+ * 两个输出字段各自携带实际写出的片段，供 hook 输出成功后追加记录。
+ */
+func DeliveryFeedback(delivery ledger.Delivery, dynamic *ledger.CheckRecord) event.Decision {
+	parts := checkParts(&delivery.Check, 5)
+	status := delivery.Check.Status
+	if status == ledger.CheckPartial || status == ledger.CheckFailed || dynamic != nil && (dynamic.Status == ledger.CheckPartial || dynamic.Status == ledger.CheckFailed) {
+		parts[0].text = "TaskBelay 本次未完成全部检查。以下列出已取得的结果，以及其余检查未完成的原因。\n" + parts[0].text
+	}
+	if dynamic != nil {
+		parts = append(parts, checkParts(dynamic, 5)...)
+	}
+	text, records := deliveryOutput(parts, "检查反馈已输出")
+	decision := event.Decision{AdditionalContext: text, UserMessage: text, Records: records}
+	if len(delivery.Blocked) > 0 {
+		reason, records := deliveryOutput(issueParts(delivery.Blocked, 0, &delivery.Check), "阻止结束的理由已输出")
+		decision.BlockStop = reason
+		decision.Records = append(decision.Records, records...)
+	}
+	return decision
+}
+
+func deliveryOutput(parts []feedbackPart, action string) (string, []event.SessionRecord) {
+	visible, notice := limitFeedback(feedbackText(parts))
+	text := visible + notice
+	var records []event.SessionRecord
+	for _, part := range parts {
+		if visible == "" {
+			break
+		}
+		n := min(len(visible), len(part.text))
+		entry := event.SessionRecord{TaskID: part.check.Input.TaskID, Action: action, Object: part.check.Depth + " 检查", Detail: visible[:n]}
+		if part.check.ID != 0 {
+			entry.Sources = append(entry.Sources, fmt.Sprintf("check:%d", part.check.ID))
+		}
+		if part.issue != nil {
+			entry.Object = part.issue.At
+			if part.issue.ID != "" {
+				entry.Sources = append(entry.Sources, "issue:"+part.issue.ID)
+			}
+		}
+		if n < len(part.text) {
+			entry.Action += "（正文截断）"
+			entry.Detail += notice
+		}
+		records = append(records, entry)
+		visible = strings.TrimPrefix(visible[n:], "\n")
+	}
+	return text, records
+}
+
 func FormatPlans(p ledger.PlanView) string {
 	if p.Effective == nil && p.Pending == nil {
 		return ""
