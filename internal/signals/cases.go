@@ -3,7 +3,6 @@ package signals
 import (
 	"context"
 	"fmt"
-	"path"
 	"slices"
 	"sort"
 	"strconv"
@@ -71,17 +70,6 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 		unit units.Unit
 	}
 	targets := map[string][]target{}
-	// 只从起点的非测试代码辨认清单写法，不让新增测试给自己的声明定性。
-	listHeads := map[[2]string]bool{}
-	for p, f := range in.Before.Files {
-		if !in.Before.Roles[p].Test {
-			for _, u := range f.Units {
-				if _, end := literalList(f, u); end != 0 {
-					listHeads[[2]string{path.Ext(p), u.Tokens[0].Text}] = true
-				}
-			}
-		}
-	}
 	for _, p := range keys(in.After.Files) {
 		if in.After.Roles[p].Test {
 			continue
@@ -97,13 +85,8 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 			return all, budget, out, gaps, err
 		}
 		f := in.After.Files[p]
-		closeLine := 0
 		for _, u := range repostats.CaseUnits(in.After, p) {
-			if u.Line == closeLine && len(u.Tokens) == 1 && u.Tokens[0].Text == ")" {
-				continue
-			}
-			if refs, end := literalList(f, u); end != 0 && listHeads[[2]string{path.Ext(p), u.Tokens[0].Text}] && usedAsQualifiers(f, end, refs) {
-				closeLine = end
+			if !in.After.TestUnits[repostats.UnitKey(p, u)] {
 				continue
 			}
 			if !declaration(f, u) {
@@ -307,47 +290,6 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 		}
 	}
 	return all, budget, out, gaps, ctx.Err()
-}
-
-// 只认完整的顶层清单：首行打开括号，每行一个引用，最后单独闭合。
-// 缩进版面把右括号切成下一个单元；返回实际闭合行以便一并排除。
-func literalList(f units.File, u units.Unit) ([]units.Token, int) {
-	ts := u.Tokens
-	if u.Parent >= 0 || len(ts) < 3 || ts[0].Kind != "identifier" || ts[1].Text != "(" || ts[0].Line != ts[1].Line {
-		return nil, 0
-	}
-	end := u.EndLine + 1
-	if last := ts[len(ts)-1]; last.Text == ")" {
-		end = last.Line
-		ts = ts[:len(ts)-1]
-	} else if f.Layout != "indent" {
-		return nil, 0
-	}
-	if len(ts) < 3 || end > len(f.Lines) || strings.TrimSpace(f.Lines[end-1]) != ")" {
-		return nil, 0
-	}
-	for i := 2; i < len(ts); i++ {
-		if (ts[i].Kind != "key" && ts[i].Kind != "string") || ts[i].Line <= ts[i-1].Line {
-			return nil, 0
-		}
-	}
-	return ts[2:], end
-}
-
-// 字符串也可能是测试数据。每项的末段都在后文作为成员访问的限定名时，
-// 才将这组引用与已在非测试代码中见过的清单写法对应起来。
-func usedAsQualifiers(f units.File, end int, refs []units.Token) bool {
-	pending := map[string]bool{}
-	for _, ref := range refs {
-		pending[path.Base(units.Literal(ref))] = true
-	}
-	ts := units.Significant(f.Tokens)
-	for i := 2; i < len(ts); i++ {
-		if ts[i-2].Line > end && ts[i-2].Kind == "identifier" && ts[i-1].Text == "." && ts[i].Kind == "identifier" {
-			delete(pending, ts[i-2].Text)
-		}
-	}
-	return len(pending) == 0
 }
 
 // 断言比较需要完整的调用文本。大小比较保留在实参中，不用尖括号截断表达式。
