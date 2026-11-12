@@ -10,7 +10,7 @@ Agent 通过 `requirement_save.acceptance` 保存验收标准，通过 `implemen
 
 ## 文档的层次
 
-1. **长期路线图**：[roadmap.md](roadmap.md) 定义长期方向、各阶段目标和完成条件，并在“已完成记录”中保存实际开发进展。常规开发按路线图推进；本次按 [自动化迭代方法](iteration-method.md) 进行的产品进化按实际问题和评估结果选题，不受阶段顺序约束，具体范围见项目根目录的 `AGENTS.md`。
+1. **长期路线图**：[roadmap.md](roadmap.md) 定义长期方向、各阶段目标和完成条件，并在“已完成记录”中保存实际开发进展。除必要的 bug 修复外，后续开发必须按路线图推进，具体要求见项目根目录的 `AGENTS.md`。
 2. **产品需求**：[product.md](product.md) 定义产品解决什么问题、保持产品简单的原则、正常使用方式和成功标准。
 3. **核心设计**：[requirements.md](requirements.md) 定义任务、需求、工作区更新和改动归属；[algorithm.md](algorithm.md) 定义共享的算法：变更簇、需求相关区、验收依据、分组检验、合并信号与校准；[over-design.md](over-design.md) 与 [over-testing.md](over-testing.md) 定义两类判定；[languages.md](languages.md) 定义统一词法、仓库统计、命令记录与副本运行；[handoff.md](handoff.md) 与 [semi-auto.md](semi-auto.md) 定义接续和方案流程。
 4. **衍生设计**：账本、Agent 接入、系统架构和评估文档依据产品需求与核心设计展开。核心行为改变时，同步修改数据、事件、执行流程和验收场景。
@@ -34,7 +34,6 @@ Agent 通过 `requirement_save.acceptance` 保存验收标准，通过 `implemen
 | [product-agent-integration.md](product-agent-integration.md) | hook、MCP、Agent 与平台差异、安装和故障处理 |
 | [product-architecture.md](product-architecture.md) | 进程、模块、快照、观察与编辑核对、检查执行、存储和性能 |
 | [product-evaluation.md](product-evaluation.md) | 当前测试维护范围，以及算法的正确性、效果、普适性和成本评估口径 |
-| [iteration-method.md](iteration-method.md) | 助手自主准备、评估、采用和汇报的产品进化流程；问题池、已定结论、批次记录和 Prompt 在 `iteration/` 目录 |
 
 ## 共同术语
 
