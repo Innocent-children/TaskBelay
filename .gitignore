@@ -3,6 +3,9 @@
 .DS_Store
 /temp_doc/
 
+# Local self-evolution evidence; never commit raw sessions or user data.
+/.taskbelay-evolution/
+
 # Locally built executables.
 /taskbelay
 /taskbelay.exe

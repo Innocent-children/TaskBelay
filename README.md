@@ -191,6 +191,12 @@ taskbelay uninstall --all
 
 完整卸载需要交互确认。更新和卸载保留任务账本、日志与用户原有配置；卸载只移除 TaskBelay 管理的接入和资源。
 
+## 项目怎样持续改进
+
+TaskBelay 根据真实使用中发现的问题持续改进。维护者从 [需求池](docs/backlog.md) 选择一个调查或修复任务，用固定运行版约束候选开发，再由新会话复盘原始需求、改动和反馈，必要时比较新旧版。收益明确才采用，证据不足就保留旧版。
+
+完整过程、记录方式和停止条件见 [自进化维护机制](docs/evolution.md)，待解决问题及结果索引维护在需求池中。
+
 ## 进一步阅读
 
 完整文档从[文档说明](docs/README.md)进入。
@@ -204,4 +210,4 @@ taskbelay uninstall --all
 | [Agent 接入](docs/product-agent-integration.md) | 安装、hook、MCP、平台差异与故障处理 |
 | [系统架构](docs/product-architecture.md) | 进程、模块职责、存储和调试记录 |
 
-参与开发前先阅读 `AGENTS.md` 和 `docs/README.md`。开发范围以 `docs/` 定义的需求、行为和支持范围为准；代码的模块职责见 `docs/product-architecture.md`。
+参与开发前先阅读 `AGENTS.md`、`docs/evolution.md` 和当前任务条目，再按 `docs/README.md` 找到相关产品与设计文档。代码的模块职责见 `docs/product-architecture.md`。
