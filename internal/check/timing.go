@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/Innocent-children/taskbelay/internal/changes"
+	"github.com/Innocent-children/taskbelay/internal/event"
 	"github.com/Innocent-children/taskbelay/internal/gitstate"
 	"github.com/Innocent-children/taskbelay/internal/ledger"
 	"github.com/Innocent-children/taskbelay/internal/signals"
@@ -61,15 +62,16 @@ func ReuseAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, act
 	return "可先核对已有实现：" + strings.Join(out, "、"), nil
 }
 
-func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, contents map[string][]byte) (string, error) {
+func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, contents map[string][]byte) (event.Decision, error) {
+	var decision event.Decision
 	view, err := s.EditAnalysisContext(ctx, w.ID)
 	if err != nil || view.Task == nil {
-		return "", err
+		return decision, err
 	}
 	ctx = publishedOnly(ctx)
 	base, err := taskIndex(ctx, s, w, *view.Task)
 	if err != nil {
-		return "", err
+		return decision, err
 	}
 	paths := keys(contents)
 	before := base.view(paths)
@@ -79,24 +81,25 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, cont
 		base.get("syntax", path.Ext(p), &syn)
 		f, err := units.Analyze(ctx, units.Source{Path: p, Blob: units.Hash(string(contents[p])), Mode: "100644", Data: contents[p]}, syn)
 		if err != nil {
-			return "", err
+			return decision, err
 		}
 		files[p] = f
 	}
 	after, err := base.apply(paths, files, "preview")
 	if err != nil {
-		return "", err
+		return decision, err
 	}
 	delta, err := changes.Compare(ctx, changes.Input{Before: before, After: after})
 	if err != nil {
-		return "", err
+		return decision, err
 	}
 	snapshot := indexedSnapshot{Origin: base, Current: base, Before: before, After: after, Paths: paths}
 	result, err := analyzeSignals(ctx, view, signals.Input{EditPreview: true, Queries: snapshot.queries(), Before: snapshot.Before, After: snapshot.After, Changes: delta, Requirements: requirements(view)})
 	if err != nil {
-		return "", err
+		return decision, err
 	}
 	var advice []string
+	var selected []signals.Candidate
 	for _, c := range result.Candidates {
 		if c.Kind == "external" || c.Kind == "duplicate" {
 			text := c.At + "："
@@ -104,10 +107,23 @@ func EditAdvice(ctx context.Context, s *ledger.Store, w gitstate.Workspace, cont
 				text += strings.Join(c.Facts, "；") + "；"
 			}
 			advice = append(advice, text+c.Advice)
+			selected = append(selected, c)
 			if len(advice) >= CategoryLimit {
 				break
 			}
 		}
 	}
-	return LimitFeedback(strings.Join(advice, "\n")), snapshot.err()
+	visible, notice := limitFeedback(strings.Join(advice, "\n"))
+	decision.AdditionalContext = visible + notice
+	for i, c := range selected {
+		if visible == "" {
+			break
+		}
+		detail := visible[:min(len(advice[i]), len(visible))]
+		decision.Records = append(decision.Records, event.SessionRecord{
+			Action: "编辑前设计提示已输出", Object: c.At, Detail: detail, Sources: []string{"candidate:" + c.ID},
+		})
+		visible = strings.TrimPrefix(visible[len(detail):], "\n")
+	}
+	return decision, snapshot.err()
 }

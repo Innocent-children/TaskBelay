@@ -8,11 +8,17 @@ import (
 )
 
 func LimitFeedback(text string) string {
+	body, notice := limitFeedback(text)
+	return body + notice
+}
+
+func limitFeedback(text string) (body, notice string) {
+	const suffix = "\n其余内容见 task_get。"
 	r := []rune(text)
 	if len(r) > FeedbackBudget {
-		return string(r[:FeedbackBudget-len([]rune("\n其余内容见 task_get。"))]) + "\n其余内容见 task_get。"
+		return string(r[:FeedbackBudget-len([]rune(suffix))]), suffix
 	}
-	return text
+	return text, ""
 }
 
 func Format(record ledger.CheckRecord, limit int) string {
