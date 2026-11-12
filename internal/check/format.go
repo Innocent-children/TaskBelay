@@ -58,12 +58,9 @@ func checkParts(record *ledger.CheckRecord, limit int) []feedbackPart {
 	if record.Depth == "tests" {
 		depth = "动态检查"
 	}
-	fmt.Fprintf(&b, "TaskBelay %s：%d 条提示", depth, len(record.Issues))
+	fmt.Fprintf(&b, "TaskBelay %s：共发现 %d 条提示", depth, len(record.Issues))
 	if blocks > 0 {
 		fmt.Fprintf(&b, "，其中 %d 处拦截", blocks)
-	}
-	if limit > 0 && len(selected) > limit {
-		fmt.Fprintf(&b, "，以下列出最值得核对的 %d 条", limit)
 	}
 	fmt.Fprintf(&b, "。检查状态 %s；输入版本 %s\n", record.Status, record.InputVersion)
 	if record.HistoricalVersion != "" {
@@ -72,6 +69,16 @@ func checkParts(record *ledger.CheckRecord, limit int) []feedbackPart {
 	parts := []feedbackPart{{text: strings.TrimSuffix(b.String(), "\n"), check: record}}
 	parts = append(parts, issueParts(selected, limit, record)...)
 	b.Reset()
+	if limit > 0 && len(record.Issues) > 0 {
+		// 在明细之后报数，正文被截断时不会预告尚未展示的建议。
+		shown := 0
+		for _, part := range parts {
+			if part.issue != nil {
+				shown++
+			}
+		}
+		fmt.Fprintf(&b, "本次列出 %d 条具体建议。\n", shown)
+	}
 	counts := record.GapCounts()
 	if len(record.Missing) > 0 {
 		// 无法判断的部分只给数量和少量示例，完整清单在检查记录里。
