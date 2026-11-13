@@ -401,7 +401,11 @@ func (o Observer) beforeEdit(ctx context.Context, e event.Event, task, enforceme
 	record.Decision.Records = editRecords(task, record)
 	// 设计提示排在证据和冲突决定保存之后，来不及生成时只略过这次提示。
 	if advice, analysisErr := check.EditAdvice(ctx, o.Store, o.Workspace, expectedContents); analysisErr == nil {
-		record.Decision.AdditionalContext = strings.TrimSpace(record.Decision.AdditionalContext + "\n" + advice)
+		record.Decision.AdditionalContext = strings.TrimSpace(record.Decision.AdditionalContext + "\n" + advice.AdditionalContext)
+		for _, adviceRecord := range advice.Records {
+			adviceRecord.TaskID = task
+			record.Decision.Records = append(record.Decision.Records, adviceRecord)
+		}
 	}
 	return record.Decision, nil
 }

@@ -84,32 +84,6 @@ func editRecords(task string, record ledger.EditRecord) []event.SessionRecord {
 	return result
 }
 
-func checkFeedback(record ledger.CheckRecord, blocked []ledger.Issue) []event.SessionRecord {
-	action := "检查反馈已输出"
-	decision := "本次提供提示"
-	if len(blocked) > 0 {
-		decision = "本次已阻止结束"
-	}
-	records := []event.SessionRecord{feedbackRecord(record.Input.TaskID, action, record.Depth+" 检查", "已反馈检查状态："+string(record.Status)+"；结论："+record.Level+"；"+decision+"。", checkSource(record)...)}
-	seen := map[string]bool{}
-	hints := 0
-	for _, issue := range record.Issues {
-		key := issue.Rule + "\x00" + issue.At + "\x00" + issue.FactKey
-		if seen[key] || issue.Status != "open" {
-			continue
-		}
-		seen[key] = true
-		if issue.Level != "block" {
-			if hints >= 5 {
-				continue
-			}
-			hints++
-		}
-		records = append(records, feedbackRecord(record.Input.TaskID, action, issue.At, issue.Rule+"："+strings.Join(issue.Facts, " ")+"；"+issue.Advice, append(checkSource(record), issueSource(issue)...)...))
-	}
-	return records
-}
-
 func checkSource(record ledger.CheckRecord) []string {
 	if record.ID == 0 {
 		return nil

@@ -204,23 +204,8 @@ func (t Tasks) stop(ctx context.Context, e event.Event) (event.Decision, error) 
 			t.ReportError(calibrationErr)
 		}
 	}
-	text := check.Format(delivery.Check, 5)
-	if dynamic != nil {
-		text += "\n" + check.Format(*dynamic, 5)
-	}
-	if record.Status == ledger.CheckPartial || record.Status == ledger.CheckFailed || dynamic != nil && (dynamic.Status == ledger.CheckPartial || dynamic.Status == ledger.CheckFailed) {
-		text = "TaskBelay 本次未完成全部检查。以下列出已取得的结果，以及其余检查未完成的原因。\n" + text
-	}
-	text = check.LimitFeedback(text)
-	decision := event.Decision{AdditionalContext: text, UserMessage: text}
-	decision.Records = append(decision.Records, checkFeedback(delivery.Check, delivery.Blocked)...)
-	if dynamic != nil {
-		decision.Records = append(decision.Records, checkFeedback(*dynamic, nil)...)
-	}
-	if len(delivery.Blocked) > 0 {
-		decision.BlockStop = check.LimitFeedback(check.FormatIssues(delivery.Blocked, 0))
-	}
-	if feedbackErr := t.Store.RecordFeedback(ctx, t.Workspace.ID, record.Input.TaskID, text+"\n"+decision.BlockStop); feedbackErr != nil && t.ReportError != nil {
+	decision := check.DeliveryFeedback(delivery, dynamic)
+	if feedbackErr := t.Store.RecordFeedback(ctx, t.Workspace.ID, record.Input.TaskID, decision.UserMessage+"\n"+decision.BlockStop); feedbackErr != nil && t.ReportError != nil {
 		t.ReportError(feedbackErr)
 	}
 	return decision, nil

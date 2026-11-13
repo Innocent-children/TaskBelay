@@ -215,7 +215,7 @@ func cases(ctx context.Context, in Input) ([]Case, map[string]int, []Candidate, 
 				comparisons = append(comparisons, comparison{c, key + "\x00" + c.Class + "\x00" + c.Shape, false, u.EndLine - u.Line + 1})
 			}
 			if mockExample != "" && c.Added {
-				out = append(out, Candidate{Kind: "mock_only", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"测试侧调用的参数只包含从测试中学到的词：" + mockExample}, Advice: "核对 " + c.Name + " 中的这处调用检查了什么，以及删去用例会漏掉哪种错误；若次数或顺序属于需求，应保留对应检查", Features: map[string]float64{"mock_only": 1}, Benefit: 1})
+				out = append(out, Candidate{Kind: "mock_only", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{fmt.Sprintf("识别到的 %d 处调用，其名称和实参中的词均与测试词汇匹配，例如 %s", len(c.checks), mockExample)}, Advice: "核对 " + c.Name + " 是否还检查了产品行为；若调用次数或顺序属于需求，应保留对应检查", Features: map[string]float64{"mock_only": 1}, Benefit: 1})
 			}
 			if len(c.checks) == 0 && !c.checksUnknown && c.Added {
 				out = append(out, Candidate{Kind: "assertion", Object: c.ID, At: location(p, u), Cluster: cluster, AgentOnly: agent, Facts: []string{"用例中未出现从仓库识别出的断言词"}, Advice: "核对 " + c.Name + " 是否检查了行为结果", Features: map[string]float64{"assertion_missing": 1}, Benefit: 1})
@@ -316,12 +316,18 @@ func assertionExpressions(repo repostats.Repository, caseName string, body []uni
 		}
 	}
 	covered := -1
+	// mock_only 针对整条用例；一处调用证据不足就放弃该提示，其他断言仍照常收集。
+	onlyTestCalls := true
 	for i, t := range ts {
-		if t.Kind != "identifier" || t.Text == caseName || i+1 >= len(ts) {
+		if t.Kind != "identifier" || i+1 >= len(ts) {
 			continue
 		}
 		open := ts[i+1].Text
-		if (open != "(" && open != "[" && open != "<") || repo.TestWord(t.Text, false) <= 0 {
+		if open != "(" && open != "[" && open != "<" {
+			continue
+		}
+		if t.Text == caseName || repo.TestWord(t.Text, false) <= 0 {
+			onlyTestCalls = false
 			continue
 		}
 		end := ends[i+1]
@@ -329,6 +335,7 @@ func assertionExpressions(repo repostats.Repository, caseName string, body []uni
 			end = ends[end+1]
 		}
 		if end == 0 {
+			onlyTestCalls = false
 			// 已核对的外层调用包含这段文本；内部的比较不构成另一处未读全的断言。
 			unknown = unknown || i > covered
 			continue
@@ -337,12 +344,14 @@ func assertionExpressions(repo repostats.Repository, caseName string, body []uni
 		args := strings.Join(units.Sequence(ts[i+2:end], false), " ")
 		expression := t.Text + open + args + ts[end].Text
 		checks = append(checks, expression)
-		if mock == "" {
+		if onlyTestCalls {
 			words := units.Words(args)
-			if len(words) > 0 && !slices.ContainsFunc(words, func(w string) bool { return repo.TestWord(w, true) <= 0 }) {
-				mock = expression
-			}
+			onlyTestCalls = len(words) > 0 && !slices.ContainsFunc(words, func(w string) bool { return repo.TestWord(w, true) <= 0 })
+			mock = expression
 		}
+	}
+	if !onlyTestCalls {
+		mock = ""
 	}
 	return checks, mock, unknown
 }
