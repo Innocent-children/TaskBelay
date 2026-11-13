@@ -193,9 +193,7 @@ taskbelay uninstall --all
 
 ## 项目怎样持续改进
 
-TaskBelay 以真实业务需求重演驱动改进。维护者从已授权 Git 历史还原需求，在隔离副本中从实现前基线重新开发；开发会话只取得需求与基线，历史参考另行隔离。固定运行版通过实际 hook + MCP 约束开发，新会话先独立评估需求和产物，再核对工具反馈，从具体多余工作、误报、漏报与额外负担中形成改进问题。
-
-维护者在 [需求与问题池](docs/backlog.md) 分别索引业务样本和产品问题；没有合适产品问题时仍可继续已授权重演。候选经有限复现、独立复盘与必要验证后，按改善证据和成本决定是否采用，采用版进入后续真实任务，未采用保留旧版。完整流程、安全边界、记录和停止条件见 [自进化维护机制](docs/evolution.md)。
+TaskBelay 以真实业务需求重演取得开发证据，围绕具体多余工作、误报、漏报和额外负担改进产品。完整流程、安全边界、记录和采用规则统一见 [迭代流程](docs/evolution/README.md)，效果判断见 [评估与验证方法](docs/evolution/evaluation.md)。[业务样本池](docs/evolution/samples.md) 与 [产品问题池](docs/evolution/backlog.md) 分别提供索引，详细依据保存在关联记录中。
 
 ## 进一步阅读
 
@@ -210,4 +208,4 @@ TaskBelay 以真实业务需求重演驱动改进。维护者从已授权 Git �
 | [Agent 接入](docs/product-agent-integration.md) | 安装、hook、MCP、平台差异与故障处理 |
 | [系统架构](docs/product-architecture.md) | 进程、模块职责、存储和调试记录 |
 
-参与开发前先阅读 `AGENTS.md`、`docs/evolution.md` 和当前任务条目，再按 `docs/README.md` 找到相关产品与设计文档。代码的模块职责见 `docs/product-architecture.md`。
+参与开发前先阅读 `AGENTS.md`、[迭代流程](docs/evolution/README.md) 和当前任务条目，再按 `docs/README.md` 找到相关产品与设计文档。代码的模块职责见 `docs/product-architecture.md`。

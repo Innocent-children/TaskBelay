@@ -60,7 +60,7 @@ flowchart LR
 | `taskbelay config set analysis.tests on` 或 `off` | 开启或关闭动态检查，支持 `--project`、`--task` | 用户 |
 | `taskbelay config set analysis.parallel <数量>` | 声明副本命令可以独立并行，支持 `--project`、`--task` | 用户 |
 | `taskbelay config set debug on` 或 `off` | 开启或关闭详细过程记录，支持 `--project`、`--task`，也可从常用设置菜单操作 | 用户 |
-| `taskbelay hits --since 14d` | 导出最近触发拦截的问题和 Agent 的处理方式，见 [算法评估](product-evaluation.md) | 维护者 |
+| `taskbelay hits --since 14d` | 导出最近触发拦截的问题和 Agent 的处理方式，见 [评估与验证方法](evolution/evaluation.md) | 维护者 |
 | `taskbelay hook <agent> <事件>` | 处理一次 hook 调用 | Agent |
 | `taskbelay mcp` | 运行 MCP server | Agent |
 
@@ -372,7 +372,7 @@ debug 文件及检查正文不随七天错误日志或账本保留期自动删�
 
 表中为等待上限与工程目标。词法、统计、图计算、信号、反馈、副本运行和发布都受调用截止时间控制；实际耗时需要在指定仓库和环境测量，不能把预算当作实测结果。
 
-静态分析按位置和问题汇总未完成原因，去除重复项，保存原因与数量；汇总过程中也会响应取消请求。分析为提交结果保留时间，达到预算时保存已完成的范围，不自动追加下一轮；取得新信息或主动刷新时，再安排相关工作。各环节的复杂度见 [算法核心](algorithm.md)，实际性能通过 [算法评估](product-evaluation.md) 测量。
+静态分析按位置和问题汇总未完成原因，去除重复项，保存原因与数量；汇总过程中也会响应取消请求。分析为提交结果保留时间，达到预算时保存已完成的范围，不自动追加下一轮；取得新信息或主动刷新时，再安排相关工作。各环节的复杂度见 [算法核心](algorithm.md)，实际性能通过 [评估与验证方法](evolution/evaluation.md) 测量。
 
 ## 依赖
 
@@ -395,7 +395,7 @@ Windows、macOS、Linux 分别发布 amd64、arm64 程序，并附安装脚本�
 
 安装与交付基础测试继续维护；算法和业务模块保留对应真实失败模式或产品约定的最小回归测试与样本，临时探索产物及时清理。验证选择能回答当前问题的最小范围，记录所用版本、命令和结果。能通过阅读差异与引用确认的改动采用只读核对。
 
-维护流程及证据保留见 [自进化维护机制](evolution.md)，验证方法见 [算法评估](product-evaluation.md)。验证结论注明对应的平台、Agent、版本和输入条件。
+维护流程及证据保留见 [迭代流程](evolution/README.md)，验证方法见 [评估与验证方法](evolution/evaluation.md)。验证结论注明对应的平台、Agent、版本和输入条件。
 
 ## 会话动作记录
 
