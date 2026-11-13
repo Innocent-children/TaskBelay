@@ -37,7 +37,7 @@ PRAGMA user_version=7;
 `
 
 // 改变候选或判断规则时更新。纯展示调整沿用独立的反馈格式版本。
-const checkRulesVersion = 3
+const checkRulesVersion = 4
 
 type CheckInput struct {
 	RulesVersion          int               `json:"rules_version,omitempty"`
