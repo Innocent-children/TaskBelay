@@ -1,6 +1,6 @@
 # 文档说明
 
-本目录维护 TaskBelay 的产品目标、当前设计，以及根据真实使用持续改进的方法。开发从 [需求池](backlog.md) 选题，按 [自进化维护机制](evolution.md) 推进；用户照常开发，TaskBelay 的效果由实际省下的工作验证。
+本目录维护 TaskBelay 的产品目标、当前设计，以及由真实业务需求重演驱动的改进方法。从 [需求与问题池](backlog.md) 选择已授权业务样本或具体产品问题，按 [自进化维护机制](evolution.md) 推进；通过隔离重演、独立复盘和必要验证判断实际省下的工作与新增成本。
 
 ## 产品与算法
 
@@ -10,7 +10,7 @@ Agent 通过 `requirement_save.acceptance` 保存验收标准，通过 `implemen
 
 ## 文档的层次
 
-1. **维护机制与任务**：[evolution.md](evolution.md) 定义选题、迭代状态、证据、复盘、采用和停止规则；[backlog.md](backlog.md) 维护当前问题与结果索引；实际启动后，每轮依据保存在 `docs/iterations/NNN.md`。开发要求见项目根目录的 `AGENTS.md`。
+1. **维护机制与任务**：[evolution.md](evolution.md) 定义历史选题、隔离重演、迭代状态、证据、独立复盘、采用和停止规则；[backlog.md](backlog.md) 分别索引真实需求池和改进问题池；实际启动后，每轮依据保存在 `docs/iterations/NNN.md`。开发要求见项目根目录的 `AGENTS.md`。
 2. **产品需求**：[product.md](product.md) 定义产品解决什么问题、保持产品简单的原则、正常使用方式和成功标准。
 3. **核心设计**：[requirements.md](requirements.md) 定义任务、需求、工作区更新和改动归属；[algorithm.md](algorithm.md) 定义共享的算法：变更簇、需求相关区、验收依据、分组检验、合并信号与校准；[over-design.md](over-design.md) 与 [over-testing.md](over-testing.md) 定义两类判定；[languages.md](languages.md) 定义统一词法、仓库统计、命令记录与副本运行；[handoff.md](handoff.md) 与 [semi-auto.md](semi-auto.md) 定义接续和方案流程。
 4. **衍生设计**：账本、Agent 接入、系统架构和评估文档依据产品需求与核心设计展开。核心行为改变时，同步修改数据、事件、执行流程和验收场景。
@@ -21,8 +21,8 @@ Agent 通过 `requirement_save.acceptance` 保存验收标准，通过 `implemen
 
 | 文档 | 内容 |
 | --- | --- |
-| [evolution.md](evolution.md) | 自进化状态机、职责、证据保留、版本采用与停止规则 |
-| [backlog.md](backlog.md) | 当前问题、调查候选、范围与验收、状态及结果索引 |
+| [evolution.md](evolution.md) | 真实需求重演、历史与运行隔离、迭代职责、证据、独立复盘、版本采用与停止规则 |
+| [backlog.md](backlog.md) | 业务重演样本与 TaskBelay 改进问题两类池的入口、状态和关联结果 |
 | [product.md](product.md) | 目标用户、保持产品简单的原则、正常开发场景、功能、模式、默认行为和成功标准 |
 | [requirements.md](requirements.md) | 任务开始、暂停、恢复、交付；累计 diff；用户修改；需求变更、位置与归属 |
 | [algorithm.md](algorithm.md) | 设计原则、变更簇、需求相关区、验收依据、分组检验、合并信号与反馈选择、拦截条件、校准、问题标识、计算时机和复杂度 |
@@ -43,7 +43,9 @@ Agent 通过 `requirement_save.acceptance` 保存验收标准，通过 `implemen
 | Agent | Claude Code 或 Codex | |
 | session | Agent 的一次会话，Codex 的 thread 在本文也称 session | |
 | 一轮（Agent 轮次） | 用户消息到达至 Agent 停下等待用户 | |
-| 迭代 | 从任务池选题至独立复盘、采用决策和收尾的一次改进，可包含多个 session | [自进化维护机制](evolution.md) |
+| 真实需求池 | 来自已授权业务历史、可从实现前基线重新开发的任务样本 | [自进化维护机制](evolution.md) |
+| 改进问题池 | 从重演或日常使用证据形成的 TaskBelay 调查、修复和验证问题 | [自进化维护机制](evolution.md) |
+| 迭代 | 一次重演、调查或候选改进，从定界至独立复盘、决策和收尾，可包含多个新 session | [自进化维护机制](evolution.md) |
 | 工作区 | 一个 git 工作区，worktree 分别管理 | [任务和需求](requirements.md) |
 | 当前任务 | 该工作区当前接续和检查的一件事，可以跨提交与 session | [任务和需求](requirements.md) |
 | 暂停任务 | 保存进度、等待恢复的任务 | [任务和需求](requirements.md) |
